@@ -4,8 +4,8 @@
 #include "base.hpp"
 
 #include <iostream>
+#include <fstream>
 #include <memory>
-#include <vector>
 
 namespace fn_scan {
 
@@ -49,8 +49,8 @@ union TokenDatum {
 };
 
 struct Token {
-    const TokenKind tk;
-    const CodeLoc loc;
+    TokenKind tk;
+    CodeLoc loc;
     TokenDatum datum;
 
     Token(TokenKind tk, CodeLoc loc)
@@ -69,9 +69,19 @@ struct Token {
         }
     }
     Token& operator=(const Token& tok) {
-        if (this != &tok && (tk == TKString || tk == TKSymbol)) {
+        if (this == &tok) return *this;
+
+        // free old string if necessary
+        if (tk == TKString || tk == TKSymbol) {
             delete datum.str;
+        }
+
+        this->tk = tok.tk;
+        // copy new string if necessary
+        if (tk == TKString || tk == TKSymbol) {
             datum.str = new string(*tok.datum.str);
+        } else {
+            this->datum = tok.datum;
         }
         return *this;
     }
@@ -117,159 +127,62 @@ struct Token {
         case TKNumber:
             return std::to_string(this->datum.num);
         case TKString:
+            // FIXME: this should probably do proper escaping
+            return "\"" + *(this->datum.str) + "\"";
         case TKSymbol:
             return *(this->datum.str);
         }
+        // this is unreachable code to silence a compiler warning
+        return "";
     }
 };
 
-// Object to maintain intermediate state as we scan input.
-class ScanState {
-    // All ScanState functionality is encapsulated by these functions
-    friend vector<Token> scan(istream& input);
-    friend vector<Token> scan(const string& filename);
 
-    private:
-    // stream to scan from
-    istream* input;
-    // vector to push tokens to
-    // IMPLNOTE: this should probably be a queue, since we never use random access
-    vector<Token>* output;
+class Scanner {
+public:
+    Scanner(istream* in, const string& filename="", int line=1, int col=1)
+        : input(in), filename(new string(filename)), line(line), col(col) { }
+    Scanner(const string& filename)
+        : line(1), col(1) {
+        input = new ifstream(filename, ios_base::in);        
+        this->closeStream = true;
+    }
+    ~Scanner();
 
-    // track location in input
+    Token nextToken();
+
+
+private:
+    istream *input;
+    // if true, the stream is closed when the scanner ends
+    bool closeStream = false;
+
+    // these track location in input (used for generating error messages)
     shared_ptr<string> filename;
     int line;
     int col;
 
-    ScanState(istream* input, vector<Token>* output, const string& filename="", int line=1,
-              int col=1)
-        : input(input), output(output), filename(new string(filename)), line(line), col(col) { }
-
-    // update the line and/or column numbers (dependent on if ch = '\n')
+    // increment the scanner position, keeping track of lines and columns
     void advance(char ch);
-    // get a CodeLoc object for the current location in the stream
-    // TODO: refactor implementation code to use this
-    CodeLoc curLoc();
-    // append a token to the output vector
-    void pushToken(TokenKind tk);
-    void pushToken(TokenKind tk, string str);
-    void pushToken(TokenKind tk, double num);
-    // process at least one character. May or may not generate a token. Exception on EOF
-    void partialScan();
-    // call partialScan until EOF
-    void scan();
 
     // methods to scan variable-length tokens
-    void scanSymOrNum(char first); // needs first character of the token
-    void scanstringLiteral();
-
+    Token scanSymOrNum(char first); // needs first character of the token
+    Token scanStringLiteral();
     // scan a string escape sequence and return the corresponding character
-    char getstringEscapeChar();
+    char getStringEscapeChar();
 
     // tell if EOF has been reached
     bool eof();
     // these raise appropriate exceptions at EOF
     char getChar();
     char peekChar();
+
+    // functions to make token objects with the proper location info
+    Token makeToken(TokenKind tk);
+    Token makeToken(TokenKind tk, string str);
+    Token makeToken(TokenKind tk, double num);
 };
 
-
-// scan an istream
-vector<Token> scan(istream& input);
-// scan the contents of a file
-vector<Token> scan(const string& filename);
-// scan tokens from a string
-vector<Token> scanstring(const string& str);
-
-
-// unfinished debugging facility
-inline void printTokens(vector<Token> toks) {
-    int indent = 0;
-    for (auto t : toks) {
-        switch (t.tk) {
-        case TKEOF:
-            std::cout << "\nEOF\n";
-            break;
-        case TKLBrace:
-            if (indent > 0) {
-                cout << endl;
-                for (int i = 0; i < indent; ++i) cout << ' ';
-            }
-            cout << "{ ";
-            indent += 2;
-            break;
-        case TKRBrace:
-            cout << " }";
-            indent -= 2;
-            if (indent > 0) {
-                cout << endl;
-                for (int i = 0; i < indent; ++i) cout << ' ';
-            }
-            break;
-        case TKLBracket:
-            if (indent > 0) {
-                cout << endl;
-                for (int i = 0; i < indent; ++i) cout << ' ';
-            }
-            cout << "[ ";
-            indent += 2;
-            break;
-        case TKRBracket:
-            cout << " ]";
-            indent -= 2;
-            if (indent > 0) {
-                cout << endl;
-                for (int i = 0; i < indent; ++i) cout << ' ';
-            }
-            break;
-        case TKLParen:
-            if (indent > 0) {
-                cout << endl;
-                for (int i = 0; i < indent; ++i) cout << ' ';
-            }
-            cout << "( ";
-            indent += 2;
-            break;
-        case TKRParen:
-            cout << " )";
-            indent -= 2;
-            if (indent > 0) {
-                cout << endl;
-                for (int i = 0; i < indent; ++i) cout << ' ';
-            }
-            break;
-        case TKDollarBrace:
-            if (indent > 0) {
-                cout << endl;
-                for (int i = 0; i < indent; ++i) cout << ' ';
-            }
-            cout << "${ ";
-            indent += 2;
-            break;
-        case TKDollarBracket:
-            if (indent > 0) {
-                cout << endl;
-                for (int i = 0; i < indent; ++i) cout << ' ';
-            }
-            cout << "$[ ";
-            indent += 2;
-            break;
-        case TKDollarParen:
-            if (indent > 0) {
-                cout << endl;
-                for (int i = 0; i < indent; ++i) cout << ' ';
-            }
-            cout << "$( ";
-            indent += 2;
-            break;
-        case TKDollarBacktick:
-            cout << "$`";
-            break;
-        default:
-            break;
-        }
-    }
-}
 
 }
 

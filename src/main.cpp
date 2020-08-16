@@ -12,8 +12,15 @@ int entry(int argc, const char **argv) {
         cout << "argument required\n";
         return -1;
     }
-    auto toks = fn_scan::scanstring(string(argv[1]));
-    printTokens(toks);
+
+    istringstream in(argv[1]);
+    fn_scan::Scanner sc(&in);
+
+    auto tok = sc.nextToken();
+    while (tok.tk != fn_scan::TKEOF) {
+        cout << tok.to_string() << endl;
+        tok = sc.nextToken();
+    }
 
     // test of hash table
     Table<int> testTab(1);
