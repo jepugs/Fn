@@ -13,7 +13,7 @@ namespace fn {
 
 using namespace std;
 
-// integer types
+// integer typedefs
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -24,7 +24,10 @@ typedef int16_t i16;
 typedef int32_t i32;
 typedef int64_t i64;
 
-// need 64-bit double and 32-bit float
+// since we're using u64 for our pointers, we better have 64-bit pointers
+static_assert(sizeof(uintptr_t) == 8);
+
+// we also assume we have 64-bit double and 32-bit float
 static_assert(sizeof(float) == 4);
 typedef float f32;
 static_assert(sizeof(double) == 8);

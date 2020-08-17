@@ -1,6 +1,8 @@
 #include "base.hpp"
 #include "scan.hpp"
 #include "table.hpp"
+#include "vm.hpp"
+#include "values.hpp"
 
 #include <iostream>
 
