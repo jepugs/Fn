@@ -16,19 +16,25 @@ inline void* getPointer(Value v) {
 
 
 // 3-bit tags
-const u64 TAG_NUM  = 0;
-const u64 TAG_CONS = 1;
-const u64 TAG_STR  = 2;
-const u64 TAG_OBJ  = 3;
-const u64 TAG_FUNC = 4;
-const u64 TAG_EXT  = 7;
+constexpr u64 TAG_NUM  = 0;
+constexpr u64 TAG_CONS = 1;
+constexpr u64 TAG_STR  = 2;
+constexpr u64 TAG_OBJ  = 3;
+constexpr u64 TAG_FUNC = 4;
+constexpr u64 TAG_EXT  = 7;
 
 // 8-bit extended tags
-const u64 TAG_NULL  = 0007;
-const u64 TAG_EMPTY = 0017;
-const u64 TAG_FALSE = 0027;
-const u64 TAG_TRUE  = 0037;
-const u64 TAG_SYM   = 0047;
+constexpr u64 TAG_NULL  = 0007;
+constexpr u64 TAG_EMPTY = 0017;
+constexpr u64 TAG_FALSE = 0027;
+constexpr u64 TAG_TRUE  = 0037;
+constexpr u64 TAG_SYM   = 0047;
+
+// constant values
+constexpr Value V_NULL  = { .raw = TAG_NULL };
+constexpr Value V_FALSE = { .raw = TAG_FALSE };
+constexpr Value V_TRUE  = { .raw = TAG_TRUE };
+constexpr Value V_EMPTY = { .raw = TAG_EMPTY };
 
 // Cons cells.
 typedef struct Cons {
@@ -43,6 +49,15 @@ typedef struct FuncStub {
     bool varargs;          // whether this function has a variadic argument
     u32 addr;              // bytecode address of the function
 } FuncStub;
+
+
+inline Value numValue(f64 f) {
+    Value res = { .num=f };
+    // make the first three bits 0
+    res.raw &= (~7);
+    res.raw |= TAG_NUM;
+    return res;
+}
 
 
 /// functions for checking tags
@@ -92,6 +107,12 @@ inline int isBool(Value v) {
 
 inline int isSym(Value v) {
     return ckTag(v, TAG_SYM);
+}
+
+
+/// boolean truthiness
+inline bool isTruthy(Value v) {
+    return (!isFalse(v)) && (!isNull(v));
 }
 
 }

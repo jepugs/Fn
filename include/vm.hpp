@@ -36,16 +36,13 @@ struct Symbol {
 class SymbolTable {
 private:
     Table<Symbol> byName;
-    Symbol *byId;
-    u32 size;
-    u32 cap;
+    vector<Symbol> byId;
 
 public:
     SymbolTable();
-    ~SymbolTable();
 
     const Symbol* intern(string str);
-    const Symbol* isInternal(string str);
+    bool isInternal(string str);
 };
 
 
@@ -68,20 +65,33 @@ private:
     vector<Value> constants;
     SymbolTable symbols;
 
-    void ensureCapacity(int newCap);
+    void ensureCapacity(u32 newCap);
 
 public:
     Bytecode();
     ~Bytecode();
 
-    void writeByte(u8 byte);
+    u32 getSize();
+
+    void writeByte(u8 b);
+    void writeShort(u16 s);
     void writeBytes(const u8* bytes, u32 len);
+
+    // these don't do bounds checking
+    u8 readByte(u32 addr);
+    u16 readShort(u32 addr);
+
+    // add a constant to the table and return its 16-bit ID
+    u16 addConstant(Value v);
+    Value getConstant(u16 id);
 
     Value symbol(const string& name);
     u32 symbolID(const string& name);
 
-    // Get a 16-bit identifier for the given constant.
-    u16 getConstant(Value v);
+    inline u8& operator[](u32 addr) {
+        return data[addr];
+    }
+
 };
 
 
@@ -90,15 +100,18 @@ constexpr u32 STACK_SIZE = 255;
 
 struct CallFrame {
     u32 retAddr;
-    Value stack[STACK_SIZE];
     u32 sp;
+    Value v[STACK_SIZE];
     CallFrame *next;
+
+    CallFrame(u32 ret, CallFrame* parent=nullptr)
+        : retAddr(ret), sp(0), next(parent) { }
 };
 
 // The VM object contains all global state for a single instance of the interpreter.
 class VM {
 private:
-    Bytecode image;
+    Bytecode code;
     Table<Value> globals;
 
     // instruction pointer and stack
@@ -106,16 +119,28 @@ private:
     CallFrame *stack;
 
     // stack operations
-    Value peek(u32 i=0);
+    // peek relative to the top of the stack
+    Value peek(u32 offset=0);
+    // peek relative to the bottom
+    Value peekBot(u32 i);
     Value pop();
     void push(Value v);
 
 public:
     // initialize the VM with a blank image
     VM();
+    ~VM();
 
-    // get a pointer to the image so the compiler can write its output
-    Bytecode *getImage();
+
+    // step a single instruction
+    void step();
+    // get the stack
+    CallFrame* getStack();
+    // get the instruction pointer
+    u32 getIp();
+
+    // get a pointer to the Bytecode object so the compiler can write its output there
+    Bytecode* getBytecode();
 };
 
 

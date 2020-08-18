@@ -1,10 +1,10 @@
 CXX=g++
-CXX_FLAGS=-std=c++17 -Wall -O0
+CXX_FLAGS=-std=c++20 -Wall -O0
 INCLUDE_PATH=include
 
 SRC_DIR=
 BUILD_DIR=build
-OBJ_FILES=main.o scan.o
+OBJ_FILES=main.o scan.o vm.o
 
 all : fn
 
