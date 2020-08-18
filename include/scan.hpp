@@ -53,6 +53,7 @@ struct Token {
     CodeLoc loc;
     TokenDatum datum;
 
+    Token() : tk(TKNumber), loc(new string(""),1,1), datum({ .num=0 }) { }
     Token(TokenKind tk, CodeLoc loc)
         : tk(tk), loc(loc), datum({.nothing = NULL}) { }
     Token(TokenKind tk, CodeLoc loc, double num)

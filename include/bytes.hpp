@@ -2,14 +2,27 @@
 #ifndef __FN_BYTES_HPP
 #define __FN_BYTES_HPP
 
+#include "base.hpp"
+#include "vm.hpp"
+
+#include <iostream>
+
 namespace fn_bytes {
 
 using namespace fn;
 
 constexpr u8 OP_NOP = 0x00;
+constexpr u8 OP_POP = 0x01;
+// copy a value at the specified 8-bit offset from the top of the stack
+constexpr u8 OP_COPY = 0x02;
 // copy a value from the stack and pushes it. Ues an 8-bit address which counts from the bottom of
 // the current call frame up.
-constexpr u8 OP_LOCAL = 0x02;
+constexpr u8 OP_LOCAL = 0x03;
+// get a global variable based on a string on top of the stack
+constexpr u8 OP_GET_GLOBAL = 0x05;
+// set a global based on a string on top of the stack followed by its value
+constexpr u8 OP_SET_GLOBAL = 0x06;
+
 
 // constants
 
@@ -73,6 +86,9 @@ constexpr u8 OP_CK_LIST = 0x76;
 inline u8 instrWidth(u8 instr) {
     switch (instr) {
     case OP_NOP:
+    case OP_POP:
+    case OP_GET_GLOBAL:
+    case OP_SET_GLOBAL:
     case OP_NULL:
     case OP_FALSE:
     case OP_TRUE:
@@ -102,6 +118,7 @@ inline u8 instrWidth(u8 instr) {
         return 1;
 
     case OP_LOCAL:
+    case OP_COPY:
     case OP_JUMP:
     case OP_CALL:
         return 2;
@@ -112,7 +129,15 @@ inline u8 instrWidth(u8 instr) {
         return 1;
     }
 }
-   
+
+
+// disassembly a single instruction, writing output to out
+void disassembleInstr(Bytecode& code, u32 ip, ostream& out);
+
+
+void disassemble(Bytecode& code, ostream& out);
+
+
 }
 
 

@@ -2,6 +2,7 @@
 #define __FN_TABLE_HPP
 
 #include "base.hpp"
+#include <iostream>
 
 namespace fn {
 
@@ -92,7 +93,7 @@ public:
                 ++size;
                 array[i] = new Entry<T>(k, v);
                 break;
-            } else if (array[i]->key == k) {
+            } else if (array[i]->key.compare(k) == 0) {
                 // no collision; overwrite previous entry
                 array[i]->val = v;
                 break;
@@ -103,7 +104,7 @@ public:
     }
 
     // returns nullptr when no object is associated to the key
-    T *get(string k) {
+    T* get(string k) {
         u32 h = hashString(k);
         u32 i = h % cap;
         // do linear probing
@@ -111,7 +112,7 @@ public:
             if (array[i] == nullptr) {
                 // no entry for this key
                 return nullptr;
-            } else if (array[i]->key == k) {
+            } else if (array[i]->key.compare(k)==0) {
                 // found the key
                 return &(array[i]->val);
             }

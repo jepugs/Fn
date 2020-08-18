@@ -51,7 +51,7 @@ typedef struct FuncStub {
 } FuncStub;
 
 
-inline Value numValue(f64 f) {
+inline Value makeNumValue(f64 f) {
     Value res = { .num=f };
     // make the first three bits 0
     res.raw &= (~7);
@@ -59,11 +59,30 @@ inline Value numValue(f64 f) {
     return res;
 }
 
+inline Value makeStringValue(string *ptr) {
+    // FIXME: this assumes malloc has 8-bit alignment.
+    string* aligned =  new (malloc(sizeof(string))) string(*ptr);
+    u64 raw = reinterpret_cast<u64>(aligned);
+    Value res = { .raw=raw|TAG_STR };
+    return res;
+}
+
+inline string* valueString(Value v) {
+    return (string*) getPointer(v);
+}
+
 
 /// functions for checking tags
 
 inline int ckTag(Value v, u64 tag) {
-    return (v.raw & tag) == tag;
+    // check first three bits first
+    if ((v.raw & 7) != (tag & 7)) {
+        return false;
+    }
+    if ((v.raw & 7) == TAG_EXT) {
+        return (v.raw & 0xff) == (tag & 0xff);
+    }
+    return true;
 }
 
 inline int isNum(Value v) {
@@ -82,7 +101,7 @@ inline int isList(Value v) {
 }
 
 
-inline int isStr(Value v) {
+inline int isString(Value v) {
     return ckTag(v, TAG_STR);
 }
 inline int isObj(Value v) {

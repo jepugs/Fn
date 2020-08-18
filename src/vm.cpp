@@ -24,7 +24,7 @@ bool SymbolTable::isInternal(string str) {
     return byName.get(str) != nullptr;
 }
 
-Bytecode::Bytecode() {
+Bytecode::Bytecode() : locs(nullptr) {
     // allocate 256 bytes to start
     cap = 256;
     // use malloc so we can use realloc
@@ -34,6 +34,15 @@ Bytecode::Bytecode() {
 }
 Bytecode::~Bytecode() {
     free(data);
+
+    // TODO: free strings in the constant table :(
+
+    auto tmp = locs;
+    while (tmp != nullptr) {
+        locs = tmp->next;
+        delete tmp;
+        tmp = locs;
+    }
 }
 
 void Bytecode::ensureCapacity(u32 newCap) {
@@ -41,9 +50,19 @@ void Bytecode::ensureCapacity(u32 newCap) {
         return;
     }
     while (cap < newCap) {
-        cap <<= 1;
+        cap *= 2;
     }
     data = (u8*)realloc(data, cap);
+}
+
+u32 Bytecode::getSize() {
+    return size;
+}
+
+void Bytecode::setLoc(CodeLoc l) {
+    locs = new BytecodeLoc{ .maxAddr=0, .loc=l, .next=locs };
+    if (locs->next != nullptr)
+        locs->next->maxAddr = size;
 }
 
 void Bytecode::writeByte(u8 b) {
@@ -98,7 +117,7 @@ Value Bytecode::symbol(const string& name) {
 }
 
 
-VM::VM() {
+VM::VM() : ip(0), stack(nullptr) {
     this->stack = new CallFrame(0);
 }
 VM::~VM() {
@@ -116,6 +135,19 @@ CallFrame* VM::getStack() {
 
 u32 VM::getIp() {
     return ip;
+}
+
+void VM::addGlobal(string name, Value v) {
+    globals.insert(name, v);
+}
+
+Value VM::getGlobal(string name) {
+    auto res = globals.get(name);
+    if (res == nullptr) {
+        // TODO: error
+        return V_NULL;
+    }
+    return *res;
 }
 
 Bytecode* VM::getBytecode() {
@@ -139,15 +171,15 @@ Value VM::pop() {
 }
 
 Value VM::peek(u32 i) {
-    if (stack->sp < i) {
+    if (stack->sp <= i) {
         // TODO: stack out of bounds exception here
         return V_NULL;
     }
-    return stack->v[stack->sp - i];
+    return stack->v[stack->sp - i - 1];
 }
 
 Value VM::peekBot(u32 i) {
-    if (stack->sp < i) {
+    if (stack->sp <= i) {
         // TODO: stack out of bounds exception here
         return V_NULL;
     }
@@ -172,12 +204,29 @@ void VM::step() {
     switch (instr) {
     case OP_NOP:
         break;
+    case OP_POP:
+        pop();
+        break;
+    case OP_COPY:
+        v1 = peek(code.readByte(ip+1));
+        push(v1);
+        ++ip;
+        break;
     case OP_LOCAL:
-        cout << "ip+1 is " << ip+1 << "\n";
         v1 = peekBot(code.readByte(ip+1));
         push(v1);
-
         ++ip;
+        break;
+
+    case OP_GET_GLOBAL:
+        v1 = pop();
+        // TODO: check that v1 is a string
+        push(getGlobal(*valueString(v1)));
+        break;
+    case OP_SET_GLOBAL:
+        v1 = pop(); // name
+        v2 = pop(); // value
+        addGlobal(*valueString(v1), v2);
         break;
 
     case OP_CONST:
@@ -267,6 +316,12 @@ void VM::step() {
     }
     if (jump) {
         ip += offset;
+    }
+}
+
+void VM::execute() {
+    while (ip < code.getSize()) {
+        step();
     }
 }
 

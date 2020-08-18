@@ -46,6 +46,14 @@ public:
 };
 
 
+// a linked list structure which associates source code locations to bytecode.
+struct BytecodeLoc {
+    // maximum 
+    u32 maxAddr;
+    CodeLoc loc;
+    BytecodeLoc *next;
+};
+
 // A Bytecode object consists of a symbol table, a constant table, and an array of bytes which
 // holds the actual instructions. The idea is that Bytecode instances for fn are roughly analogous
 // to object files for C.
@@ -61,6 +69,8 @@ private:
     u32 cap;
     u32 size;
     u8 *data;
+    // source code locations list
+    BytecodeLoc *locs;
     // constants and symbols
     vector<Value> constants;
     SymbolTable symbols;
@@ -73,6 +83,9 @@ public:
 
     u32 getSize();
 
+    // set the location for writing bytes
+    void setLoc(CodeLoc l);
+    // write 1 or two bytes
     void writeByte(u8 b);
     void writeShort(u16 s);
     void writeBytes(const u8* bytes, u32 len);
@@ -131,13 +144,16 @@ public:
     VM();
     ~VM();
 
-
     // step a single instruction
     void step();
+    void execute();
     // get the stack
     CallFrame* getStack();
     // get the instruction pointer
     u32 getIp();
+
+    void addGlobal(string name, Value v);
+    Value getGlobal(string name);
 
     // get a pointer to the Bytecode object so the compiler can write its output there
     Bytecode* getBytecode();

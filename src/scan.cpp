@@ -159,7 +159,6 @@ Token Scanner::scanSymOrNum(char first) {
     vector<char> buf;
     buf.push_back(first);
 
-    cout << "in";
     while(true) {
         if (escaped) {
             // IMPLNOTE: this throws an exception at EOF, which is the desired behavior
@@ -186,19 +185,13 @@ Token Scanner::scanSymOrNum(char first) {
     }
 
 
-    string s(buf.data());
+    string s(buf.data(),buf.size());
     // TODO: rather than rely on stod, we shoud probably use our own number scanner
     double d;
     try {
-        cout << " out";
-        cout.flush();
         d = stod(s);
-        cout << " out2\n";
-        cout.flush();
         return makeToken(TKNumber, d);
     } catch(...) { // TODO: handle out_of_range
-        cout << " out2\n";
-        cout.flush();
         return makeToken(TKSymbol, s);
     }
 }
@@ -215,7 +208,7 @@ Token Scanner::scanStringLiteral() {
         c = getChar();
     }
 
-    return makeToken(TKString, string(buf.data()));
+    return makeToken(TKString, string(buf.data(),buf.size()));
 }
 
 char Scanner::getStringEscapeChar() {
