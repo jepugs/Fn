@@ -71,6 +71,12 @@ private:
     u8 *data;
     // source code locations list
     BytecodeLoc *locs;
+    // pointer to the end of the list
+    BytecodeLoc *lastLoc;
+
+    // get the source code location corresponding to the bytes at addr
+    CodeLoc locationOf(u32 addr);
+
     // constants and symbols
     vector<Value> constants;
     SymbolTable symbols;
@@ -131,6 +137,9 @@ private:
     u32 ip;
     CallFrame *stack;
 
+    // last pop; used to access the result of the last expression
+    Value lp;
+
     // stack operations
     // peek relative to the top of the stack
     Value peek(u32 offset=0);
@@ -151,6 +160,9 @@ public:
     CallFrame* getStack();
     // get the instruction pointer
     u32 getIp();
+
+    // get the last popped value (null if there isn't any)
+    Value lastPop();
 
     void addGlobal(string name, Value v);
     Value getGlobal(string name);

@@ -59,6 +59,10 @@ inline Value makeNumValue(f64 f) {
     return res;
 }
 
+inline f64 valueNum(Value v) {
+    return v.num;
+}
+
 inline Value makeStringValue(string *ptr) {
     // FIXME: this assumes malloc has 8-bit alignment.
     string* aligned =  new (malloc(sizeof(string))) string(*ptr);
@@ -70,6 +74,7 @@ inline Value makeStringValue(string *ptr) {
 inline string* valueString(Value v) {
     return (string*) getPointer(v);
 }
+
 
 
 /// functions for checking tags
@@ -132,6 +137,23 @@ inline int isSym(Value v) {
 /// boolean truthiness
 inline bool isTruthy(Value v) {
     return (!isFalse(v)) && (!isNull(v));
+}
+
+/// get values as strings
+inline string showValue(Value v) {
+    if (isString(v)) {
+        return "\"" + *valueString(v) + "\"";
+    } else if (isNum(v)) {
+        return to_string(valueNum(v));
+    } else if (isNull(v)) {
+        return "null";
+    } else if (isFalse(v)) {
+        return "false";
+    } else if (isTrue(v)) {
+        return "true";
+    } else {
+        return "<unprintable-value>";
+    }
 }
 
 }

@@ -24,7 +24,7 @@ bool SymbolTable::isInternal(string str) {
     return byName.get(str) != nullptr;
 }
 
-Bytecode::Bytecode() : locs(nullptr) {
+Bytecode::Bytecode() : locs(nullptr), lastLoc(nullptr) {
     // allocate 256 bytes to start
     cap = 256;
     // use malloc so we can use realloc
@@ -36,6 +36,7 @@ Bytecode::~Bytecode() {
     free(data);
 
     // TODO: free strings in the constant table :(
+
 
     auto tmp = locs;
     while (tmp != nullptr) {
@@ -60,9 +61,14 @@ u32 Bytecode::getSize() {
 }
 
 void Bytecode::setLoc(CodeLoc l) {
-    locs = new BytecodeLoc{ .maxAddr=0, .loc=l, .next=locs };
-    if (locs->next != nullptr)
-        locs->next->maxAddr = size;
+    auto prev = lastLoc;
+    lastLoc = new BytecodeLoc{ .maxAddr=0, .loc=l, .next=nullptr };
+    if (prev == nullptr) {
+        locs = lastLoc;
+    } else {
+        prev->maxAddr = size;
+        prev->next = lastLoc;
+    }
 }
 
 void Bytecode::writeByte(u8 b) {
@@ -117,7 +123,7 @@ Value Bytecode::symbol(const string& name) {
 }
 
 
-VM::VM() : ip(0), stack(nullptr) {
+VM::VM() : ip(0), stack(nullptr), lp(V_NULL) {
     this->stack = new CallFrame(0);
 }
 VM::~VM() {
@@ -135,6 +141,10 @@ CallFrame* VM::getStack() {
 
 u32 VM::getIp() {
     return ip;
+}
+
+Value VM::lastPop() {
+    return lp;
 }
 
 void VM::addGlobal(string name, Value v) {
@@ -205,7 +215,7 @@ void VM::step() {
     case OP_NOP:
         break;
     case OP_POP:
-        pop();
+        lp = pop();
         break;
     case OP_COPY:
         v1 = peek(code.readByte(ip+1));
