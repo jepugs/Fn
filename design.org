@@ -2,11 +2,18 @@
 
 * To-Do
 
-- Implement a hash table with linear probing
-- Implement value representations
-- Design stack vm bytecodes
-- Implement vm
-- Begin work on code generation
+- use cmake
+- add unit tests for scanner, compiler, interpreter
+- let compiler/local variables
+- foreign functions
+- begin work on standard library
+- rename CodeLoc to SourceLoc
+- write source location finder for bytecode
+- add proper exception generation to the compiler
+- add proper exception generation to the vm
+- add a toplevel exception handler
+- figure out how macros will work
+- figure out how modules will work
 
 
 * Version 0 Feature List
@@ -347,6 +354,43 @@ conceptually, are key-value stores associating module/symbol pairs to local vari
 of global module used to resolve variables which don't have a module explicitly specified. There's
 also an intrinsic singley linked list structure to environments, where variables in a parent
 environment can be shadowed by new bindings in the child.
+
+
+** Solution 5: Keeping it simple
+
+So there's a way in which we could make this all really simple. It will make macro writing the
+slightest bit harder, but it wouldn't be a huge deal. It also enables a simple implementation of
+local variables.
+
+In this solution, there is no hygiene. We add gensyms so that macros can create temporary variables
+at runtime if needed. In order to enable access to global variables, which just use the tried and
+true method of attaching module names to them. The overloading of dot syntax creates some
+complications.
+
+*Note:* I'm thinking of changing the word "module" to "namespace", since it seems more accurate to me.
+
+Every module now has a unique fully qualified module name under the prefix ns. For example,
+ns.company.name might be one. (Secretly, ns is just a global variable, but it has a protected name).
+The quasiquote operator now expands all literal dot expressions to their fully qualified name, e.g.
+`(name.var) -> (ns.company.name.var).
+
+#+BEGIN_SRC fn
+(defmacro map-times (var-name times & function-body)
+  `(fn.map ,var-name 
+     (fn ,var-name ,@function-body)
+     (fn.range ,times)))
+#+END_SRC
+
+We also make the allowance that function objects may be embedded directly in the macro's code. In
+this way, we allow functions to be embedded in the macroexpanded code which are resolved in the
+scope
+
+#+BEGIN_SRC fn
+(defmacro map-times (var-name times & function-body)
+  `(,map ,var-name 
+     (fn ,var-name ,@function-body)
+     (,range ,times)))
+#+END_SRC
 
 
 * Compiler Macros
