@@ -50,7 +50,7 @@ public:
 struct BytecodeLoc {
     // maximum 
     u32 maxAddr;
-    CodeLoc loc;
+    SourceLoc loc;
     BytecodeLoc *next;
 };
 
@@ -74,9 +74,6 @@ private:
     // pointer to the end of the list
     BytecodeLoc *lastLoc;
 
-    // get the source code location corresponding to the bytes at addr
-    CodeLoc locationOf(u32 addr);
-
     // constants and symbols
     vector<Value> constants;
     SymbolTable symbols;
@@ -90,7 +87,10 @@ public:
     u32 getSize();
 
     // set the location for writing bytes
-    void setLoc(CodeLoc l);
+    void setLoc(SourceLoc l);
+    // get the source code location corresponding to the bytes at addr
+    SourceLoc* locationOf(u32 addr);
+
     // write 1 or two bytes
     void writeByte(u8 b);
     void writeShort(u16 s);
@@ -103,6 +103,7 @@ public:
     // add a constant to the table and return its 16-bit ID
     u16 addConstant(Value v);
     Value getConstant(u16 id);
+    u16 numConstants();
 
     Value symbol(const string& name);
     u32 symbolID(const string& name);

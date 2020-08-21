@@ -63,13 +63,13 @@ void Scanner::advance(char ch) {
 }
 
 Token Scanner::makeToken(TokenKind tk) {
-    return Token(tk, CodeLoc(filename, line, col));
+    return Token(tk, SourceLoc(filename, line, col));
 }
 Token Scanner::makeToken(TokenKind tk, string str) {
-    return Token(tk, CodeLoc(filename, line, col), str);
+    return Token(tk, SourceLoc(filename, line, col), str);
 }
 Token Scanner::makeToken(TokenKind tk, double num) {
-    return Token(tk, CodeLoc(filename, line, col), num);
+    return Token(tk, SourceLoc(filename, line, col), num);
 }
 
 // this is the main scanning function
@@ -240,7 +240,7 @@ char Scanner::getStringEscapeChar() {
     }
 
     throw FNError("scanner", "Unrecognized string escape sequence",
-                  CodeLoc(filename, line, col));
+                  SourceLoc(filename, line, col));
 }
 
 bool Scanner::eof() {
@@ -250,7 +250,7 @@ bool Scanner::eof() {
 char Scanner::getChar() {
     if (eof()) {
         throw FNError("scanner", "Unexpected EOF while scanning.",
-                      CodeLoc(filename, line, col));
+                      SourceLoc(filename, line, col));
     }
     char c = input->get();
     advance(c);
@@ -260,7 +260,7 @@ char Scanner::getChar() {
 char Scanner::peekChar() {
     if (eof()) {
         throw FNError("scanner", "Unexpected EOF while scanning.",
-                      CodeLoc(filename, line, col));
+                      SourceLoc(filename, line, col));
     }
     return input->peek();
 }

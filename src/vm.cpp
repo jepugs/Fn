@@ -37,7 +37,6 @@ Bytecode::~Bytecode() {
 
     // TODO: free strings in the constant table :(
 
-
     auto tmp = locs;
     while (tmp != nullptr) {
         locs = tmp->next;
@@ -60,7 +59,7 @@ u32 Bytecode::getSize() {
     return size;
 }
 
-void Bytecode::setLoc(CodeLoc l) {
+void Bytecode::setLoc(SourceLoc l) {
     auto prev = lastLoc;
     lastLoc = new BytecodeLoc{ .maxAddr=0, .loc=l, .next=nullptr };
     if (prev == nullptr) {
@@ -69,6 +68,19 @@ void Bytecode::setLoc(CodeLoc l) {
         prev->maxAddr = size;
         prev->next = lastLoc;
     }
+}
+
+SourceLoc* Bytecode::locationOf(u32 addr) {
+    if(locs == nullptr)
+        return nullptr;
+
+    auto l = locs;
+    // note: maxAddr of 0 indicates that this was the last location set and so it doesn't have an
+    // upper limit yet.
+    while (l->maxAddr <= addr && l->maxAddr != 0) {
+        l = l->next;
+    }
+    return &l->loc;
 }
 
 void Bytecode::writeByte(u8 b) {
@@ -111,6 +123,10 @@ u16 Bytecode::addConstant(Value v) {
 
 Value Bytecode::getConstant(u16 id) {
     return constants[id];
+}
+
+u16 Bytecode::numConstants() {
+    return constants.size();
 }
 
 u32 Bytecode::symbolID(const string& name) {
@@ -174,7 +190,7 @@ void VM::push(Value v) {
 
 Value VM::pop() {
     if (stack->sp == 0) {
-        // TODO: stack out of bounds exception here
+        throw FNError("runtime", "Pop on empty stack.", *code.locationOf(ip));
         return V_NULL;
     }
     return stack->v[--stack->sp];
@@ -182,7 +198,7 @@ Value VM::pop() {
 
 Value VM::peek(u32 i) {
     if (stack->sp <= i) {
-        // TODO: stack out of bounds exception here
+        throw FNError("runtime", "Peek out of stack bounds.", *code.locationOf(ip));
         return V_NULL;
     }
     return stack->v[stack->sp - i - 1];
@@ -190,7 +206,7 @@ Value VM::peek(u32 i) {
 
 Value VM::peekBot(u32 i) {
     if (stack->sp <= i) {
-        // TODO: stack out of bounds exception here
+        throw FNError("runtime", "Peek out of stack bounds.", *code.locationOf(ip));
         return V_NULL;
     }
     return stack->v[i];
@@ -207,6 +223,8 @@ void VM::step() {
     bool skip = false;
     bool jump = false;
     i8 offset = 0;
+
+    u16 id;
 
     // note: when an instruction uses an argument that occurs in the bytecode, it is responsible for
     // updating the instruction pointer at the end of its exection (which should be after any
@@ -230,7 +248,10 @@ void VM::step() {
 
     case OP_GET_GLOBAL:
         v1 = pop();
-        // TODO: check that v1 is a string
+        if (!isString(v1)) {
+            throw FNError("runtime", "OP_GET_GLOBAL operand is not a string.",
+                          *code.locationOf(ip));
+        }
         push(getGlobal(*valueString(v1)));
         break;
     case OP_SET_GLOBAL:
@@ -240,7 +261,12 @@ void VM::step() {
         break;
 
     case OP_CONST:
-        push(code.getConstant(code.readShort(ip+1)));
+        id = code.readShort(ip+1);
+        if (id >= code.numConstants()) {
+            throw FNError("runtime", "Attempt to access nonexistent constant.",
+                          *code.locationOf(ip));
+        }
+        push(code.getConstant(id));
         ip += 2;
         break;
 

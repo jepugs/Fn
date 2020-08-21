@@ -34,15 +34,15 @@ static_assert(sizeof(double) == 8);
 typedef double f64;
 
 
-struct CodeLoc {
+struct SourceLoc {
     const shared_ptr<string> filename;
     const int line;
     const int col;
 
-    CodeLoc(string *filename, int line, int col) : filename(new string(*filename)), line(line), col(col) { }
-    CodeLoc(const shared_ptr<string>& filename, int line, int col)
+    SourceLoc(string *filename, int line, int col) : filename(new string(*filename)), line(line), col(col) { }
+    SourceLoc(const shared_ptr<string>& filename, int line, int col)
         : filename(filename), line(line), col(col) { }
-    CodeLoc(const CodeLoc& loc) : filename(loc.filename), line(loc.line), col(loc.col) { }
+    SourceLoc(const SourceLoc& loc) : filename(loc.filename), line(loc.line), col(loc.col) { }
 };
 
 class FNError : public exception {
@@ -53,10 +53,10 @@ class FNError : public exception {
     public:
     const string subsystem;
     const string message;
-    const CodeLoc origin;
+    const SourceLoc origin;
 
     // TODO: move this to a .cpp file so we don't need to include sstream
-    FNError(const string& subsystem, const string& message, const CodeLoc& origin)
+    FNError(const string& subsystem, const string& message, const SourceLoc& origin)
         : subsystem(subsystem), message(message), origin(origin) {
         // build formatted error message
         ostringstream ss;

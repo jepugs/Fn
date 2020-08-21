@@ -50,15 +50,15 @@ union TokenDatum {
 
 struct Token {
     TokenKind tk;
-    CodeLoc loc;
+    SourceLoc loc;
     TokenDatum datum;
 
     Token() : tk(TKNumber), loc(new string(""),1,1), datum({ .num=0 }) { }
-    Token(TokenKind tk, CodeLoc loc)
+    Token(TokenKind tk, SourceLoc loc)
         : tk(tk), loc(loc), datum({.nothing = NULL}) { }
-    Token(TokenKind tk, CodeLoc loc, double num)
+    Token(TokenKind tk, SourceLoc loc, double num)
         : tk(tk), loc(loc), datum({.num = num}) { }
-    Token(TokenKind tk, CodeLoc loc, const string& str)
+    Token(TokenKind tk, SourceLoc loc, const string& str)
         : tk(tk), loc(loc), datum({.str = new string(str)}) { }
 
     // FIXME: it's probably inefficient to copy the whole darn string in the copy constructor/operator
