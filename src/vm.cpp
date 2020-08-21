@@ -24,6 +24,20 @@ bool SymbolTable::isInternal(string str) {
     return byName.get(str) != nullptr;
 }
 
+u8 FuncStub::getUpvalue(u8 slot, bool direct) {
+    for (u8 i = 0; i < numUpvals; ++i) {
+        auto u = upvals[i];
+        if (u.slot == slot && u.direct == direct) {
+            // found the upvalue
+            return i;
+        }
+    }
+    // add a new upvalue
+    upvals.push_back({ .slot=slot, .direct=direct });
+
+    return numUpvals++;
+}
+
 Bytecode::Bytecode() : locs(nullptr), lastLoc(nullptr) {
     // allocate 256 bytes to start
     cap = 256;
@@ -36,6 +50,8 @@ Bytecode::~Bytecode() {
     free(data);
 
     // TODO: free strings in the constant table :(
+
+    // TODO: free function stubs
 
     auto tmp = locs;
     while (tmp != nullptr) {
@@ -115,6 +131,13 @@ u16 Bytecode::readShort(u32 addr) {
     return (top << 8) | bot;
 }
 
+void Bytecode::patchShort(u32 addr, u16 s) {
+    u8 bot = (u8) (s & 0x00ff);
+    u8 top = (u8) (s >> 8);
+    data[addr] = bot;
+    data[addr+1] = top;
+}
+
 // TODO: should check if this constant is already present. If it is, should reuse it.
 u16 Bytecode::addConstant(Value v) {
     constants.push_back(v);
@@ -128,6 +151,23 @@ Value Bytecode::getConstant(u16 id) {
 u16 Bytecode::numConstants() {
     return constants.size();
 }
+
+u16 Bytecode::addFunction(u8 arity) {
+    functions.push_back(new FuncStub {
+            .positional=arity, 
+            .required=arity,
+            .varargs=false,
+            .numUpvals=0,
+            .upvals=vector<Upvalue>(),
+            .addr=getSize()});
+    return (u16) functions.size() - 1;
+}
+
+FuncStub* Bytecode::getFunction(u16 id) {
+    // TODO: check bounds?
+    return functions[id];
+}
+
 
 u32 Bytecode::symbolID(const string& name) {
     auto s = symbols.intern(name);
@@ -229,7 +269,7 @@ void VM::step() {
 
     bool skip = false;
     bool jump = false;
-    i8 offset = 0;
+    u32 addr = 0;
 
     u8 args;
 
@@ -255,7 +295,17 @@ void VM::step() {
         ++ip;
         break;
 
-    case OP_GET_GLOBAL:
+    case OP_UNROLL:
+        args = code.readByte(ip+1);
+        v1 = pop();
+        for (u8 i = 0; i < args; ++i) {
+            pop();
+        }
+        push(v1);
+        ++ip;
+        break;
+
+    case OP_GLOBAL:
         v1 = pop();
         if (!isString(v1)) {
             throw FNError("runtime", "OP_GET_GLOBAL operand is not a string.",
@@ -319,7 +369,7 @@ void VM::step() {
 
     case OP_JUMP:
         jump = true;
-        offset = static_cast<i8>(code.readByte(ip+1));
+        addr = ip + 3 + static_cast<i8>(code.readByte(ip+1));
         break;
 
     case OP_CALL:
@@ -328,6 +378,24 @@ void VM::step() {
         v1 = peek(args);
         if (isFunc(v1)) {
             // TODO: implement function calling
+            auto stub = valueFunc(v1)->stub;
+            if (args < stub->required) {
+                // TODO: exception: too few args
+                v2 = V_NULL;
+            } else if (!stub->varargs && args > stub->positional) {
+                // TODO: exception: too many args
+                v2 = V_NULL;
+            } else {
+                // make a new call frame
+                stack = new CallFrame(ip+2, stack);
+                // copy the arguments onto the new stack frame
+                for(int i = 0; i < args; ++i) {
+                    push(stack->next->v[stack->next->sp - args + i]);
+                }
+                // jump to the function body
+                jump = true;
+                addr = stub->addr;
+            }
         } else if (isForeign(v1)) {
             auto f = valueForeign(v1);
             if (args < f->minArgs) {
@@ -340,6 +408,8 @@ void VM::step() {
                 // correct arity
                 v2 = f->func((u16)args, &stack->v[stack->sp - args], this);
             }
+        } else {
+            // TODO: exception: not a function
         }
         // pop args+1 times (to get the function)
         for (u8 i = 0; i <= args; ++i) {
@@ -386,7 +456,7 @@ void VM::step() {
         ip += instrWidth(code.readByte(ip));
     }
     if (jump) {
-        ip += offset;
+        ip = addr;
     }
 }
 

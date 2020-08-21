@@ -60,7 +60,6 @@ static Value fnDiv(u16 numArgs, Value* args, VM* vm) {
 }
 
 static Value fnPrintln(u16 numArgs, Value* args, VM* vm) {
-    cout << "here";
     cout << showValue(args[0]) << endl;
     return V_NULL;
 }

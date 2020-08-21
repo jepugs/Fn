@@ -12,16 +12,35 @@ namespace fn_bytes {
 using namespace fn;
 
 constexpr u8 OP_NOP = 0x00;
+
+// stack operations
+
+// pop; pops an element off the top of the stack
 constexpr u8 OP_POP = 0x01;
-// copy a value at the specified 8-bit offset from the top of the stack
-constexpr u8 OP_COPY = 0x02;
-// copy a value from the stack and pushes it. Ues an 8-bit address which counts from the bottom of
-// the current call frame up.
-constexpr u8 OP_LOCAL = 0x03;
-// get a global variable based on a string on top of the stack
-constexpr u8 OP_GET_GLOBAL = 0x05;
-// set a global based on a string on top of the stack followed by its value
+
+// local BYTE; access the BYTEth element of the stack, indexed from the bottom
+constexpr u8 OP_LOCAL = 0x02;
+// set-local BYTE; set the BYTEth element of the stack to the current top of the stack
+constexpr u8 OP_SET_LOCAL = 0x03;
+
+// 8-bit operand. Copy works like OP_LOCAL but its indices count down from the top of the stack
+constexpr u8 OP_COPY = 0x04;
+
+// global; get a global variable based on a string on top of the stack
+constexpr u8 OP_GLOBAL = 0x05;
+// set-global; set a global based on a string on top of the stack followed by its value
 constexpr u8 OP_SET_GLOBAL = 0x06;
+
+// upvalue BYTE;
+constexpr u8 OP_UPVALUE = 0x07;
+// set-upvalue BYTE;
+constexpr u8 OP_SET_UPVALUE = 0x08;
+
+// closure SHORT; instantiate a closure using SHORT as the function ID
+constexpr u8 OP_CLOSURE = 0x09;
+
+// save the value at the top of the stack and unroll the next <byte> of them
+constexpr u8 OP_UNROLL = 0x0B;
 
 
 // constants
@@ -87,7 +106,7 @@ inline u8 instrWidth(u8 instr) {
     switch (instr) {
     case OP_NOP:
     case OP_POP:
-    case OP_GET_GLOBAL:
+    case OP_GLOBAL:
     case OP_SET_GLOBAL:
     case OP_NULL:
     case OP_FALSE:
@@ -119,10 +138,14 @@ inline u8 instrWidth(u8 instr) {
 
     case OP_LOCAL:
     case OP_COPY:
+    case OP_UPVALUE:
+    case OP_SET_UPVALUE:
+    case OP_UNROLL:
     case OP_CALL:
         return 2;
     case OP_CONST:
     case OP_JUMP:
+    case OP_CLOSURE:
         return 3;
 
     default:

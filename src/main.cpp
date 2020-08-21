@@ -37,7 +37,8 @@ void compileString(VM* vm, const string& str) {
     auto code = vm->getBytecode();
     istringstream in(str);
     fn_scan::Scanner sc(&in, "<cmdline>");
-    compile(&sc, code);
+    Compiler c(code, &sc);
+    c.compile();
 }
 
 // returns -1 on failure
@@ -50,7 +51,8 @@ int compileFile(VM* vm, const string& filename) {
         return -1;
     } else {
         fn_scan::Scanner sc(&in, filename);
-        compile(&sc, code);
+        Compiler c(code, &sc);
+        c.compile();
     }
 
     return 0;

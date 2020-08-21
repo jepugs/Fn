@@ -13,8 +13,8 @@ void disassembleInstr(Bytecode& code, u32 ip, ostream& out) {
     case OP_POP:
         out << "pop";
         break;
-    case OP_GET_GLOBAL:
-        out << "get-global";
+    case OP_GLOBAL:
+        out << "global";
         break;
     case OP_SET_GLOBAL:
         out << "set-global";
@@ -100,6 +100,18 @@ void disassembleInstr(Bytecode& code, u32 ip, ostream& out) {
     case OP_LOCAL:
         out << "local " << (i32)code[ip+1];
         break;
+    case OP_SET_LOCAL:
+        out << "set-local " << (i32)code[ip+1];
+        break;
+    case OP_UPVALUE:
+        out << "upvalue " << (i32)code[ip+1];
+        break;
+    case OP_SET_UPVALUE:
+        out << "set-upvalue " << (i32)code[ip+1];
+        break;
+    case OP_UNROLL:
+        out << "unroll " << (i32)((code.readByte(ip+1)));;
+        break;
     case OP_JUMP:
         out << "jump " << (i32)(static_cast<i16>(code.readShort(ip+1)));
         break;
@@ -108,6 +120,9 @@ void disassembleInstr(Bytecode& code, u32 ip, ostream& out) {
         break;
     case OP_CONST:
         out << "const " << code.readShort(ip+1);
+        break;
+    case OP_CLOSURE:
+        out << "closure " << code.readShort(ip+1);
         break;
 
     default:

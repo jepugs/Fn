@@ -62,8 +62,7 @@ private:
     }
 
 public:
-    Table(u32 initCap=32) {
-        cap = initCap;
+    Table(u32 initCap=32) : cap(initCap) {
         threshold = (u32)(REHASH_THRESHOLD * initCap);
         size = 0;
         array = new Entry<T>*[initCap];
@@ -106,7 +105,7 @@ public:
     // returns nullptr when no object is associated to the key
     T* get(string k) {
         u32 h = hashString(k);
-        u32 i = h % cap;
+        u32 i = h % this->cap;
         // do linear probing
         while(true) {
             if (array[i] == nullptr) {

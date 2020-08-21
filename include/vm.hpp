@@ -46,6 +46,48 @@ public:
 };
 
 
+// This struct describes an upvalue. Upvalues themselves are simply stored in Value pointers.
+struct Upvalue {
+    // the stack position or ID of this upvalue in the enclosing function
+    u8 slot;
+    // if true, then this Upvalue refers to a slot in the enclosing function's stack. If false, then
+    // it refers to an upvalue in a bigger closure.
+    bool direct;
+};
+
+// a location holding an upvalue at runtime
+struct UpvalueSlot {
+    bool open;
+    u32 refCount;
+    Value** ptr;
+};
+
+
+// A stub describing a function. These go in the bytecode object
+struct FuncStub {
+    // arity information
+    u8 positional;         // number of positional arguments, including optional & keyword arguments
+    u8 required;           // number of required positional arguments (minimum arity)
+    bool varargs;          // whether this function has a variadic argument
+
+    // upvalues
+    u8 numUpvals;
+    vector<Upvalue> upvals;
+
+    // bytecode address
+    u32 addr;              // bytecode address of the function
+
+    // get an upvalue and return its id. Adds a new upvalue if one doesn't exist
+    u8 getUpvalue(u8 id, bool direct);
+};
+
+// An actual function object consists of a function stub plus the relevant a description of its
+// upvalues (i.e. the closure)
+struct alignas(8) Function {
+    FuncStub* stub;
+    UpvalueSlot* upvals;
+};
+
 // a linked list structure which associates source code locations to bytecode.
 struct BytecodeLoc {
     // maximum 
@@ -77,6 +119,8 @@ private:
     // constants and symbols
     vector<Value> constants;
     SymbolTable symbols;
+    // function stubs
+    vector<FuncStub*> functions;
 
     void ensureCapacity(u32 newCap);
 
@@ -99,11 +143,16 @@ public:
     // these don't do bounds checking
     u8 readByte(u32 addr);
     u16 readShort(u32 addr);
+    void patchShort(u32 addr, u16 s);
 
     // add a constant to the table and return its 16-bit ID
     u16 addConstant(Value v);
     Value getConstant(u16 id);
     u16 numConstants();
+
+    // add a function and set it to start
+    u16 addFunction(u8 arity);
+    FuncStub* getFunction(u16 id);
 
     Value symbol(const string& name);
     u32 symbolID(const string& name);
@@ -123,6 +172,11 @@ struct CallFrame {
     u32 sp;
     Value v[STACK_SIZE];
     CallFrame *next;
+
+    // The function we're in. nullptr on the top level.
+    Function* caller;
+    // upvalues to close off when return/close is called
+    vector<UpvalueSlot> openUpvals;
 
     CallFrame(u32 ret, CallFrame* parent=nullptr)
         : retAddr(ret), sp(0), next(parent) { }

@@ -43,14 +43,6 @@ struct Cons {
     Cons *tail;
 };
 
-// A stub describing a function.
-struct FuncStub {
-    u8 positional;         // number of positional arguments, including optional & keyword arguments
-    u8 required;           // number of required positional arguments (minimum arity)
-    bool varargs;          // whether this function has a variadic argument
-    u32 addr;              // bytecode address of the function
-};
-
 // Foreign functions
 struct alignas(8) ForeignFunc {
     u8 minArgs;
@@ -70,7 +62,7 @@ inline f64 valueNum(Value v) {
     return v.num;
 }
 
-inline Value makeStringValue(string* ptr) {
+inline Value makeStringValue(const string* ptr) {
     // FIXME: this assumes malloc has 8-bit alignment.
     string* aligned =  new (malloc(sizeof(string))) string(*ptr);
     u64 raw = reinterpret_cast<u64>(aligned);
@@ -90,6 +82,16 @@ inline Value makeForeignValue(ForeignFunc* ptr) {
 
 inline ForeignFunc* valueForeign(Value v) {
     return (ForeignFunc*) getPointer(v);
+}
+
+// ptr must be 8-bit aligned
+inline Value makeFuncValue(Function* ptr) {
+    u64 raw = reinterpret_cast<u64>(ptr);
+    return { .raw = raw | TAG_FOREIGN };
+}
+
+inline Function* valueFunc(Value v) {
+    return (Function*) getPointer(v);
 }
 
 
