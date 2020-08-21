@@ -101,10 +101,10 @@ void disassembleInstr(Bytecode& code, u32 ip, ostream& out) {
         out << "local " << (i32)code[ip+1];
         break;
     case OP_JUMP:
-        out << "jump" << (i32)(static_cast<i8>(code[ip+1]));
+        out << "jump " << (i32)(static_cast<i16>(code.readShort(ip+1)));
         break;
     case OP_CALL:
-        out << "call";
+        out << "call " << (i32)((code.readByte(ip+1)));;
         break;
     case OP_CONST:
         out << "const " << code.readShort(ip+1);

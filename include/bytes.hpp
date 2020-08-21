@@ -46,7 +46,7 @@ constexpr u8 OP_IS = 0x16;
 // skip the instruction pointer 16 bits forward if the head of the stack is true, false, resp.
 constexpr u8 OP_SKIP_TRUE = 0x30;
 constexpr u8 OP_SKIP_FALSE = 0x31;
-// relative jump to the 8-bit offset following the instruction
+// relative jump to the 16-bit offset following the instruction
 constexpr u8 OP_JUMP = 0x32;
 // call the function in the register
 constexpr u8 OP_CALL = 0x37;
@@ -119,10 +119,10 @@ inline u8 instrWidth(u8 instr) {
 
     case OP_LOCAL:
     case OP_COPY:
-    case OP_JUMP:
     case OP_CALL:
         return 2;
     case OP_CONST:
+    case OP_JUMP:
         return 3;
 
     default:

@@ -21,6 +21,7 @@ constexpr u64 TAG_CONS = 1;
 constexpr u64 TAG_STR  = 2;
 constexpr u64 TAG_OBJ  = 3;
 constexpr u64 TAG_FUNC = 4;
+constexpr u64 TAG_FOREIGN = 5;
 constexpr u64 TAG_EXT  = 7;
 
 // 8-bit extended tags
@@ -37,19 +38,25 @@ constexpr Value V_TRUE  = { .raw = TAG_TRUE };
 constexpr Value V_EMPTY = { .raw = TAG_EMPTY };
 
 // Cons cells.
-typedef struct Cons {
+struct Cons {
     Value head;
     Cons *tail;
-} Cons;
+};
 
 // A stub describing a function.
-typedef struct FuncStub {
+struct FuncStub {
     u8 positional;         // number of positional arguments, including optional & keyword arguments
     u8 required;           // number of required positional arguments (minimum arity)
     bool varargs;          // whether this function has a variadic argument
     u32 addr;              // bytecode address of the function
-} FuncStub;
+};
 
+// Foreign functions
+struct alignas(8) ForeignFunc {
+    u8 minArgs;
+    bool varArgs;
+    Value (*func)(u16, Value*, VM*);
+};
 
 inline Value makeNumValue(f64 f) {
     Value res = { .num=f };
@@ -63,7 +70,7 @@ inline f64 valueNum(Value v) {
     return v.num;
 }
 
-inline Value makeStringValue(string *ptr) {
+inline Value makeStringValue(string* ptr) {
     // FIXME: this assumes malloc has 8-bit alignment.
     string* aligned =  new (malloc(sizeof(string))) string(*ptr);
     u64 raw = reinterpret_cast<u64>(aligned);
@@ -73,6 +80,16 @@ inline Value makeStringValue(string *ptr) {
 
 inline string* valueString(Value v) {
     return (string*) getPointer(v);
+}
+
+// ptr must be 8-bit aligned
+inline Value makeForeignValue(ForeignFunc* ptr) {
+    u64 raw = reinterpret_cast<u64>(ptr);
+    return { .raw = raw | TAG_FOREIGN };
+}
+
+inline ForeignFunc* valueForeign(Value v) {
+    return (ForeignFunc*) getPointer(v);
 }
 
 
@@ -115,6 +132,9 @@ inline int isObj(Value v) {
 inline int isFunc(Value v) {
     return ckTag(v, TAG_FUNC);
 }
+inline int isForeign(Value v) {
+    return ckTag(v, TAG_FOREIGN);
+}
 
 inline int isNull(Value v) {
     return ckTag(v, TAG_NULL);
@@ -151,6 +171,8 @@ inline string showValue(Value v) {
         return "false";
     } else if (isTrue(v)) {
         return "true";
+    } else if (isForeign(v)) {
+        return "<foreign-function>";
     } else {
         return "<unprintable-value>";
     }

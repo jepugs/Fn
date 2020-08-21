@@ -39,6 +39,42 @@ void compileDef(Scanner* sc, Bytecode* dest) {
     dest->writeByte(OP_SET_GLOBAL);
 }
 
+// compile function call
+void compileCall(Scanner* sc, Bytecode* dest, Token* t0) {
+    // we can only use 16-bit values for numargs. 32 here helps check for overflow
+    u32 numArgs = 0;
+
+    // if we have a closing delimiter, raise an error
+    if (t0->tk == TKRParen) {
+        // TODO: error: empty list
+    } // else if (closingDelim(t0)) {}
+    // TODO: check for mismatched delimiters
+
+    // first, compile the operator
+    compileExpr(sc, dest, t0);
+
+    // now, compile the arguments
+    Token tok = sc->nextToken();
+    while (true) {
+        if (tok.tk == TKRParen) {
+            // end of list
+            break;
+        } // else if (closingDelim(t0)) {}
+        // TODO: check for mismatched delimiters
+        ++numArgs;
+        compileExpr(sc, dest, &tok);
+        tok = sc->nextToken();
+    }
+
+    if (numArgs > 255) {
+        // TODO: error
+    }
+
+    // finally, compile the call itself
+    dest->writeByte(OP_CALL);
+    dest->writeByte((u8)numArgs);
+}
+
 void compileExpr(Scanner* sc, Bytecode* dest, Token* t0) {
     Token tok = t0 == nullptr ? sc->nextToken() : *t0;
     Token next;
@@ -89,8 +125,11 @@ void compileExpr(Scanner* sc, Bytecode* dest, Token* t0) {
             string *op = next.datum.str;
             if (*op == "def") {
                 compileDef(sc,dest);
+            } else {
+                compileCall(sc,dest,&next);
             }
         } else {
+            compileCall(sc,dest,&next);
             // unimplemented
         }
         break;

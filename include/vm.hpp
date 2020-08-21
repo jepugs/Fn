@@ -134,6 +134,9 @@ private:
     Bytecode code;
     Table<Value> globals;
 
+    // foreign functions table
+    vector<Value> foreignFuncs;
+
     // instruction pointer and stack
     u32 ip;
     CallFrame *stack;
@@ -164,6 +167,9 @@ public:
 
     // get the last popped value (null if there isn't any)
     Value lastPop();
+
+    // add a foreign function and bind it to a global variable
+    void addForeign(string name, Value (*func)(u16, Value*, VM*), u8 minArgs, bool varArgs=false);
 
     void addGlobal(string name, Value v);
     Value getGlobal(string name);

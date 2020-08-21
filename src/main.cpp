@@ -1,6 +1,7 @@
 #include "base.hpp"
 #include "bytes.hpp"
 #include "compile.hpp"
+#include "init.hpp"
 #include "scan.hpp"
 #include "table.hpp"
 #include "values.hpp"
@@ -102,6 +103,7 @@ int main(int argc, char** argv) {
     }
 
     VM vm;
+    init(&vm);
     for (auto s : evals) {
         if (s[0] == 's') {
             compileString(&vm, s.substr(1));
@@ -115,7 +117,6 @@ int main(int argc, char** argv) {
 
     if (dis) {
         // disassembly mode
-        // TODO: open a file if -o was supplied
         auto code = vm.getBytecode();
         disassemble(*code, cout);
         return 0;
@@ -125,6 +126,7 @@ int main(int argc, char** argv) {
     vm.execute();
     // FIXME: for now we print out the last value, but we probably really shouldn't
     cout << showValue(vm.lastPop()) << endl;
+    //cout << showValue(vm.getGlobal("y")) << endl;
     return 0;
 }
 

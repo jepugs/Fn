@@ -4,7 +4,7 @@ INCLUDE_PATH=include
 
 SRC_DIR=
 BUILD_DIR=build
-OBJ_FILES=bytes.o compile.o main.o scan.o vm.o
+OBJ_FILES=bytes.o compile.o init.o main.o scan.o vm.o
 
 all : fn
 

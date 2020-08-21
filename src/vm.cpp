@@ -176,6 +176,13 @@ Value VM::getGlobal(string name) {
     return *res;
 }
 
+void VM::addForeign(string name, Value (*func)(u16, Value*, VM*), u8 minArgs, bool varArgs) {
+    auto f = new ForeignFunc{ .minArgs=minArgs, .varArgs=varArgs, .func=func };
+    auto v = makeForeignValue(f);
+    addGlobal(name, v);
+    foreignFuncs.push_back(v);
+}
+
 Bytecode* VM::getBytecode() {
     return &code;
 }
@@ -223,6 +230,8 @@ void VM::step() {
     bool skip = false;
     bool jump = false;
     i8 offset = 0;
+
+    u8 args;
 
     u16 id;
 
@@ -314,6 +323,32 @@ void VM::step() {
         break;
 
     case OP_CALL:
+        args = code.readByte(ip+1);
+        // the function to call should be at the bottom
+        v1 = peek(args);
+        if (isFunc(v1)) {
+            // TODO: implement function calling
+        } else if (isForeign(v1)) {
+            auto f = valueForeign(v1);
+            if (args < f->minArgs) {
+                // TODO: error
+                v2 = V_NULL;
+            } else if (!f->varArgs && args > f->minArgs) {
+                // TODO: error
+                v2 = V_NULL;
+            } else {
+                // correct arity
+                v2 = f->func((u16)args, &stack->v[stack->sp - args], this);
+            }
+        }
+        // pop args+1 times (to get the function)
+        for (u8 i = 0; i <= args; ++i) {
+            pop();
+        }
+        push(v2);
+        ++ip;
+        break;
+
     case OP_RETURN:
         // TODO: implement
         break;

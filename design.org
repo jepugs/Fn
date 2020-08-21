@@ -7,13 +7,10 @@
 - let compiler/local variables
 - foreign functions
 - begin work on standard library
-- rename CodeLoc to SourceLoc
 - write source location finder for bytecode
 - add proper exception generation to the compiler
-- add proper exception generation to the vm
 - add a toplevel exception handler
-- figure out how macros will work
-- figure out how modules will work
+- think about ffi
 
 
 * Version 0 Feature List
@@ -28,11 +25,10 @@ without the ".fn").
 
 Special operators:
 - Control flow operators :: and, cond, do, if, or
-- Definitions and Variables :: def, let, set
-- Other :: apply, import, get, quote
+- Definitions and Variables :: def, get, let, set
+- Other :: apply, import, fn, quote, quasiquote, unquote, unquote-splicing
 
 No macros yet.
-
 
 ** Standard library functions:
 *Tests*
@@ -46,12 +42,16 @@ No macros yet.
 - symbol-name
 - type-of
 
+*Objects*
+- get, keys
+
 *Lists*
 - head, tail
 - append, reverse, length, nth, subseq (all also work on strings)
 - cons, list, range
 - map, filter, reduce
 - as-list (works on strings and objects)
+
 
 ** Next features to add
 
@@ -65,109 +65,6 @@ After version 0, the next things to add will be
 - class/constructor/inheritance stuff built atop the object system
 
 
-* Data Types
-
-Version 0 data types:
-- Num :: 64-bit floating point number (could decrease bits later to 61 if I want to fit the
-         value+tag both into 64 bits)
-- String :: UTF-8 string (there are no individual characters in fn, just strings. Characters can be
-            represented by integers if ya really need).
-- Symbol :: an internalized string. Also used to represent variable names.
-- True, False, and Null :: Boolean true/false and a null value. null should probably act as false.
-     Yes, it's null not nil
-- List :: singley-linked list. Cons cell. The empty list is a special value, NOT the same as null.
-          Dotted pairs are not allowed.
-- Object :: key-value store. For now, use a hash table and only allow symbols as keys. In the
-            future, a hybrid hash table/array approach (as used by Lua) may be better. In fact, a
-            trie might even be better.
-- Function :: what it sounds like. Internally this is probably just gonna be a bytecode address
-
-Probable future data types:
-- Integer :: dedicated integer type w/ unbounded range
-- Array/Vector :: fixed-size array (constant-time access). Might not be necessary if we use the
-                  hybrid data structure Lua uses for tables
-- Bytes, ForeignStructs, etc :: bit-fiddley ways to engage with foreign functions and system-level
-     stuff
-
-** String Encoding (UTF-8)
-
-Here's the deal. UTF-8 is the right encoding and we will use it. This creates some issues when
-comparing text for equality, since we might have different code points representing the same
-characters. The Unicode Consortium's ordained solution to this problem is to use one of the NFD or
-NFC normalized forms, which ensure that each character has a unique representation. Normalization is
-relatively cheap, but we shouldn't go fussing about with our users' bytes without their permission.
-
-This raises an interesting problem. When we compare strings for equality, should we compare
-characters or code points? Naively, the "right" answer seems to be to compare characters, but if we
-suppose that (for some reason, e.g. printing text) we actually care about which codepoints go into
-each character, then we have a problem.
-
-The most common solution in practice seems to be to do byte-by-byte comparison. This gives an
-advantage in performance and implementation simplicity, but can lead to the kinds of localization
-problems that necessitate UTF-8 in the first place.
-
-Given Rob Pike's history designing UTF-8, it seems safe to copy Go. This involves writing a sensible
-set of (standard library) utilities for working with UTF-8 strings and runes, including providing
-facilities for normalization and doing normalization automatically where appropriate. For instance,
-it seems sensible to enforce that all programmatically-defined strings are in NFC format, and to
-provide a keyword argument for any text reading operations to automatically convert things to that
-format on the fly (since it should be much cheaper to normalize a string during a sequential read
-than to go back and normalize the whole thing later. Saves an entire pass over the string, which is
-important if it's long).
-
-
-** Bitwise representation
-
-Values in fn are exactly 64 bits. There is a variable length tag describing the value contained in
-the first 3 bits (for pointers and numbers) or the first 8 bits (for other values). This is
-convenient because it allows a single x86_64 register to be used for each value.
-
-There are 
-
-*** Initial tagging scheme
-
- *3-bit Tags*
-
- In order to cheat on floating point operations, the 3 LSB are used as the tag. This way, if we stick
- to 8-byte aligned pointers, we can fit an entire pointer in the next 61 bytes.
-
- The bytes (in binary) are:
-
- - Num :: 000 - 61-bit floating point number. Can use normal FP operations since least significant
-   bits are 0. Must remember to mask off bits after operation.
- - List :: 001 - Raw pointer to 16-byte cons data structure.
- - String :: 010 - Raw pointer to string data structure. First 4 bytes of string are index.
- - Object :: 011 - Raw pointer to object (aka hash table) data structure
- - Function :: 100 - Raw pointer to function data structure
- - Extended tag :: 111 - Indicates that an 8-bit tag is used
-
-
- *8-bit tags*
-
- When the first three bits indicate the extended tag, the next 5 bits indicate the type.
-
- Only the 5 extended bits are given
-
- - Null :: 00000 - null value. Other bits should be 0.
- - Empty List :: 0001 - empty list. Other bits should be 0.
- - False :: 00010 - boolean false value. Other bits should be 0.
- - True :: 00011 - boolean true value. Other bits should be 0. 
- - Symbol :: 00100 - 32-bit symbol ID (aka FNV-1a hash of the string)
-
-
-*** Future tagging schemes
-
- I hope we don't need to make a new taggin scheme. There's still space for two more pointer data
- types, and I think that bitvectors and arrays would be good candidates for those.
-
- If we need more tags, we can cross that bridge when we come to it, and we can get quite creative. We
- certainly don't need all 61 bits. The next step, if we desparately need more tags, is to make a pool
- of objects which has e.g. a 48-byte index.
-
- For 32-bit systems, if that ever matters, we could probably just use the same scheme and have
- smaller pointers.
-
-
 * Object System
 
 The object system of fn is similar to that of Lua or Javascript. Objects do not have a type
@@ -177,223 +74,279 @@ identified with the symbol ~'_class~, ~'Class~, or simply ~'class~).
 We borrow javascript terminology for objects. An object contains 0 or more *values*, each of which is
 indexed by a unique *key*. A key-value pair is referred to as a *property*.
 
+Values may be accessed using two forms: ~dot~ and ~get~:
+
+#+BEGIN_SRC fn
+;; note: a.b is internally treated as (dot a b)
+key.value
+(get key 'value)
+#+END_SRC
+
+The main difference is that ~get~ evaluates its second argument, while ~dot~ does not.
+
 Keys may only be symbols for now. Later on, I'd like to copy what Lua does and allow general objects
 to be keys, since this opens up a big world of possibilities, but because of ambiguity in what it
 means to index an object with an object, this will have to wait until I make some more design
 decisions.
 
-
-* Modules and Macro expansion
-
-Heads up to anyone reading this in the future: I think that solution 4 is probably the way to go.
-
-** The Hygiene Problem
-
-Suppose I want to write a macro that takes a variable name (symbol), a number, and a function body
-
-#+BEGIN_SRC scheme
-(defmacro map-times (var-name times & function-body)
-  `(map ,var-name 
-     (fn ,var-name ,@function-body)
-     (range ,times)))
-#+END_SRC
-
-I.e. the program expands to use the map and range functions from the standard library. This is all
-well and good, but what if I want to use custom versions of map and range, say in a module bound to
-the global variable ~mod~. I could rewrite it like this:
-
-#+BEGIN_SRC scheme
-(defmacro map-times (var-name times & function-body)
-  `(mod.map ,var-name 
-     (fn ,var-name ,@function-body)
-     (mod.range ,times)))
-#+END_SRC
-
-This might appear to work, but because of the variable lookup semantics of fn, it only will work in
-code that binds the same module to the same global variable ~mod~! There are two potential solutions
-to this.
-
-
-** The Solution in Abstract
-
-Every function in fn implicitly carries around a lexical environment. (In the case of module global
-functions, this would simply be the parent module). Solving the hygiene problem comes down to using
-the lexical scope of the macroexpansion functions to Do The Right Thing when resolving names in the
-generated code. Essentially, the problem is that we're dealing code written in two places. First,
-there's the quoted code in the macro body. Second, there's the code passed to the macro as
-arguments.
-
-The solutions to this problem usually involve adding a package/namespace to each symbol. Since
-packages are picked by the reader, this ensures that macroexpansion code avoids all name collisions
-so long as the user code is in a different package. However, in fn, we don't want symbols to have
-packages, since this obscures their utility as internalized strings and increases the amount of data
-which each symbol must store. However, if all else fails, we can fall back to this behavior by just
-tacking on information about the namespace to symbols and ignoring it during symbol comparisons.
-(E.g. could give each symbol a 32-bit ID and each module a 24-bit ID so that it all fits in
-56-bits).
-
-Another solution is to break homoiconicity by replacing lists with syntax objects. I could overload
-the basic list operations to work transparently on syntax objects.
-
-
-** Solution 1: Put Function References in Macro Outputs
-
-The first is simpler: allow macros to return code which includes function references, rather than
-"proper" code containing symbols and lists. Then we just have to remember to unquote all our
-function/macro names:
+Object keys may be set with the ~set~ operator, which works like this:
 
 #+BEGIN_SRC fn
-(defmacro map-times (var-name times & function-body)
-  `(mod.map ,var-name 
-     (fn ,var-name ,@function-body)
-     (mod.range ,times)))
+(set obj.key new-value)
+;; or
+(set (get obj 'key) new-value)
 #+END_SRC
 
 
-** Solution 2: Add reference operator
+* Modules
 
-The second solution 
-- add the ~(reference <form>)~ special operator. Semantics of this operator explained below. (It's not
-  really an operator).
-- define # syntax such that ~#expr~ expands to ~,(reference expr)~.
-- rewrite macros so that globals are wrapped with #, e.g.
+Modules are fn's facility for multi-file projects and library organization. The best way to
+illustrate how modules work is by example:
+
 #+BEGIN_SRC fn
-  (defmacro map-times (var-name times & function-body)
-    `(#mod.map ,var-name 
-       (fn ,var-name ,@function-body)
-       (#mod.range ,times)))
+;; source file: my-mod.fn
+(def (my-fun x)
+  (* x x))
+
+;; source file: main.fn
+(import my-mod)
+(println (my-mod.my-fun 4))
+;; prints 16
 #+END_SRC
 
-*** Semantics of the reference special operator
+As can be seen in the above example, each module corresponds to a source file. The module above is
+automatically named "my-mod" based upon its filename. Module names can also be explicitly specified
+by setting the global property ~mod-info.name~ from within the module. The ~import~ operator is used to
+import other modules. In the above, it creates a global variable called ~my-mod~ to hold the imported
+module. Imported modules are just normal objects, with metadata contained in the ~mod-info~ property.
 
-The idea of the reference special operator is that it essentially gives you a direct pointer to a
-value contained in a variable or an object. It should return an error when called with anything
-other than a symbol or dotted symbol, although there may be room to expand it to work with more
-generalized accessors.
 
-Implementing references at the VM level has a lot of benefits, such as being able to precompile
-global variable lookups to reference lookups, but an efficient implementation of this functionality
-may be somewhat intrusive. References also open the possibility of replacing gensyms. You could
-allow references to be the LHS of let statements. For example, the classic swap macro:
+** import syntax and search paths
+
+The import operator accepts a symbol or a dot form as an argument. Dots in the symbol indicate
+descent into a directory, so for instance ~(import a.b)~ will look for files names "a/b.fn" to import.
+
+(As a result, there is currently no way to import files which reside in directories that have dots
+in their names or which have multiple dots in their names. This will likely be resolved via changes
+to how dot is parsed).
+
+Currently the only search path is the directory in which the file currently resides. In the future
+there will be a second one in ${HOME}/.local/lib/fn/ and a third in ${PREFIX}/lib/fn/.
+
+** Setting import names
+
+The import command supports an ~as~ directive which offers control over the name of the created
+variable:
 
 #+BEGIN_SRC fn
-(defmacro swap (x y)
-  `(let (#tmp x)
-     (set x y)
-     (set y #tmp)))
+(import my-mod as m)
+;; creates a global object named m
+m.my-fun
 #+END_SRC
 
-References could likely use much of the same machinery as upvalues, since they basically accomplish
-the same thing.
+** Packages and short names
 
-
-** A proposal for both solutions: Warning Messages for Typos
-
-It's very easy to make typos when writing macros. Therefore, I propose the following as a way to
-produce warning messages. Whenever a quasiquote form appears inside a macro form, its syntax is
-automatically scanned. If something appears in quasiquote which looks like it should be a
-reference (i.e. it is in scope as a global or local variable), 
-
-
-** A third option: quasiquote creates syntax objects
-
-This option would accomplish something semantically similar to Clojure. The central issue with macro
-hygiene is that we want to be able to ensure that global variables aren't captured. Syntax objects
-should know the namespace they're read in, so we could attach a namespace to each syntax object and
-let those behave as if they were normal lists. This also complicates the implementation and requires
-a new primitive type for syntax, but it may well be worth it. We would also like to introduce #
-syntax in this case, but now instead of creating general references, it will just create gensyms.
-There should probably be a (lexically-scoped) stack of quasiquote references, or we could require
-that references happen within a single quasiquote form.
-
-In this solution, which looks better by the minute, we also have an obvious way for gensym to work,
-simply by returning syntax objects which are in the designated gensym namespace.
-
-
-** Solution 4: Dynamic Lexical Environments
-
-Ok, so here's the most robust solution yet. It involves inspecting how lexical environments work in
-macroexpansion. The idea is basically this: when a macro is expanded, we would like to evaluate it
-in the lexical environment in which the macro was defined, while still providing access to the
-lexical environment in which is was called.
-
-The necessary ingredients are this:
-
-- evaluate macros in the environment in which they were defined
-- provide a facility for binding symbols in a different environment (probably via an extension to
-  let)
-- provide a facility for evaluating user code in the user environment
-
-One potential implementation works like this:
-
-- rather than being tied to a symbol alone, variable names are tied to a module/symbol pair. Proper
-  implementation of dynamic variables and macro resolution will need to work this way anyway. This
-  requires even more special care for the dot/access special form
-- We add a special module called ~user~, which refers to the lexical environment the macro was
-  expanded in. 
-- add a special form called ~in-user-environment~ which can be used to evaluate code in the given lexical
-  environment.
-- add new syntax to quasiquote: ~,!expr~ expands to ~(in-user-environment (unquote expr))~
-
-Altogether, we get something like this:
+To avoid name collisions, it is recommended that all library code use the naming convention
+"package.module-name" or "package.subpackages...module-name". For example,
 
 #+BEGIN_SRC fn
-;; anaphoric if. Introduces 
-(defmacro (aif test then else)
-  `(let (user.it ,!test)
-    (if user.it
-        ,!then
-        ,!else)))
+;; source file: demo-library/utility.fn
+(set mod-info.name "demo-library.utility")
 #+END_SRC
 
-*** Conceptual Note: What this says about modules and lexical environments
+In this case, the string after the last dot (module-name) will be used as the *short name* for the
+module, while the string before that is termed the *package*. When import is used, it uses the short
+name unless an explicit alternative is specified using ~as~.
 
-The relationship between modules and lexical environments becomes nice and clear in this model.
-Modules are (named) key-value stores associating symbols to global variables. Environments,
-conceptually, are key-value stores associating module/symbol pairs to local variables plus some sort
-of global module used to resolve variables which don't have a module explicitly specified. There's
-also an intrinsic singley linked list structure to environments, where variables in a parent
-environment can be shadowed by new bindings in the child.
+** ~ns~ and Unique Global Identifiers
+
+~ns~ is a special global object. Whenever a module is imported, it is added to ~ns~ via its full name.
+~ns~ has a tree structure, so for instance a module named ~pack.sub.mod~ can be accessed anywhere in the
+program as ~ns.pack.sub.mod~. This is as opposed to modules which have been locally imported, which
+will have a global variable corresponding to them.
+
+This behavior is exploited by fn's macro system.
 
 
-** Solution 5: Keeping it simple
+* Macros
 
-So there's a way in which we could make this all really simple. It will make macro writing the
-slightest bit harder, but it wouldn't be a huge deal. It also enables a simple implementation of
-local variables.
+fn's macro system is very similar to that of Common Lisp or Clojure. fn is truly homoiconic and its
+macro system is entirely unhygienic, because hygiene is unnecessary and occasionally very annoying.
 
-In this solution, there is no hygiene. We add gensyms so that macros can create temporary variables
-at runtime if needed. In order to enable access to global variables, which just use the tried and
-true method of attaching module names to them. The overloading of dot syntax creates some
-complications.
+To understand fn's macros, first you must understand that all fn source code can be represented via
+fn's native data structures, namely lists and literals (i.e. symbols, numbers, and strings). A macro
+is a function whose arguments and output are code in this representation. At compile time the macro
+is expanded-- that is, the macro function is evaluated and the place it occupied is replaced with
+the newly-generated code.
 
-*Note:* I'm thinking of changing the word "module" to "namespace", since it seems more accurate to me.
+** Quasiquote
 
-Every module now has a unique fully qualified module name under the prefix ns. For example,
-ns.company.name might be one. (Secretly, ns is just a global variable, but it has a protected name).
-The quasiquote operator now expands all literal dot expressions to their fully qualified name, e.g.
-`(name.var) -> (ns.company.name.var).
+The backtick ` character is used to denote quasiquote syntax. Quasiquote syntax works like quote
+until it encounters an unquote form, which is denoted by the characters , or ,@. It then evaluates
+the expression following , or ,@ and inserts it into the resultant form.
 
 #+BEGIN_SRC fn
+`(test qq ,(+ 2 2))
+;; gives a list ['test 'qq 4]
+
+`(test qq ,@(map $(+ 3 $) [1 2 3]))
+;; gives a list ['test 'qq 4 5 6]
+#+END_SRC
+
+There is another difference between quote and quasiquote. When quasiquote encounters a dot form, it
+will automatically expand it into a unique global variable accessor (e.g. ns.module-name.var-name)
+if possible. This allows access of global variables from macroexpanded code, for instance:
+
+#+BEGIN_SRC fn
+`fn.map
+;; expands to 'ns.fn.map, or (dot ns fn map)
+
+;; this macro expands to use the built-in functions fn.map and fn.range
 (defmacro map-times (var-name times & function-body)
   `(fn.map ,var-name 
      (fn ,var-name ,@function-body)
      (fn.range ,times)))
 #+END_SRC
 
-We also make the allowance that function objects may be embedded directly in the macro's code. In
-this way, we allow functions to be embedded in the macroexpanded code which are resolved in the
-scope
+** ~gensym~ and ~`#~ syntax
+
+Sometimes, a macro needs to expand into code which creates a temporary variable. For this purpose,
+it is crucial that the macro be able to bind variables without creating a name collision with any of
+the user variables. The function ~gensym~ creates a unique symbol which can be used for this purpose.
+On each call, ~gensym~ is guaranteed to create a brand new symbol which has never occurred in code
+before (and cannot occur unintentionally again).
+
+For example:
 
 #+BEGIN_SRC fn
-(defmacro map-times (var-name times & function-body)
-  `(,map ,var-name 
-     (fn ,var-name ,@function-body)
-     (,range ,times)))
+(defmacro macro-swap (a b)
+  (let (tmp-var (gensym))
+    `(let (,tmp-var ,a)
+       (set ,a ,b)
+       (set ,b ,tmp-var))))
+#+END_SRC
+
+Declaring gensyms in this manner can be tedious, so we also add special syntax to the quasiquote
+operator. Namely, symbols whose names begin with ~#~ are automatically replaced with gensyms. Thus,
+the above could have been written like so:
+
+#+BEGIN_SRC fn
+(defmacro macro-swap (a b)
+  `(let (#tmp ,a)
+     (set ,a ,b)
+     (set ,b #tmp)))
 #+END_SRC
 
 
-* Compiler Macros
+
+* Implementation details
+
+** Data Types
+
+ Version 0 data types:
+ - Num :: 64-bit floating point number (could decrease bits later to 61 if I want to fit the
+          value+tag both into 64 bits)
+ - String :: UTF-8 string (there are no individual characters in fn, just strings. Characters can be
+             represented by integers if ya really need).
+ - Symbol :: an internalized string. Also used to represent variable names.
+ - True, False, and Null :: Boolean true/false and a null value. null should probably act as false.
+      Yes, it's null not nil
+ - List :: singley-linked list. Cons cell. The empty list is a special value, NOT the same as null.
+           Dotted pairs are not allowed.
+ - Object :: key-value store. For now, use a hash table and only allow symbols as keys. In the
+             future, a hybrid hash table/array approach (as used by Lua) may be better. In fact, a
+             trie might even be better.
+ - Function :: what it sounds like. Internally this is probably just gonna be a bytecode address
+
+ Probable future data types:
+ - Integer :: dedicated integer type w/ unbounded range
+ - Array/Vector :: fixed-size array (constant-time access). Might not be necessary if we use the
+                   hybrid data structure Lua uses for tables
+ - Bytes, ForeignStructs, etc :: bit-fiddley ways to engage with foreign functions and system-level
+      stuff
+
+*** String Encoding (UTF-8)
+
+ Here's the deal. UTF-8 is the right encoding and we will use it. This creates some issues when
+ comparing text for equality, since we might have different code points representing the same
+ characters. The Unicode Consortium's ordained solution to this problem is to use one of the NFD or
+ NFC normalized forms, which ensure that each character has a unique representation. Normalization is
+ relatively cheap, but we shouldn't go fussing about with our users' bytes without their permission.
+
+ This raises an interesting problem. When we compare strings for equality, should we compare
+ characters or code points? Naively, the "right" answer seems to be to compare characters, but if we
+ suppose that (for some reason, e.g. printing text) we actually care about which codepoints go into
+ each character, then we have a problem.
+
+ The most common solution in practice seems to be to do byte-by-byte comparison. This gives an
+ advantage in performance and implementation simplicity, but can lead to the kinds of localization
+ problems that necessitate UTF-8 in the first place.
+
+ Given Rob Pike's history designing UTF-8, it seems safe to copy Go. This involves writing a sensible
+ set of (standard library) utilities for working with UTF-8 strings and runes, including providing
+ facilities for normalization and doing normalization automatically where appropriate. For instance,
+ it seems sensible to enforce that all programmatically-defined strings are in NFC format, and to
+ provide a keyword argument for any text reading operations to automatically convert things to that
+ format on the fly (since it should be much cheaper to normalize a string during a sequential read
+ than to go back and normalize the whole thing later. Saves an entire pass over the string, which is
+ important if it's long).
+
+
+*** Bitwise representation
+
+ Values in fn are exactly 64 bits. There is a variable length tag describing the value contained in
+ the first 3 bits (for pointers and numbers) or the first 8 bits (for other values). This is
+ convenient because it allows a single x86_64 register to be used for each value.
+
+**** Initial tagging scheme
+
+  *3-bit Tags*
+
+  In order to cheat on floating point operations, the 3 LSB are used as the tag. This way, if we stick
+  to 8-byte aligned pointers, we can fit an entire pointer in the next 61 bytes.
+
+  The bytes (in binary) are:
+
+  - Num :: 000 - 61-bit floating point number. Can use normal FP operations since least significant
+    bits are 0. Must remember to mask off bits after operation.
+  - List :: 001 - Raw pointer to 16-byte cons data structure.
+  - String :: 010 - Raw pointer to string data structure. First 4 bytes of string are index.
+  - Object :: 011 - Raw pointer to object (aka hash table) data structure
+  - Function :: 100 - Raw pointer to function data structure
+  - Extended tag :: 111 - Indicates that an 8-bit tag is used
+
+
+  *8-bit tags*
+
+  When the first three bits indicate the extended tag, the next 5 bits indicate the type.
+
+  Only the 5 extended bits are given
+
+  - Null :: 00000 - null value. Other bits should be 0.
+  - Empty List :: 0001 - empty list. Other bits should be 0.
+  - False :: 00010 - boolean false value. Other bits should be 0.
+  - True :: 00011 - boolean true value. Other bits should be 0. 
+  - Symbol :: 00100 - 32-bit symbol ID (aka FNV-1a hash of the string)
+
+
+**** Future tagging schemes
+
+  I hope we don't need to make a new taggin scheme. There's still space for two more pointer data
+  types, and I think that bitvectors and arrays would be good candidates for those.
+
+  If we need more tags, we can cross that bridge when we come to it, and we can get quite creative. We
+  certainly don't need all 61 bits. The next step, if we desparately need more tags, is to make a pool
+  of objects which has e.g. a 48-byte index.
+
+  For 32-bit systems, if that ever matters, we could probably just use the same scheme and have
+  smaller pointers.
+
+
+
+
+* Additional notes
+
+** Compiler Macros
 
 Compiler macros are a planned feature which should allow really high performance code to be written
 by moving a lot of computations to compile time. I don't have any concrete ideas for how to define
@@ -409,7 +362,3 @@ The dream is to give users a way to generate meaningful error messages during ma
 complete with line-by-line syntactic feedback, if they so desire. At minimum, this involves tagging
 every form with its position in a file/input stream and the namespace it is evaluated in.
 
-
-* Minor Proposals
-
-** Change ~,@~ to ~,&~ in syntax
