@@ -23,7 +23,7 @@ constexpr u8 OP_LOCAL = 0x02;
 // set-local BYTE; set the BYTEth element of the stack to the current top of the stack
 constexpr u8 OP_SET_LOCAL = 0x03;
 
-// 8-bit operand. Copy works like OP_LOCAL but its indices count down from the top of the stack
+// copy BYTE; works like OP_LOCAL but its indices count down from the top of the stack
 constexpr u8 OP_COPY = 0x04;
 
 // global; get a global variable based on a string on top of the stack
@@ -31,26 +31,47 @@ constexpr u8 OP_GLOBAL = 0x05;
 // set-global; set a global based on a string on top of the stack followed by its value
 constexpr u8 OP_SET_GLOBAL = 0x06;
 
-// upvalue BYTE;
+// upvalue BYTE; get the BYTEth upvalue
 constexpr u8 OP_UPVALUE = 0x07;
-// set-upvalue BYTE;
+// set-upvalue BYTE; set the BYTEth upvalue to the value on top of the stack
 constexpr u8 OP_SET_UPVALUE = 0x08;
 
-// closure SHORT; instantiate a closure using SHORT as the function ID
+// closure SHORT; instantiate a closure using SHORT as the function ID. Requires that the closure's
+// specifed upvalues and stack locations exist and the function ID is valid.
 constexpr u8 OP_CLOSURE = 0x09;
 
-// save the value at the top of the stack and unroll the next <byte> of them
+// close BYTE; pop the stack BYTE times, closing any open upvalues in the process
+constexpr u8 OP_CLOSE = 0x0A;
+
+// const SHORT; load a constant via its 16-bit ID. Requires that the constant ID is valid.
+constexpr u8 OP_CONST = 0x10;
+
+// null; push a null value on top of the stack
+constexpr u8 OP_NULL  = 0x11;
+// false; push a false value on top of the stack
+constexpr u8 OP_FALSE = 0x12;
+// true; push a true value on top of the stack
+constexpr u8 OP_TRUE  = 0x13;
+
+
+// [DEPRECATED] save the value at the top of the stack and unroll the next <byte> of them
 constexpr u8 OP_UNROLL = 0x0B;
 
+// control flow & function calls
 
-// constants
+// skip-true; must be followed by a jump instruction. If the top of the stack is truthy, increment ip
+// to skip over the jump instruction.
+constexpr u8 OP_SKIP_TRUE = 0x30;
+// skip-false; must be followed by a jump instruction. Like skip-true
+constexpr u8 OP_SKIP_FALSE = 0x31;
+// jump SHORT; adds SHORT to ip. SHORT is a (2's complement) signed value here. Offset is relative
+// to the end of the jump instruction, (e.g. jump -3 is an infinite loop, jump 0 is a NOP).
+constexpr u8 OP_JUMP = 0x32;
+// call the function in the register
+constexpr u8 OP_CALL = 0x37;
+// return with the top of the stack as the value
+constexpr u8 OP_RETURN = 0x38;
 
-// load a constant via its 16-bit ID
-constexpr u8 OP_CONST = 0x10;
-// load null, false, or true constant values
-constexpr u8 OP_NULL  = 0x11;
-constexpr u8 OP_FALSE = 0x12;
-constexpr u8 OP_TRUE  = 0x13;
 
 // replace the top of the stack with its boolean negation
 constexpr u8 OP_NEGATE = 0x14;
@@ -60,17 +81,6 @@ constexpr u8 OP_EQ = 0x15;
 constexpr u8 OP_IS = 0x16;
 
 
-// control flow & function calls
-
-// skip the instruction pointer 16 bits forward if the head of the stack is true, false, resp.
-constexpr u8 OP_SKIP_TRUE = 0x30;
-constexpr u8 OP_SKIP_FALSE = 0x31;
-// relative jump to the 16-bit offset following the instruction
-constexpr u8 OP_JUMP = 0x32;
-// call the function in the register
-constexpr u8 OP_CALL = 0x37;
-// return with the top of the stack as the value
-constexpr u8 OP_RETURN = 0x38;
 
 
 // numbers
