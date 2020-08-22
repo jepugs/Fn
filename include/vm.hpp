@@ -6,6 +6,7 @@
 #include "base.hpp"
 #include "table.hpp"
 
+#include <forward_list>
 #include <vector>
 
 namespace fn {
@@ -57,9 +58,11 @@ struct Upvalue {
 
 // a location holding an upvalue at runtime
 struct UpvalueSlot {
+    // if true, this upvalue points to an element of the stack
     bool open;
-    u32 refCount;
-    Value** ptr;
+    Value* val;
+
+    //u32 refCount;
 };
 
 
@@ -85,7 +88,7 @@ struct FuncStub {
 // upvalues (i.e. the closure)
 struct alignas(8) Function {
     FuncStub* stub;
-    UpvalueSlot* upvals;
+    UpvalueSlot** upvals;
 };
 
 // a linked list structure which associates source code locations to bytecode.
@@ -167,19 +170,39 @@ public:
 // VM stack size limit (per call frame)
 constexpr u32 STACK_SIZE = 255;
 
-struct CallFrame {
-    u32 retAddr;
-    u32 sp;
-    Value v[STACK_SIZE];
-    CallFrame *next;
+struct OpenUpvalue {
+    UpvalueSlot* slot;
+    u32 pos;
+};
 
+struct CallFrame {
+    // call frame above this one
+    CallFrame *prev;
+    // return address
+    u32 retAddr;
+    // base pointer (i.e. offset from the true bottom of the stack)
+    u32 bp;
     // The function we're in. nullptr on the top level.
     Function* caller;
-    // upvalues to close off when return/close is called
-    vector<UpvalueSlot> openUpvals;
 
-    CallFrame(u32 ret, CallFrame* parent=nullptr)
-        : retAddr(ret), sp(0), next(parent) { }
+    // current stack pointer
+    u32 sp;
+    // currently open upvalues
+    forward_list<OpenUpvalue> openUpvals;
+
+    CallFrame(CallFrame* prev, u32 retAddr, u32 bp, Function* caller)
+        : prev(prev), retAddr(retAddr), bp(bp), caller(caller), sp(0), openUpvals() { }
+
+    // allocate a new call frame as an extension of this one. Assumes the last numArgs values on the
+    // stack are arguments for the newly called function.
+    CallFrame* extendFrame(u32 retAddr, u32 numArgs, Function* caller);
+
+    // open a new upvalue. ptr should point to the stack at pos.
+    UpvalueSlot* openUpvalue(u32 pos, Value* ptr);
+    // decrement the stack pointer and close affected upvalues
+    void close(u32 n);
+    // close all open upvalues regardless of stack position
+    void closeAll();
 };
 
 // The VM object contains all global state for a single instance of the interpreter.
@@ -193,18 +216,22 @@ private:
 
     // instruction pointer and stack
     u32 ip;
-    CallFrame *stack;
+    CallFrame *frame;
+    Value stack[STACK_SIZE];
 
     // last pop; used to access the result of the last expression
     Value lp;
 
     // stack operations
-    // peek relative to the top of the stack
-    Value peek(u32 offset=0);
-    // peek relative to the bottom
-    Value peekBot(u32 i);
     Value pop();
     void push(Value v);
+
+    // peek relative to the top of the stack
+    Value peek(u32 offset=0);
+    // get a local Value from the current call frame
+    Value local(u8 i);
+    // set a local value
+    void setLocal(u8 i, Value v);
 
 public:
     // initialize the VM with a blank image
@@ -214,8 +241,6 @@ public:
     // step a single instruction
     void step();
     void execute();
-    // get the stack
-    CallFrame* getStack();
     // get the instruction pointer
     u32 getIp();
 
@@ -227,6 +252,8 @@ public:
 
     void addGlobal(string name, Value v);
     Value getGlobal(string name);
+
+    UpvalueSlot* getUpvalue(u8 id);
 
     // get a pointer to the Bytecode object so the compiler can write its output there
     Bytecode* getBytecode();

@@ -13,11 +13,35 @@ void disassembleInstr(Bytecode& code, u32 ip, ostream& out) {
     case OP_POP:
         out << "pop";
         break;
+    case OP_LOCAL:
+        out << "local " << (i32)code[ip+1];
+        break;
+    case OP_SET_LOCAL:
+        out << "set-local " << (i32)code[ip+1];
+        break;
+    case OP_COPY:
+        out << "copy " << (i32)code[ip+1];
+        break;
+    case OP_UPVALUE:
+        out << "upvalue " << (i32)code[ip+1];
+        break;
+    case OP_SET_UPVALUE:
+        out << "set-upvalue " << (i32)code[ip+1];
+        break;
+    case OP_CLOSURE:
+        out << "closure " << code.readShort(ip+1);
+        break;
+    case OP_CLOSE:
+        out << "close " << (i32)((code.readByte(ip+1)));;
+        break;
     case OP_GLOBAL:
         out << "global";
         break;
     case OP_SET_GLOBAL:
         out << "set-global";
+        break;
+    case OP_CONST:
+        out << "const " << code.readShort(ip+1);
         break;
     case OP_NULL:
         out << "null";
@@ -28,105 +52,21 @@ void disassembleInstr(Bytecode& code, u32 ip, ostream& out) {
     case OP_TRUE:
         out << "true";
         break;
-    case OP_NEGATE:
-        out << "negate";
-        break;
-    case OP_EQ:
-        out << "eq";
-        break;
-    case OP_IS:
-        out << "is";
-        break;
-    case OP_SKIP_TRUE:
-        out << "skip-true";
-        break;
-    case OP_SKIP_FALSE:
-        out << "skip-false";
-        break;
-    case OP_RETURN:
-        out << "return";
-        break;
-    // numbers
-    case OP_CK_NUM:
-        out << "ck-num";
-        break;
-    case OP_CK_INT:
-        out << "ck-int";
-        break;
-    case OP_ADD:
-        out << "add";
-        break;
-    case OP_SUB:
-        out << "sub";
-        break;
-    case OP_MUL:
-        out << "mul";
-        break;
-    case OP_DIV:
-        out << "div";
-        break;
-    case OP_POW:
-        out << "pow";
-        break;
-    case OP_GT:
-        out << "gt";
-        break;
-    case OP_LT:
-        out << "lt";
-        break;
-
-    case OP_CONS:
-        out << "cons";
-        break;
-    case OP_HEAD:
-        out << "head";
-        break;
-    case OP_TAIL:
-        out << "tail";
-        break;
-    case OP_CK_CONS:
-        out << "ck-cons";
-        break;
-    case OP_CK_EMPTY:
-        out << "ck-empty";
-        break;
-    case OP_CK_LIST:
-        out << "ck-list";
-        break;
-
-    case OP_COPY:
-        out << "copy " << (i32)code[ip+1];
-        break;
-    case OP_LOCAL:
-        out << "local " << (i32)code[ip+1];
-        break;
-    case OP_SET_LOCAL:
-        out << "set-local " << (i32)code[ip+1];
-        break;
-    case OP_UPVALUE:
-        out << "upvalue " << (i32)code[ip+1];
-        break;
-    case OP_SET_UPVALUE:
-        out << "set-upvalue " << (i32)code[ip+1];
-        break;
-    case OP_UNROLL:
-        out << "unroll " << (i32)((code.readByte(ip+1)));;
-        break;
     case OP_JUMP:
         out << "jump " << (i32)(static_cast<i16>(code.readShort(ip+1)));
+        break;
+    case OP_CJUMP:
+        out << "cjump " << (i32)(static_cast<i16>(code.readShort(ip+1)));
         break;
     case OP_CALL:
         out << "call " << (i32)((code.readByte(ip+1)));;
         break;
-    case OP_CONST:
-        out << "const " << code.readShort(ip+1);
-        break;
-    case OP_CLOSURE:
-        out << "closure " << code.readShort(ip+1);
+    case OP_RETURN:
+        out << "return";
         break;
 
     default:
-        out << "<unrecognized byte: " << instr << ">";
+        out << "<unrecognized opcode: " << (i32)instr << ">";
         break;
     }
 }

@@ -67,6 +67,8 @@ bool checkDelim(TokenKind expected, Token tok) {
         return true;
     } else if (isRightDelim(tok)) {
         throw FNError("parser", "Mismatched closing delimiter " + tok.to_string(), tok.loc);
+    } else if (tok.tk == TKEOF) {
+        throw FNError("parser", "Encountered EOF while scanning", tok.loc);
     }
     return false;
 }
@@ -211,6 +213,9 @@ void Compiler::compileLet(Locals* locals) {
     Locals* prev = locals;
     auto oldSp = sp;
     u8 numLocals = 0;
+    // save a space for the result. null is a fine placeholder
+    dest->writeByte(OP_NULL);
+    ++sp;
     // create new locals
     locals = new Locals(prev);
 
@@ -238,12 +243,16 @@ void Compiler::compileLet(Locals* locals) {
         compileExpr(locals, &tok);
     }
 
-    // save the final expression
-    // restore the lexical environment
-    delete locals;
+    // save the result. This will overwrite the earlier null value
+    dest->writeByte(OP_SET_LOCAL);
+    dest->writeByte(oldSp);
     // pop the variables
-    dest->writeByte(OP_UNROLL);
+    dest->writeByte(OP_CLOSE);
     dest->writeByte(numLocals);
+
+    // free up the new environment
+    delete locals;
+    // restore the stack pointer
     sp = oldSp+1;
 }
 

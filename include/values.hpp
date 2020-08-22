@@ -87,7 +87,7 @@ inline ForeignFunc* valueForeign(Value v) {
 // ptr must be 8-bit aligned
 inline Value makeFuncValue(Function* ptr) {
     u64 raw = reinterpret_cast<u64>(ptr);
-    return { .raw = raw | TAG_FOREIGN };
+    return { .raw = raw | TAG_FUNC };
 }
 
 inline Function* valueFunc(Value v) {
@@ -175,6 +175,8 @@ inline string showValue(Value v) {
         return "true";
     } else if (isForeign(v)) {
         return "<foreign-function>";
+    } else if (isFunc(v)) {
+        return "<function>";
     } else {
         return "<unprintable-value>";
     }

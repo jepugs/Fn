@@ -179,20 +179,60 @@ Value Bytecode::symbol(const string& name) {
 }
 
 
-VM::VM() : ip(0), stack(nullptr), lp(V_NULL) {
-    this->stack = new CallFrame(0);
-}
-VM::~VM() {
-    // delete all call frames
-    while (stack != nullptr) {
-        auto tmp = stack->next;
-        delete stack;
-        stack = tmp;
-    }
+CallFrame* CallFrame::extendFrame(u32 retAddr, u32 numArgs, Function* caller) {
+    auto res = new CallFrame(this, retAddr, bp+sp-numArgs, caller);
+    res->sp = numArgs;
+    return res;
 }
 
-CallFrame* VM::getStack() {
-    return stack;
+UpvalueSlot* CallFrame::openUpvalue(u32 pos, Value* ptr) {
+    if (pos >= sp) {
+        // TODO: probably an error
+        return nullptr;
+    }
+
+    // TODO: refCount
+    auto res = new UpvalueSlot{ .open=true, .val=ptr };
+    openUpvals.push_front(OpenUpvalue{ .slot=res, .pos=pos });
+    return res;
+}
+
+void CallFrame::close(u32 n) {
+    sp -= n;
+    openUpvals.remove_if([this](auto u) {
+        if (u.pos >= sp) {
+            u.slot->open = false;
+            u.slot->val = new Value { .raw=u.slot->val->raw };
+            //--u.slot->refCount;
+            return true;
+        }
+        return false;
+    });
+}
+
+void CallFrame::closeAll() {
+    sp = 0;
+    for (auto u : openUpvals) {
+        u.slot->open = false;
+        u.slot->val = new Value { .raw=u.slot->val->raw };
+        //--u.slot->refCount;
+    }
+
+    openUpvals.clear();
+}
+
+
+VM::VM()
+    : ip(0), frame(new CallFrame(nullptr, 0, 0, nullptr)), lp(V_NULL) { }
+
+VM::~VM() {
+    // delete all call frames
+    while (frame != nullptr) {
+        auto tmp = frame->prev;
+        // TODO: ensure reference count for UpvalueSlot is decremented
+        delete frame;
+        frame = tmp;
+    }
 }
 
 u32 VM::getIp() {
@@ -216,6 +256,14 @@ Value VM::getGlobal(string name) {
     return *res;
 }
 
+UpvalueSlot* VM::getUpvalue(u8 id) {
+    if (frame->caller == nullptr || frame->caller->stub->numUpvals <= id) {
+        // TODO: error: nonexistent upvalue
+    }
+    return frame->caller->upvals[id];
+}
+
+
 void VM::addForeign(string name, Value (*func)(u16, Value*, VM*), u8 minArgs, bool varArgs) {
     auto f = new ForeignFunc{ .minArgs=minArgs, .varArgs=varArgs, .func=func };
     auto v = makeForeignValue(f);
@@ -228,35 +276,52 @@ Bytecode* VM::getBytecode() {
 }
 
 void VM::push(Value v) {
-    if (stack->sp == STACK_SIZE) {
-        // TODO: stack overflow error
-        return;
+    if (frame->sp + frame->bp >= STACK_SIZE - 1) {
+        throw FNError("runtime", "Stack exhausted.", *code.locationOf(ip));
     }
-    stack->v[stack->sp++] = v;
+    stack[frame->bp + frame->sp++] = v;
 }
 
 Value VM::pop() {
-    if (stack->sp == 0) {
-        throw FNError("runtime", "Pop on empty stack.", *code.locationOf(ip));
-        return V_NULL;
+    if (frame->sp == 0) {
+        throw FNError("runtime",
+                      "Pop on empty call frame at address " + to_string((i32)ip),
+                      *code.locationOf(ip));
     }
-    return stack->v[--stack->sp];
+    return stack[frame->bp + --frame->sp];
 }
 
 Value VM::peek(u32 i) {
-    if (stack->sp <= i) {
-        throw FNError("runtime", "Peek out of stack bounds.", *code.locationOf(ip));
-        return V_NULL;
+    if (frame->sp <= i) {
+        throw FNError("runtime",
+                      "Peek out of stack bounds at address " + to_string((i32)ip),
+                      *code.locationOf(ip));
     }
-    return stack->v[stack->sp - i - 1];
+    return stack[frame->bp + frame->sp - i - 1];
 }
 
-Value VM::peekBot(u32 i) {
-    if (stack->sp <= i) {
-        throw FNError("runtime", "Peek out of stack bounds.", *code.locationOf(ip));
-        return V_NULL;
+// Value VM::peekBot(u32 i) {
+//     if (frame->sp <= i) {
+//         throw FNError("runtime", "Peek out of stack bounds.", *code.locationOf(ip));
+//         return V_NULL;
+//     }
+//     return stack->v[i];
+// }
+
+Value VM::local(u8 i) {
+    u32 pos = i + frame->bp;
+    if (frame->sp <= i) {
+        throw FNError("runtime", "Out of stack bounds on local.", *code.locationOf(ip));
     }
-    return stack->v[i];
+    return stack[pos];
+}
+
+void VM::setLocal(u8 i, Value v) {
+    u32 pos = i + frame->bp;
+    if (frame->sp <= i) {
+        throw FNError("runtime", "Out of stack bounds on set-local.", *code.locationOf(ip));
+    }
+    stack[pos] = v;
 }
 
 #define pushBool(b) push(b ? V_TRUE : V_FALSE);
@@ -273,7 +338,15 @@ void VM::step() {
 
     u8 args;
 
+    FuncStub* stub;
+    Function* func;
+
+    u8 slot;
     u16 id;
+
+    CallFrame *tmp;
+
+    UpvalueSlot* u;
 
     // note: when an instruction uses an argument that occurs in the bytecode, it is responsible for
     // updating the instruction pointer at the end of its exection (which should be after any
@@ -290,18 +363,46 @@ void VM::step() {
         ++ip;
         break;
     case OP_LOCAL:
-        v1 = peekBot(code.readByte(ip+1));
+        v1 = local(code.readByte(ip+1));
         push(v1);
         ++ip;
         break;
-
-    case OP_UNROLL:
-        args = code.readByte(ip+1);
+    case OP_SET_LOCAL:
         v1 = pop();
-        for (u8 i = 0; i < args; ++i) {
-            pop();
+        setLocal(code.readByte(ip+1), v1);
+        ++ip;
+        break;
+
+    case OP_UPVALUE:
+        slot = code.readByte(ip+1);
+        // TODO: check upvalue exists
+        u = frame->caller->upvals[slot];
+        push(*u->val);
+        ++ip;
+        break;
+
+    case OP_CLOSURE:
+        id = code.readShort(ip+1);
+        stub = code.getFunction(code.readShort(ip+1));
+        func = new Function();
+        func->stub = stub;
+        func->upvals = new UpvalueSlot*[stub->numUpvals];
+        for (u32 i = 0; i < stub->numUpvals; ++i) {
+            auto u = stub->upvals[i];
+            if (u.direct) {
+                func->upvals[i] = frame->openUpvalue(u.slot, &stack[frame->bp + u.slot]);
+            } else {
+                func->upvals[i] = getUpvalue(u.slot);
+            }
         }
-        push(v1);
+        push(makeFuncValue(func));
+        ip += 2;
+        break;
+
+    case OP_CLOSE:
+        args = code.readByte(ip+1);
+        frame->close(args);
+        // TODO: check stack size >= args
         ++ip;
         break;
 
@@ -339,37 +440,19 @@ void VM::step() {
         push(V_TRUE);
         break;
 
-    case OP_NEGATE:
-        pushBool(!isTruthy(pop()));
-        break;
-
-    case OP_EQ:
-        // TODO: EQ should check tags and descend on pointers
-        v1 = pop();
-        v2 = pop();
-        pushBool(v1.raw == v2.raw);
-        break;
-
-    case OP_IS:
-        v1 = pop();
-        v2 = pop();
-        pushBool(v1.raw == v2.raw);
-        break;
-
-    case OP_SKIP_TRUE:
-        if(isTruthy(pop())) {
-            skip = true;
-        }
-        break;
-    case OP_SKIP_FALSE:
-        if(!isTruthy(pop())) {
-            skip = true;
-        }
-        break;
-
     case OP_JUMP:
         jump = true;
         addr = ip + 3 + static_cast<i8>(code.readByte(ip+1));
+        break;
+
+    case OP_CJUMP:
+        // jump on false
+        if (!isTruthy(pop())) {
+            jump = true;
+            addr = ip + 3 + static_cast<i8>(code.readByte(ip+1));
+        } else {
+            ip += 2;
+        }
         break;
 
     case OP_CALL:
@@ -378,7 +461,8 @@ void VM::step() {
         v1 = peek(args);
         if (isFunc(v1)) {
             // TODO: implement function calling
-            auto stub = valueFunc(v1)->stub;
+            func = valueFunc(v1);
+            stub = func->stub;
             if (args < stub->required) {
                 // TODO: exception: too few args
                 v2 = V_NULL;
@@ -387,11 +471,7 @@ void VM::step() {
                 v2 = V_NULL;
             } else {
                 // make a new call frame
-                stack = new CallFrame(ip+2, stack);
-                // copy the arguments onto the new stack frame
-                for(int i = 0; i < args; ++i) {
-                    push(stack->next->v[stack->next->sp - args + i]);
-                }
+                frame = frame->extendFrame(ip+2, args, func);
                 // jump to the function body
                 jump = true;
                 addr = stub->addr;
@@ -406,47 +486,44 @@ void VM::step() {
                 v2 = V_NULL;
             } else {
                 // correct arity
-                v2 = f->func((u16)args, &stack->v[stack->sp - args], this);
+                v2 = f->func((u16)args, &stack[frame->bp + frame->sp - args], this);
             }
+            // pop args+1 times (to get the function)
+            for (u8 i = 0; i <= args; ++i) {
+                pop();
+            }
+            push(v2);
+            ++ip;
         } else {
             // TODO: exception: not a function
+            throw FNError("interpreter",
+                          "Attempt to call nonfunction at address " + to_string((i32)ip),
+                          *code.locationOf(ip));
         }
-        // pop args+1 times (to get the function)
-        for (u8 i = 0; i <= args; ++i) {
-            pop();
-        }
-        push(v2);
-        ++ip;
         break;
 
     case OP_RETURN:
-        // TODO: implement
-        break;
+        // get return address
+        v1 = pop();
 
-    // numbers
-    case OP_CK_NUM:
-    case OP_CK_INT:
-    case OP_ADD:
-    case OP_SUB:
-    case OP_MUL:
-    case OP_DIV:
-    case OP_POW:
-    case OP_GT:
-    case OP_LT:
-        // TODO: implement
-        break;
+        // jump to return address
+        jump = true;
+        addr = frame->retAddr;
 
-    // lists
-    case OP_CONS:
-    case OP_HEAD:
-    case OP_TAIL:
-    case OP_CK_CONS:
-    case OP_CK_EMPTY:
-    case OP_CK_LIST:
+        frame->closeAll();
+        tmp = frame;
+        frame = tmp->prev;
+        delete tmp;
+
+        push(v1);
         // TODO: implement
         break;
 
     default:
+        cout << "IP = " << ip << endl;
+        throw FNError("interpreter",
+                      "Unrecognized opcode at address " + to_string((i32)ip),
+                      *code.locationOf(ip));
         break;
     }
     ++ip;
