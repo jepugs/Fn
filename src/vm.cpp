@@ -24,8 +24,8 @@ bool SymbolTable::isInternal(string str) {
     return byName.get(str) != nullptr;
 }
 
-u8 FuncStub::getUpvalue(u8 slot, bool direct) {
-    for (u8 i = 0; i < numUpvals; ++i) {
+u8 FuncStub::getUpvalue(Local slot, bool direct) {
+    for (Local i = 0; i < numUpvals; ++i) {
         auto u = upvals[i];
         if (u.slot == slot && u.direct == direct) {
             // found the upvalue
@@ -86,7 +86,7 @@ void Bytecode::setLoc(SourceLoc l) {
     }
 }
 
-SourceLoc* Bytecode::locationOf(u32 addr) {
+SourceLoc* Bytecode::locationOf(Addr addr) {
     if(locs == nullptr)
         return nullptr;
 
@@ -105,7 +105,7 @@ void Bytecode::writeByte(u8 b) {
     ++size;
 }
 
-void Bytecode::writeBytes(const u8* bytes, u32 len) {
+void Bytecode::writeBytes(const u8* bytes, Addr len) {
     ensureCapacity(size + len);
     for (u32 i = 0; i < len; ++i) {
         data[size+i] = bytes[i];
@@ -121,17 +121,17 @@ void Bytecode::writeShort(u16 s) {
     writeByte(top);
 }
 
-u8 Bytecode::readByte(u32 addr) {
+u8 Bytecode::readByte(Addr addr) {
     return data[addr];
 }
 
-u16 Bytecode::readShort(u32 addr) {
+u16 Bytecode::readShort(Addr addr) {
     u16 bot = (u16) readByte(addr);
     u16 top = (u16) readByte(addr + 1);
     return (top << 8) | bot;
 }
 
-void Bytecode::patchShort(u32 addr, u16 s) {
+void Bytecode::patchShort(Addr addr, u16 s) {
     u8 bot = (u8) (s & 0x00ff);
     u8 top = (u8) (s >> 8);
     data[addr] = bot;
@@ -152,7 +152,7 @@ u16 Bytecode::numConstants() {
     return constants.size();
 }
 
-u16 Bytecode::addFunction(u8 arity) {
+u16 Bytecode::addFunction(Local arity) {
     functions.push_back(new FuncStub {
             .positional=arity, 
             .required=arity,
@@ -179,25 +179,29 @@ Value Bytecode::symbol(const string& name) {
 }
 
 
-CallFrame* CallFrame::extendFrame(u32 retAddr, u32 numArgs, Function* caller) {
-    auto res = new CallFrame(this, retAddr, bp+sp-numArgs, caller);
-    res->sp = numArgs;
-    return res;
+CallFrame* CallFrame::extendFrame(Addr retAddr, Local numArgs, Function* caller) {
+    return new CallFrame(this, retAddr, bp+sp-numArgs, caller, numArgs);
 }
 
-UpvalueSlot* CallFrame::openUpvalue(u32 pos, Value* ptr) {
+UpvalueSlot* CallFrame::openUpvalue(Local pos, Value* ptr) {
     if (pos >= sp) {
         // TODO: probably an error
         return nullptr;
     }
 
+    // check if an upvalue is already open for this stack position
+    for (auto u : openUpvals) {
+        if (u.pos == pos) {
+            return u.slot;
+        }
+    }
     // TODO: refCount
     auto res = new UpvalueSlot{ .open=true, .val=ptr };
     openUpvals.push_front(OpenUpvalue{ .slot=res, .pos=pos });
     return res;
 }
 
-void CallFrame::close(u32 n) {
+void CallFrame::close(StackAddr n) {
     sp -= n;
     openUpvals.remove_if([this](auto u) {
         if (u.pos >= sp) {
@@ -258,13 +262,15 @@ Value VM::getGlobal(string name) {
 
 UpvalueSlot* VM::getUpvalue(u8 id) {
     if (frame->caller == nullptr || frame->caller->stub->numUpvals <= id) {
+        throw FNError("interpreter", "Attempt to access nonexisten upvalue",
+                      *code.locationOf(ip));
         // TODO: error: nonexistent upvalue
     }
     return frame->caller->upvals[id];
 }
 
 
-void VM::addForeign(string name, Value (*func)(u16, Value*, VM*), u8 minArgs, bool varArgs) {
+void VM::addForeign(string name, Value (*func)(Local, Value*, VM*), Local minArgs, bool varArgs) {
     auto f = new ForeignFunc{ .minArgs=minArgs, .varArgs=varArgs, .func=func };
     auto v = makeForeignValue(f);
     addGlobal(name, v);
@@ -291,7 +297,17 @@ Value VM::pop() {
     return stack[frame->bp + --frame->sp];
 }
 
-Value VM::peek(u32 i) {
+Value VM::popTimes(StackAddr n) {
+    if (frame->sp < n) {
+        throw FNError("runtime",
+                      "Pop on empty call frame at address " + to_string((i32)ip),
+                      *code.locationOf(ip));
+    }
+    frame->sp -= n;
+    return stack[frame->bp + frame->sp];
+}
+
+Value VM::peek(StackAddr i) {
     if (frame->sp <= i) {
         throw FNError("runtime",
                       "Peek out of stack bounds at address " + to_string((i32)ip),
@@ -300,24 +316,16 @@ Value VM::peek(u32 i) {
     return stack[frame->bp + frame->sp - i - 1];
 }
 
-// Value VM::peekBot(u32 i) {
-//     if (frame->sp <= i) {
-//         throw FNError("runtime", "Peek out of stack bounds.", *code.locationOf(ip));
-//         return V_NULL;
-//     }
-//     return stack->v[i];
-// }
-
-Value VM::local(u8 i) {
-    u32 pos = i + frame->bp;
+Value VM::local(Local i) {
+    StackAddr pos = i + frame->bp;
     if (frame->sp <= i) {
         throw FNError("runtime", "Out of stack bounds on local.", *code.locationOf(ip));
     }
     return stack[pos];
 }
 
-void VM::setLocal(u8 i, Value v) {
-    u32 pos = i + frame->bp;
+void VM::setLocal(Local i, Value v) {
+    StackAddr pos = i + frame->bp;
     if (frame->sp <= i) {
         throw FNError("runtime", "Out of stack bounds on set-local.", *code.locationOf(ip));
     }
@@ -334,14 +342,14 @@ void VM::step() {
 
     bool skip = false;
     bool jump = false;
-    u32 addr = 0;
+    Addr addr = 0;
 
-    u8 args;
+    Local numArgs;
 
     FuncStub* stub;
     Function* func;
 
-    u8 slot;
+    Local l;
     u16 id;
 
     CallFrame *tmp;
@@ -374,10 +382,17 @@ void VM::step() {
         break;
 
     case OP_UPVALUE:
-        slot = code.readByte(ip+1);
+        l = code.readByte(ip+1);
         // TODO: check upvalue exists
-        u = frame->caller->upvals[slot];
+        u = frame->caller->upvals[l];
         push(*u->val);
+        ++ip;
+        break;
+    case OP_SET_UPVALUE:
+        l = code.readByte(ip+1);
+        // TODO: check upvalue exists
+        u = frame->caller->upvals[l];
+        *u->val = pop();
         ++ip;
         break;
 
@@ -400,9 +415,9 @@ void VM::step() {
         break;
 
     case OP_CLOSE:
-        args = code.readByte(ip+1);
-        frame->close(args);
-        // TODO: check stack size >= args
+        numArgs = code.readByte(ip+1);
+        frame->close(numArgs);
+        // TODO: check stack size >= numArgs
         ++ip;
         break;
 
@@ -456,42 +471,45 @@ void VM::step() {
         break;
 
     case OP_CALL:
-        args = code.readByte(ip+1);
+        numArgs = code.readByte(ip+1);
         // the function to call should be at the bottom
-        v1 = peek(args);
+        v1 = peek(numArgs);
         if (isFunc(v1)) {
-            // TODO: implement function calling
             func = valueFunc(v1);
             stub = func->stub;
-            if (args < stub->required) {
+            if (numArgs < stub->required) {
                 // TODO: exception: too few args
+                throw FNError("interpreter",
+                              "Too few arguments in function call at ip=" + to_string(ip),
+                              *code.locationOf(ip));
                 v2 = V_NULL;
-            } else if (!stub->varargs && args > stub->positional) {
+            } else if (!stub->varargs && numArgs > stub->positional) {
+                throw FNError("interpreter",
+                              "Too many arguments in function call at ip=" + to_string(ip),
+                              *code.locationOf(ip));
                 // TODO: exception: too many args
                 v2 = V_NULL;
             } else {
                 // make a new call frame
-                frame = frame->extendFrame(ip+2, args, func);
+                frame = frame->extendFrame(ip+2, numArgs, func);
                 // jump to the function body
                 jump = true;
                 addr = stub->addr;
             }
         } else if (isForeign(v1)) {
             auto f = valueForeign(v1);
-            if (args < f->minArgs) {
+            if (numArgs < f->minArgs) {
                 // TODO: error
                 v2 = V_NULL;
-            } else if (!f->varArgs && args > f->minArgs) {
+            } else if (!f->varArgs && numArgs > f->minArgs) {
                 // TODO: error
                 v2 = V_NULL;
             } else {
                 // correct arity
-                v2 = f->func((u16)args, &stack[frame->bp + frame->sp - args], this);
+                v2 = f->func((u16)numArgs, &stack[frame->bp + frame->sp - numArgs], this);
             }
             // pop args+1 times (to get the function)
-            for (u8 i = 0; i <= args; ++i) {
-                pop();
-            }
+            popTimes(numArgs+1);
             push(v2);
             ++ip;
         } else {
@@ -503,24 +521,31 @@ void VM::step() {
         break;
 
     case OP_RETURN:
-        // get return address
+        // check that we are in a call frame
+        if (frame->caller == nullptr) {
+            throw FNError("interpreter",
+                          "Return instruction at top level. ip = " + to_string((i32)ip),
+                          *code.locationOf(ip));
+        }
+        // get return value
         v1 = pop();
 
         // jump to return address
         jump = true;
         addr = frame->retAddr;
 
+        numArgs = frame->numArgs;
         frame->closeAll();
         tmp = frame;
         frame = tmp->prev;
         delete tmp;
 
+        // pop the arguments + the caller
+        popTimes(numArgs+1);
         push(v1);
-        // TODO: implement
         break;
 
     default:
-        cout << "IP = " << ip << endl;
         throw FNError("interpreter",
                       "Unrecognized opcode at address " + to_string((i32)ip),
                       *code.locationOf(ip));

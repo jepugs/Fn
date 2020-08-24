@@ -5,19 +5,21 @@
 - use cmake
 - add unit tests for scanner, compiler, interpreter
 - let compiler/local variables
-- foreign functions
+- function compiler
 - begin work on standard library
 - write source location finder for bytecode
 - add proper exception generation to the compiler
 - add a toplevel exception handler
 - think about ffi
+- add ns global variable
+- create ast intermediate data structure
 
 
 * Version 0 Feature List
 
 Data types: Num, String, Symbol, True, False, Null, Function, List, and Object.
 
-Functions can have optional arguments but not keyword arguments just yet.
+Functions can accept.
 
 For now, modules and files are in 1-to-1 correspondence. import can accept either a string (a
 pathname relative to the source file) or a symbol (a pathname relative to the source file, but
@@ -26,7 +28,7 @@ without the ".fn").
 Special operators:
 - Control flow operators :: and, cond, do, if, or
 - Definitions and Variables :: def, get, let, set
-- Other :: apply, import, fn, quote, quasiquote, unquote, unquote-splicing
+- Other :: apply, import, fn
 
 No macros yet.
 
@@ -38,12 +40,12 @@ No macros yet.
 
 *Misc*
 - +,-,*,/,sqrt,^,log
-- show, print, print-code, read, eval
+- show, print, read, eval
 - symbol-name
 - type-of
 
 *Objects*
-- get, keys
+- keys
 
 *Lists*
 - head, tail
@@ -51,6 +53,9 @@ No macros yet.
 - cons, list, range
 - map, filter, reduce
 - as-list (works on strings and objects)
+
+*Strings*
+- string (makes an argument list of values into a string)
 
 
 ** Next features to add
@@ -345,6 +350,18 @@ the above could have been written like so:
 
 
 * Additional notes
+
+** VM Assumptions/Security
+
+Several of the instructions for the VM make assumptions when intepreted.
+
+- const and closure assume that the ID they're given identify entries in the Bytecode object's
+  constant or function table respectively
+- jump and cjump assume that their operands will result in jumps to valid memory locations
+- when closure is invoked, it opens upvalues specified by the function prototype. The closure
+  instruction assumes that the necessary stack and upvalues are available, but maybe it shouldn't...
+
+
 
 ** Compiler Macros
 

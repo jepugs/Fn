@@ -8,18 +8,18 @@
 namespace fn {
 
 // add together numbers
-static Value fnAdd(u16 numArgs, Value* args, VM* vm) {
+static Value fnAdd(Local numArgs, Value* args, VM* vm) {
     f64 res = 0;
-    for (u32 i = 0; i < numArgs; ++i) {
+    for (Local i = 0; i < numArgs; ++i) {
         if(isNum(args[i])) {
             res += valueNum(args[i]);
         } else {
-            //throw FNError("runtime");
+            // throw FNError("runtime");
         }
     }
     return makeNumValue(res);
 }
-static Value fnSub(u16 numArgs, Value* args, VM* vm) {
+static Value fnSub(Local numArgs, Value* args, VM* vm) {
     if (numArgs == 0)
         return makeNumValue(0);
     // TODO: check isNum
@@ -27,23 +27,23 @@ static Value fnSub(u16 numArgs, Value* args, VM* vm) {
     if (numArgs == 1) {
         return { .num = -res };
     }
-    for (u32 i = 1; i < numArgs; ++i) {
+    for (Local i = 1; i < numArgs; ++i) {
         if(isNum(args[i])) {
             res -= valueNum(args[i]);
         }
     }
     return makeNumValue(res);
 }
-static Value fnMul(u16 numArgs, Value* args, VM* vm) {
+static Value fnMul(Local numArgs, Value* args, VM* vm) {
     f64 res = 1.0;
-    for (u32 i = 0; i < numArgs; ++i) {
+    for (Local i = 0; i < numArgs; ++i) {
         if(isNum(args[i])) {
             res *= valueNum(args[i]);
         }
     }
     return makeNumValue(res);
 }
-static Value fnDiv(u16 numArgs, Value* args, VM* vm) {
+static Value fnDiv(Local numArgs, Value* args, VM* vm) {
     if (numArgs == 0)
         return makeNumValue(1.0);
     // TODO: check isNum
@@ -51,7 +51,7 @@ static Value fnDiv(u16 numArgs, Value* args, VM* vm) {
     if (numArgs == 1) {
         return makeNumValue(1/res);
     }
-    for (u32 i = 1; i < numArgs; ++i) {
+    for (Local i = 1; i < numArgs; ++i) {
         if(isNum(args[i])) {
             res /= valueNum(args[i]);
         }
@@ -59,7 +59,7 @@ static Value fnDiv(u16 numArgs, Value* args, VM* vm) {
     return makeNumValue(res);
 }
 
-static Value fnPrintln(u16 numArgs, Value* args, VM* vm) {
+static Value fnPrintln(Local numArgs, Value* args, VM* vm) {
     cout << showValue(args[0]) << endl;
     return V_NULL;
 }

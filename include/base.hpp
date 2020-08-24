@@ -13,7 +13,8 @@ namespace fn {
 
 using namespace std;
 
-// integer typedefs
+/// integer/float typedefs by bitwidth
+
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -33,6 +34,13 @@ typedef float f32;
 static_assert(sizeof(double) == 8);
 typedef double f64;
 
+/// semantic typedefs
+// addresses on the stack
+typedef u16 StackAddr;
+// addresses in the current call frame (i.e. arguments and local variables)
+typedef u8 Local;
+// 32-bit integers represent addresses in the bytecode
+typedef u32 Addr;
 
 struct SourceLoc {
     const shared_ptr<string> filename;

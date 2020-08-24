@@ -37,17 +37,16 @@ u8 Locals::addUpvalue(u32 levels, u8 pos) {
     return call->curFunc->getUpvalue(slot, false);
 }
 
-u8* Locals::search(string name) {
-    auto pos = vars.get(name);
-    if (pos == nullptr) {
-        if (parent == nullptr) {
-            return nullptr;
-        } else {
-            return parent->search(name);
-        }
-    } else {
-        return pos;
+static inline bool isLegalName(const string& str) {
+    if (str == "and" || str == "cond" || str == "def" || str == "def*" || str == "defmacro"
+        || str == "defsym" || str == "do" || str == "dollar-fn" || str == "do" || str == "fn"
+        || str == "if" || str == "import" || str == "let" || str == "macrolet" || str == "or"
+        || str == "or"  || str == "quasi-quote" || str == "quote" || str == "symlet"
+        || str == "unquote" || str == "unquote-splicing"
+        || str == "null" || str == "false" || str == "true" || str == "ns") {
+        return false;
     }
+    return true;
 }
 
 Compiler::Compiler(Bytecode* dest, Scanner* sc) : dest(dest), sc(sc), sp(0) { }
@@ -66,9 +65,9 @@ bool checkDelim(TokenKind expected, Token tok) {
     if (tok.tk == expected) {
         return true;
     } else if (isRightDelim(tok)) {
-        throw FNError("parser", "Mismatched closing delimiter " + tok.to_string(), tok.loc);
+        throw FNError("compiler", "Mismatched closing delimiter " + tok.to_string(), tok.loc);
     } else if (tok.tk == TKEOF) {
-        throw FNError("parser", "Encountered EOF while scanning", tok.loc);
+        throw FNError("compiler", "Encountered EOF while scanning", tok.loc);
     }
     return false;
 }
@@ -80,7 +79,7 @@ void Compiler::compileVar(Locals* locals, const string& name) {
         dest->writeByte(OP_CONST);
         dest->writeShort(id);
         dest->writeByte(OP_GLOBAL);
-        sp++;
+        ++sp;
         return;
     }
 
@@ -100,7 +99,6 @@ void Compiler::compileVar(Locals* locals, const string& name) {
         }
     } while ((env = env->parent) != nullptr);
 
-    // TODO: set upvalues
     if (levels > 0 && res != nullptr) {
         u8 id = locals->addUpvalue(levels, *res);
         dest->writeByte(OP_UPVALUE);
@@ -114,26 +112,29 @@ void Compiler::compileVar(Locals* locals, const string& name) {
         dest->writeByte(OP_CONST);
         dest->writeShort(id);
         dest->writeByte(OP_GLOBAL);
-        sp++;
     }
+    ++sp;
 }
 
 // compile def expressions
 void Compiler::compileDef(Locals* locals) {
     Token tok = sc->nextToken();
     if (tok.tk != TKSymbol) {
-        throw FNError("parser", "First argument to def must be a symbol.", tok.loc);
-        // TODO: unimplemented error
+        throw FNError("compiler", "First argument to def must be a symbol.", tok.loc);
     }
     // TODO: check for legal symbols
+    if(!isLegalName(*tok.datum.str)) {
+        throw FNError("compiler", "Illegal variable name " + *tok.datum.str, tok.loc);
+    }
 
     // compile the value expression
     compileExpr(locals);
+    ++sp;
 
     // make sure there's a close paren
     Token last = sc->nextToken();
     if (!checkDelim(TKRParen, last)) {
-        throw FNError("parser", "Too many arguments to def", last.loc);
+        throw FNError("compiler", "Too many arguments to def", last.loc);
     }
 
     // copy the value expression
@@ -154,7 +155,7 @@ void Compiler::compileFn(Locals* locals) {
     // first, read all arguments and set up locals
     Token tok = sc->nextToken();
     if (tok.tk != TKLParen) {
-        throw FNError("parser", "Second argument of fn must be an argument list.", tok.loc);
+        throw FNError("compiler", "Second argument of fn must be an argument list.", tok.loc);
     }
 
     // start out by jumping to the end of the function body. We will patch in the distance to jump
@@ -172,7 +173,10 @@ void Compiler::compileFn(Locals* locals) {
     // TODO: check args < 256
     while (!checkDelim(TKRParen, tok=sc->nextToken())) {
         if (tok.tk != TKSymbol) {
-            throw FNError("parser", "Argument names must be symbols.", tok.loc);
+            throw FNError("compiler", "Argument names must be symbols.", tok.loc);
+        }
+        if(!isLegalName(*tok.datum.str)) {
+            throw FNError("compiler", "Illegal variable name " + *tok.datum.str, tok.loc);
         }
         // TODO: check for repeated names
         enclosed->vars.insert(*tok.datum.str, sp);
@@ -184,7 +188,7 @@ void Compiler::compileFn(Locals* locals) {
     // compile the function body
     tok = sc->nextToken();
     if (checkDelim(TKRParen, tok)) {
-        throw FNError("parser", "Empty fn body.", tok.loc);
+        throw FNError("compiler", "Empty fn body.", tok.loc);
     }
     compileExpr(enclosed, &tok);
     while (!checkDelim(TKRParen, tok=sc->nextToken())) {
@@ -221,20 +225,22 @@ void Compiler::compileLet(Locals* locals) {
 
     while (!checkDelim(TKRParen, tok=sc->nextToken())) {
         if (tok.tk != TKSymbol) {
-            throw FNError("parser", "let variable name not a symbol", tok.loc);
+            throw FNError("compiler", "let variable name not a symbol", tok.loc);
+        }
+        if(!isLegalName(*tok.datum.str)) {
+            throw FNError("compiler", "Illegal variable name " + *tok.datum.str, tok.loc);
         }
 
         // TODO: check for repeated names
         locals->vars.insert(*tok.datum.str, sp);
         compileExpr(locals);
-        ++sp;
         ++numLocals;
     }
 
     // now compile the body
     tok = sc->nextToken();
     if (checkDelim(TKRParen, tok)) {
-        throw FNError("parser", "empty let body", tok.loc);
+        throw FNError("compiler", "empty let body", tok.loc);
     }
     compileExpr(locals, &tok);
 
@@ -256,20 +262,78 @@ void Compiler::compileLet(Locals* locals) {
     sp = oldSp+1;
 }
 
+void Compiler::compileSet(Locals* locals) {
+    // first get the variable name
+    auto tok = sc->nextToken();
+
+    // TODO: account for dots
+
+    if(tok.tk != TKSymbol) {
+        throw FNError("compiler", "Argument to set must be a symbol or dotted symbol.", tok.loc);
+    }
+    if(!isLegalName(*tok.datum.str)) {
+        throw FNError("compiler", "Illegal variable name " + *tok.datum.str, tok.loc);
+    }
+
+    // compile the value expression
+    compileExpr(locals);
+    dest->writeByte(OP_COPY);
+    dest->writeByte(0);
+
+    auto env = locals;
+    auto name = *tok.datum.str;
+    Local* res;
+    // keep track of how many enclosing functions we need to go into
+    u32 levels = 0;
+    if (locals == nullptr) {
+        goto compile_global;
+    }
+    do {
+        res = env->vars.get(name);
+        if (res != nullptr) {
+            break;
+        }
+
+        // here we're about to ascend to an enclosing function, so we need an upvalue
+        if (env->curFunc != nullptr) {
+            ++levels;
+        }
+    } while ((env = env->parent) != nullptr);
+
+    if (levels > 0 && res != nullptr) {
+        // upvalue
+        u8 id = locals->addUpvalue(levels, *res);
+        dest->writeByte(OP_SET_UPVALUE);
+        dest->writeByte(id);
+    } else if (res != nullptr) {
+        dest->writeByte(OP_LOCAL);
+        dest->writeByte(*res);
+    } else {
+        // compile global
+        compile_global:
+        auto id = dest->addConstant(makeStringValue(&name));
+        dest->writeByte(OP_CONST);
+        dest->writeShort(id);
+        dest->writeByte(OP_SET_GLOBAL);
+    }
+
+    if (!checkDelim(TKRParen, sc->nextToken())) {
+        // TODO: error: too many arguments to set
+    }
+}
+
 // compile function call
 void Compiler::compileCall(Locals* locals, Token* t0) {
     // first, compile the operator
     Token tok = *t0;
     compileExpr(locals, t0);
     auto oldSp = sp;
-    ++sp;
 
     // now, compile the arguments
     u32 numArgs = 0;
     while (!checkDelim(TKRParen, tok=sc->nextToken())) {
         ++numArgs;
         compileExpr(locals, &tok);
-        ++sp;
     }
 
     if (numArgs > 255) {
@@ -291,7 +355,7 @@ void Compiler::compileExpr(Locals* locals, Token* t0) {
     Value v;
 
     if (isRightDelim(tok)) {
-        throw FNError("parser", "Unexpected closing delimiter", tok.loc);
+        throw FNError("compiler", "Unexpected closing delimiter", tok.loc);
     }
 
     switch (tok.tk) {
@@ -327,20 +391,6 @@ void Compiler::compileExpr(Locals* locals, Token* t0) {
             sp++;
         } else {
             compileVar(locals, *tok.datum.str);
-            // auto local = locals == nullptr ? nullptr : locals->search(*tok.datum.str);
-            // if (local == nullptr) {
-            //     // perform global lookup
-            //     id = dest->addConstant(makeStringValue(tok.datum.str));
-            //     dest->writeByte(OP_CONST);
-            //     dest->writeShort(id);
-            //     dest->writeByte(OP_GET_GLOBAL);
-            //     sp++;
-            // } else {
-            //     // local variable
-            //     dest->writeByte(OP_LOCAL);
-            //     dest->writeByte(*local);
-            //     sp++;
-            // }
         }
         break;
 
@@ -348,13 +398,15 @@ void Compiler::compileExpr(Locals* locals, Token* t0) {
     case TKLParen:
         next = sc->nextToken();
         if (next.tk == TKSymbol) {
-            string *op = next.datum.str;
+            string* op = next.datum.str;
             if (*op == "def") {
                 compileDef(locals);
             } else if (*op == "fn") {
                 compileFn(locals);
             } else if (*op == "let") {
                 compileLet(locals);
+            } else if (*op == "set") {
+                compileSet(locals);
             } else {
                 compileCall(locals, &next);
             }

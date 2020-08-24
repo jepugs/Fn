@@ -50,7 +50,7 @@ public:
 // This struct describes an upvalue. Upvalues themselves are simply stored in Value pointers.
 struct Upvalue {
     // the stack position or ID of this upvalue in the enclosing function
-    u8 slot;
+    Local slot;
     // if true, then this Upvalue refers to a slot in the enclosing function's stack. If false, then
     // it refers to an upvalue in a bigger closure.
     bool direct;
@@ -69,19 +69,19 @@ struct UpvalueSlot {
 // A stub describing a function. These go in the bytecode object
 struct FuncStub {
     // arity information
-    u8 positional;         // number of positional arguments, including optional & keyword arguments
-    u8 required;           // number of required positional arguments (minimum arity)
+    Local positional;   // number of positional arguments, including optional & keyword arguments
+    Local required;     // number of required positional arguments (minimum arity)
     bool varargs;          // whether this function has a variadic argument
 
     // upvalues
-    u8 numUpvals;
+    Local numUpvals;
     vector<Upvalue> upvals;
 
     // bytecode address
-    u32 addr;              // bytecode address of the function
+    Addr addr;              // bytecode address of the function
 
     // get an upvalue and return its id. Adds a new upvalue if one doesn't exist
-    u8 getUpvalue(u8 id, bool direct);
+    Local getUpvalue(Local id, bool direct);
 };
 
 // An actual function object consists of a function stub plus the relevant a description of its
@@ -112,8 +112,8 @@ class Bytecode {
 private:
     // instruction array
     u32 cap;
-    u32 size;
-    u8 *data;
+    Addr size;
+    u8* data;
     // source code locations list
     BytecodeLoc *locs;
     // pointer to the end of the list
@@ -131,22 +131,22 @@ public:
     Bytecode();
     ~Bytecode();
 
-    u32 getSize();
+    Addr getSize();
 
     // set the location for writing bytes
     void setLoc(SourceLoc l);
     // get the source code location corresponding to the bytes at addr
-    SourceLoc* locationOf(u32 addr);
+    SourceLoc* locationOf(Addr addr);
 
     // write 1 or two bytes
     void writeByte(u8 b);
     void writeShort(u16 s);
-    void writeBytes(const u8* bytes, u32 len);
+    void writeBytes(const u8* bytes, Addr len);
 
     // these don't do bounds checking
-    u8 readByte(u32 addr);
-    u16 readShort(u32 addr);
-    void patchShort(u32 addr, u16 s);
+    u8 readByte(Addr addr);
+    u16 readShort(Addr addr);
+    void patchShort(Addr addr, u16 s);
 
     // add a constant to the table and return its 16-bit ID
     u16 addConstant(Value v);
@@ -154,13 +154,13 @@ public:
     u16 numConstants();
 
     // add a function and set it to start
-    u16 addFunction(u8 arity);
+    u16 addFunction(Local arity);
     FuncStub* getFunction(u16 id);
 
     Value symbol(const string& name);
     u32 symbolID(const string& name);
 
-    inline u8& operator[](u32 addr) {
+    inline u8& operator[](Addr addr) {
         return data[addr];
     }
 
@@ -168,39 +168,42 @@ public:
 
 
 // VM stack size limit (per call frame)
-constexpr u32 STACK_SIZE = 255;
+constexpr StackAddr STACK_SIZE = 255;
 
 struct OpenUpvalue {
     UpvalueSlot* slot;
-    u32 pos;
+    Local pos;
 };
 
 struct CallFrame {
     // call frame above this one
     CallFrame *prev;
     // return address
-    u32 retAddr;
+    Addr retAddr;
     // base pointer (i.e. offset from the true bottom of the stack)
-    u32 bp;
+    StackAddr bp;
     // The function we're in. nullptr on the top level.
     Function* caller;
+    // The number of arguments we need to pop after exiting the current call
+    Local numArgs;
 
     // current stack pointer
-    u32 sp;
+    StackAddr sp;
     // currently open upvalues
     forward_list<OpenUpvalue> openUpvals;
 
-    CallFrame(CallFrame* prev, u32 retAddr, u32 bp, Function* caller)
-        : prev(prev), retAddr(retAddr), bp(bp), caller(caller), sp(0), openUpvals() { }
+    CallFrame(CallFrame* prev, Addr retAddr, StackAddr bp, Function* caller, Local numArgs=0)
+        : prev(prev), retAddr(retAddr), bp(bp), caller(caller), numArgs(numArgs),
+          sp(numArgs), openUpvals() { }
 
     // allocate a new call frame as an extension of this one. Assumes the last numArgs values on the
     // stack are arguments for the newly called function.
-    CallFrame* extendFrame(u32 retAddr, u32 numArgs, Function* caller);
+    CallFrame* extendFrame(Addr retAddr, Local numArgs, Function* caller);
 
     // open a new upvalue. ptr should point to the stack at pos.
-    UpvalueSlot* openUpvalue(u32 pos, Value* ptr);
+    UpvalueSlot* openUpvalue(Local pos, Value* ptr);
     // decrement the stack pointer and close affected upvalues
-    void close(u32 n);
+    void close(StackAddr n);
     // close all open upvalues regardless of stack position
     void closeAll();
 };
@@ -215,7 +218,7 @@ private:
     vector<Value> foreignFuncs;
 
     // instruction pointer and stack
-    u32 ip;
+    StackAddr ip;
     CallFrame *frame;
     Value stack[STACK_SIZE];
 
@@ -224,14 +227,15 @@ private:
 
     // stack operations
     Value pop();
+    Value popTimes(StackAddr n);
     void push(Value v);
 
     // peek relative to the top of the stack
-    Value peek(u32 offset=0);
+    Value peek(StackAddr offset=0);
     // get a local Value from the current call frame
-    Value local(u8 i);
+    Value local(Local l);
     // set a local value
-    void setLocal(u8 i, Value v);
+    void setLocal(Local l, Value v);
 
 public:
     // initialize the VM with a blank image
@@ -242,18 +246,18 @@ public:
     void step();
     void execute();
     // get the instruction pointer
-    u32 getIp();
+    Addr getIp();
 
     // get the last popped value (null if there isn't any)
     Value lastPop();
 
     // add a foreign function and bind it to a global variable
-    void addForeign(string name, Value (*func)(u16, Value*, VM*), u8 minArgs, bool varArgs=false);
+    void addForeign(string name, Value (*func)(Local, Value*, VM*), Local minArgs, bool varArgs=false);
 
     void addGlobal(string name, Value v);
     Value getGlobal(string name);
 
-    UpvalueSlot* getUpvalue(u8 id);
+    UpvalueSlot* getUpvalue(Local id);
 
     // get a pointer to the Bytecode object so the compiler can write its output there
     Bytecode* getBytecode();

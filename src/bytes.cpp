@@ -1,6 +1,8 @@
 #include "bytes.hpp"
 #include "values.hpp"
 
+#include <iomanip>
+
 namespace fn_bytes {
 
 // disassemble a single instruction, writing output to out
@@ -76,11 +78,17 @@ void disassemble(Bytecode& code, ostream& out) {
     // TODO: annotate with line number
     while (ip < code.getSize()) {
         u8 instr = code[ip];
+        // write line
+        out << setw(6) << ip << "  ";
         disassembleInstr(code, ip, out);
-        // write constant value
+
+        // additional information
         if (instr == OP_CONST) {
-            out << "    ; constant: "
+            // write constant value
+            out << " ; "
                 << showValue(code.getConstant(code.readShort(ip+1)));
+        } else if (instr == OP_CLOSURE) {
+            out << " ; addr = " << code.getFunction(code.readShort(ip+1))->addr;
         }
 
         out << "\n";

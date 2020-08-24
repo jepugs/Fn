@@ -40,12 +40,19 @@ private:
     // the expression on top of the stack.
     void compileExpr(Locals* locals, Token* t0=nullptr);
 
-    void compileCall(Locals* locals, Token* t0);
+
+    // special forms
+    void compileAnd(Locals* locals);
+    void compileCond(Locals* locals);
     void compileDef(Locals* locals);
     void compileDo(Locals* locals);
+    void compileIf(Locals* locals);
     void compileFn(Locals* locals);
     void compileLet(Locals* locals);
+    void compileSet(Locals* locals);
+    void compileOr(Locals* locals);
 
+    void compileCall(Locals* locals, Token* t0);
     void compileVar(Locals* locals, const string& name);
 
 public:

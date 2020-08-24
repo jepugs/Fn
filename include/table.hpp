@@ -78,6 +78,10 @@ public:
         delete array;
     }
 
+    u32 getSize() {
+        return size;
+    }
+
     // insert/overwrite a new entry
     void insert(string k, T v) {
         if (size >= threshold) {

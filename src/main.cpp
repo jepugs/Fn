@@ -128,6 +128,7 @@ int main(int argc, char** argv) {
     vm.execute();
     // FIXME: for now we print out the last value, but we probably really shouldn't
     cout << showValue(vm.lastPop()) << endl;
+    cout << "ip = " << vm.getIp() << endl;
     //cout << showValue(vm.getGlobal("y")) << endl;
     return 0;
 }

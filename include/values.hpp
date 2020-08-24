@@ -45,9 +45,9 @@ struct Cons {
 
 // Foreign functions
 struct alignas(8) ForeignFunc {
-    u8 minArgs;
+    Local minArgs;
     bool varArgs;
-    Value (*func)(u16, Value*, VM*);
+    Value (*func)(Local, Value*, VM*);
 };
 
 inline Value makeNumValue(f64 f) {
