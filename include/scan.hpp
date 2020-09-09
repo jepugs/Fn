@@ -9,8 +9,10 @@
 
 namespace fn_scan {
 
-using namespace std;
 using namespace fn;
+
+// utility function used to remove backslashes from symbols (this happens after escape code parsing)
+string stripEscapeChars(const string& s);
 
 enum TokenKind {
     // eof
@@ -36,7 +38,9 @@ enum TokenKind {
     TKNumber,
     TKString,
     // note: symbols may include dot characters
-    TKSymbol
+    TKSymbol,
+    // obj.key dot form
+    TKDot
 };
 
 union TokenDatum {
@@ -93,7 +97,7 @@ struct Token {
             delete datum.str;
     }
 
-    string to_string() {
+    string to_string() const {
         switch (tk) {
         case TKEOF:
             return "EOF";
@@ -131,6 +135,7 @@ struct Token {
             // FIXME: this should probably do proper escaping
             return "\"" + *(this->datum.str) + "\"";
         case TKSymbol:
+        case TKDot:
             return *(this->datum.str);
         }
         // this is unreachable code to silence a compiler warning
@@ -141,11 +146,11 @@ struct Token {
 
 class Scanner {
 public:
-    Scanner(istream* in, const string& filename="", int line=1, int col=1)
+    Scanner(std::istream* in, const string& filename="", int line=1, int col=0)
         : input(in), filename(new string(filename)), line(line), col(col) { }
     Scanner(const string& filename)
-        : line(1), col(1) {
-        input = new ifstream(filename, ios_base::in);        
+        : line(1), col(0) {
+        input = new std::ifstream(filename, std::ios_base::in);
         this->closeStream = true;
     }
     ~Scanner();
@@ -154,12 +159,12 @@ public:
 
 
 private:
-    istream *input;
+    std::istream *input;
     // if true, the stream is closed when the scanner ends
     bool closeStream = false;
 
     // these track location in input (used for generating error messages)
-    shared_ptr<string> filename;
+    std::shared_ptr<string> filename;
     int line;
     int col;
 
@@ -184,8 +189,8 @@ private:
     Token makeToken(TokenKind tk, double num);
 };
 
-
 }
+
 
 #endif
 

@@ -38,7 +38,8 @@ constexpr u8 OP_CLOSE = 0x08;
 
 // global; get a global variable based on a string on top of the stack
 constexpr u8 OP_GLOBAL = 0x10;
-// set-global; set a global based on a string on top of the stack followed by its value
+// set-global; set a global variable. Stack arguments ->[value] symbol ...
+// Note: leaves the symbol on the stack
 constexpr u8 OP_SET_GLOBAL = 0x11;
 
 // const SHORT; load a constant via its 16-bit ID
@@ -49,6 +50,21 @@ constexpr u8 OP_NULL  = 0x13;
 constexpr u8 OP_FALSE = 0x14;
 // true; push a true value on top of the stack
 constexpr u8 OP_TRUE  = 0x15;
+
+
+// obj-get; get the value of a property. Stack arguments ->[key] obj ...
+constexpr u8 OP_OBJ_GET = 0x16;
+// obj-set; add or update the value of a property. Stack arguments ->[new-value] key obj ...
+constexpr u8 OP_OBJ_SET = 0x17;
+
+// TODO: 
+// TODO: IMPLEMENT THESE CHANGES IN VM
+// TODO: 
+// module; change the current module. Stack arguments ->[module-object] ...
+constexpr u8 OP_MODULE = 0x18;
+// import; given a module ID list, put the corresponding module object on top of the stack. If no
+// such module exists, a new one will be created. Stack arguments ->[module-id-list] ...
+constexpr u8 OP_IMPORT = 0x19;
 
 
 // control flow & function calls
@@ -82,6 +98,9 @@ inline u8 instrWidth(u8 instr) {
     case OP_FALSE:
     case OP_TRUE:
     case OP_RETURN:
+    case OP_OBJ_GET:
+    case OP_OBJ_SET:
+    case OP_MODULE:
         return 1;
     case OP_LOCAL:
     case OP_SET_LOCAL:
@@ -104,10 +123,10 @@ inline u8 instrWidth(u8 instr) {
 
 
 // disassembly a single instruction, writing output to out
-void disassembleInstr(Bytecode& code, u32 ip, ostream& out);
+void disassembleInstr(Bytecode& code, u32 ip, std::ostream& out);
 
 
-void disassemble(Bytecode& code, ostream& out);
+void disassemble(Bytecode& code, std::ostream& out);
 
 
 }

@@ -4,15 +4,20 @@
 
 #include <iostream>
 #include <cstdlib>
+#include <numeric>
 
 
 namespace fn {
 
 using namespace fn_bytes;
 
-SymbolTable::SymbolTable() : byName(), byId() {}
+SymbolTable::SymbolTable() : byName(), byId() { }
 
 const Symbol* SymbolTable::intern(string str) {
+    auto v = byName.get(str);
+    if (v.has_value()) {
+        return *v;
+    }
     u32 id = byId.size();
     Symbol s = { .id=id, .name=str };
     byId.push_back(s);
@@ -21,7 +26,7 @@ const Symbol* SymbolTable::intern(string str) {
 }
 
 bool SymbolTable::isInternal(string str) {
-    return byName.get(str) != nullptr;
+    return byName.get(str).has_value();
 }
 
 u8 FuncStub::getUpvalue(Local slot, bool direct) {
@@ -38,20 +43,22 @@ u8 FuncStub::getUpvalue(Local slot, bool direct) {
     return numUpvals++;
 }
 
-Bytecode::Bytecode() : locs(nullptr), lastLoc(nullptr) {
+Bytecode::Bytecode() : locs(nullptr), lastLoc(nullptr), symbols() {
     // allocate 256 bytes to start
     cap = 256;
     // use malloc so we can use realloc
     data = (u8*)malloc(256);
 
     size = 0;
+
+    setLoc(SourceLoc(new string(""), 0, 0));
 }
 Bytecode::~Bytecode() {
     free(data);
 
     // TODO: free strings in the constant table :(
 
-    // TODO: free function stubs
+    // TODO: free function stubs :(((
 
     auto tmp = locs;
     while (tmp != nullptr) {
@@ -168,6 +175,9 @@ FuncStub* Bytecode::getFunction(u16 id) {
     return functions[id];
 }
 
+SymbolTable* Bytecode::getSymbols() {
+    return &this->symbols;
+}
 
 u32 Bytecode::symbolID(const string& name) {
     auto s = symbols.intern(name);
@@ -227,7 +237,12 @@ void CallFrame::closeAll() {
 
 
 VM::VM()
-    : ip(0), frame(new CallFrame(nullptr, 0, 0, nullptr)), lp(V_NULL) { }
+    : code(), ns(new Obj), ip(0), frame(new CallFrame(nullptr, 0, 0, nullptr)), lp(V_NULL) {
+    // TODO: use allocator
+    auto modId = new Cons{ .head=code.symbol("core"), .tail=V_EMPTY };
+    modId = new Cons{ .head=code.symbol("fn"), .tail=value(modId) };
+    module = initModule(value(modId));
+}
 
 VM::~VM() {
     // delete all call frames
@@ -239,6 +254,90 @@ VM::~VM() {
     }
 }
 
+Obj* VM::initModule(Value modId) {
+    if (vTag(modId) != TAG_CONS) {
+        runtimeError("Module initialization failed: module id not a list of symbols.");
+    }
+
+    // create the module in the ns hierarchy
+    auto x = modId;
+    Value key;
+    Obj* res = ns;
+    optional<Value*> v;
+    while (x != V_EMPTY) {
+        key = vHead(x);
+        if (vTag(key) != TAG_SYM) {
+            runtimeError("Module initialization failed: module id not a list of symbols.");
+        }
+        v = res->contents.get(key);
+        if (!v.has_value()) {
+            // TODO: use allocator
+            auto tmp = new Obj();
+            res->contents.insert(key, value(tmp));
+            res = tmp;
+        } else if (vShortTag(**v) == TAG_OBJ) {
+            res = vObj(**v);
+        } else {
+            runtimeError("Module initialization would clobber existing variable.");
+        }
+        x = vTail(x);
+        // TODO: check tail is a list (and also do it in findModule)
+    }
+
+    // check if this is already a module
+    if (res->contents.get(code.symbol("_modinfo"))) {
+        runtimeError("Module initialization would clobber existing module.");
+    }
+
+    auto cts = &res->contents;
+    cts->insert(code.symbol("ns"), value(ns));
+
+    // make a global _modinfo object
+    // TODO: use allocator
+    Obj* modinfo = new Obj();
+    cts->insert(code.symbol("_modinfo"), value(modinfo));
+    // name is the last symbol in the module id
+    modinfo->contents.insert(code.symbol("name"), key);
+    modinfo->contents.insert(code.symbol("id"), modId);
+    // the file from which this was loaded. The compiler generates code to set this when importing a file.
+    modinfo->contents.insert(code.symbol("source"), value(string("<internal>")));
+
+    return res;
+}
+
+// TODO: make optional<Obj>
+Obj* VM::findModule(Value modId) {
+    if (vTag(modId) != TAG_CONS) {
+        runtimeError("Module search failed: module id not a list of symbols.");
+    }
+
+    // create the module in the ns hierarchy
+    auto x = modId;
+    Value key;
+    Obj* res = ns;
+    optional<Value*> v;
+    while (x != V_EMPTY) {
+        // TODO: check that everything is a package or a module.
+        key = vHead(x);
+        if (vTag(key) != TAG_SYM) {
+            runtimeError("Module search failed: module id not a list of symbols.");
+        }
+        v = res->contents.get(key);
+        if (!v.has_value()) {
+            return nullptr;
+        } else if (vShortTag(**v) == TAG_OBJ) {
+            res = vObj(**v);
+        }
+        x = vTail(x);
+    }
+
+    // ensure this is already a module
+    if (res->contents.get(code.symbol("_modinfo")) == nullptr) {
+        runtimeError("Module search failed: module id names a variable.");
+    }
+    return res;
+}
+
 u32 VM::getIp() {
     return ip;
 }
@@ -247,22 +346,21 @@ Value VM::lastPop() {
     return lp;
 }
 
-void VM::addGlobal(string name, Value v) {
-    globals.insert(name, v);
+void VM::addGlobal(Value name, Value v) {
+    module->contents.insert(name, v);
 }
 
 Value VM::getGlobal(string name) {
-    auto res = globals.get(name);
-    if (res == nullptr) {
-        // TODO: error
-        return V_NULL;
+    auto res = module->contents.get(code.symbol(name));
+    if (!res.has_value()) {
+        runtimeError("Attempt to access unbound global variable " + name);
     }
-    return *res;
+    return **res;
 }
 
 UpvalueSlot* VM::getUpvalue(u8 id) {
     if (frame->caller == nullptr || frame->caller->stub->numUpvals <= id) {
-        throw FNError("interpreter", "Attempt to access nonexisten upvalue",
+        throw FNError("interpreter", "Attempt to access nonexistent upvalue",
                       *code.locationOf(ip));
         // TODO: error: nonexistent upvalue
     }
@@ -272,13 +370,17 @@ UpvalueSlot* VM::getUpvalue(u8 id) {
 
 void VM::addForeign(string name, Value (*func)(Local, Value*, VM*), Local minArgs, bool varArgs) {
     auto f = new ForeignFunc{ .minArgs=minArgs, .varArgs=varArgs, .func=func };
-    auto v = makeForeignValue(f);
-    addGlobal(name, v);
+    auto v = value(f);
+    addGlobal(code.symbol(name), v);
     foreignFuncs.push_back(v);
 }
 
 Bytecode* VM::getBytecode() {
     return &code;
+}
+
+void VM::runtimeError(const string& msg) {
+    throw FNError("runtime", "(ip = " + std::to_string(ip) + ") " + msg, *code.locationOf(ip));
 }
 
 void VM::push(Value v) {
@@ -291,7 +393,7 @@ void VM::push(Value v) {
 Value VM::pop() {
     if (frame->sp == 0) {
         throw FNError("runtime",
-                      "Pop on empty call frame at address " + to_string((i32)ip),
+                      "Pop on empty call frame at address " + std::to_string((i32)ip),
                       *code.locationOf(ip));
     }
     return stack[frame->bp + --frame->sp];
@@ -300,7 +402,7 @@ Value VM::pop() {
 Value VM::popTimes(StackAddr n) {
     if (frame->sp < n) {
         throw FNError("runtime",
-                      "Pop on empty call frame at address " + to_string((i32)ip),
+                      "Pop on empty call frame at address " + std::to_string((i32)ip),
                       *code.locationOf(ip));
     }
     frame->sp -= n;
@@ -310,7 +412,7 @@ Value VM::popTimes(StackAddr n) {
 Value VM::peek(StackAddr i) {
     if (frame->sp <= i) {
         throw FNError("runtime",
-                      "Peek out of stack bounds at address " + to_string((i32)ip),
+                      "Peek out of stack bounds at address " + std::to_string((i32)ip),
                       *code.locationOf(ip));
     }
     return stack[frame->bp + frame->sp - i - 1];
@@ -332,17 +434,71 @@ void VM::setLocal(Local i, Value v) {
     stack[pos] = v;
 }
 
+Addr VM::call(Local numArgs) {
+    // the function to call should be at the bottom
+    auto v1 = peek(numArgs);
+    Value res;
+    auto tag = vTag(v1);
+    if (tag == TAG_FUNC) {
+        auto func = vFunc(v1);
+        auto stub = func->stub;
+        if (numArgs < stub->required) {
+            // TODO: exception: too few args
+            throw FNError("interpreter",
+                          "Too few arguments in function call at ip=" + std::to_string(ip),
+                          *code.locationOf(ip));
+            res = V_NULL;
+        } else if (!stub->varargs && numArgs > stub->positional) {
+            throw FNError("interpreter",
+                          "Too many arguments in function call at ip=" + std::to_string(ip),
+                          *code.locationOf(ip));
+            // TODO: exception: too many args
+            res = V_NULL;
+        } else {
+            // make a new call frame
+            frame = frame->extendFrame(ip+2, numArgs, func);
+            return stub->addr;
+        }
+    } else if (tag == TAG_FOREIGN) {
+        auto f = vForeign(v1);
+        if (numArgs < f->minArgs) {
+            // TODO: error
+            res = V_NULL;
+        } else if (!f->varArgs && numArgs > f->minArgs) {
+            // TODO: error
+            res = V_NULL;
+        } else {
+            // correct arity
+            res = f->func((u16)numArgs, &stack[frame->bp + frame->sp - numArgs], this);
+        }
+        // pop args+1 times (to get the function)
+        popTimes(numArgs+1);
+        push(res);
+        return ip + 2;
+    } else {
+        // TODO: exception: not a function
+        throw FNError("interpreter",
+                      "Attempt to call nonfunction at address " + std::to_string((i32)ip),
+                      *code.locationOf(ip));
+        return ip + 2;
+    }
+}
+
+
 #define pushBool(b) push(b ? V_TRUE : V_FALSE);
 void VM::step() {
 
     u8 instr = code.readByte(ip);
 
     // variable for use inside the switch
-    Value v1, v2;
+    Value v1, v2, v3;
+    optional<Value*> vp;
 
     bool skip = false;
     bool jump = false;
     Addr addr = 0;
+
+    Obj* mod;
 
     Local numArgs;
 
@@ -410,7 +566,7 @@ void VM::step() {
                 func->upvals[i] = getUpvalue(u.slot);
             }
         }
-        push(makeFuncValue(func));
+        push(value(func));
         ip += 2;
         break;
 
@@ -423,16 +579,16 @@ void VM::step() {
 
     case OP_GLOBAL:
         v1 = pop();
-        if (!isString(v1)) {
+        if (vTag(v1) != TAG_STR) {
             throw FNError("runtime", "OP_GET_GLOBAL operand is not a string.",
                           *code.locationOf(ip));
         }
-        push(getGlobal(*valueString(v1)));
+        push(getGlobal(*vStr(v1)));
         break;
     case OP_SET_GLOBAL:
-        v1 = pop(); // name
-        v2 = pop(); // value
-        addGlobal(*valueString(v1), v2);
+        v1 = pop(); // value
+        v2 = peek(); // name
+        addGlobal(v2, v1);
         break;
 
     case OP_CONST:
@@ -455,6 +611,50 @@ void VM::step() {
         push(V_TRUE);
         break;
 
+    case OP_OBJ_GET:
+        // key
+        v1 = pop();
+        // object
+        v2 = pop();
+        if (vTag(v2) != TAG_OBJ) {
+            runtimeError("obj-get operand not a general object");
+        }
+        vp = vObj(v2)->contents.get(v1);
+        push(vp.has_value() ? **vp : V_NULL);
+        break;
+
+    case OP_OBJ_SET:
+        // new-value
+        v3 = pop();
+        // key
+        v1 = pop();
+        // object
+        v2 = pop();
+        if (vTag(v2) != TAG_OBJ) {
+            runtimeError("obj-set operand not a general object");
+        }
+        vObj(v2)->contents.insert(v1,v3);
+        push(v3);
+        break;
+
+    case OP_MODULE:
+        v1 = pop();
+        // TODO: check for _modinfo property
+        if (vTag(v1) != TAG_OBJ) {
+            runtimeError("module operand not a general object");
+        }
+        module = vObj(v1);
+        break;
+
+    case OP_IMPORT:
+        v1 = pop();
+        mod = findModule(v1);
+        if (mod == nullptr) {
+            mod = initModule(v1);
+        }
+        push(value(mod));
+        break;
+
     case OP_JUMP:
         jump = true;
         addr = ip + 3 + static_cast<i8>(code.readByte(ip+1));
@@ -462,7 +662,7 @@ void VM::step() {
 
     case OP_CJUMP:
         // jump on false
-        if (!isTruthy(pop())) {
+        if (!vTruthy(pop())) {
             jump = true;
             addr = ip + 3 + static_cast<i8>(code.readByte(ip+1));
         } else {
@@ -472,59 +672,15 @@ void VM::step() {
 
     case OP_CALL:
         numArgs = code.readByte(ip+1);
-        // the function to call should be at the bottom
-        v1 = peek(numArgs);
-        if (isFunc(v1)) {
-            func = valueFunc(v1);
-            stub = func->stub;
-            if (numArgs < stub->required) {
-                // TODO: exception: too few args
-                throw FNError("interpreter",
-                              "Too few arguments in function call at ip=" + to_string(ip),
-                              *code.locationOf(ip));
-                v2 = V_NULL;
-            } else if (!stub->varargs && numArgs > stub->positional) {
-                throw FNError("interpreter",
-                              "Too many arguments in function call at ip=" + to_string(ip),
-                              *code.locationOf(ip));
-                // TODO: exception: too many args
-                v2 = V_NULL;
-            } else {
-                // make a new call frame
-                frame = frame->extendFrame(ip+2, numArgs, func);
-                // jump to the function body
-                jump = true;
-                addr = stub->addr;
-            }
-        } else if (isForeign(v1)) {
-            auto f = valueForeign(v1);
-            if (numArgs < f->minArgs) {
-                // TODO: error
-                v2 = V_NULL;
-            } else if (!f->varArgs && numArgs > f->minArgs) {
-                // TODO: error
-                v2 = V_NULL;
-            } else {
-                // correct arity
-                v2 = f->func((u16)numArgs, &stack[frame->bp + frame->sp - numArgs], this);
-            }
-            // pop args+1 times (to get the function)
-            popTimes(numArgs+1);
-            push(v2);
-            ++ip;
-        } else {
-            // TODO: exception: not a function
-            throw FNError("interpreter",
-                          "Attempt to call nonfunction at address " + to_string((i32)ip),
-                          *code.locationOf(ip));
-        }
+        jump = true;
+        addr = call(numArgs);
         break;
 
     case OP_RETURN:
         // check that we are in a call frame
         if (frame->caller == nullptr) {
             throw FNError("interpreter",
-                          "Return instruction at top level. ip = " + to_string((i32)ip),
+                          "Return instruction at top level. ip = " + std::to_string((i32)ip),
                           *code.locationOf(ip));
         }
         // get return value
@@ -547,7 +703,7 @@ void VM::step() {
 
     default:
         throw FNError("interpreter",
-                      "Unrecognized opcode at address " + to_string((i32)ip),
+                      "Unrecognized opcode at address " + std::to_string((i32)ip),
                       *code.locationOf(ip));
         break;
     }
@@ -570,3 +726,4 @@ void VM::execute() {
 
 
 }
+

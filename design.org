@@ -123,20 +123,53 @@ As can be seen in the above example, each module corresponds to a source file. T
 automatically named "my-mod" based upon its filename. Module names can also be explicitly specified
 by setting the global property ~mod-info.name~ from within the module. The ~import~ operator is used to
 import other modules. In the above, it creates a global variable called ~my-mod~ to hold the imported
-module. Imported modules are just normal objects, with metadata contained in the ~mod-info~ property.
+module. Imported modules are just normal objects, with metadata contained in the ~_modinfo~ property:
 
+#+BEGIN_SRC fn
+;; repl
+> (import my-mod)
+'my-mod
+> my-mod._modinfo
+{'name 'my-mod
+ 'package []
+ 'source "/canonical/path/of/my-mod.fn"}
+#+END_SRC
 
-** import syntax and search paths
+** Search Paths and Packages
 
-The import operator accepts a symbol or a dot form as an argument. Dots in the symbol indicate
-descent into a directory, so for instance ~(import a.b)~ will look for files names "a/b.fn" to import.
+Currently, there is no system library directory for fn. The only search path is the working
+directory of the interpreter. This directory is constant throughout any one invocation of the fn
+command. It is set to the first applicable item on this list:
 
-(As a result, there is currently no way to import files which reside in directories that have dots
-in their names or which have multiple dots in their names. This will likely be resolved via changes
-to how dot is parsed).
+- the directory explicitly supplied with the -D option
+- the directory of the first file passed as a command line argument
+- the working directory from which the fn command was invoked
 
-Currently the only search path is the directory in which the file currently resides. In the future
-there will be a second one in ${HOME}/.local/lib/fn/ and a third in ${PREFIX}/lib/fn/.
+Modules contained in subdirectories may be accessed via *packages*. Packages are a dual concept in fn.
+On one hand, packages are prefixes consisting of a series of symbols which, combined with the
+module's name, constitute a global unique ID for the module. The package and module name together
+are known as the *module ID*. On the other hand, packages are directories containing fn module source
+files.
+
+For example, to load the file "util/tools.fn" (relative to the working directory), one could write
+
+#+BEGIN_SRC fn
+(import util.tools) ; creates a global variable called "tools"
+#+END_SRC
+
+Here the package is ~['util]~ (a list of one symbol) and the module name is ~'tools~. The package is
+always represented within fn as a list. This reflects the fact that packages may be nested. For
+instance, you could import the file "com/mycompany/middleware/http.fn" via
+
+#+BEGIN_SRC fn
+(import com.mycompany.middleware.http) ; creates a global variable called "http"
+#+END_SRC
+
+Here the package is ~['com 'mycompany 'middleware']~.
+
+Thus through use of unique directory names, you can ensure that your module IDs are unique. In
+future versions of fn, this will allow many modules to be installed simultaneously in some central
+locations for convenient access.
 
 ** Setting import names
 
@@ -149,28 +182,18 @@ variable:
 m.my-fun
 #+END_SRC
 
-** Packages and short names
-
-To avoid name collisions, it is recommended that all library code use the naming convention
-"package.module-name" or "package.subpackages...module-name". For example,
-
-#+BEGIN_SRC fn
-;; source file: demo-library/utility.fn
-(set mod-info.name "demo-library.utility")
-#+END_SRC
-
-In this case, the string after the last dot (module-name) will be used as the *short name* for the
-module, while the string before that is termed the *package*. When import is used, it uses the short
-name unless an explicit alternative is specified using ~as~.
-
 ** ~ns~ and Unique Global Identifiers
 
-~ns~ is a special global object. Whenever a module is imported, it is added to ~ns~ via its full name.
-~ns~ has a tree structure, so for instance a module named ~pack.sub.mod~ can be accessed anywhere in the
-program as ~ns.pack.sub.mod~. This is as opposed to modules which have been locally imported, which
-will have a global variable corresponding to them.
+~ns~ is a special global object. Whenever a module is imported, it is added to ~ns~ via its module ID.
+~ns~ has a tree structure, which is to say that packages are converted to objects containing modules
+and subpackages. For example, the first time you import the file "com/mycompany/middleware/http.fn"
+via ~(import com.mycompany.middleware.http)~, this will cause a hierarchy of packages and modules to
+be created in ~ns~ so that the module is bound to ~ns.com.mycompany.middleware.http~.
 
-This behavior is exploited by fn's macro system.
+A consequence of this is that once imported, a module can be uniquely accessed from any other file
+via ~ns~. By extension, every global variable likewise has a unique identifier through ~ns~. This is
+crucial for macros, as it allows code output by macros to reference global variables without
+ambiguity or risk of accidental capture.
 
 
 * Macros

@@ -7,17 +7,18 @@
 #include "values.hpp"
 #include "vm.hpp"
 
+#include <filesystem>
 #include <iostream>
-#include <vector>
 #include <unistd.h>
 
-using namespace std;
 using namespace fn;
 using namespace fn_bytes;
 
+namespace fs = std::filesystem;
+using std::endl;
 
 void showUsage() {
-    cout <<
+    std::cout <<
         "Usage: fn [options] [-e string | file] ...\n"
         "Description:\n"
         "  fn programming language interpreter and repl.\n"
@@ -28,30 +29,32 @@ void showUsage() {
         "                  Multiple -e (options and filenames) can be mixed, in which\n"
         "                  case they will be evaluated in the order supplied.\n"
         "  -h            show this help message and exit\n"
-        //"  -i            (UNIMPLEMENTED) instead of exiting, start a repl after completing other actions\n"
+        "  -i            start a repl (after running provided strings and files)\n"
         //"  -o file       (UNIMPLEMENTED) write the output of -d or -c to the file\n"
         ;
 }
 
+// TODO: Add current path parameter
 void compileString(VM* vm, const string& str) {
     auto code = vm->getBytecode();
-    istringstream in(str);
+    std::istringstream in(str);
     fn_scan::Scanner sc(&in, "<cmdline>");
-    Compiler c(code, &sc);
+    Compiler c(fs::current_path(), code, &sc);
     c.compile();
 }
 
+// TODO: Add current path parameter
 // returns -1 on failure
 int compileFile(VM* vm, const string& filename) {
     auto code = vm->getBytecode();
-    ifstream in(filename);
+    std::ifstream in(filename);
     if (!in.is_open()) {
         // TODO: might be better to make this an FNError so we can have a single toplevel handler
         perror(("error opening file " + filename).c_str());
         return -1;
     } else {
         fn_scan::Scanner sc(&in, filename);
-        Compiler c(code, &sc);
+        Compiler c(fs::current_path(), code, &sc);
         c.compile();
     }
 
@@ -65,12 +68,13 @@ int main(int argc, char** argv) {
     vector<string> evals;
     // if true, then output disassembled bytecode rather instead of running
     bool dis = false;
+    bool inter = false;
     
     // this depends on GNU getopt
     while ((opt = getopt(argc, argv, "-cde:hio:")) != -1) {
         switch (opt) {
         case 'c':
-            cerr << "error: -c not yet implemented\n";
+            std::cerr << "error: -c not yet implemented\n";
             return -1;
         case 'd':
             dis = true;
@@ -82,27 +86,30 @@ int main(int argc, char** argv) {
             showUsage();
             return 0;
         case 'i':
-            cerr << "error: -i not yet implemented\n";
-            return -1;
+            inter = true;
+            break;
         case 'o':
-            cerr << "error: -o not yet implemented\n";
+            std::cerr << "error: -o not yet implemented\n";
             return -1;
         case 1:
             // non-arguments are filenames
             evals.push_back("f" + string(optarg));
             break;
         default:
-            cerr << "error: unrecognized option\n";
+            std::cerr << "error: unrecognized option\n";
             return -1;
         }
     }
 
+    if (inter && dis) {
+        std::cerr << "error: cannot combine -d and -i\n";
+    }
+
     // check for no arguments
     if (optind == 1) {
-        cerr << "error: repl not yet implemented :(\n\n";
-        showUsage();
-        return -1;
+        inter = true;
     }
+
 
     VM vm;
     init(&vm);
@@ -120,16 +127,31 @@ int main(int argc, char** argv) {
     if (dis) {
         // disassembly mode
         auto code = vm.getBytecode();
-        disassemble(*code, cout);
+        disassemble(*code, std::cout);
         return 0;
     }
 
     // time to actually run the vm
     vm.execute();
+
     // FIXME: for now we print out the last value, but we probably really shouldn't
-    cout << showValue(vm.lastPop()) << endl;
-    cout << "ip = " << vm.getIp() << endl;
-    //cout << showValue(vm.getGlobal("y")) << endl;
+    std::cout << vToString(vm.lastPop(),vm.getBytecode()->getSymbols()) << endl;
+
+    // do the repl if necessary
+    if (inter) {
+        string line;
+        while (!std::cin.eof()) {
+            std::cout << "fn> ";
+            std::getline(std::cin, line);
+            compileString(&vm, line);
+            vm.execute();
+            // print value
+            std::cout << vToString(vm.lastPop(),vm.getBytecode()->getSymbols()) << endl;
+        }
+    }
+
+    std::cout << "ip = " << vm.getIp() << endl;
+    //std::cout << showValue(vm.getGlobal("y")) << endl;
     return 0;
 }
 

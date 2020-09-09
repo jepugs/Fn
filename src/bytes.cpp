@@ -6,7 +6,7 @@
 namespace fn_bytes {
 
 // disassemble a single instruction, writing output to out
-void disassembleInstr(Bytecode& code, u32 ip, ostream& out) {
+void disassembleInstr(Bytecode& code, u32 ip, std::ostream& out) {
     u8 instr = code[ip];
     switch (instr) {
     case OP_NOP:
@@ -54,6 +54,18 @@ void disassembleInstr(Bytecode& code, u32 ip, ostream& out) {
     case OP_TRUE:
         out << "true";
         break;
+    case OP_OBJ_GET:
+        out << "obj-get";
+        break;
+    case OP_OBJ_SET:
+        out << "obj-set";
+        break;
+    case OP_MODULE:
+        out << "module";
+        break;
+    case OP_IMPORT:
+        out << "import";
+        break;
     case OP_JUMP:
         out << "jump " << (i32)(static_cast<i16>(code.readShort(ip+1)));
         break;
@@ -73,20 +85,20 @@ void disassembleInstr(Bytecode& code, u32 ip, ostream& out) {
     }
 }
 
-void disassemble(Bytecode& code, ostream& out) {
+void disassemble(Bytecode& code, std::ostream& out) {
     u32 ip = 0;
     // TODO: annotate with line number
     while (ip < code.getSize()) {
         u8 instr = code[ip];
         // write line
-        out << setw(6) << ip << "  ";
+        out << std::setw(6) << ip << "  ";
         disassembleInstr(code, ip, out);
 
         // additional information
         if (instr == OP_CONST) {
             // write constant value
             out << " ; "
-                << showValue(code.getConstant(code.readShort(ip+1)));
+                << vToString(code.getConstant(code.readShort(ip+1)), code.getSymbols());
         } else if (instr == OP_CLOSURE) {
             out << " ; addr = " << code.getFunction(code.readShort(ip+1))->addr;
         }

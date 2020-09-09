@@ -8,10 +8,10 @@ implement, while still being usable for writing actual programs.
 ** TODO Implementation checklist
 
 *Special forms*
-- [ ] and
-- [ ] or
+- [X] and
+- [X] or
 - [ ] cond
-- [ ] if
+- [X] if
 - [ ] def
 - [ ] set
 - [ ] let
@@ -246,19 +246,18 @@ subsection in which they are described:
 
 - Variables :: Special forms: ~def~, ~let~, ~set.~
 - Functions and Function Calls :: Special forms: ~fn~. Functions: ~apply~.
-- Data Structures :: Special forms: ~dot~. Functions: ~get~, ~head~, ~tail~, ~list~, ~object~, ~string~.
+- Data Structures :: Special forms: ~dot~. Functions: ~get~, ~head~, ~tail~, ~list~, ~object~, ~string~, ~cons~,
+  ~extend~
 - Logic and Control Flow :: Special forms: ~and~, ~cond~, ~do~, ~if~, ~or~. Functions: ~not~.
 - Importing Other Sources :: Special forms: ~import~.
 - Quoting :: Special forms: ~quote~.
 # - Metaprogramming Via Macros ::
-
 
 ** Evaluation of Atoms
 
 String and number atoms are evaluated by immediately returning the corresponding string or number
 value. Symbols are treated as variables. See the subsection Variables for information on how these
 are resolved.
-
 
 ** Variables
 
@@ -319,47 +318,6 @@ Currently, all variables in fn are mutable and may be updated using ~set~:
 #+END_SRC
 The same local/global resolution rules are used here. ~set~ may not be used to define a new variable.
 
-# Formally, we may consider expression evaluation in fn to be a function
-
-# \[
-#   \mathrm{eval} : S \times E \to S \times V
-# \]
-
-# where $E$ is the set of all syntactically valid fn expressions, $V$ is the set of values which may
-# be represented in fn, and elements of $S$ represent the instantaneous state of the interpreter. This
-# formulation of $\mathrm{eval}$ deliberately ignores the state of the world external to the
-# interpreter. This is because interactions with the outside world are confined to foreign function
-# calls, and hence their inclusion in this model would amount to little more than notational
-# inconvenience.
-
-# The most significant piece of interpreter state is the variable state, which encapsulates all local
-# and global variables which are in scope at a given moment. A variable state is a stack of key-value
-# stores associating symbols (i.e. variable names) to values. The levels of the stack correspond to
-# the levels of nested lexical scopes in code, with the very bottom being the global environment. We
-# introduce some notation for manipulating the variable state.
-
-# A *frame* is the set of variables contained in a single level of the variable state's stack. The *depth*
-# of a variable state is the total number of frames, and the depth of each frame is its distance from
-# the top of the stack, e.g. the bottom of a depth-3 variable state is at depth 2, while the top is at
-# depth 0.
-
-# \[
-# \mathrm{var : S \to V}
-# \]
-
-
-# We define eval this way so that we may look closer at the structure of elements of /S/ and rigorously
-# describe how different types of expressions affect the interpreter state.
-
-# An interpreter state essentially consists of two parts: a local environment which maintains
-# references to all local variables and function arguments, and a global environment which includes
-# all global variables as well as a list of imported modules. 
-
-# In the event of a runtime
-
-# *Note*: In future versions of fn, the local environment will also include a stack of exception
-# handlers.
-
 ** Functions and Function Calls
 
 A function call has the form
@@ -375,9 +333,12 @@ function calls with more than 255 arguments).
 The expression for the function itself is evaluated first, followed by the arguments in the order in
 whichthey appear (from left to right).
 
-The body of the function is executed in the lexical environment in which it was defined, with the
-parameters of the function bound as local variables to the arguments passed. See Variable Resolution
-for more.
+When a function is called, the variable environment in which it was defined is extended with the
+function's parameters as local variables. (See Variables for resolution semantics). Thus every
+function can be thought of as containing a reference to the environment in which it was defined. fn
+has true closures, which is to say that even when multiple functions are defined in the same
+environment, only one copy of that environment is made, so if a local variables is updated within
+one such function, it will also have the new value when the other functions are called.
 
 ** Variable Resolution
 

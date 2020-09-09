@@ -26,21 +26,20 @@ constexpr u64 TAG_EXT  = 7;
 
 // 8-bit extended tags
 constexpr u64 TAG_NULL  = 0007;
-constexpr u64 TAG_EMPTY = 0017;
-constexpr u64 TAG_FALSE = 0027;
-constexpr u64 TAG_TRUE  = 0037;
-constexpr u64 TAG_SYM   = 0047;
+constexpr u64 TAG_BOOL  = 0017;
+constexpr u64 TAG_EMPTY = 0027;
+constexpr u64 TAG_SYM   = 0037;
 
 // constant values
 constexpr Value V_NULL  = { .raw = TAG_NULL };
-constexpr Value V_FALSE = { .raw = TAG_FALSE };
-constexpr Value V_TRUE  = { .raw = TAG_TRUE };
+constexpr Value V_FALSE = { .raw = TAG_BOOL };
+constexpr Value V_TRUE  = { .raw = (1 << 8) | TAG_BOOL };
 constexpr Value V_EMPTY = { .raw = TAG_EMPTY };
 
 // Cons cells.
-struct Cons {
+struct alignas(8) Cons {
     Value head;
-    Cons *tail;
+    Value tail;
 };
 
 // Foreign functions
@@ -50,136 +49,134 @@ struct alignas(8) ForeignFunc {
     Value (*func)(Local, Value*, VM*);
 };
 
-inline Value makeNumValue(f64 f) {
-    Value res = { .num=f };
+// Check if two values are the same in memory
+inline bool vSame(const Value& v1, const Value& v2) {
+    return v1.raw == v2.raw;
+}
+// Hash an arbitrary value. vEqual(v1,v2) implies the hashes are also equal.
+template<> u32 hash<Value>(const Value& v);
+// Convert a value to a string. symbols can be nullptr here only if we're really careful to know
+// that there are no symbols contained in v.
+string vToString(Value v, SymbolTable* symbols);
+
+// These value(type) functions go from C++ values to fn values
+
+inline Value value(f64 num) {
+    Value res = { .num=num };
     // make the first three bits 0
     res.raw &= (~7);
     res.raw |= TAG_NUM;
     return res;
 }
-
-inline f64 valueNum(Value v) {
-    return v.num;
+inline Value value(bool b) {
+    return { .raw=(b << 8) | TAG_BOOL};
 }
-
-inline Value makeStringValue(const string* ptr) {
+inline Value value(int num) {
+    Value res = { .num=(f64)num };
+    // make the first three bits 0
+    res.raw &= (~7);
+    res.raw |= TAG_NUM;
+    return res;
+}
+// FIXME: we probably shouldn't have this function allocate memory for the string; rather, once the
+// GC is up and running, we should pass in a pointer which we already know is 8-byte aligned
+inline Value value(const string& str) {
     // FIXME: this assumes malloc has 8-bit alignment.
-    string* aligned =  new (malloc(sizeof(string))) string(*ptr);
+    string* aligned =  new (malloc(sizeof(string))) string(str);
     u64 raw = reinterpret_cast<u64>(aligned);
     Value res = { .raw=raw|TAG_STR };
     return res;
 }
-
-inline string* valueString(Value v) {
-    return (string*) getPointer(v);
+// NOTE: not sure whether it's a good idea to have this one
+// inline Value value(bool b) {
+//     return { .raw =  static_cast<u64>(b) | TAG_BOOL };
+// }
+inline Value value(Symbol s) {
+    return { .raw = (s.id << 8) | TAG_SYM };
 }
-
-// ptr must be 8-bit aligned
-inline Value makeForeignValue(ForeignFunc* ptr) {
-    u64 raw = reinterpret_cast<u64>(ptr);
-    return { .raw = raw | TAG_FOREIGN };
-}
-
-inline ForeignFunc* valueForeign(Value v) {
-    return (ForeignFunc*) getPointer(v);
-}
-
-// ptr must be 8-bit aligned
-inline Value makeFuncValue(Function* ptr) {
+inline Value value(Function* ptr) {
     u64 raw = reinterpret_cast<u64>(ptr);
     return { .raw = raw | TAG_FUNC };
 }
-
-inline Function* valueFunc(Value v) {
-    return (Function*) getPointer(v);
+inline Value value(ForeignFunc* ptr) {
+    u64 raw = reinterpret_cast<u64>(ptr);
+    return { .raw = raw | TAG_FOREIGN };
+}
+inline Value value(Cons* ptr) {
+    u64 raw = reinterpret_cast<u64>(ptr);
+    return { .raw = raw | TAG_CONS };
+}
+inline Value value(Obj* ptr) {
+    u64 raw = reinterpret_cast<u64>(ptr);
+    return { .raw = raw | TAG_OBJ };
 }
 
+// naming convention: function names prefixed with a lowercase v are used to test/access properties
+// of values.
 
-
-/// functions for checking tags
-
-inline int ckTag(Value v, u64 tag) {
-    // check first three bits first
-    if ((v.raw & 7) != (tag & 7)) {
-        return false;
+// get the first 3 bits of the value
+inline u64 vShortTag(Value v) {
+    return v.raw & 7;
+}
+// get the entire tag of a value. The return value of this expression is intended to be used in a
+// switch statement for handling different types of Value.
+inline u64 vTag(Value v) {
+    auto t = vShortTag(v);
+    if (t != TAG_EXT) {
+        return t;
     }
-    if ((v.raw & 7) == TAG_EXT) {
-        return (v.raw & 0xff) == (tag & 0xff);
-    }
-    return true;
+    return v.raw & 255;
 }
 
-inline int isNum(Value v) {
-    return ckTag(v, TAG_NUM);
+// these functions make the opposite conversion, going from fn values to C++ values. None of them
+// are safe (i.e. you should check the tags before doing any of these operations)
+
+// all values corresponding to pointers are structured the same way
+inline void* vPointer(Value v) {
+    // mask out the three LSB with 0's
+    return (void*)(v.raw & (~7));
 }
 
-inline int isCons(Value v) {
-    return ckTag(v, TAG_CONS);
+inline f64 vNum(Value v) {
+    return v.num;
 }
-inline int isEmpty(Value v) {
-    return ckTag(v,TAG_EMPTY);
+inline string* vStr(Value v) {
+    return (string*) vPointer(v);
 }
-// a list is either a cons or the empty list
-inline int isList(Value v) {
-    return ckTag(v, TAG_CONS) || ckTag(v,TAG_EMPTY);
+inline Function* vFunc(Value v) {
+    return (Function*) vPointer(v);
 }
-
-
-inline int isString(Value v) {
-    return ckTag(v, TAG_STR);
+inline ForeignFunc* vForeign(Value v) {
+    return (ForeignFunc*) vPointer(v);
 }
-inline int isObj(Value v) {
-    return ckTag(v, TAG_OBJ);
+inline Cons* vCons(Value v) {
+    return (Cons*) vPointer(v);
 }
-inline int isFunc(Value v) {
-    return ckTag(v, TAG_FUNC);
+inline Obj* vObj(Value v) {
+    return (Obj*) vPointer(v);
 }
-inline int isForeign(Value v) {
-    return ckTag(v, TAG_FOREIGN);
-}
-
-inline int isNull(Value v) {
-    return ckTag(v, TAG_NULL);
-}
-inline int isFalse(Value v) {
-    return ckTag(v, TAG_FALSE);
-}
-inline int isTrue(Value v) {
-    return ckTag(v, TAG_TRUE);
-}
-inline int isBool(Value v) {
-    return ckTag(v, TAG_TRUE) || ckTag(v, TAG_FALSE);
-}
-
-inline int isSym(Value v) {
-    return ckTag(v, TAG_SYM);
+inline bool vBool(Value v) {
+    return static_cast<bool>(v.raw >> 8);
 }
 
 
-/// boolean truthiness
-inline bool isTruthy(Value v) {
-    return (!isFalse(v)) && (!isNull(v));
+// since getting the entire Symbol object requires access to the symbol table, we provide vSymId to
+// access the Symbol's id directly (rather than vSym, which would require a SymbolTable argument).
+inline u32 vSymId(Value v) {
+    return (u32) (v.raw >> 8);
 }
 
-/// get values as strings
-inline string showValue(Value v) {
-    if (isString(v)) {
-        return "\"" + *valueString(v) + "\"";
-    } else if (isNum(v)) {
-        return to_string(valueNum(v));
-    } else if (isNull(v)) {
-        return "null";
-    } else if (isFalse(v)) {
-        return "false";
-    } else if (isTrue(v)) {
-        return "true";
-    } else if (isForeign(v)) {
-        return "<foreign-function>";
-    } else if (isFunc(v)) {
-        return "<function>";
-    } else {
-        return "<unprintable-value>";
-    }
+// check the 'truthiness' of a value. This returns true for all values but V_NULL and V_FALSE.
+inline bool vTruthy(Value v) {
+    return v != V_FALSE && v != V_NULL;
+}
+
+// list accessors
+inline Value vHead(Value v) {
+    return vCons(v)->head;
+}
+inline Value vTail(Value v) {
+    return vCons(v)->tail;
 }
 
 }

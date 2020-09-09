@@ -1,13 +1,8 @@
 #include "scan.hpp"
 
-#include <fstream>
 #include <sstream>
-#include <vector>
 
 namespace fn_scan {
-
-using namespace std;
-
 
 // is whitespace
 static inline bool isWS(char c) {
@@ -47,7 +42,7 @@ static inline bool isSymChar(char c) {
 
 Scanner::~Scanner() {
     if (closeStream) {
-        ifstream* ptr = dynamic_cast<ifstream*>(input);
+        std::ifstream* ptr = dynamic_cast<std::ifstream*>(input);
         ptr->close();
     }
 }
@@ -56,7 +51,7 @@ Scanner::~Scanner() {
 void Scanner::advance(char ch) {
     if (ch == '\n') {
         ++line;
-        col = 1;
+        col = 0;
     } else {
         ++col;
     }
@@ -153,9 +148,32 @@ Token Scanner::nextToken() {
     return makeToken(TKEOF);
 }
 
+string stripEscapeChars(const string& s) {
+    vector<char> buf;
+    bool escaped = false;
+    for (char ch : s) {
+        if (escaped) {
+            buf.push_back(ch);
+            escaped = false;
+            continue;
+        }
+        if (ch == '\\') {
+            escaped = true;
+            continue;
+        }
+        buf.push_back(ch);
+    }
+    return string(buf.data(),buf.size());
+}
 
 Token Scanner::scanSymOrNum(char first) {
+    if (first == '.') {
+        throw FNError("scanner", "Symbol names may not begin with '.'.",
+                      SourceLoc(filename, line, col));
+    }
     bool escaped = first == '\\';
+    // whether this is really a symbol or a dot form
+    bool dot = false;
     vector<char> buf;
     buf.push_back(first);
 
@@ -173,15 +191,20 @@ Token Scanner::scanSymOrNum(char first) {
 
         char c = peekChar();
         if (!isSymChar(c)) {
+            if (c == '.') {
+                throw FNError("scanner", "Symbol names may not end with '.'.",
+                              SourceLoc(filename, line, col));
+            }
             break;
         }
-
         getChar();
+        if (c == '.') {
+            dot = true;
+        }
         if (c == '\\') {
             escaped = true;
-        } else {
-            buf.push_back(c);
         }
+        buf.push_back(c);
     }
 
 
@@ -192,7 +215,11 @@ Token Scanner::scanSymOrNum(char first) {
         d = stod(s);
         return makeToken(TKNumber, d);
     } catch(...) { // TODO: handle out_of_range
-        return makeToken(TKSymbol, s);
+        if (dot) {
+            return makeToken(TKDot, s);
+        }
+
+        return makeToken(TKSymbol, stripEscapeChars(s));
     }
 }
 
@@ -219,23 +246,23 @@ char Scanner::getStringEscapeChar() {
         return '\'';
     case '\"':
         return '\"';
-    case '\?':
+    case '?':
         return '\?';
     case '\\':
         return '\\';
-    case '\a':
+    case 'a':
         return '\a';
-    case '\b':
+    case 'b':
         return '\b';
-    case '\f':
+    case 'f':
         return '\f';
-    case '\n':
+    case 'n':
         return '\n';
-    case '\r':
+    case 'r':
         return '\r';
-    case '\t':
+    case 't':
         return '\t';
-    case '\v':
+    case 'v':
         return '\v';
     }
 
