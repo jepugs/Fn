@@ -69,6 +69,7 @@ struct Upvalue {
     bool direct;
 };
 
+
 // a location holding an upvalue at runtime
 struct UpvalueSlot {
     // if true, this upvalue points to an element of the stack

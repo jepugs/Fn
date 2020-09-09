@@ -47,8 +47,8 @@ private:
     // constant holding the current module's ID
     u16 curModId;
 
-    // compile a single expression, consuming tokens. t0 is an optional first token. Running will leave
-    // the expression on top of the stack.
+    // compile a single expression, consuming tokens. t0 is an optional first token. Running will
+    // leave the expression on top of the stack.
     void compileExpr(Locals* locals, Token* t0=nullptr);
 
     // special forms

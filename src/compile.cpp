@@ -516,13 +516,18 @@ void Compiler::compileLet(Locals* locals) {
         if (tok.tk != TKSymbol) {
             throw FNError("compiler", "let variable name not a symbol", tok.loc);
         }
-        if(!isLegalName(*tok.datum.str)) {
+        if (!isLegalName(*tok.datum.str)) {
             throw FNError("compiler", "Illegal variable name " + *tok.datum.str, tok.loc);
         }
 
         // TODO: check for repeated names
         locals->vars.insert(*tok.datum.str, sp);
+        dest->writeByte(OP_NULL);
+        ++sp;
         compileExpr(locals);
+        dest->writeByte(OP_SET_LOCAL);
+        dest->writeByte(sp-2);
+        --sp;
         ++numLocals;
     }
 
@@ -715,8 +720,8 @@ void Compiler::compileBrackets(Locals* locals) {
 void Compiler::compileCall(Locals* locals, Token* t0) {
     // first, compile the operator
     Token tok = *t0;
-    compileExpr(locals, t0);
     auto oldSp = sp;
+    compileExpr(locals, t0);
 
     // now, compile the arguments
     u32 numArgs = 0;

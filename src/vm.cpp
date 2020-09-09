@@ -429,7 +429,7 @@ Value VM::local(Local i) {
 void VM::setLocal(Local i, Value v) {
     StackAddr pos = i + frame->bp;
     if (frame->sp <= i) {
-        throw FNError("runtime", "Out of stack bounds on set-local.", *code.locationOf(ip));
+        runtimeError("Out of stack bounds on set-local.");
     }
     stack[pos] = v;
 }
