@@ -561,6 +561,13 @@ void Compiler::compileLet(Locals* locals) {
         throw FNError("compiler", "Too few arguments to let.", tok.loc);
     }
 
+    // toplevel
+    if (locals == nullptr) {
+        throw FNError("compiler",
+                      "Let cannot occur at the top level.",
+                      tok.loc);
+    }
+
     // TODO: check for duplicate variable names
     do {
         // TODO: islegalname
