@@ -1,183 +1,143 @@
 # fn, a programming language
 
-**fn** will be a general purpose programming language with LISP-style syntax. The goal is to create
-a minimalist core language with coherent syntax and predictable, extensible semantics. Features
-include:
+**fn** is a programming language which I am currently making for myself. Its features will include
 
-- an intuitive and tightly-integrated object system
-- functions, types, protocols, and modules are first class objects, allowing a great deal of
-  flexibility at runtime
-- powerful metaprogramming facilities inspired by Common Lisp
-- many parentheses
+- A simple class-less object system inspired by Lua and Javascript, complete with dot syntax
+- A module system I kinda stole from Python
+- Filesystem and I/O facilities conveniently built into the standard library
+- A powerful metaprogramming system via macros
+- Many parentheses
 
-A long, rambling, and incomplete description of fn is in the file [design.org](./design.org).
-
+At the time of writing, Version 0 of fn is very nearly complete. Version 0 is a minimal prototype of
+fn which supports most of the core language features. You can build it and run code, although
+`import` is not fully implemented, so you are limited to a single module.
 
 ## Building fn
 
-In order to build fn, you must have [autoconf](http://www.gnu.org/software/autoconf/),
-[make](http://www.gnu.org/software/make/), and [SBCL](http://sbcl.org/) installed on your computer.
-
-fn may be built by running the following commands in the source directory:
-
-```
-autoconf
-./configure
-make
-```
-
-fn has only been tested on 64-bit Linux operating systems.
+Build fn by running [make](http://www.gnu.org/software/make/) from the source directory. This will
+result in the creation of a self-contained executable called fn. You will also need a version of
+[g++](https://gcc.gnu.org/) that supports `-std=C++20`.
 
 
-## Development status and plans
+### Compatibility
 
-Version 0 of fn is currently in development. At the time of writing, fn should be considered
-incomplete software and should probably not be used for any purpose.
+Only 64-bit architectures are supported. fn has been tested (if you can call it that) exclusively in
+x86_64 Linux environments. It appears to work on macOS too, using the gcc10 from macports.
+Currently, the only platform-specific assumption in the code is that `malloc` returns 8-byte aligned
+pointers, which is
+[guaranteed by glibc](https//www.gnu.org/software/libc/manual/html_node/Aligned-Memory-Blocks.html).
 
-fn is a personal project, but I take it very seriously. I aim to make the language and tools
-professional-grade programming language.
-
-I am in the process of writing thorough unit tests for the interpreter. I'm also constantly working
-on cleaning up the code base, as thhe rapid pace of development has led to some inconsistencies.
-
-At the moment, the core language specification is nearly stable, but it is not fully documented.
-Version 0 will be released once the core language is stable and fully realized via an unoptimized
-tree-walking interpreter. The version 0 release series will focus on improving the performance and
-error reporting of the interpreter while expanding the standard library. Breaking changes to the
-core language will continue to happen during this release series.
-
-A version 1.0 release is far away down the line, and will involve writing a high-performance VM in
-C++.
+The way I'm developing fn should make the codebase fairly portable, especially to UNIX-like
+environments. All the compiler and VM logic is meant to be platform-agnostic, and future filesystem
+and I/O facilities should work in any POSIX environment. That said, I'm mainly a Linux user, and as
+such I'm not going to go out of my way to test on other platforms.
 
 
-# Language Basics
+## Development plan
 
-This section briefly introduces fn and highlights a few of its features. It is by no means a
-complete guide to the language.
+fn is a personal project, but I take its quality seriously. That said, it's definitely not ready for
+any use other than sating your sense of curiosity.
 
-## Syntax
+To aid in the implementation of fn, I've specced out a version of the language which deliberately
+omits certain features. This so-called **Version 0** (corresponding to semantic version 0.1.0) is
+nearly finished and implemented. I am currently in the process of finalizing the document describing
+the spec, after which point I will be able to finish the interpreter.
 
-fn is a member of the Lisp family, and as such has very simple syntax.
+I'll start putting out a prereleases of version 0.1.0 as soon as the interpreter is done. I'll still
+have some work to do on the standard library at this point before a proper 0.1.0 release.
 
-There are two basic forms of expressions in fn: **atoms** and **lists**. An **atom** is a single
-value, such as a variable name, a number, a string, or a boolean. A **list** is a sequence of
-expressions within a pair of parentheses. The first element in the sequence is called the
-**operator** and the others are the **arguments**.
+### Version 0 Features
 
-```
-;; comments begin with one or more semicolons and end with newlines
-;; The only other role of whitespace is to separate expressions
+**Version 0** refers in this document to the first release of fn, i.e. 0.1.0. This release will not
+support the full fn language as currently planned.
 
-;; examples of atoms
-23
--6
-27.0
-"Hello, World!"
-true
-false
-null
+The following features are planned for the version 0 release:
 
-;; every list has this form:
-(operator argument1 argument2 and-so-on)
+- Full-featured frontend including an interactive repl and a bytecode disassembler
+- Full, unit-tested implementation of a bytecode virtual machine including a mark-and-sweep garbage
+  collector
+- Bytecode compiler supporting the entire **Version 0** language spec.
+- Comprehensive error generation in the scanner, parser, and compiler.
+- Comprehensive runtime error generation, including source code locations.
+- Support for loading code from external files by using modules
+- First class functions with support for variadic arguments
+- Tail call optimization
+- Objects and lists as the basic data structures
 
-;; example lists using built-in arithmetic operators
-(+ 3 4)   ; = 7
-(/ 8 2)   ; = 4
-;; arithmetic operators accept arbitrarily many arguments
-(+ 1 2 3) ; = 6
-;; lists can be nested
-(* (- 2 4) 17) ; = -34
-
-;; lists may also have side effects
-(print "Hello, world!") ; prints to STDOUT
-```
-
-All other syntax is really just sugar; in fact, the interpreter converts all expressions to list
-and atom syntax before evaluation. For example, fn provides dot syntax which expands as follows:
-
-```
-object.field
-;; is expanded to
-(get object (quote field))
-```
+Included in Version 0 will also be a standard library. This still isn't really planned out, but it
+will include modules for the following facilities:
+- filesystem access and manipulation (specifically with a eye toward POSIX I/O)
+- stream-based I/O supporting files and pipes
+- a subprocess library for running system shell commands/external executables
+- POSIX fork and join calls
+- `fn.core` will be the core language module, and will include basic functions for working with fn's
+  built-in data types as well as the higher order functions, map, filter, and reduce. The
+  definitions in `fn.core` are automatically copied into every user module.
 
 
-## Control flow
+### Version 0 Non-Features
 
-fn's control flow primitives are the special operators `do`, `if`, `cond`, and `case`.
+The following features are planned for fn, but are deliberately omitted in the first release of
+major version 0. This is done to simplify the implementation in order to create a version of fn
+which can be used and tested in order to aid in deciding which features are worth keeping/adding.
 
-```
-;; do evaluates a series of expressions in order
-(do
-  (print "What's up, world?")
-  ;; String creates a string from its arguments
-  (print (String "Two plus two is " (+ 2 2)))
-  (print "Goodbye, globe!"))
+- Streamlined syntax for using `def` to define functions
+- Optional and keyword arguments for functions
+- Documentation strings for functions and variables. Additional documentation fields containing
+  location of the definition, etc.
+- Compile-time code generation via macros
+- A condition signaling system
+- The ability to precompile fn modules to bytecode, and import them as if they were source files
+- A smarter repl which supports expressions split over multiple lines
+- An emacs extension which connects fn source buffers to a repl
+- As much static type verification as we can feasibly do (should be a lot)
+- Standard library functions for threading and parallelization
+- Standard library functions for linear algebra and scientific/numerical computing
+- A standardized hierarchy for holding library modules and a package manager to install modules
+  there
+- A user-accessible FFI and C++ library files which can be used to aid in working with fn values or
+  embedding the interpreter (C++20 required for the headers)
+- A minimal set of C bindings for working with fn values. This will expose a subset of the
+  functionality of the C++20 library specifically for programming environments where C++20 is not
+  available.
 
-;; if takes three arguments: a condition, a then clause, and an else clause:
-(if (= 2 4)                    ; condition
-    (print "math is broken")   ; then clause (not evaluated because condition is false)
-    (print "everything's ok")) ; else clause
-    
-;; for the purposes of if, every value except false and null is considered true
-(if true 1 2)  ; = 1
-(if false 1 2) ; = 2
-(if null 1 2)  ; = 2
-(if 17 1 2)    ; = 1
+**Note:** This is far from an exhaustive list, especially since the later versions of fn
 
-;; cond is similar to if, but it takes arbitrarily many condition-and-result 
-;; pairs for arguments. cond returns the result of the first condition that 
-;; succeeds. (Lisp programmers should note that this version of cond has fewer
-;; parentheses than usual).
-(defvar x 17)
-(cond
-  (even? x) "x is even" ; even? checks if a number is even
-  true      "x is odd")
-;; = "x is odd"
-(set x 18)
-(cond
-  (= x 18)  "x is eighteen" ; (= x y) checks if x and y are equal
-  (even? x) "x is even"
-  true      "x is odd")
-;; = "x is eighteen" because only the first result is used
-```
 
-`case` performs pattern matching and is tightly coupled to fn's object system, so we decline to
-discuss it here.
+## why tho?
 
-## Variables and functions
+The tagline for fn is that it's LISP with the convenience of Python. Really, that's a lie, since
+Python was made by grown-ups, but I think it does a good job conveying the kind of thing I'm going
+for.
 
-Various special forms exist to create global variables.
+Just being LISP is really the main feature of fn. I like parentheses and prefix notations and
+metaprogramming. However, for various reasons, I've found that all reified LISPs feel somewhat
+unwieldy for the kinds of quick-and-dirty things I'd like to use them for. Life is too short to
+program in bash, so I usually end up using Python.
 
-```
-;; def is a special operator used to create variables. This is an abuse of 
-;; terminology, as these "variables" are actually constants by default
-(def x 17)
-x ; = 17
-;; set is used to assign values. In this case, it emits an error because x is 
-;; constant
-(set x 18)
+Of course, then I'm stuck programming in Python, which is FINE I GUESS, but I kept feeling like
+there was a lot of lost potential in LISP. What really convinced me of this, however, was Rich
+Hickey and Clojure. I don't know the man myself, but I've read a lot of his writing and watched some
+of his more famous talks. I think Clojure is **awesome**. It really shows what you can accomplish by
+adding the right features onto a Lisp base.
 
-;; defvar creates "true" variables
-(defvar y null)
-;; so this is legal
-(set y "foo")
-```
+*So why not just use Clojure?* I hear you asking. Well, for one thing I get impatient waiting for
+the JVM to start. More importantly, I don't really want a purely functional programming language,
+but a more general-use one which just happens to have good support for functional programming. While
+the syntax of fn may look like Clojure, its semantics, particularly its object model, are actually
+much more similar to those of Lua and Javascript.
 
-## Higher order functions
+It took me many years of iterative redesigns before I settled on the current set of features. It's
+still early in the implementation, but I like what I've come up with.
 
-This section is a work in progress.
 
-```
-;; map, filter, and reduce
-(def test-input [23 14 2 -2 6 15 -8 3 20 -12 0 -19])
+# Language Intro
 
-(map $(+ $ 6) test-input)
-;; => [29 20 8 4 12 21 -2 9 26 -6 6 -13]
+`fn` is a language I made specifically because I wanted to program in LISP in more places, so the
+target audience is people who already know that they like LISP (or at least the idea of LISP). With
+that in mind, this section is written assuming you know at least the basics of some real dialect of
+LISP, e.g. Common Lisp, Scheme, Racket, or Clojure.
 
-(filter even? test-input)
-;; => [14 2 -2 6 -8 20 -12 0]
+### This section is under construction :)
 
-(reduce $(+ (* $0 10) $1) [4 0 3 2])
-;; => 4032
-```
+Stay tuned.
