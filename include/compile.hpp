@@ -51,8 +51,12 @@ private:
     // leave the expression on top of the stack.
     void compileExpr(Locals* locals, Token* t0=nullptr);
 
+    // compile a sequence of expressions terminated by ')', creating a new lexical scope
+    void compileBlock(Locals* locals);
+
     // special forms
     void compileAnd(Locals* locals);
+    void compileApply(Locals* locals);
     void compileCond(Locals* locals);
     void compileDef(Locals* locals);
     void compileDo(Locals* locals);
@@ -64,7 +68,7 @@ private:
     void compileLet(Locals* locals);
     void compileOr(Locals* locals);
     void compileQuote(Locals* locals, bool prefix);
-    void compileSet(Locals* locals); // TODO
+    void compileSet(Locals* locals);
 
     // braces and brackets
     void compileBraces(Locals* locals);

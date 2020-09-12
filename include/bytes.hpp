@@ -78,6 +78,14 @@ constexpr u8 OP_CALL = 0x32;
 // return; return from the current function
 constexpr u8 OP_RETURN = 0x33;
 
+// apply BYTE; like call, but the last argument is actually a list to be expanded as individual
+// arugments
+constexpr u8 OP_APPLY = 0x34;
+
+// tcall BYTE; perform a tail call
+//constexpr u8 OP_TCALL = 0x35;
+
+
 // might want this for implementing apply
 // // apply;
 // constexpr u8 OP_APPLY = 0x34;
@@ -109,6 +117,7 @@ inline u8 instrWidth(u8 instr) {
     case OP_SET_UPVALUE:
     case OP_CLOSE:
     case OP_CALL:
+    case OP_APPLY:
         return 2;
     case OP_CONST:
     case OP_JUMP:

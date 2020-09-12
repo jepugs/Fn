@@ -207,6 +207,29 @@ vector<string> Compiler::tokenizeName(optional<Token> t0) {
 }
 
 
+void Compiler::compileBlock(Locals* locals) {
+    auto tok = sc->nextToken();
+    if(checkDelim(TKRParen, tok)) {
+        // empty body yields a null value
+        dest->writeByte(OP_NULL);
+        ++sp;
+        return;
+    }
+
+    // create a new environment
+    auto newEnv = new Locals(locals);
+
+    compileExpr(newEnv, &tok);
+    while (!checkDelim(TKRParen, tok = sc->nextToken())) {
+        dest->writeByte(OP_POP);
+        compileExpr(newEnv, &tok);
+    }
+    ++sp;
+
+    // don't need this any more :)
+    delete newEnv;
+}
+
 void Compiler::compileAnd(Locals* locals) {
     forward_list<Addr> patchLocs;
 
@@ -243,6 +266,33 @@ void Compiler::compileAnd(Locals* locals) {
     for (auto u : patchLocs) {
         dest->patchShort(u-2, endAddr - u);
     }
+}
+
+void Compiler::compileApply(Locals* locals) {
+    auto oldSp = sp;
+
+    auto tok = sc->nextToken();
+    if (checkDelim(TKRParen, tok)) {
+        throw FNError("compiler", "Too few arguments to apply.", tok.loc);
+    }
+    compileExpr(locals, &tok);
+
+    tok = sc->nextToken();
+    if (checkDelim(TKRParen, tok)) {
+        throw FNError("compiler", "Too few arguments to apply.", tok.loc);
+    }
+    u32 numArgs = 0;
+    do {
+        ++numArgs;
+        compileExpr(locals, &tok);
+    } while (!checkDelim(TKRParen,tok=sc->nextToken()));
+    if (numArgs > 255) {
+        throw FNError("compiler", "Too many arguments to apply.", tok.loc);
+    }
+    dest->writeByte(OP_APPLY);
+    dest->writeByte(numArgs);
+
+    sp = oldSp+1;
 }
 
 void Compiler::compileCond(Locals* locals) {
@@ -309,15 +359,7 @@ void Compiler::compileDef(Locals* locals) {
 }
 
 void Compiler::compileDo(Locals* locals) {
-    auto tok = sc->nextToken();
-    if (checkDelim(TKRParen, tok)) {
-        throw FNError("compiler", "Empty do body", tok.loc);
-    }
-    compileExpr(locals, &tok);
-    while (!checkDelim(TKRParen, tok=sc->nextToken())) {
-        dest->writeByte(OP_POP);
-        compileExpr(locals, &tok);
-    }
+    compileBlock(locals);
 }
 
 void Compiler::compileDotToken(Locals* locals, Token& tok) {
@@ -371,32 +413,48 @@ void Compiler::compileFn(Locals* locals) {
     auto oldSp = sp;
     sp = 0;
 
+    bool vararg = false;
     // TODO: add new function object
     // TODO: check args < 256
     while (!checkDelim(TKRParen, tok=sc->nextToken())) {
         if (tok.tk != TKSymbol) {
             throw FNError("compiler", "Argument names must be symbols.", tok.loc);
         }
-        if(!isLegalName(*tok.datum.str)) {
+        // & indicates a variadic argument
+        if (*tok.datum.str == "&") {
+            vararg = true;
+            break;
+        } else if (!isLegalName(*tok.datum.str)) {
             throw FNError("compiler", "Illegal variable name " + *tok.datum.str, tok.loc);
         }
+
         // TODO: check for repeated names
         enclosed->vars.insert(*tok.datum.str, sp);
         ++sp;
     }
-    auto funcId = dest->addFunction(sp);
+
+    if (vararg) {
+        // check that we have a symbol for the variable name
+        tok = sc->nextToken();
+        if (tok.tk != TKSymbol) {
+            throw FNError("compiler", "Argument names must be symbols.", tok.loc);
+        }
+        enclosed->vars.insert(*tok.datum.str, sp);
+        ++sp;
+
+        tok = sc->nextToken();
+        if (!checkDelim(TKRParen, tok)) {
+            throw FNError("compiler",
+                          "Trailing tokens after variadic parameter in fn argument list.",
+                          tok.loc);
+        }
+    }
+
+    auto funcId = dest->addFunction(sp, vararg);
     enclosed->curFunc = dest->getFunction(funcId);
 
     // compile the function body
-    tok = sc->nextToken();
-    if (checkDelim(TKRParen, tok)) {
-        throw FNError("compiler", "Empty fn body.", tok.loc);
-    }
-    compileExpr(enclosed, &tok);
-    while (!checkDelim(TKRParen, tok=sc->nextToken())) {
-        dest->writeByte(OP_POP);
-        compileExpr(enclosed, &tok);
-    }
+    compileBlock(enclosed);
     dest->writeByte(OP_RETURN);
 
     // FIXME: since jump takes a signed offset, need to ensure that offset is positive if converted
@@ -499,61 +557,34 @@ void Compiler::compileImport(Locals* locals) {
 
 void Compiler::compileLet(Locals* locals) {
     auto tok = sc->nextToken();
-    if (tok.tk != TKLParen) {
-        throw FNError("compiler", "Malformed let binding form.", tok.loc);
+    if (checkDelim(TKRParen, tok)) {
+        throw FNError("compiler", "Too few arguments to let.", tok.loc);
     }
 
-    Locals* prev = locals;
-    auto oldSp = sp;
-    u8 numLocals = 0;
-    // save a space for the result. null is a fine placeholder
-    dest->writeByte(OP_NULL);
-    ++sp;
-    // create new locals
-    locals = new Locals(prev);
-
-    while (!checkDelim(TKRParen, tok=sc->nextToken())) {
+    // TODO: check for duplicate variable names
+    do {
+        // TODO: islegalname
         if (tok.tk != TKSymbol) {
-            throw FNError("compiler", "let variable name not a symbol", tok.loc);
-        }
-        if (!isLegalName(*tok.datum.str)) {
-            throw FNError("compiler", "Illegal variable name " + *tok.datum.str, tok.loc);
+            throw FNError("compiler",
+                          "Illegal argument to let. Variable name must be a symbol.",
+                          tok.loc);
         }
 
-        // TODO: check for repeated names
-        locals->vars.insert(*tok.datum.str, sp);
+        auto loc = sp++; // location of the new variable on the stack
+        // initially bind the variable to null (early binding enables recursion)
         dest->writeByte(OP_NULL);
-        ++sp;
+        locals->vars.insert(*tok.datum.str,loc);
+
+        // compile value expression
         compileExpr(locals);
         dest->writeByte(OP_SET_LOCAL);
-        dest->writeByte(sp-2);
+        dest->writeByte(loc);
         --sp;
-        ++numLocals;
-    }
+    } while (!checkDelim(TKRParen, tok=sc->nextToken()));
 
-    // now compile the body
-    tok = sc->nextToken();
-    if (checkDelim(TKRParen, tok)) {
-        throw FNError("compiler", "empty let body", tok.loc);
-    }
-    compileExpr(locals, &tok);
-
-    while (!checkDelim(TKRParen, tok=sc->nextToken())) {
-        dest->writeByte(OP_POP);
-        compileExpr(locals, &tok);
-    }
-
-    // save the result. This will overwrite the earlier null value
-    dest->writeByte(OP_SET_LOCAL);
-    dest->writeByte(oldSp);
-    // pop the variables
-    dest->writeByte(OP_CLOSE);
-    dest->writeByte(numLocals);
-
-    // free up the new environment
-    delete locals;
-    // restore the stack pointer
-    sp = oldSp+1;
+    // return null
+    dest->writeByte(OP_NULL);
+    ++sp;
 }
 
 void Compiler::compileOr(Locals* locals) {
@@ -825,6 +856,8 @@ void Compiler::compileExpr(Locals* locals, Token* t0) {
             string* op = next.datum.str;
             if (*op == "and") {
                 compileAnd(locals);
+            } else if (*op == "apply") {
+                compileApply(locals);
             } else if (*op == "cond") {
                 compileCond(locals);
             } else if (*op == "def") {

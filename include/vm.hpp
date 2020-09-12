@@ -167,8 +167,8 @@ public:
     Value getConstant(u16 id);
     u16 numConstants();
 
-    // add a function and set it to start
-    u16 addFunction(Local arity);
+    // add a function and set it to start at the current ip
+    u16 addFunction(Local arity, bool vararg);
     FuncStub* getFunction(u16 id);
 
     SymbolTable* getSymbols();
@@ -265,6 +265,7 @@ private:
 
     // returns the next addr to go to
     Addr call(Local numArgs);
+    Addr apply(Local numArgs);
 
 public:
     // initialize the VM with a blank image
@@ -294,6 +295,7 @@ public:
 
     // raise an exception of type FNError containing the provided message
     void runtimeError(const string& msg);
+
 };
 
 

@@ -159,11 +159,12 @@ u16 Bytecode::numConstants() {
     return constants.size();
 }
 
-u16 Bytecode::addFunction(Local arity) {
+u16 Bytecode::addFunction(Local arity,bool vararg) {
+    arity -= vararg ? 1 : 0;
     functions.push_back(new FuncStub {
             .positional=arity, 
             .required=arity,
-            .varargs=false,
+            .varargs=vararg,
             .numUpvals=0,
             .upvals=vector<Upvalue>(),
             .addr=getSize()});
@@ -434,6 +435,29 @@ void VM::setLocal(Local i, Value v) {
     stack[pos] = v;
 }
 
+Addr VM::apply(Local numArgs) {
+    // argument to expand
+    auto v = pop();
+    auto tag = vTag(v);
+    if (tag != TAG_EMPTY && tag != TAG_CONS) {
+        runtimeError("Last argument to apply not a list.");
+    }
+
+    auto vlen = 0;
+    while (vTag(v) != TAG_EMPTY) {
+        push(vCons(v)->head);
+        v = vCons(v)->tail;
+        ++vlen;
+    }
+
+    // TODO: use a maxargs constant
+    if (vlen + numArgs - 1 > 255) {
+        runtimeError("Too many arguments for function call in apply.");
+    }
+    return call(vlen + numArgs - 1);
+}
+
+// TODO: switch to use runtimeError
 Addr VM::call(Local numArgs) {
     // the function to call should be at the bottom
     auto v1 = peek(numArgs);
@@ -443,30 +467,38 @@ Addr VM::call(Local numArgs) {
         auto func = vFunc(v1);
         auto stub = func->stub;
         if (numArgs < stub->required) {
-            // TODO: exception: too few args
             throw FNError("interpreter",
-                          "Too few arguments in function call at ip=" + std::to_string(ip),
+                          "Too few arguments for function call at ip=" + std::to_string(ip),
                           *code.locationOf(ip));
-            res = V_NULL;
-        } else if (!stub->varargs && numArgs > stub->positional) {
+        } else if (stub->varargs) {
+            // make a list out of the trailing arguments
+            auto vararg = V_EMPTY;
+            for (auto i = numArgs-stub->positional; i > 0; --i) {
+                // TODO: use allocator
+                vararg = value(new Cons { .head=pop(), .tail=vararg});
+            }
+            push(vararg);
+            frame = frame->extendFrame(ip+2, stub->positional+1, func);
+        } else if (numArgs > stub->positional) {
             throw FNError("interpreter",
-                          "Too many arguments in function call at ip=" + std::to_string(ip),
+                          "Too many arguments for function call at ip=" + std::to_string(ip),
                           *code.locationOf(ip));
-            // TODO: exception: too many args
-            res = V_NULL;
         } else {
-            // make a new call frame
+            // normal function call
             frame = frame->extendFrame(ip+2, numArgs, func);
-            return stub->addr;
         }
+
+        return stub->addr;
     } else if (tag == TAG_FOREIGN) {
         auto f = vForeign(v1);
         if (numArgs < f->minArgs) {
-            // TODO: error
-            res = V_NULL;
+            throw FNError("interpreter",
+                          "Too few arguments for foreign function call at ip=" + std::to_string(ip),
+                          *code.locationOf(ip));
         } else if (!f->varArgs && numArgs > f->minArgs) {
-            // TODO: error
-            res = V_NULL;
+            throw FNError("interpreter",
+                          "Too many arguments for foreign function call at ip=" + std::to_string(ip),
+                          *code.locationOf(ip));
         } else {
             // correct arity
             res = f->func((u16)numArgs, &stack[frame->bp + frame->sp - numArgs], this);
@@ -674,6 +706,12 @@ void VM::step() {
         numArgs = code.readByte(ip+1);
         jump = true;
         addr = call(numArgs);
+        break;
+
+    case OP_APPLY:
+        numArgs = code.readByte(ip+1);
+        jump = true;
+        addr = apply(numArgs);
         break;
 
     case OP_RETURN:

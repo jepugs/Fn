@@ -75,6 +75,9 @@ void disassembleInstr(Bytecode& code, u32 ip, std::ostream& out) {
     case OP_CALL:
         out << "call " << (i32)((code.readByte(ip+1)));;
         break;
+    case OP_APPLY:
+        out << "apply " << (i32)((code.readByte(ip+1)));;
+        break;
     case OP_RETURN:
         out << "return";
         break;
