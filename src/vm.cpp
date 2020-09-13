@@ -159,7 +159,7 @@ u16 Bytecode::numConstants() {
     return constants.size();
 }
 
-u16 Bytecode::addFunction(Local arity,bool vararg) {
+u16 Bytecode::addFunction(Local arity,bool vararg, Value modId) {
     arity -= vararg ? 1 : 0;
     functions.push_back(new FuncStub {
             .positional=arity, 
@@ -167,6 +167,7 @@ u16 Bytecode::addFunction(Local arity,bool vararg) {
             .varargs=vararg,
             .numUpvals=0,
             .upvals=vector<Upvalue>(),
+            .modId=modId,
             .addr=getSize()});
     return (u16) functions.size() - 1;
 }
@@ -238,11 +239,12 @@ void CallFrame::closeAll() {
 
 
 VM::VM()
-    : code(), ns(new Obj), ip(0), frame(new CallFrame(nullptr, 0, 0, nullptr)), lp(V_NULL) {
+    : code(), ns(new Obj), coreMod(nullptr), ip(0), frame(new CallFrame(nullptr, 0, 0, nullptr)), lp(V_NULL) {
     // TODO: use allocator
     auto modId = new Cons{ .head=code.symbol("core"), .tail=V_EMPTY };
     modId = new Cons{ .head=code.symbol("fn"), .tail=value(modId) };
     module = initModule(value(modId));
+    coreMod = module;
 }
 
 VM::~VM() {
@@ -265,6 +267,7 @@ Obj* VM::initModule(Value modId) {
     Value key;
     Obj* res = ns;
     optional<Value*> v;
+    // FIXME: it's still possible to overwrite a variable here
     while (x != V_EMPTY) {
         key = vHead(x);
         if (vTag(key) != TAG_SYM) {
@@ -290,6 +293,10 @@ Obj* VM::initModule(Value modId) {
         runtimeError("Module initialization would clobber existing module.");
     }
 
+    // TODO: this only happens once in the constructor.
+    if (coreMod != nullptr) {
+        res->contents = Table(coreMod->contents);
+    }
     auto cts = &res->contents;
     cts->insert(code.symbol("ns"), value(ns));
 
@@ -348,11 +355,33 @@ Value VM::lastPop() {
 }
 
 void VM::addGlobal(Value name, Value v) {
-    module->contents.insert(name, v);
+    if (frame != nullptr && frame->caller != nullptr) {
+        auto modId = frame->caller->stub->modId;
+        auto mod = findModule(modId);
+        if (mod == nullptr) {
+            runtimeError("Function has nonsensical module ID. (This is probably a bug).");
+        } else {
+            mod->contents.insert(name, v);
+        }
+    } else {
+        module->contents.insert(name, v);
+    }
 }
 
 Value VM::getGlobal(string name) {
-    auto res = module->contents.get(code.symbol(name));
+    optional<Value*> res;
+    if (frame != nullptr && frame->caller != nullptr) {
+        auto modId = frame->caller->stub->modId;
+        auto mod = findModule(modId);
+        if (mod == nullptr) {
+            runtimeError("Function has nonsensical module ID. (This is probably a bug).");
+        } else {
+            res = mod->contents.get(code.symbol(name));
+        }
+    } else {
+        res = module->contents.get(code.symbol(name));
+    }
+
     if (!res.has_value()) {
         runtimeError("Attempt to access unbound global variable " + name);
     }
@@ -466,6 +495,11 @@ Addr VM::call(Local numArgs) {
     if (tag == TAG_FUNC) {
         auto func = vFunc(v1);
         auto stub = func->stub;
+        auto mod = findModule(stub->modId);
+        if (mod == nullptr) {
+            runtimeError("Function has nonexistent module id.");
+        }
+        // TODO: switch to the function's module. Probably put in the callframe
         if (numArgs < stub->required) {
             throw FNError("interpreter",
                           "Too few arguments for function call at ip=" + std::to_string(ip),

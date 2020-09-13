@@ -70,7 +70,11 @@ public:
     Table(const Table<K,T>& src)
         : cap(src.cap), threshold(src.threshold), size(src.size), array(new Entry<K,T>*[cap]) {
         for (u32 i = 0; i < cap; ++i) {
-            array[i] = src.array[i];
+            if (src.array[i] != nullptr) {
+                array[i] = new Entry(src.array[i]->key, src.array[i]->val);
+            } else {
+                array[i] = nullptr;
+            }
         }
     }
     ~Table() {
@@ -79,6 +83,30 @@ public:
                 delete array[i];
         }
         delete array;
+    }
+
+    Table<K,T>& operator=(const Table<K,T>& src) {
+        // clean up the old data and just replace this using new
+        for (u32 i=0; i < cap; ++i) {
+            if (array[i] != nullptr)
+                delete array[i];
+        }
+        delete array;
+
+        cap = src.cap;
+        threshold = src.threshold;
+        size = src.size;
+        array = new Entry<K,T>*[cap];
+
+        for (u32 i = 0; i < cap; ++i) {
+            if (src.array[i] != nullptr) {
+                array[i] = new Entry(src.array[i]->key, src.array[i]->val);
+            } else {
+                array[i] = nullptr;
+            }
+        }
+
+        return *this;
     }
 
     u32 getSize() {

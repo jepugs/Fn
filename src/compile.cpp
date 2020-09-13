@@ -9,6 +9,16 @@ using namespace fn_bytes;
 
 Locals::Locals(Locals* parent, FuncStub* func) : vars(), parent(parent), curFunc(func) { }
 
+fs::path Compiler::modulePath(const vector<string>& id) {
+    // TODO: I think this works on Windows but I should really try it :)
+    auto res = dir;
+    for (auto s : id) {
+        res /= s;
+    }
+    res += ".fn";
+    return res;
+}
+
 // FIXME: this is probably a dumb algorithm
 template<> u32 hash<vector<string>>(const vector<string>& v) {
     constexpr u32 p = 13729;
@@ -209,10 +219,12 @@ vector<string> Compiler::tokenizeName(optional<Token> t0) {
 
 void Compiler::compileBlock(Locals* locals) {
     auto tok = sc->nextToken();
+    // location on stack to put result
+    auto oldSp = sp;
+    dest->writeByte(OP_NULL);
+    ++sp;
     if(checkDelim(TKRParen, tok)) {
         // empty body yields a null value
-        dest->writeByte(OP_NULL);
-        ++sp;
         return;
     }
 
@@ -222,9 +234,17 @@ void Compiler::compileBlock(Locals* locals) {
     compileExpr(newEnv, &tok);
     while (!checkDelim(TKRParen, tok = sc->nextToken())) {
         dest->writeByte(OP_POP);
+        --sp;
         compileExpr(newEnv, &tok);
     }
-    ++sp;
+
+    dest->writeByte(OP_SET_LOCAL);
+    dest->writeByte(oldSp);
+    --sp;
+    dest->writeByte(OP_CLOSE);
+    dest->writeByte(sp - oldSp - 1);
+
+    sp = oldSp + 1;
 
     // don't need this any more :)
     delete newEnv;
@@ -450,7 +470,7 @@ void Compiler::compileFn(Locals* locals) {
         }
     }
 
-    auto funcId = dest->addFunction(sp, vararg);
+    auto funcId = dest->addFunction(sp, vararg, dest->getConstant(curModId));
     enclosed->curFunc = dest->getFunction(funcId);
 
     // compile the function body
@@ -537,6 +557,8 @@ void Compiler::compileImport(Locals* locals) {
         curModId = modId;
 
         // TODO: find and compile file contents
+        auto src = modulePath(strs);
+        compileFile(src);
 
         // switch back
         dest->writeByte(OP_CONST);
@@ -913,6 +935,27 @@ void Compiler::compile() {
         dest->writeByte(OP_POP);
         --sp;
     }
+}
+
+void Compiler::compileFile(const string& filename) {
+    compileFile(fs::path(filename));
+}
+void Compiler::compileFile(const fs::path& filename) {
+    std::ifstream in(filename);
+    if (!in.is_open()) {
+        auto errStr = new string("compiler");
+        SourceLoc loc(errStr, 0, 0);
+        // TODO: get error from perror
+        throw FNError("Compiler", "Error opening file '" + filename.string() + "'.", loc);
+        delete errStr;
+    }
+
+    // basically just need to set the scanner
+    auto oldSc = sc;
+    sc = new Scanner(&in, filename);
+    compile();
+    delete sc;
+    sc = oldSc;
 }
 
 

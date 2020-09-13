@@ -91,6 +91,9 @@ struct FuncStub {
     Local numUpvals;
     vector<Upvalue> upvals;
 
+    // module ID as a list
+    Value modId;
+
     // bytecode address
     Addr addr;              // bytecode address of the function
 
@@ -168,7 +171,7 @@ public:
     u16 numConstants();
 
     // add a function and set it to start at the current ip
-    u16 addFunction(Local arity, bool vararg);
+    u16 addFunction(Local arity, bool vararg, Value modId);
     FuncStub* getFunction(u16 id);
 
     SymbolTable* getSymbols();
@@ -230,6 +233,7 @@ private:
     Obj* module;
     // the namespace hierarchy contains the module hierarchy
     Obj* ns;
+    Obj* coreMod;
 
     // foreign functions table
     vector<Value> foreignFuncs;

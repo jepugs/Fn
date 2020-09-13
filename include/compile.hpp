@@ -47,6 +47,10 @@ private:
     // constant holding the current module's ID
     u16 curModId;
 
+    // Search for the path to a module given a vector denoting the (dot-separated) components of its
+    // name.
+    fs::path modulePath(const vector<string>& id);
+
     // compile a single expression, consuming tokens. t0 is an optional first token. Running will
     // leave the expression on top of the stack.
     void compileExpr(Locals* locals, Token* t0=nullptr);
@@ -105,6 +109,10 @@ public:
     // compile all scanner input until EOF. Running the generated code should leave the interpreter
     // stack empty, with lastPop() returning the result of the final toplevel expression
     void compile();
+    // compile the contents of the specified file (in place). This doesn't affect the current
+    // module, so if this file corresponds to a new module, that must be set up ahead of time.
+    void compileFile(const fs::path& filename);
+    void compileFile(const string& filename);
 
     // set a new scanner
     void setScanner(Scanner* sc);
