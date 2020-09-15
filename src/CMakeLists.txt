@@ -1,4 +1,5 @@
 add_library(fn_lib OBJECT
+            allocator.cpp
             bytes.cpp
             compile.cpp
             init.cpp

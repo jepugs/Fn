@@ -44,15 +44,15 @@ static inline bool isSymChar(char c) {
 // tell if a number/letter is a digit in the given base (e.g. in base 16, digits are [0-9A-Fa-f])
 // supports base from 2 to 36
 static inline bool isDigit(char c, u32 base=10) {
-    auto maxDigit = base < 10 ? '0'+base-1 : '9';
+    char maxDigit = base < 10 ? '0'+base-1 : '9';
     if (c >= '0' && c <= maxDigit) {
         return true;
     }
-    auto maxCap = 'A' + base - 11;
+    char maxCap = 'A' + base - 11;
     if (c >= 'A' && c <= maxCap) {
         return true;
     }
-    auto maxLow = 'a' + base - 11;
+    char maxLow = 'a' + base - 11;
     if (c >= 'a' && c <= maxLow) {
         return true;
     }

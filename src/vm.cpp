@@ -239,11 +239,12 @@ void CallFrame::closeAll() {
 
 
 VM::VM()
-    : code(), ns(new Obj), coreMod(nullptr), ip(0), frame(new CallFrame(nullptr, 0, 0, nullptr)), lp(V_NULL) {
-    // TODO: use allocator
-    auto modId = new Cons{ .head=code.symbol("core"), .tail=V_EMPTY };
-    modId = new Cons{ .head=code.symbol("fn"), .tail=value(modId) };
-    module = initModule(value(modId));
+    : code(), coreMod(nullptr), alloc(), ip(0),
+      frame(new CallFrame(nullptr, 0, 0, nullptr)), lp(V_NULL) {
+    ns = vObj(alloc.obj());
+    auto modId = alloc.cons(code.symbol("core"), V_EMPTY);
+    modId = alloc.cons(code.symbol("fn"),modId);
+    module = initModule(modId);
     coreMod = module;
 }
 
@@ -275,8 +276,7 @@ Obj* VM::initModule(Value modId) {
         }
         v = res->contents.get(key);
         if (!v.has_value()) {
-            // TODO: use allocator
-            auto tmp = new Obj();
+            auto tmp = vObj(alloc.obj());
             res->contents.insert(key, value(tmp));
             res = tmp;
         } else if (vShortTag(**v) == TAG_OBJ) {
@@ -301,14 +301,13 @@ Obj* VM::initModule(Value modId) {
     cts->insert(code.symbol("ns"), value(ns));
 
     // make a global _modinfo object
-    // TODO: use allocator
-    Obj* modinfo = new Obj();
+    Obj* modinfo = vObj(alloc.obj());
     cts->insert(code.symbol("_modinfo"), value(modinfo));
     // name is the last symbol in the module id
     modinfo->contents.insert(code.symbol("name"), key);
     modinfo->contents.insert(code.symbol("id"), modId);
     // the file from which this was loaded. The compiler generates code to set this when importing a file.
-    modinfo->contents.insert(code.symbol("source"), value(string("<internal>")));
+    modinfo->contents.insert(code.symbol("source"), alloc.str("<internal>"));
 
     return res;
 }
@@ -368,7 +367,7 @@ void VM::addGlobal(Value name, Value v) {
     }
 }
 
-Value VM::getGlobal(string name) {
+Value VM::getGlobal(Value name) {
     optional<Value*> res;
     if (frame != nullptr && frame->caller != nullptr) {
         auto modId = frame->caller->stub->modId;
@@ -376,14 +375,14 @@ Value VM::getGlobal(string name) {
         if (mod == nullptr) {
             runtimeError("Function has nonsensical module ID. (This is probably a bug).");
         } else {
-            res = mod->contents.get(code.symbol(name));
+            res = mod->contents.get(name);
         }
     } else {
-        res = module->contents.get(code.symbol(name));
+        res = module->contents.get(name);
     }
 
     if (!res.has_value()) {
-        runtimeError("Attempt to access unbound global variable " + name);
+        runtimeError("Attempt to access unbound global variable " + vToString(name, code.getSymbols()));
     }
     return **res;
 }
@@ -399,7 +398,7 @@ UpvalueSlot* VM::getUpvalue(u8 id) {
 
 
 void VM::addForeign(string name, Value (*func)(Local, Value*, VM*), Local minArgs, bool varArgs) {
-    auto f = new ForeignFunc{ .minArgs=minArgs, .varArgs=varArgs, .func=func };
+    auto f = new ForeignFunc(minArgs,varArgs,func);
     auto v = value(f);
     addGlobal(code.symbol(name), v);
     foreignFuncs.push_back(v);
@@ -407,6 +406,9 @@ void VM::addForeign(string name, Value (*func)(Local, Value*, VM*), Local minArg
 
 Bytecode* VM::getBytecode() {
     return &code;
+}
+Allocator* VM::getAlloc() {
+    return &alloc;
 }
 
 void VM::runtimeError(const string& msg) {
@@ -508,8 +510,7 @@ Addr VM::call(Local numArgs) {
             // make a list out of the trailing arguments
             auto vararg = V_EMPTY;
             for (auto i = numArgs-stub->positional; i > 0; --i) {
-                // TODO: use allocator
-                vararg = value(new Cons { .head=pop(), .tail=vararg});
+                vararg = alloc.cons(pop(), vararg);
             }
             push(vararg);
             frame = frame->extendFrame(ip+2, stub->positional+1, func);
@@ -621,18 +622,19 @@ void VM::step() {
     case OP_CLOSURE:
         id = code.readShort(ip+1);
         stub = code.getFunction(code.readShort(ip+1));
-        func = new Function();
-        func->stub = stub;
-        func->upvals = new UpvalueSlot*[stub->numUpvals];
-        for (u32 i = 0; i < stub->numUpvals; ++i) {
-            auto u = stub->upvals[i];
-            if (u.direct) {
-                func->upvals[i] = frame->openUpvalue(u.slot, &stack[frame->bp + u.slot]);
-            } else {
-                func->upvals[i] = getUpvalue(u.slot);
-            }
-        }
-        push(value(func));
+        v1 = alloc.func(stub,
+                        [this, stub](auto upvals) {
+                            for (u32 i = 0; i < stub->numUpvals; ++i) {
+                                auto u = stub->upvals[i];
+                                if (u.direct) {
+                                    upvals[i] = frame->openUpvalue(u.slot, &stack[frame->bp + u.slot]);
+                                } else {
+                                    upvals[i] = getUpvalue(u.slot);
+                                }
+                            }
+                                
+                        });
+        push(v1);
         ip += 2;
         break;
 
@@ -645,15 +647,17 @@ void VM::step() {
 
     case OP_GLOBAL:
         v1 = pop();
-        if (vTag(v1) != TAG_STR) {
-            throw FNError("runtime", "OP_GET_GLOBAL operand is not a string.",
-                          *code.locationOf(ip));
+        if (vTag(v1) != TAG_SYM) {
+            runtimeError("OP_GLOBAL name operand is not a symbol.");
         }
-        push(getGlobal(*vStr(v1)));
+        push(getGlobal(v1));
         break;
     case OP_SET_GLOBAL:
         v1 = pop(); // value
         v2 = peek(); // name
+        if (vTag(v2) != TAG_SYM) {
+            runtimeError("OP_SET_GLOBAL name operand is not a symbol.");
+        }
         addGlobal(v2, v1);
         break;
 

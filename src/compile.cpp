@@ -74,8 +74,8 @@ Compiler::Compiler(const fs::path& dir, Bytecode* dest, Scanner* sc)
     : dest(dest), sc(sc), sp(0), dir(dir), modules() {
     // The first module is fn.core
     // TODO: use allocator
-    auto modIdVal = new Cons { dest->symbol("core"), V_EMPTY };
-    modIdVal = new Cons { dest->symbol("fn"), value(modIdVal) };
+    auto modIdVal = new Cons(dest->symbol("core"), V_EMPTY);
+    modIdVal = new Cons(dest->symbol("fn"), value(modIdVal));
     curModId = dest->addConstant(value(modIdVal));
 }
 
@@ -135,7 +135,7 @@ void Compiler::compileVar(Locals* locals, const string& name) {
     auto id = findLocal(locals, name, &levels);
     if (!id.has_value()) {
         // global
-        auto id = dest->addConstant(value(*&name));
+        auto id = dest->addConstant(dest->symbol(name));
         dest->writeByte(OP_CONST);
         dest->writeShort(id);
         dest->writeByte(OP_GLOBAL);
@@ -684,7 +684,7 @@ void Compiler::compileSet(Locals* locals) {
         // variable set
         u32 levels;
         auto id = findLocal(locals, name[0], &levels);
-        auto sym = dest->addConstant(value(name[0]));
+        auto sym = dest->addConstant(dest->symbol(name[0]));
         if (id.has_value()) {
             // local
             compileExpr(locals);
@@ -824,7 +824,7 @@ void Compiler::compileExpr(Locals* locals, Token* t0) {
         sp++;
         break;
     case TKString:
-        v = value(*tok.datum.str);
+        v = value(new FnString(*tok.datum.str));
         id = dest->addConstant(v);
         constant(id);
         sp++;

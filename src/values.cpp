@@ -2,6 +2,58 @@
 
 namespace fn {
 
+ObjHeader::ObjHeader(Value ptr, bool gc) : ptr(ptr), gc(gc), dirty(false) { }
+
+Cons::Cons(Value head, Value tail, bool gc) : h(value(this),gc), head(head), tail(tail) { }
+
+FnString::FnString(const string& src, bool gc) : h(value(this),gc), len(src.size()) {
+    data = new char[len+1];
+    data[len] = '\0';
+    std::memcpy(data, src.c_str(), len);
+}
+FnString::FnString(const char* src, bool gc) : h(value(this),gc) {
+    string s(src);
+    len = s.size();
+    data = new char[len+1];
+    data[len] = '\0';
+    std::memcpy(data, s.c_str(), len);
+}
+FnString::~FnString() {
+    delete data;
+}
+
+bool FnString::operator==(const FnString& s) const {
+    if (len != s.len) {
+        return false;
+    }
+    for (u32 i=0; i < len; ++i) {
+        if (data[i] != s.data[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+Obj::Obj(bool gc) : h(value(this),gc), contents() { }
+
+Function::Function(FuncStub* stub, const std::function<void (UpvalueSlot**)>& populate, bool gc)
+    : h(value(this),gc), stub(stub) {
+    upvals = new UpvalueSlot*[stub->numUpvals];
+    populate(upvals);
+}
+// TODO: use refcount on upvalues
+Function::~Function() {
+    // for (u32 i = 0; i < stub->upvals; ++i) {
+    //     if(--upvals[i]->refCount == 0) {
+    //         delete upvals[i];
+    //     }
+    // }
+    delete upvals;
+}
+
+ForeignFunc::ForeignFunc(Local minArgs, bool varArgs, Value (*func)(Local, Value*, VM*), bool gc)
+    : h(value(this),gc), minArgs(minArgs), varArgs(varArgs), func(func) { }
+
 bool Value::operator==(const Value& v) const {
     if (vSame(*this,v)) {
         return true;
@@ -67,7 +119,7 @@ string vToString(Value v, SymbolTable* symbols) {
         }
         return res + "]";
     case TAG_STR:
-        return *vStr(v);
+        return string(vStr(v)->data);
     case TAG_OBJ:
         // TODO: recursively track which objects we've descended into
         res = "{ ";

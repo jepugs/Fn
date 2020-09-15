@@ -36,27 +36,27 @@ FN_FUN(fnNot) {
     return value(!vTruthy(args[0]));
 }
 
-FN_FUN(fnNum) {
-    switch(vTag(args[0])) {
-    case TAG_NUM:
-        return args[0];
-    case TAG_STR:
-        try {
-            auto d = stod(*vStr(args[0]));
-            return value(d);
-        } catch(...) { // TODO: this should probably be a runtime warning...
-            vm->runtimeError("String argument to Num does not represent a number."); 
-            return value(0.0);
-        }
-    case TAG_NULL:
-        return value(0.0);
-    case TAG_BOOL:
-        return value((f64)vBool(args[0]));
-    default:
-        vm->runtimeError("Num cannot convert value of the given type.");
-        return value(0.0);
-    }
-}
+// FN_FUN(fnNum) {
+//     switch(vTag(args[0])) {
+//     case TAG_NUM:
+//         return args[0];
+//     case TAG_STR:
+//         try {
+//             auto d = stod(*vStr(args[0]));
+//             return value(d);
+//         } catch(...) { // TODO: this should probably be a runtime warning...
+//             vm->runtimeError("String argument to Num does not represent a number."); 
+//             return value(0.0);
+//         }
+//     case TAG_NULL:
+//         return value(0.0);
+//     case TAG_BOOL:
+//         return value((f64)vBool(args[0]));
+//     default:
+//         vm->runtimeError("Num cannot convert value of the given type.");
+//         return value(0.0);
+//     }
+// }
 
 FN_FUN(fnNumQ) {
     return value(vShortTag(args[0]) == TAG_NUM);
@@ -133,11 +133,11 @@ FN_FUN(fnObject) {
         vm->runtimeError("Object must have an even number of arguments.");
     }
     // TODO: use allocator
-    auto res = new Obj { .contents=Table<Value,Value>() };
+    auto res = vm->getAlloc()->obj();
     for (Local i = 0; i < numArgs; i += 2) {
-        res->contents.insert(args[i],args[i+1]);
+        vObj(res)->contents.insert(args[i],args[i+1]);
     }
-    return value(res);
+    return res;
 }
 
 FN_FUN(fnObjectQ) {
@@ -161,7 +161,7 @@ void init(VM* vm) {
     vm->addForeign("Bool", fnBool, 1, false);
     vm->addForeign("bool?", fnBoolQ, 1, false);
     vm->addForeign("not", fnNot, 1, false);
-    vm->addForeign("Num", fnNum, 1, false);
+    //vm->addForeign("Num", fnNum, 1, false);
     vm->addForeign("num?", fnNumQ, 1, false);
     vm->addForeign("int?", fnIntQ, 1, false);
     vm->addForeign("+", fnAdd, 0, true);

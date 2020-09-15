@@ -150,7 +150,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::cout << "ip = " << vm.getIp() << endl;
+    vm.getAlloc()->printStatus();
+    //std::cout << "ip = " << vm.getIp() << endl;
     //std::cout << showValue(vm.getGlobal("y")) << endl;
     return 0;
 }

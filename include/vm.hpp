@@ -3,8 +3,10 @@
 #ifndef __FN_VM_HPP
 #define __FN_VM_HPP
 
+#include "allocator.hpp"
 #include "base.hpp"
 #include "table.hpp"
+#include "values.hpp"
 
 #include <filesystem>
 #include <forward_list>
@@ -13,100 +15,6 @@
 namespace fn {
 
 namespace fs = std::filesystem;
-
-/// value representation
-
-// all values are 64-bits wide. Either 3 or 8 bits are used to hold the tag. The reason for the
-// variable tag size is that 3-bit tags can be associated with an 8-byte-aligned pointer (so we only
-// need 61 bits to hold the pointer, since the last 3 bits are 0). This requires that none of the
-// 3-bit tags occur as prefixes to the 8-bit tags.
-union Value {
-    u64 raw;
-    void* ptr;
-    f64 num;
-
-    // implemented in values.cpp
-    bool operator==(const Value& v) const;
-};
-
-
-// Symbols in fn are represented by a 32-bit unsigned ID
-struct Symbol {
-    u32 id;
-    string name;
-};
-
-// The point of the symbol table is to have fast two-way lookup going from a symbol's name to its id
-// and vice versa.
-class SymbolTable {
-private:
-    Table<string,Symbol> byName;
-    vector<Symbol> byId;
-
-public:
-    SymbolTable();
-
-    const Symbol* intern(string str);
-    bool isInternal(string str);
-
-    const Symbol& operator[](u32 id) {
-        return byId[id];
-    }
-};
-
-
-// Objects are really just tables of values.
-struct alignas(8) Obj {
-    Table<Value,Value> contents;
-};
-
-// This struct describes an upvalue. Upvalues themselves are simply stored in Value pointers.
-struct Upvalue {
-    // the stack position or ID of this upvalue in the enclosing function
-    Local slot;
-    // if true, then this Upvalue refers to a slot in the enclosing function's stack. If false, then
-    // it refers to an upvalue in a bigger closure.
-    bool direct;
-};
-
-
-// a location holding an upvalue at runtime
-struct UpvalueSlot {
-    // if true, this upvalue points to an element of the stack
-    bool open;
-    Value* val;
-
-    //u32 refCount;
-};
-
-
-// A stub describing a function. These go in the bytecode object
-struct FuncStub {
-    // arity information
-    Local positional;   // number of positional arguments, including optional & keyword arguments
-    Local required;     // number of required positional arguments (minimum arity)
-    bool varargs;          // whether this function has a variadic argument
-
-    // upvalues
-    Local numUpvals;
-    vector<Upvalue> upvals;
-
-    // module ID as a list
-    Value modId;
-
-    // bytecode address
-    Addr addr;              // bytecode address of the function
-
-    // get an upvalue and return its id. Adds a new upvalue if one doesn't exist
-    Local getUpvalue(Local id, bool direct);
-};
-
-// An actual function object consists of a function stub plus the relevant a description of its
-// upvalues (i.e. the closure)
-struct alignas(8) Function {
-    FuncStub* stub;
-    UpvalueSlot** upvals;
-};
 
 // a linked list structure which associates source code locations to bytecode.
 struct BytecodeLoc {
@@ -235,6 +143,8 @@ private:
     Obj* ns;
     Obj* coreMod;
 
+    Allocator alloc;
+
     // foreign functions table
     vector<Value> foreignFuncs;
 
@@ -290,12 +200,13 @@ public:
     void addForeign(string name, Value (*func)(Local, Value*, VM*), Local minArgs, bool varArgs=false);
 
     void addGlobal(Value name, Value v);
-    Value getGlobal(string name);
+    Value getGlobal(Value name);
 
     UpvalueSlot* getUpvalue(Local id);
 
     // get a pointer to the Bytecode object so the compiler can write its output there
     Bytecode* getBytecode();
+    Allocator* getAlloc();
 
     // raise an exception of type FNError containing the provided message
     void runtimeError(const string& msg);
