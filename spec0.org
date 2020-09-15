@@ -1,0 +1,333 @@
+* Syntax
+
+** Terminology
+
+*** Forms vs Expressions
+
+Forms and expressions are the two main types of syntactic objects handled in fn. A *form* is a
+syntactic object consisting of lists and atoms. An *expression* is any form for which evaluation
+semantics are defined. In essence, the expressions are the subset of fn forms that are syntactically
+valid.
+
+For example, the empty list, ~()~, is a form, but not an expression. It can legally occur in some
+contexts, such as as the empty argument list in ~(fn () null)~, but on its own will cause an error. By
+constrast, ~(do (println "hello, world!"))~ is both a form and an expression. Finally, ~(if)~ is a form
+but not an expression, as it is malformed and will result in a syntax error.
+
+Semantically, the term "expression" is preferred over "form" only when the expression, in addition
+to being syntactically valid, is expected to be evaluated as such. For instance, ~dot~ forms are often
+referred to as forms rather than expressions, even when they are expected to be syntactically valid.
+
+*** (Syntactic) Lists and Atoms, Pointy Syntax
+
+A *(syntactic) list* is a type of expression consisting of a sequence of subexpressions between a pair
+of parentheses. The "syntactic" is added when it may be confused for the built-in data structure
+list. (The two notions do have a correspondence, which will be important in fn's upcoming macro
+system).
+
+*Atoms* are the other kind of expression in fn. As their name tries to imply, they are indivisible, in
+the sense that the scanner reads atoms as single tokens. There are three types of atoms, namely
+symbols, string literals, and numeric literals.
+
+fn has syntax beyond just parentheses, such as dot notation, square brackets, and braces. However,
+all of these different kinds of syntax are semantically expanded into a lists-and-atoms for the
+purpose of evaluation. For lack of a better term, the syntax outside of atoms and parentheses is
+referred to as *pointy syntax* in this document. See the relevant section for a description of how the
+different pointy syntax characters are expanded.
+
+*** Equivalence of Syntax and Canonical Form
+
+In general, *equivalance* between syntactic objects (i.e. forms vs expressions) refers to a sort of
+semantic equivalence rather than meaning that they have identical text in the source code. Two atoms
+are considered equivalent if they represent the same symbol or value, so ~escape~ and ~es\cape~ are
+equivalent, as are ~2.0~ and ~+2.00~. Equivalence between lists is then defined recursively; two lists
+are equivalent if they have equivalent subexpressions. (Equivalence between a list and an atom is
+defined to always be false).
+
+Thus, the following three expressions are all the same as syntactic lists even though their literal
+text differs:
+
+#+BEGIN_SRC fn
+(def square 
+  (fn (x) (* x x)))
+
+(def square (fn (x) (* x x)))
+
+
+(def square 
+;; please don't format your code like this :(
+    (fn (x)
+        (* x x)
+    )
+)
+#+END_SRC
+
+Pointy syntax characters are characters other than parentheses and symbol constituents which have
+special parsing semantics. fn source code which does not contain any pointy syntax is said to be in
+*canonical form*. Every pointy syntax expression is equivalent to (exactly one) expression in
+canonical form. The specific correspondence depends on which pointy syntax characters the expression
+contains, (see "Pointy Syntax Expansions").
+
+*** Parameters vs Arguments
+
+A *parameter* is a variable (or variable name) within a function body which refers to one of the
+function's arguments. An *argument*, on the other hand, is simply a value which was passed to a
+function, i.e. the /value/ of a parameter.
+
+# *Operands* refer to the forms occuring within a syntactic list. For instance, in a function call,
+# the operands are the expressions which are evaluated to obtain the arguments for the call.
+
+** Pointy Syntax Expansions
+
+All fn source code could be typed purely using parentheses and atoms.
+
+However, for convenience,
+certain characters have special syntactic meanings. Semantically, expressions containing these
+symbols are expanded into th
+
+The following expressions are arranged in pairs showing first the pointy syntax and then the
+equivalent canonical, parenthesized syntax:
+
+#+BEGIN_SRC fn
+'symbol
+(quote symbol)
+
+a.b
+(dot a b)
+a.b.c
+(dot a b c)
+a.d.b.d
+(dot a b c d)
+;; and so on...
+
+[]
+(List)
+[arg1 arg2]
+(List arg1 arg2)
+
+{}
+(List)
+{key val}
+(Object key val)
+#+END_SRC
+
+
+* Evaluation Semantics
+
+** Special Operators
+
+There are 13 special operators in fn, each identified by a symbol. When such a symbol occurs in the
+operator position of a syntactic list, the evaluation semantics of the special operator take over.
+This is the mechanism by which all core language features are provided.
+
+What follows is a detailed description of all 13 special operators. The following conventions are
+observed:
+- in the code samples, symbols beginning and ending with underscores, e.g. ~_expression_~, represent
+  places where a variety of different forms could go. They are referred to in the accompanying text
+  via italics, e.g. /expression/.
+- in the code samples, ellipses mean that either the previous or previous two arguments repeat in a
+  pattern. It should be clear which from the description.
+- all other syntax in the code samples is meant to be literal, up to equivalence (i.e. adding or
+  removing whitespace and comments).
+
+
+*** Variable Manipulation Operators: ~def~, ~do~, ~let~, and ~set~
+
+ #+BEGIN_SRC fn
+ (def _name_ _value-expression_)
+ #+END_SRC
+
+ ~def~ creates a new global variable called /name/ with the value obtained by evaluating
+ /value-expression/. If there already exists a global variable with
+ this name, the old value is simply replaced.
+
+ *Note:* This silent overwrite behavior will probably be replaced by an error in future versions. It
+ will generate a warning at the very least.
+
+ The binding occurs in the current module, so functions can only define global variables in the
+ module in which they were defined. Moreover, creation of a global variable within a function body is
+ discouraged. That is, ~def~ forms should mostly be restricted to the top level or within top-level ~do~
+ expressions.
+
+
+ #+BEGIN_SRC fn
+ (do _expressions_ ...)
+ (let _name_ _value-expression_ ...)
+ #+END_SRC
+
+ ~do~ introduces a new lexical environment in which ~let~ may be used. /Expressions/ are evaluated in the
+ order in which they occur. When called with no arguments, ~do~ returns ~null~.
+
+ ~let~ may not occur in the toplevel lexical environment, i.e. it must occur within ~do~ or ~fn~, the other
+ operator capable of creating a lexical environment. ~let~ takes alternating pairs of symbols /name/ and
+ expressions /value-expression/ as arguments. For each such pair, it created a new local variable named
+ /name/ in the current environment with the value obtained by evaluating /value-expression/. If a local
+ variable with this name already exists, it is silently overwritten. ~let~ always returns ~null~.
+
+ *Note:* fn's ~let~ is fundamentally an inline operator and feels more similar to the ~var x = y~-style
+ declarations from imperative languages than to the ~let~ of other languages derived from LISP. This is
+ by design. The creator of fn finds the imperative style much cleaner both to read and to write, as
+ it obviates the extra layer of parentheses introduced by ~let~ around its body, thus reducing both the
+ indenation level and the amount of closing paren clutter. It also makes the language friendlier to
+ folks who weren't brought up on LISP. Fight me.
+
+ #+BEGIN_SRC fn
+ (set _place_ _value-expression_)
+ #+END_SRC
+
+ ~set~ updates the variable or property indicated by /place/ to the value of /value-expression/. /place/ may
+ be a symbol, in which case it is treated as a variable name, or a ~dot~ form, in which case it
+ indicates the property of an object. The property set is the same one which the ~dot~ form would
+ access (see the description of ~dot~).
+
+ In the case /place/ is a symbol, if the variable does not exist, a runtime error is generated. In the
+ case that /place/ is a property, the property is created when necessary.
+
+ *Note 1:* When /place/ is a dot form, it will create new properties, but not new objects. For instance,
+ the following code generates an error:
+ #+BEGIN_SRC fn
+ (def x {})
+ (set x.y.z 2) ; error: won't create object x.y
+ #+END_SRC
+ Whereas the expression ~(set x.y 2)~ would have been just fine.
+
+ *Note 2:* ~set~ is probably the most dangerous (and potentially most powerful) operator in fn, because
+ it can be combined with the global namespace object ~ns~ to overwrite any variable, module, or
+ package, and even built-in function. Consequently, the fn interpreter has been designed to place a
+ curse upon anyone who endeavours to abuses ~set~ to mutilate built-ins in such ways.
+
+ *Note 3:* ~set~ is another major differentiating factor between fn and other Lisps. Notice there's no
+ exclamation point. That's because we're gonna be using this one a lot. While fn is a fairly
+ barebones language and well-suited to functional programming, its object system really shines when
+ we have the ability to construct objects in an imperative style. In the author's opinion, having
+ imperative constructor functions doesn't contradict the best practices of functional programming.
+ Rather, it complements the functional programming style by making it easier to write definitions of
+ complex data structures. By contrast, when using a language like Haskell or Scheme, one is often
+ tempted to cram a long expression in an awkward position in order to work around the more purely
+ declarative syntax.
+
+
+*** Lambda Operator: ~fn~
+
+ #+BEGIN_SRC fn
+ (fn (_parameters_ ...) 
+   _body-expressions_ ...)
+ (fn (_positional-parameters_ ... & _variadic-parameter_)
+   _body-expressions_ ...)
+ #+END_SRC
+
+ ~fn~ creates an anonymous function. The first operand is the parameter list, which defines the names
+ to which the function's arguments will be associated in the lexical scope of its body. The
+ parameters are bound to the function's arguments in the order in which they occur.
+
+ The special symbol ~&~ indicates a variadic parameter. It must be succeeded by exactly one symbol,
+ which will be used as the name of the variadic parameter, and then the end of the parameter list.
+ When a function is called which takes a variadic parameter, all arguments after the last positional
+ parameter are collected in a list. That list is then used as the value for the variadic parameter.
+
+ ~fn~ returns a function object which may be called by placing it, (or more precisely, any expression
+ yielding the function object), as the operator of an expression or by using ~apply~. The function must
+ be called with at least as many arguments are there are positional parameters, and exactly as many
+ in the cases where there is no variadic parameter. These arguments are bound to the respective
+ parameters, and the body expressions are evaluated.
+
+ Functions remember the lexical environment in which they were defined, including the current module.
+ When called, the body is evaluated in a lexical environment extending the environment of creation.
+ fn's lambdas have full support for closures, which is to say that local variables are closed over
+ (i.e. copied to the heap) whenever necessary, and that two ~fn~ expressions in the same lexical
+ environment will share the same references to those closed-over variables. This behavior allows the
+ implementation of private member variables when defining objects.
+
+ *Note:* Future versions of fn will support optional and keyword parameters via extended syntax.
+
+ No function may have more than 255 parameters in total, counting the variadic parameter as one. In
+ addition, function calls are limited to 255 arguments, (even in cases where ~apply~ is used).
+
+
+*** Namespace Operators: ~import~ and ~dot~
+
+ - dot
+ - import
+
+
+*** Apply Operator: ~apply~
+
+#+BEGIN_SRC fn
+(apply _function_ _argument-list_)
+(apply _function_ _arguments_ ... _argument-list_)
+#+END_SRC
+
+~apply~ calls /function/ with the elements of the list /argument-list/ as arguments. One or more
+preceding positional arguments can be specified by providing more than two arguments, in which
+case the last one argument is treated as the argument list.
+
+If /function/ is not a function or /argument-list/ not a list, a runtime exception is generated.
+
+Function calls in fn may not have more than 255 arguments in total, and if /argument-list/ is long
+enough that this limit would be exceeded, a runtime error is generated. So be sensible about it.
+
+*Note:* It's often sensible to use a variadic parameter as the argument-list for ~apply~. In these
+cases, you practically guarantee that the 255-argument limit won't be an issue. Anyway, it's a
+pretty big number, 255.
+
+
+*** Conditional Operators: ~cond~ and ~if~
+
+ #+BEGIN_SRC fn
+ (if _test-expression_ _then-expression_ _else-expression_)
+ (cond _test-expression_ _clause-expression_ ...)
+ #+END_SRC
+
+ ~if~ and ~cond~ are fn's conditional operators. 
+
+ ~if~ accepts exactly three expressions as operands. If /test-expression/ evaluates to a logically true
+ value, /then-expression/ is evaluated. Otherwise, /else-expression/ is evaluated.
+
+ ~cond~, on the other hand accepts a series of paired-up expressions /test-expression/ and
+ /clause-expression/. (So it must have an even number of arguments). For each clause, in the order in
+ which they occur, /test-expression/ is evaluated. If it is logically true, then /clause-expression/ is
+ evaluated and its result returned, terminating the ~cond~. If the ~cond~ body is empty or if none of the
+ tests evaluate to true, ~null~ is returned to indicate no value.
+
+
+*** Logical Operators: ~and~ and ~or~
+
+#+BEGIN_SRC fn
+(and _expressions_ ...)
+(or _expressions_ ...)
+#+END_SRC
+
+~and~ evaluates one expression at a time, halting and returning ~false~ if the expression is logically
+false (~null~ or ~false~). Otherwise returns the result of the last expression. When called with no
+arguments yields ~true~.
+
+~or~ is similar, but returns on the first logically true (i.e. not logically false) argument,
+returning ~false~ only if the end is reached. When called with no arguments yields ~false~.
+
+*Note:* These operators may be changed in a future version to only return ~true~ or ~false~.
+
+ #+BEGIN_SRC fn
+ ;; examples
+ (and 1 null) ; -> false
+ (and 1 "two") ; -> "two"
+ (and false (println "never happened")) ; -> false. (No output)
+ (and true (println "happened"))        ; -> false. (Prints "happened")
+
+ (or 1 4) ; -> 1
+ (or false null) ; -> false
+ (or (println "hi") false) ; -> false. (Prints "hi")
+ (or true (println "bye")) ; -> false. (No output)
+ #+END_SRC
+
+
+*** Quoting Operator: ~quote~
+
+#+BEGIN_SRC fn
+(quote _name_)
+'_name_
+#+END_SRC
+
+~quote~ is used to make symbol constants. /name/ must be a symbol, which is returned as an fn value.
+
+*Note:* The reason for the name "quote", (and indeed the main reason for the native symbol type), is
+that at some point the functionality will be extended to match that of other dialects of Lisp.
