@@ -1,5 +1,6 @@
 #include "scan.hpp"
 
+#include <cmath>
 #include <sstream>
 
 namespace fn_scan {
@@ -38,6 +39,38 @@ static inline bool isSymChar(char c) {
     }
 
     return true;
+}
+
+// tell if a number/letter is a digit in the given base (e.g. in base 16, digits are [0-9A-Fa-f])
+// supports base from 2 to 36
+static inline bool isDigit(char c, u32 base=10) {
+    auto maxDigit = base < 10 ? '0'+base-1 : '9';
+    if (c >= '0' && c <= maxDigit) {
+        return true;
+    }
+    auto maxCap = 'A' + base - 11;
+    if (c >= 'A' && c <= maxCap) {
+        return true;
+    }
+    auto maxLow = 'a' + base - 11;
+    if (c >= 'a' && c <= maxLow) {
+        return true;
+    }
+    return false;
+}
+
+// get the value of a number/letter as an integer (e.g. '7'->7, 'b'->11)
+static inline i32 digitVal(char c) {
+    if (c <= 'A') {
+        // number
+        return c - '0';
+    } else if (c < 'a') {
+        // capital letter
+        return c - 'A' + 10;
+    } else {
+        // lowercase letter
+        return c - 'a' + 10;
+    }
 }
 
 Scanner::~Scanner() {
@@ -166,6 +199,95 @@ string stripEscapeChars(const string& s) {
     return string(buf.data(),buf.size());
 }
 
+static optional<f64> parseNum(const vector<char>& buf) {
+    // index
+    u32 i = 0;
+
+    // check for sign
+    f64 sign = 1;
+    if (buf[i] == '-') {
+        sign = -1;
+        ++i;
+    } else if (buf[i] == '+') {
+        ++i;
+    }
+
+    // check for hexadecimal
+    f64 base = 10;
+    if (i+1 < buf.size() && buf[i] == '0' && buf[i+1] == 'x') {
+        base = 16;
+        i += 2;
+    }
+
+    // we need characters after the sign bit
+    if (i >= buf.size()) {
+        return std::nullopt;
+    }
+
+    // get integer part
+    f64 res = 0;
+    char ch;
+    while (i < buf.size() && isDigit(ch=buf[i], base)) {
+        res *= base;
+        res += digitVal(ch);
+        ++i;
+    }
+
+    // check if we got to the end
+    if (i == buf.size()) {
+        return sign*res;
+    }
+
+    // check for decimal point
+
+    // place value
+    f64 place = 1/base;
+    if (ch != '.') {
+        // only other possibility after this is scientific notation
+        goto scient;
+    }
+    // parse digits
+    ++i;
+    while (i < buf.size() && isDigit(ch=buf[i], base)) {
+        res += digitVal(ch) * place;
+        place /= base;
+        ++i;
+    }
+
+    // check if we got to the end
+    if (i == buf.size()) {
+        return sign*res;
+    }
+
+    // label to check for scientific notation
+    scient:
+    // scientific notation only supports base 10
+    if (ch != 'e' || base != 10) {
+        // not a number
+        return std::nullopt;
+    }
+    if (i == buf.size()) {
+        // numbers cannot end with e
+        return std::nullopt;
+    }
+    // parse base 10 exponent
+    ++i;
+    f64 exponent = 0;
+    while (i < buf.size() && isDigit(ch=buf[i])) {
+        exponent *= 10;
+        exponent += digitVal(ch);
+        ++i;
+    }
+    // check if we got to the end
+    if (i == buf.size()) {
+        return sign*res*pow(10,exponent);
+    }
+
+    // this means we found an illegal character
+    return std::nullopt;
+}
+
+
 Token Scanner::scanSymOrNum(char first) {
     if (first == '.') {
         throw FNError("scanner", "Symbol names may not begin with '.'.",
@@ -208,19 +330,30 @@ Token Scanner::scanSymOrNum(char first) {
     }
 
 
-    string s(buf.data(),buf.size());
     // TODO: rather than rely on stod, we shoud probably use our own number scanner
-    double d;
-    try {
-        d = stod(s);
-        return makeToken(TKNumber, d);
-    } catch(...) { // TODO: handle out_of_range
-        if (dot) {
-            return makeToken(TKDot, s);
-        }
-
-        return makeToken(TKSymbol, stripEscapeChars(s));
+    auto d = parseNum(buf);
+    if (d.has_value()) {
+        return makeToken(TKNumber, *d);
     }
+
+    string s(buf.data(),buf.size());
+    if (dot) {
+        return makeToken(TKDot, s);
+    }
+
+    return makeToken(TKSymbol, stripEscapeChars(s));
+
+    // double d;
+    // try {
+    //     d = stod(s);
+    //     return makeToken(TKNumber, d);
+    // } catch(...) { // TODO: handle out_of_range
+    //     if (dot) {
+    //         return makeToken(TKDot, s);
+    //     }
+
+    //     return makeToken(TKSymbol, stripEscapeChars(s));
+    // }
 }
 
 Token Scanner::scanStringLiteral() {
