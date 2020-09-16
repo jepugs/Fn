@@ -151,7 +151,7 @@ public:
     Scanner(const string& filename)
         : line(1), col(0) {
         input = new std::ifstream(filename, std::ios_base::in);
-        this->closeStream = true;
+        closeStream = true;
     }
     ~Scanner();
 

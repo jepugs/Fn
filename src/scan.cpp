@@ -272,6 +272,17 @@ static optional<f64> parseNum(const vector<char>& buf) {
     }
     // parse base 10 exponent
     ++i;
+    // check for sign
+    f64 expSign = 1;
+    if (i < buf.size()) {
+        // TODO: handle '+'
+        if (buf[i] == '-') {
+            ++i;
+            expSign = -1;
+        } else if (buf[i] == '+') {
+            ++i;
+        }
+    }
     f64 exponent = 0;
     while (i < buf.size() && isDigit(ch=buf[i])) {
         exponent *= 10;
@@ -280,7 +291,7 @@ static optional<f64> parseNum(const vector<char>& buf) {
     }
     // check if we got to the end
     if (i == buf.size()) {
-        return sign*res*pow(10,exponent);
+        return sign*res*pow(10,expSign*exponent);
     }
 
     // this means we found an illegal character
@@ -342,18 +353,6 @@ Token Scanner::scanSymOrNum(char first) {
     }
 
     return makeToken(TKSymbol, stripEscapeChars(s));
-
-    // double d;
-    // try {
-    //     d = stod(s);
-    //     return makeToken(TKNumber, d);
-    // } catch(...) { // TODO: handle out_of_range
-    //     if (dot) {
-    //         return makeToken(TKDot, s);
-    //     }
-
-    //     return makeToken(TKSymbol, stripEscapeChars(s));
-    // }
 }
 
 Token Scanner::scanStringLiteral() {

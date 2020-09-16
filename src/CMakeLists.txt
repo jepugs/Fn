@@ -5,7 +5,8 @@ add_library(fn_lib OBJECT
             init.cpp
             scan.cpp
             values.cpp
-            vm.cpp)
+            vm.cpp
+            )
 
 target_include_directories(fn_lib PUBLIC
                            "${PROJECT_SOURCE_DIR}/include"

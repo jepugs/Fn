@@ -53,9 +53,8 @@ int compileFile(VM* vm, const string& filename) {
         perror(("error opening file " + filename).c_str());
         return -1;
     } else {
-        fn_scan::Scanner sc(&in, filename);
-        Compiler c(fs::current_path(), code, &sc);
-        c.compile();
+        Compiler c(fs::current_path(), code);
+        c.compileFile(filename);
     }
 
     return 0;

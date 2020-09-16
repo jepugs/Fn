@@ -570,7 +570,6 @@ void VM::step() {
     Local numArgs;
 
     FuncStub* stub;
-    Function* func;
 
     Local l;
     u16 id;
