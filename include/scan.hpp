@@ -57,9 +57,9 @@ struct Token {
     SourceLoc loc;
     TokenDatum datum;
 
-    Token() : tk(TKNumber), loc(new string(""),1,1), datum({ .num=0 }) { }
+    Token() : tk(TKEOF), loc(""), datum({.nothing = nullptr}) { }
     Token(TokenKind tk, SourceLoc loc)
-        : tk(tk), loc(loc), datum({.nothing = NULL}) { }
+        : tk(tk), loc(loc), datum({.nothing = nullptr}) { }
     Token(TokenKind tk, SourceLoc loc, double num)
         : tk(tk), loc(loc), datum({.num = num}) { }
     Token(TokenKind tk, SourceLoc loc, const string& str)
@@ -187,6 +187,11 @@ private:
     Token makeToken(TokenKind tk);
     Token makeToken(TokenKind tk, string str);
     Token makeToken(TokenKind tk, double num);
+
+    // throw an appropriate FNError
+    inline void error(const char* msg) {
+        throw FNError("scanner", msg, SourceLoc(filename, line, col-1));
+    }
 };
 
 }

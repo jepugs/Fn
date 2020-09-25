@@ -51,14 +51,23 @@ Bytecode::Bytecode() : locs(nullptr), lastLoc(nullptr), symbols() {
 
     size = 0;
 
-    setLoc(SourceLoc(new string(""), 0, 0));
+    //setLoc(SourceLoc(std::shared_ptr<string>(new string("")), 0, 0));
+    setLoc(SourceLoc(std::shared_ptr<string>(new string("")), 0, 0));
 }
 Bytecode::~Bytecode() {
     free(data);
 
-    // TODO: free strings in the constant table :(
+    for (auto v : managedConstants) {
+        if (v.isStr()) {
+            delete v.ustr();
+        } else if (v.isCons()) {
+            delete v.ucons();
+        }
+    }
 
-    // TODO: free function stubs :(((
+    for (auto f : functions) {
+        delete f;
+    }
 
     auto tmp = locs;
     while (tmp != nullptr) {
@@ -145,12 +154,6 @@ void Bytecode::patchShort(Addr addr, u16 s) {
     data[addr+1] = top;
 }
 
-// TODO: should check if this constant is already present. If it is, should reuse it.
-u16 Bytecode::addConstant(Value v) {
-    constants.push_back(v);
-    return constants.size() - 1;
-}
-
 Value Bytecode::getConstant(u16 id) {
     return constants[id];
 }
@@ -175,6 +178,37 @@ u16 Bytecode::addFunction(Local arity,bool vararg, Value modId) {
 FuncStub* Bytecode::getFunction(u16 id) {
     // TODO: check bounds?
     return functions[id];
+}
+
+u16 Bytecode::addConst(Value v) {
+    constants.push_back(v);
+    return constants.size() - 1;
+}
+
+u16 Bytecode::numConst(f64 num) {
+    return addConst(value(num));
+}
+
+u16 Bytecode::strConst(const string& name) {
+    auto v = value(new FnString(name));
+    managedConstants.push_front(v);
+    return addConst(v);
+}
+
+u16 Bytecode::strConst(const char* name) {
+    auto v = value(new FnString(name));
+    managedConstants.push_front(v);
+    return addConst(v);
+}
+
+u16 Bytecode::consConst(Value hd, Value tl) {
+    auto v = value(new Cons(hd, tl));
+    managedConstants.push_front(v);
+    return addConst(v);
+}
+
+u16 Bytecode::symConst(const string& name) {
+    return addConst(symbol(name));
 }
 
 SymbolTable* Bytecode::getSymbols() {
@@ -398,8 +432,7 @@ UpvalueSlot* VM::getUpvalue(u8 id) {
 
 
 void VM::addForeign(string name, Value (*func)(Local, Value*, VM*), Local minArgs, bool varArgs) {
-    auto f = new ForeignFunc(minArgs,varArgs,func);
-    auto v = value(f);
+    auto v = alloc.foreign(minArgs, varArgs, func);
     addGlobal(code.symbol(name), v);
     foreignFuncs.push_back(v);
 }

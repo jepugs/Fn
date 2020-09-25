@@ -55,7 +55,7 @@ private:
                 delete prev[i];
             }
         }
-        delete prev;
+        delete[] prev;
     }
 
 public:
@@ -82,7 +82,7 @@ public:
             if (array[i] != nullptr)
                 delete array[i];
         }
-        delete array;
+        delete[] array;
     }
 
     Table<K,T>& operator=(const Table<K,T>& src) {
@@ -91,7 +91,7 @@ public:
             if (array[i] != nullptr)
                 delete array[i];
         }
-        delete array;
+        delete[] array;
 
         cap = src.cap;
         threshold = src.threshold;
@@ -114,7 +114,7 @@ public:
     }
 
     // insert/overwrite a new entry
-    void insert(const K& k, T v) {
+    T& insert(const K& k, T v) {
         if (size >= threshold) {
             increaseCap();
         }
@@ -135,6 +135,7 @@ public:
             // collision; increment index and try again
             i = (i+1) % cap;
         }
+        return array[i]->val;
     }
 
     // returns nullptr when no object is associated to the key
@@ -149,6 +150,22 @@ public:
             } else if (array[i]->key == k) {
                 // found the key
                 return optional(&array[i]->val);
+            }
+            i = (i+1) % cap;
+        }
+    }
+
+    bool hasKey(const K& k) const {
+        u32 h = hash(k);
+        u32 i = h % this->cap;
+        // do linear probing
+        while(true) {
+            if (array[i] == nullptr) {
+                // no entry for this key
+                return false;
+            } else if (array[i]->key == k) {
+                // found the key
+                return true;
             }
             i = (i+1) % cap;
         }

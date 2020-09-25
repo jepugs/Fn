@@ -50,6 +50,10 @@ typedef u16 StackAddr;
 typedef u8 Local;
 // 32-bit integers represent addresses in the bytecode
 typedef u32 Addr;
+// used to identify local variables and upvalues
+typedef u8 LocalId;
+// used to identify bytecode constant
+typedef u16 ConstId;
 
 // standard library imports
 //typedef string std::string;
@@ -61,7 +65,10 @@ struct SourceLoc {
     const int line;
     const int col;
 
-    SourceLoc(string *filename, int line, int col) : filename(new string(*filename)), line(line), col(col) { }
+    SourceLoc(const string* filename, int line=1, int col=1)
+        : filename(new string(*filename)), line(line), col(col) { }
+    SourceLoc(const char* filename, int line=1, int col=1)
+        : filename(new string(filename)), line(line), col(col) { }
     SourceLoc(const std::shared_ptr<string>& filename, int line, int col)
         : filename(filename), line(line), col(col) { }
     SourceLoc(const SourceLoc& loc) : filename(loc.filename), line(loc.line), col(loc.col) { }

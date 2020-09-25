@@ -1,25 +1,162 @@
 #include "values.hpp"
 
+#include <cmath>
+
 namespace fn {
+
+void Value::error(u64 expected) const {
+    throw ValueError(expected, *this);
+}
+
+Value& Value::operator+=(const Value& v) {
+    return *this = *this + v;
+}
+
+bool Value::isInt() const {
+    if (!isNum()) {
+        return false;
+    }
+    auto f = unum();
+    return f == i64(f);
+}
+
+f64 Value::num() const {
+    if (!isNum()) {
+        error(TAG_NUM);
+    }
+    return this->unum();
+}
+
+Cons* Value::cons() const {
+    if (!isCons()) {
+        error(TAG_CONS);
+    }
+    return this->ucons();
+}
+
+FnString* Value::str() const {
+    if (!isStr()) {
+        error(TAG_STR);
+    }
+    return this->ustr();
+}
+Obj* Value::obj() const {
+    if (!isObj()) {
+        error(TAG_OBJ);
+    }
+    return this->uobj();
+}
+Function* Value::func() const {
+    if (!isFunc()) {
+        error(TAG_FUNC);
+    }
+    return this->ufunc();
+}
+ForeignFunc* Value::foreign() const {
+    if (!isForeign()) {
+        error(TAG_FOREIGN);
+    }
+    return this->uforeign();
+}
+
+Value Value::operator+(const Value& v) const {
+    if (!isNum() || !v.isNum()) {
+        error(TAG_NUM);
+    }
+    return value(unum() + v.unum());
+}
+Value Value::operator-(const Value& v) const {
+    if (!isNum() || !v.isNum()) {
+        error(TAG_NUM);
+    }
+    return value(unum() - v.unum());
+}
+Value Value::operator*(const Value& v) const {
+    if (!isNum() || !v.isNum()) {
+        error(TAG_NUM);
+    }
+    return value(unum() * v.unum());
+}
+Value Value::operator/(const Value& v) const {
+    if (!isNum() || !v.isNum()) {
+        error(TAG_NUM);
+    }
+    return value(unum() / v.unum());
+}
+
+Value Value::pow(const Value& expt) const {
+    if (!isNum() || !expt.isNum()) {
+        error(TAG_NUM);
+    }
+    return value(std::pow(unum(),expt.unum()));
+}
+
+// cons functions
+Value& Value::rhead() const {
+    if (!isCons()){
+        error(TAG_CONS);
+    }
+    return ucons()->head;
+}
+Value& Value::rtail() const {
+    if (!isCons()) {
+        error(TAG_CONS);
+    }
+    return ucons()->tail;
+}
+
+// str functions
+u32 Value::strLen() const {
+    if (!isStr()) {
+        error(TAG_STR);
+    }
+    return ustr()->len;
+}
+
+// obj functions
+Value& Value::get(const Value& key) const {
+    if (!isObj()) {
+        error(TAG_OBJ);
+    }
+    auto v = uobj()->contents.get(key);
+    if (v.has_value()) {
+        return **v;
+    }
+    return uobj()->contents.insert(key, V_NULL);
+}
+void Value::set(const Value& key, const Value& val) const {
+    if (!isObj()) {
+        error(TAG_OBJ);
+    }
+    uobj()->contents.insert(key, val);
+}
+bool Value::hasKey(const Value& key) const {
+    if (!isObj()) {
+        error(TAG_OBJ);
+    }
+    return uobj()->contents.hasKey(key);
+}
+
 
 ObjHeader::ObjHeader(Value ptr, bool gc) : ptr(ptr), gc(gc), dirty(false) { }
 
 Cons::Cons(Value head, Value tail, bool gc) : h(value(this),gc), head(head), tail(tail) { }
 
 FnString::FnString(const string& src, bool gc) : h(value(this),gc), len(src.size()) {
-    data = new char[len+1];
-    data[len] = '\0';
-    std::memcpy(data, src.c_str(), len);
+    auto v = new char[len+1];
+    v[len] = '\0';
+    std::memcpy(v, src.c_str(), len);
+    data = v;
 }
-FnString::FnString(const char* src, bool gc) : h(value(this),gc) {
+FnString::FnString(const char* src, bool gc) : h(value(this),gc), len(string(src).size()) {
     string s(src);
-    len = s.size();
-    data = new char[len+1];
-    data[len] = '\0';
-    std::memcpy(data, s.c_str(), len);
+    auto v = new char[len+1];
+    v[len] = '\0';
+    std::memcpy(v, s.c_str(), len);
+    data = v;
 }
 FnString::~FnString() {
-    delete data;
+    delete[] data;
 }
 
 bool FnString::operator==(const FnString& s) const {
@@ -48,7 +185,7 @@ Function::~Function() {
     //         delete upvals[i];
     //     }
     // }
-    delete upvals;
+    delete[] upvals;
 }
 
 ForeignFunc::ForeignFunc(Local minArgs, bool varArgs, Value (*func)(Local, Value*, VM*), bool gc)

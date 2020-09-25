@@ -1,8 +1,20 @@
+* Introduction
+
+This document contains the specification for the core language of fn. It will eventually have two
+companion documents, one of which specifies the frontend functionality of the fn executable and
+another which defines the standard library modules.
+
+The purposes of this document include:
+- to formally define abstract syntactic forms in fn, and specify their evaluation semantics
+- to describe the correspondence between text source code and abstract syntactic forms
+- to describe fn's module and variable semantics
+
+
 * Syntax
 
 There are essentially two parts involved in formally specifying fn's syntax. First, we must define
 the abstract notion of a *syntactic form*. Syntactic forms are formal objects living one level of
-abstraction above the text in source code. Essentially, a syntactic forms are equivalence classes on
+abstraction above the text in source code. Essentially, syntactic forms are equivalence classes on
 fn expressions. If two expressions correspond to equivalent syntactic forms, then they will be
 evaluated in the same way.
 

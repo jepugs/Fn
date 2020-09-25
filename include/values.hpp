@@ -17,20 +17,6 @@ namespace fn {
 // variable tag size is that 3-bit tags can be associated with an 8-byte-aligned pointer (so we only
 // need 61 bits to hold the pointer, since the last 3 bits are 0). This requires that none of the
 // 3-bit tags occur as prefixes to the 8-bit tags.
-union Value {
-    u64 raw;
-    void* ptr;
-    f64 num;
-
-    // implemented in values.cpp
-    bool operator==(const Value& v) const;
-};
-
-inline void* getPointer(Value v) {
-    // mask out the three LSB with 0's
-    return (void*)(v.raw & (~7));
-};
-
 
 // 3-bit tags
 constexpr u64 TAG_NUM  = 0;
@@ -47,17 +33,157 @@ constexpr u64 TAG_BOOL  = 0017;
 constexpr u64 TAG_EMPTY = 0027;
 constexpr u64 TAG_SYM   = 0037;
 
+class Cons;
+class FnString;
+class Obj;
+class Function;
+class ForeignFunc;
+
+// rather than providing a constructor for Value, use the (lowercase 'v') value() functions defined
+// below
+union Value {
+    u64 raw;
+    void* ptr;
+    f64 numVal;
+
+    // implemented in values.cpp
+    bool operator==(const Value& v) const;
+
+    // assignment operators
+    Value& operator+=(const Value& v);
+
+    // functions to check for a tag
+    inline bool isNum() const {
+        return (raw & 0x7) == TAG_NUM;
+    }
+    bool isInt() const;
+    inline bool isCons() const {
+        return (raw & 0x7) == TAG_CONS;
+    }
+    inline bool isStr() const {
+        return (raw & 0x7) == TAG_STR;
+    }
+    inline bool isBool() const {
+        return (raw & 0x7) == TAG_BOOL;
+    }
+    inline bool isObj() const {
+        return (raw & 0x7) == TAG_OBJ;
+    }
+    inline bool isFunc() const {
+        return (raw & 0x7) == TAG_FUNC;
+    }
+    inline bool isForeign() const {
+        return (raw & 0x7) == TAG_FOREIGN;
+    }
+    inline bool isSym() const {
+        return (raw & 0xff) == TAG_SYM;
+    }
+
+    inline bool isNull() const {
+        return raw == TAG_NULL;
+    }
+    inline bool isTrue() const {
+        return raw == ((1 << 8) | TAG_BOOL);
+    }
+    inline bool isFalse() const {
+        return raw == TAG_BOOL;
+    }
+    inline bool isEmpty() const {
+        return raw == TAG_EMPTY;
+    }
+
+    // unsafe generic pointer accessor
+    inline void* getPointer() const {
+        return reinterpret_cast<void*>(raw & (~7));
+    }
+
+    // unsafe accessors are prefixed with u. They don't check type tags or throw value errors.
+    inline f64 unum() const {
+        return numVal;
+    }
+    inline Cons* ucons() const {
+        return reinterpret_cast<Cons*>(raw & (~7));
+    }
+    inline FnString* ustr() const {
+        return reinterpret_cast<FnString*>(raw & (~7));
+    }
+    inline Obj* uobj() const {
+        return reinterpret_cast<Obj*>(raw & (~7));
+    }
+    inline Function* ufunc() const {
+        return reinterpret_cast<Function*>(raw & (~7));
+    }
+    inline ForeignFunc* uforeign() const {
+        return reinterpret_cast<ForeignFunc*>(raw & (~7));
+    }
+
+    // safe accessors will check tags and throw value errors when appropriate
+    f64 num() const;
+    Cons* cons() const;
+    FnString* str() const;
+    Obj* obj() const;
+    Function* func() const;
+    ForeignFunc* foreign() const;
+
+    // all functions below are safe. Foreign functions can call them without first checking the
+    // types of the arguments provided, and an appropriate value error will be generated and handled
+    // by the VM.
+
+    // num functions
+    // arithmetic operators are only work on numbers
+    Value operator+(const Value& v) const;
+    Value operator-(const Value& v) const;
+    Value operator*(const Value& v) const;
+    Value operator/(const Value& v) const;
+
+    Value pow(const Value& expt) const;
+
+    // cons functions
+    // these only work on cons, not empty
+    Value& rhead() const;
+    Value& rtail() const;
+
+    // list functions. Work on cons and empty
+    Value head() const;
+    Value tail() const;
+
+    // str functions
+    u32 strLen() const;
+
+    // obj functions
+    Value& get(const Value& key) const;
+    void set(const Value& key, const Value& val) const;
+    bool hasKey(const Value& key) const;
+
+    void error(u64 expected) const;
+};
+
 // constant values
 constexpr Value V_NULL  = { .raw = TAG_NULL };
 constexpr Value V_FALSE = { .raw = TAG_BOOL };
 constexpr Value V_TRUE  = { .raw = (1 << 8) | TAG_BOOL };
 constexpr Value V_EMPTY = { .raw = TAG_EMPTY };
 
+inline void* getPointer(Value v) {
+    // mask out the three LSB with 0's
+    return (void*)(v.raw & (~7));
+};
+
+// this error is generated when a value is expected to have a certain tag and has a different one.
+class ValueError : public std::exception {
+public:
+    // expected tag
+    u64 expected;
+    Value actual;
+
+    ValueError(u64 expected, Value actual) : expected(expected), actual(actual) { }
+};
+
 
 /// Value structures
 
 // common header object for all objects requiring additional memory management
-struct alignas(16) ObjHeader {
+struct alignas(32) ObjHeader {
     // a value pointing to this. (Also encodes the type via the tag)
     Value ptr;
     // does the gc manage this object?
@@ -68,7 +194,8 @@ struct alignas(16) ObjHeader {
     ObjHeader(Value ptr, bool gc);
 };
 
-struct alignas(16) Cons {
+// Cons cells
+struct alignas(32) Cons {
     ObjHeader h;
     Value head;
     Value tail;
@@ -76,10 +203,10 @@ struct alignas(16) Cons {
     Cons(Value head, Value tail, bool gc=false);
 };
 
-struct alignas(16) FnString {
+struct alignas(32) FnString {
     ObjHeader h;
-    u32 len;
-    char* data;
+    const u32 len;
+    const char* data;
 
     FnString(const string& src, bool gc=false);
     FnString(const char* src, bool gc=false);
@@ -88,7 +215,7 @@ struct alignas(16) FnString {
     bool operator==(const FnString& s) const;
 };
 
-struct alignas(16) Obj {
+struct alignas(32) Obj {
     ObjHeader h;
     Table<Value,Value> contents;
 
@@ -138,7 +265,7 @@ struct UpvalueSlot {
     void dereference();
 };
 
-struct alignas(16) Function {
+struct alignas(32) Function {
     ObjHeader h;
     FuncStub* stub;
     UpvalueSlot** upvals;
@@ -152,7 +279,7 @@ struct alignas(16) Function {
 struct VM;
 
 // Foreign functions
-struct alignas(16) ForeignFunc {
+struct alignas(32) ForeignFunc {
     ObjHeader h;
     Local minArgs;
     bool varArgs;
@@ -201,7 +328,7 @@ string vToString(Value v, SymbolTable* symbols);
 // These value(type) functions go from C++ values to fn values
 
 inline Value value(f64 num) {
-    Value res = { .num=num };
+    Value res = { .numVal=num };
     // make the first three bits 0
     res.raw &= (~7);
     res.raw |= TAG_NUM;
@@ -211,7 +338,14 @@ inline Value value(bool b) {
     return { .raw=(b << 8) | TAG_BOOL};
 }
 inline Value value(int num) {
-    Value res = { .num=(f64)num };
+    Value res = { .numVal=(f64)num };
+    // make the first three bits 0
+    res.raw &= (~7);
+    res.raw |= TAG_NUM;
+    return res;
+}
+inline Value value(i64 num) {
+    Value res = { .numVal=(f64)num };
     // make the first three bits 0
     res.raw &= (~7);
     res.raw |= TAG_NUM;
@@ -274,7 +408,7 @@ inline void* vPointer(Value v) {
 }
 
 inline f64 vNum(Value v) {
-    return v.num;
+    return v.unum();
 }
 inline FnString* vStr(Value v) {
     return (FnString*) vPointer(v);

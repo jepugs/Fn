@@ -16,11 +16,7 @@ private:
     u64 memUsage;
     u32 count;
 
-    void dealloc(Cons* v);
-    void dealloc(FnString* v);
-    void dealloc(Obj* v);
-    void dealloc(Function* v);
-    void dealloc(ForeignFunc* v);
+    void dealloc(Value);
 
 public:
     Allocator();

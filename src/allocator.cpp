@@ -8,45 +8,22 @@ Allocator::Allocator() : objects(), memUsage(0), count(0) { }
 
 Allocator::~Allocator() {
     for (auto o : objects) {
-        switch (vTag(o->ptr)) {
-        case TAG_CONS:
-            dealloc(vCons(o->ptr));
-            break;
-        case TAG_STR:
-            //dealloc(vString(o->ptr));
-            break;
-        case TAG_OBJ:
-            break;
-        case TAG_FUNC:
-            break;
-        case TAG_FOREIGN:
-            break;
-        default:
-            // do nothing
-            break;
-        }
+        dealloc(o->ptr);
     }
 }
 
-void Allocator::dealloc(Cons* v) {
-    delete v;
-}
-
-void Allocator::dealloc(FnString* v) {
-    delete v;
-}
-
-void Allocator::dealloc(Obj* v) {
-    delete v;
-}
-
-void Allocator::dealloc(Function* v) {
-    // TODO: handle upvalues
-    delete v;
-}
-
-void Allocator::dealloc(ForeignFunc* v) {
-    delete v;
+void Allocator::dealloc(Value v) {
+    if (v.isCons()) {
+        delete v.ucons();
+    } else if (v.isStr()) {
+        delete v.ustr();
+    } else if (v.isObj()) {
+        delete v.uobj();
+    } else if (v.isFunc()) {
+        delete v.ufunc();
+    } else if (v.isForeign()) {
+        delete v.uforeign();
+    }
 }
 
 Value Allocator::cons(Value hd, Value tl) {
@@ -91,6 +68,14 @@ Value Allocator::func(FuncStub* stub, const std::function<void (UpvalueSlot**)>&
     return value(v);
 }
 
+Value Allocator::foreign(Local minArgs, bool varArgs, Value (*func)(Local, Value*, VM*)) {
+    memUsage += sizeof(ForeignFunc);
+    ++count;
+
+    auto v = new ForeignFunc(minArgs, varArgs, func, true);
+    objects.push_front(&v->h);
+    return value(v);
+}
 
 void Allocator::printStatus() {
     std::cout << "Allocator Information\n";

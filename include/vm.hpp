@@ -47,6 +47,8 @@ private:
     // constants and symbols
     vector<Value> constants;
     SymbolTable symbols;
+    // constants which need to be freed in the destructor
+    std::list<Value> managedConstants;
     // function stubs
     vector<FuncStub*> functions;
 
@@ -73,14 +75,24 @@ public:
     u16 readShort(Addr addr);
     void patchShort(Addr addr, u16 s);
 
-    // add a constant to the table and return its 16-bit ID
-    u16 addConstant(Value v);
     Value getConstant(u16 id);
     u16 numConstants();
 
     // add a function and set it to start at the current ip
     u16 addFunction(Local arity, bool vararg, Value modId);
     FuncStub* getFunction(u16 id);
+
+    // directly add values to the constants array and return their ID
+    ConstId addConst(Value v);
+    // create a numerical constant
+    ConstId numConst(f64 num);
+    // string constants are copied and automatically freed on destruction
+    ConstId strConst(const string& str);
+    ConstId strConst(const char* str);
+    // create a new cons cell and return its 16-bit ID
+    ConstId consConst(Value hd, Value tl);
+    // equivalent to addConst(symbol(name))
+    ConstId symConst(const string& name);
 
     SymbolTable* getSymbols();
     Value symbol(const string& name);

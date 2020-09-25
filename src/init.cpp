@@ -5,6 +5,8 @@
 #include "table.hpp"
 #include "values.hpp"
 
+#include <cmath>
+
 namespace fn {
 
 #define FN_FUN(name) static Value name(Local numArgs, Value* args, VM* vm)
@@ -70,62 +72,117 @@ FN_FUN(fnIntQ) {
 static Value fnAdd(Local numArgs, Value* args, VM* vm) {
     f64 res = 0;
     for (Local i = 0; i < numArgs; ++i) {
-        if(vShortTag(args[i]) == TAG_NUM) {
-            res += vNum(args[i]);
-        } else {
-            vm->runtimeError("Argument to + not a number: " +
-                             vToString(args[i], vm->getBytecode()->getSymbols()));
-        }
+        res += args[i].num();
     }
     return value(res);
 }
+
 static Value fnSub(Local numArgs, Value* args, VM* vm) {
     if (numArgs == 0)
         return value(0);
-    // TODO: check isNum
-    f64 res = vNum(args[0]);
+    f64 res = args[0].num();
     if (numArgs == 1) {
-        return { .num = -res };
+        return value(-res);
     }
     for (Local i = 1; i < numArgs; ++i) {
-        if(vShortTag(args[i]) == TAG_NUM) {
-            res -= vNum(args[i]);
-        } else {
-            vm->runtimeError("Argument to - not a number: " +
-                             vToString(args[i], vm->getBytecode()->getSymbols()));
-        }
+        res -= args[i].num();
     }
     return value(res);
 }
+
 static Value fnMul(Local numArgs, Value* args, VM* vm) {
     f64 res = 1.0;
     for (Local i = 0; i < numArgs; ++i) {
-        if(vShortTag(args[i]) == TAG_NUM) {
-            res *= vNum(args[i]);
-        } else {
-            vm->runtimeError("Argument to * not a number: " +
-                             vToString(args[i], vm->getBytecode()->getSymbols()));
-        }
+        res *= args[i].num();
     }
     return value(res);
 }
+
 static Value fnDiv(Local numArgs, Value* args, VM* vm) {
     if (numArgs == 0)
         return value(1.0);
-    // TODO: check for 0
-    f64 res = vNum(args[0]);
+
+    f64 res = args[0].num();
     if (numArgs == 1) {
         return value(1/res);
     }
     for (Local i = 1; i < numArgs; ++i) {
-        if(vShortTag(args[i]) == TAG_NUM) {
-            res /= vNum(args[i]);
-        } else {
-            vm->runtimeError("Argument to / not a number: " +
-                             vToString(args[i], vm->getBytecode()->getSymbols()));
-        }
+        res /= args[i].num();
     }
     return value(res);
+}
+
+FN_FUN(fnPow) {
+    return args[0].pow(args[1]);
+}
+
+FN_FUN(fnMod) {
+    if (!args[0].isInt() || !args[1].isInt()) {
+        vm->runtimeError("mod arguments must be integers");
+    }
+    i64 u = (i64)args[0].num();
+    i64 v = (i64)args[1].num();
+    return value(u % v);
+}
+
+FN_FUN(fnFloor) {
+    return value(std::floor(args[0].num()));
+}
+
+FN_FUN(fnCeil) {
+    return value(std::ceil(args[0].num()));
+}
+
+FN_FUN(fnGt) {
+    auto v = args[0].num();
+    for (Local i = 1; i < numArgs; ++i) {
+        auto u = args[i].num();
+        if (v > u) {
+            v = u;
+            continue;
+        }
+        return V_FALSE;
+    }
+    return V_TRUE;
+}
+
+FN_FUN(fnLt) {
+    auto v = args[0].num();
+    for (Local i = 1; i < numArgs; ++i) {
+        auto u = args[i].num();
+        if (v < u) {
+            v = u;
+            continue;
+        }
+        return V_FALSE;
+    }
+    return V_TRUE;
+}
+
+FN_FUN(fnGe) {
+    auto v = args[0].num();
+    for (Local i = 1; i < numArgs; ++i) {
+        auto u = args[i].num();
+        if (v >= u) {
+            v = u;
+            continue;
+        }
+        return V_FALSE;
+    }
+    return V_TRUE;
+}
+
+FN_FUN(fnLe) {
+    auto v = args[0].num();
+    for (Local i = 1; i < numArgs; ++i) {
+        auto u = args[i].num();
+        if (v <= u) {
+            v = u;
+            continue;
+        }
+        return V_FALSE;
+    }
+    return V_TRUE;
 }
 
 FN_FUN(fnObject) {
@@ -142,6 +199,30 @@ FN_FUN(fnObject) {
 
 FN_FUN(fnObjectQ) {
     return value(vShortTag(args[0])==TAG_OBJ);
+}
+
+FN_FUN(fnList) {
+    auto res = V_EMPTY;
+    for (Local i = numArgs; i > 0; --i) {
+        res = vm->getAlloc()->cons(args[i-1], res);
+    }
+    return res;
+}
+
+FN_FUN(fnListQ) {
+    return value(args[0].isEmpty() || args[0].isCons());
+}
+
+FN_FUN(fnHasKey) {
+    return value(args[0].hasKey(args[1]));
+}
+
+FN_FUN(fnGet) {
+    auto res = args[0].get(args[1]);
+    for (Local i = 2; i < numArgs; ++i) {
+        res = res.get(args[i]);
+    }
+    return res;
 }
 
 static Value fnPrint(Local numArgs, Value* args, VM* vm) {
@@ -168,22 +249,23 @@ void init(VM* vm) {
     vm->addForeign("-", fnSub, 0, true);
     vm->addForeign("*", fnMul, 0, true);
     vm->addForeign("/", fnDiv, 0, true);
-    //vm->addForeign("^", fnPow, 2, false);
-    //vm->addForeign("mod", fnMod, 2, false);
-    //vm->addForeign("floor", fnFloor, 2, false);
-    //vm->addForeign(">", fnGt, 2, true);
-    //vm->addForeign("<", fnLt, 2, true);
-    //vm->addForeign(">=", fnGe, 2, true);
-    //vm->addForeign("<=", fnLe, 2, true);
+    vm->addForeign("^", fnPow, 2, false);
+    vm->addForeign("mod", fnMod, 2, false);
+    vm->addForeign("floor", fnFloor, 1, false);
+    vm->addForeign("ceil", fnCeil, 1, false);
+    vm->addForeign(">", fnGt, 2, true);
+    vm->addForeign("<", fnLt, 2, true);
+    vm->addForeign(">=", fnGe, 2, true);
+    vm->addForeign("<=", fnLe, 2, true);
     vm->addForeign("Object", fnObject, 0, true);
     vm->addForeign("object?", fnObjectQ, 1, false);
-    // vm->addForeign("has-key", fnHasKey, 2, false);
-    // vm->addForeign("get", fnGet, 2, true);
+    vm->addForeign("has-key", fnHasKey, 2, false);
+    vm->addForeign("get", fnGet, 2, true);
     //vm->addForeign("get-keys", fnGetKeys, 1, false);
     //vm->addForeign("get-props", fnGetProps, 1, false);
     //vm->addForeign("extend", fnDiv, 1, true);
-    //vm->addForeign("List", fnList, 0, true);
-    //vm->addForeign("list?", fnListQ, 0, false);
+    vm->addForeign("List", fnList, 0, true);
+    vm->addForeign("list?", fnListQ, 1, false);
     //vm->addForeign("empty?", fnEmptyQ, 0, false);
     //vm->addForeign("as-list", fnLAsist, 1, false);
     //vm->addForeign("cons", fnDiv, 0, true);

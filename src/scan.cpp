@@ -224,10 +224,15 @@ static optional<f64> parseNum(const vector<char>& buf) {
         return std::nullopt;
     }
 
+    // whether we encounter a digit
+    bool digit = false;
+
     // get integer part
     f64 res = 0;
     char ch;
+    // first integer character
     while (i < buf.size() && isDigit(ch=buf[i], base)) {
+        digit = true;
         res *= base;
         res += digitVal(ch);
         ++i;
@@ -249,6 +254,7 @@ static optional<f64> parseNum(const vector<char>& buf) {
     // parse digits
     ++i;
     while (i < buf.size() && isDigit(ch=buf[i], base)) {
+        digit = true;
         res += digitVal(ch) * place;
         place /= base;
         ++i;
@@ -259,23 +265,23 @@ static optional<f64> parseNum(const vector<char>& buf) {
         return sign*res;
     }
 
+    // make sure there's at least one digit read
+    if (!digit) {
+        return { };
+    }
+
     // label to check for scientific notation
     scient:
     // scientific notation only supports base 10
-    if (ch != 'e' || base != 10) {
+    if ((ch != 'e' && ch != 'E') || base != 10) {
         // not a number
-        return std::nullopt;
-    }
-    if (i == buf.size()) {
-        // numbers cannot end with e
-        return std::nullopt;
+        return { };
     }
     // parse base 10 exponent
     ++i;
     // check for sign
     f64 expSign = 1;
     if (i < buf.size()) {
-        // TODO: handle '+'
         if (buf[i] == '-') {
             ++i;
             expSign = -1;
@@ -283,6 +289,13 @@ static optional<f64> parseNum(const vector<char>& buf) {
             ++i;
         }
     }
+
+    // make sure the exponent is there
+    if (i == buf.size()) {
+        // numbers cannot end with e
+        return std::nullopt;
+    }
+
     f64 exponent = 0;
     while (i < buf.size() && isDigit(ch=buf[i])) {
         exponent *= 10;
@@ -301,15 +314,17 @@ static optional<f64> parseNum(const vector<char>& buf) {
 
 Token Scanner::scanSymOrNum(char first) {
     if (first == '.') {
-        throw FNError("scanner", "Symbol names may not begin with '.'.",
-                      SourceLoc(filename, line, col));
+        error("Tokens may not begin with '.'.");
     }
     bool escaped = first == '\\';
     // whether this is really a symbol or a dot form
     bool dot = false;
+    // whether the previous symbol was a dot
+    bool prevDot = false;
     vector<char> buf;
     buf.push_back(first);
 
+    char c;
     while(true) {
         if (escaped) {
             // IMPLNOTE: this throws an exception at EOF, which is the desired behavior
@@ -322,17 +337,18 @@ Token Scanner::scanSymOrNum(char first) {
             break;
         }
 
-        char c = peekChar();
-        if (!isSymChar(c)) {
-            if (c == '.') {
-                throw FNError("scanner", "Symbol names may not end with '.'.",
-                              SourceLoc(filename, line, col));
-            }
+        if (!isSymChar(c = peekChar())) {
             break;
         }
         getChar();
         if (c == '.') {
+            if (prevDot) {
+                error("Successive unescaped dots.");
+            }
             dot = true;
+            prevDot = true;
+        } else {
+            prevDot = false;
         }
         if (c == '\\') {
             escaped = true;
@@ -345,6 +361,10 @@ Token Scanner::scanSymOrNum(char first) {
     auto d = parseNum(buf);
     if (d.has_value()) {
         return makeToken(TKNumber, *d);
+    }
+
+    if (buf[buf.size()-1] == '.') {
+        error("Non-numeric tokens may not end with a dot.");
     }
 
     string s(buf.data(),buf.size());
@@ -398,8 +418,8 @@ char Scanner::getStringEscapeChar() {
         return '\v';
     }
 
-    throw FNError("scanner", "Unrecognized string escape sequence",
-                  SourceLoc(filename, line, col));
+    error("Unrecognized string escape sequence.");
+    return '\0'; // this is just to shut up the interpreter
 }
 
 bool Scanner::eof() {
@@ -408,8 +428,7 @@ bool Scanner::eof() {
 
 char Scanner::getChar() {
     if (eof()) {
-        throw FNError("scanner", "Unexpected EOF while scanning.",
-                      SourceLoc(filename, line, col));
+        error("Unexpected EOF while scanning.");
     }
     char c = input->get();
     advance(c);
@@ -418,8 +437,7 @@ char Scanner::getChar() {
 
 char Scanner::peekChar() {
     if (eof()) {
-        throw FNError("scanner", "Unexpected EOF while scanning.",
-                      SourceLoc(filename, line, col));
+        error("Unexpected EOF while scanning.");
     }
     return input->peek();
 }

@@ -74,9 +74,9 @@ Compiler::Compiler(const fs::path& dir, Bytecode* dest, Scanner* sc)
     : dest(dest), sc(sc), sp(0), dir(dir), modules() {
     // The first module is fn.core
     // TODO: use allocator
-    auto modIdVal = new Cons(dest->symbol("core"), V_EMPTY);
-    modIdVal = new Cons(dest->symbol("fn"), value(modIdVal));
-    curModId = dest->addConstant(value(modIdVal));
+    auto modIdVal = dest->consConst(dest->symbol("core"), V_EMPTY);
+    modIdVal = dest->consConst(dest->symbol("fn"), dest->getConstant(modIdVal));
+    curModId = modIdVal;
 }
 
 Compiler::~Compiler() {
@@ -135,7 +135,7 @@ void Compiler::compileVar(Locals* locals, const string& name) {
     auto id = findLocal(locals, name, &levels);
     if (!id.has_value()) {
         // global
-        auto id = dest->addConstant(dest->symbol(name));
+        auto id = dest->symConst(name);
         dest->writeByte(OP_CONST);
         dest->writeShort(id);
         dest->writeByte(OP_GLOBAL);
@@ -362,7 +362,7 @@ void Compiler::compileDef(Locals* locals) {
     }
 
     // write the name symbol
-    constant(dest->addConstant(dest->symbol(*tok.datum.str)));
+    constant(dest->symConst(*tok.datum.str));
     ++sp;
     // compile the value expression
     compileExpr(locals);
@@ -388,7 +388,7 @@ void Compiler::compileDotToken(Locals* locals, Token& tok) {
     // note: this compileVar call already sets sp to what we want it at the end
     for (u32 i = 1; i < toks.size(); ++i) {
         dest->writeByte(OP_CONST);
-        dest->writeShort(dest->addConstant(dest->symbol(toks[i])));
+        dest->writeShort(dest->symConst(toks[i]));
         dest->writeByte(OP_OBJ_GET);
     }
 }
@@ -410,7 +410,7 @@ void Compiler::compileDotExpr(Locals* locals) {
     compileVar(locals,toks[0]);
     // note: this compileVar call already sets sp to what we want it at the end
     for (u32 i = 1; i < toks.size(); ++i) {
-        constant(dest->addConstant(dest->symbol(toks[i])));
+        constant(dest->symConst(toks[i]));
         dest->writeByte(OP_OBJ_GET);
     }
 }
@@ -528,17 +528,19 @@ void Compiler::compileImport(Locals* locals) {
         // build the module ID as a value (a cons)
         // TODO: use allocator
         auto modIdVal = V_EMPTY;
+        ConstId lastId;
         for (int i = strs.size(); i > 0; --i) {
-            modIdVal = value(new Cons(dest->symbol(strs[i-1]), modIdVal));
+            lastId = dest->consConst(dest->symbol(strs[i-1]), modIdVal);
+            modIdVal = dest->getConstant(lastId);
         }
-        modId = dest->addConstant(modIdVal);
+        modId = lastId;
     } else {
         modId = **x;
     }
 
     // TODO: check the name is legal
     // push module name to the stack
-    auto nameId = dest->addConstant(dest->symbol(strs[strs.size()-1]));
+    auto nameId = dest->symConst(strs[strs.size()-1]);
     dest->writeByte(OP_CONST);
     dest->writeShort(nameId);
 
@@ -665,7 +667,7 @@ void Compiler::compileQuote(Locals* locals, bool prefix) {
     }
 
     dest->writeByte(OP_CONST);
-    auto id = dest->addConstant(dest->symbol(*tok.datum.str));
+    auto id = dest->symConst(*tok.datum.str);
 
     // scan for the close paren unless we're using prefix notation
     if (!prefix && !checkDelim(TKRParen, tok=sc->nextToken())) {
@@ -684,7 +686,7 @@ void Compiler::compileSet(Locals* locals) {
         // variable set
         u32 levels;
         auto id = findLocal(locals, name[0], &levels);
-        auto sym = dest->addConstant(dest->symbol(name[0]));
+        auto sym = dest->symConst(name[0]);
         if (id.has_value()) {
             // local
             compileExpr(locals);
@@ -705,11 +707,11 @@ void Compiler::compileSet(Locals* locals) {
         compileVar(locals, name[0]);
         for (size_t i = 1; i < name.size()-1; ++i) {
             // push the key symbol
-            constant(dest->addConstant(dest->symbol(name[i])));
+            constant(dest->symConst(name[i]));
             dest->writeByte(OP_OBJ_GET);
         }
         // final symbol
-        auto sym = dest->addConstant(dest->symbol(name[name.size()-1]));
+        auto sym = dest->symConst(name[name.size()-1]);
         constant(sym);
 
         sp += 2; // at this point the stack is ->[key] obj (initial-stack-pointer) ...
@@ -806,7 +808,6 @@ void Compiler::compileExpr(Locals* locals, Token* t0) {
     dest->setLoc(tok.loc);
 
     u16 id;
-    Value v;
 
     if (isRightDelim(tok)) {
         throw FNError("compiler", "Unexpected closing delimiter '" + tok.to_string() +"'.", tok.loc);
@@ -819,13 +820,12 @@ void Compiler::compileExpr(Locals* locals, Token* t0) {
 
     // constants
     case TKNumber:
-        id = dest->addConstant(value(tok.datum.num));
+        id = dest->numConst(tok.datum.num);
         constant(id);
         sp++;
         break;
     case TKString:
-        v = value(new FnString(*tok.datum.str));
-        id = dest->addConstant(v);
+        id = dest->symConst(*tok.datum.str);
         constant(id);
         sp++;
         break;
