@@ -59,7 +59,7 @@ Value Allocator::obj() {
     return value(v);
 }
 
-Value Allocator::func(FuncStub* stub, const std::function<void (UpvalueSlot**)>& populate) {
+Value Allocator::func(FuncStub* stub, const std::function<void (UpvalueSlot*)>& populate) {
     memUsage += sizeof(Function);
     ++count;
 

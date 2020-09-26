@@ -109,7 +109,7 @@ public:
 constexpr StackAddr STACK_SIZE = 255;
 
 struct OpenUpvalue {
-    UpvalueSlot* slot;
+    UpvalueSlot slot;
     Local pos;
 };
 
@@ -139,7 +139,7 @@ struct CallFrame {
     CallFrame* extendFrame(Addr retAddr, Local numArgs, Function* caller);
 
     // open a new upvalue. ptr should point to the stack at pos.
-    UpvalueSlot* openUpvalue(Local pos, Value* ptr);
+    UpvalueSlot openUpvalue(Local pos, Value* ptr);
     // decrement the stack pointer and close affected upvalues
     void close(StackAddr n);
     // close all open upvalues regardless of stack position
@@ -214,7 +214,7 @@ public:
     void addGlobal(Value name, Value v);
     Value getGlobal(Value name);
 
-    UpvalueSlot* getUpvalue(Local id);
+    UpvalueSlot getUpvalue(Local id);
 
     // get a pointer to the Bytecode object so the compiler can write its output there
     Bytecode* getBytecode();

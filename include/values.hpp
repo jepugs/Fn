@@ -257,21 +257,53 @@ struct FuncStub {
 // reference counting is used to free UpvalueSlot objects
 struct UpvalueSlot {
     // if true, val is a location on the interpreter stack
-    bool open;
-    Value* val;
+    bool* open;
+    Value** val;
+    u32* refCount;
 
-    u32 refCount;
+    UpvalueSlot() : open(nullptr), val(nullptr), refCount(nullptr) { }
+    UpvalueSlot(Value* place) : open(new bool), val(new Value*), refCount(new u32) {
+        *open = true;
+        *val = place;
+        *refCount = 1;
+    }
+    UpvalueSlot(const UpvalueSlot& u)
+        : open(u.open), val(u.val), refCount(u.refCount) {
+        ++*refCount;
+    }
+    ~UpvalueSlot() {
+        if (refCount == nullptr) {
+            return;
+        }
 
-    void dereference();
+        --*refCount;
+        if (*refCount == 0) {
+            if (!*open) {
+                // closed upvals need to have their data deleted
+                delete *val;
+            }
+            delete open;
+            delete val;
+            delete refCount;
+        }
+    }
+
+    UpvalueSlot& operator=(const UpvalueSlot& u) {
+        this->open = u.open;
+        this->val = u.val;
+        this->refCount = u.refCount;
+        ++*refCount;
+        return *this;
+    }
 };
 
 struct alignas(32) Function {
     ObjHeader h;
     FuncStub* stub;
-    UpvalueSlot** upvals;
+    UpvalueSlot* upvals;
 
     // warning: you must manually set up the upvalues
-    Function(FuncStub* stub, const std::function<void (UpvalueSlot**)>& populate, bool gc=false);
+    Function(FuncStub* stub, const std::function<void (UpvalueSlot*)>& populate, bool gc=false);
     // TODO: use refcount on upvalues
     ~Function();
 };

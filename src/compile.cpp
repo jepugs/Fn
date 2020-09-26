@@ -477,6 +477,8 @@ void Compiler::compileFn(Locals* locals) {
     compileBlock(enclosed);
     dest->writeByte(OP_RETURN);
 
+    delete enclosed;
+
     // FIXME: since jump takes a signed offset, need to ensure that offset is positive if converted
     // to a signed number. Otherwise emit an error.
     auto offset = dest->getSize() - patchAddr - 2;
@@ -692,14 +694,16 @@ void Compiler::compileSet(Locals* locals) {
             compileExpr(locals);
             dest->writeByte(levels > 0 ? OP_SET_UPVALUE : OP_SET_LOCAL);
             dest->writeByte(*id);
-            // put the constant
-            constant(sym);
+            --sp;
         } else {
             // global
             constant(sym);
+            ++sp;
             compileExpr(locals);
             dest->writeByte(OP_SET_GLOBAL);
+            sp -= 2;
         }
+        constant(sym);
         ++sp;
     } else {
         // object set
@@ -714,15 +718,16 @@ void Compiler::compileSet(Locals* locals) {
         auto sym = dest->symConst(name[name.size()-1]);
         constant(sym);
 
-        sp += 2; // at this point the stack is ->[key] obj (initial-stack-pointer) ...
+        ++sp; // at this point the stack is ->[key] obj (initial-stack-pointer) ...
 
         // compile the value expression
         compileExpr(locals);
         dest->writeByte(OP_OBJ_SET);
+        sp -= 2;
 
         // return symbol name
         constant(sym);
-        --sp;
+        ++sp;
     }
 
     if (!checkDelim(TKRParen, tok=sc->nextToken())) {

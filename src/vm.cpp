@@ -229,7 +229,7 @@ CallFrame* CallFrame::extendFrame(Addr retAddr, Local numArgs, Function* caller)
     return new CallFrame(this, retAddr, bp+sp-numArgs, caller, numArgs);
 }
 
-UpvalueSlot* CallFrame::openUpvalue(Local pos, Value* ptr) {
+UpvalueSlot CallFrame::openUpvalue(Local pos, Value* ptr) {
     if (pos >= sp) {
         // TODO: probably an error
         return nullptr;
@@ -242,7 +242,7 @@ UpvalueSlot* CallFrame::openUpvalue(Local pos, Value* ptr) {
         }
     }
     // TODO: refCount
-    auto res = new UpvalueSlot{ .open=true, .val=ptr };
+    auto res = UpvalueSlot(ptr);
     openUpvals.push_front(OpenUpvalue{ .slot=res, .pos=pos });
     return res;
 }
@@ -251,9 +251,10 @@ void CallFrame::close(StackAddr n) {
     sp -= n;
     openUpvals.remove_if([this](auto u) {
         if (u.pos >= sp) {
-            u.slot->open = false;
-            u.slot->val = new Value { .raw=u.slot->val->raw };
-            //--u.slot->refCount;
+            *u.slot.open = false;
+            auto v = **u.slot.val;
+            *u.slot.val = new Value();
+            **u.slot.val = v;
             return true;
         }
         return false;
@@ -263,9 +264,10 @@ void CallFrame::close(StackAddr n) {
 void CallFrame::closeAll() {
     sp = 0;
     for (auto u : openUpvals) {
-        u.slot->open = false;
-        u.slot->val = new Value { .raw=u.slot->val->raw };
-        //--u.slot->refCount;
+        *u.slot.open = false;
+        auto v = **u.slot.val;
+        *u.slot.val = new Value();
+        **u.slot.val = v;
     }
 
     openUpvals.clear();
@@ -421,7 +423,7 @@ Value VM::getGlobal(Value name) {
     return **res;
 }
 
-UpvalueSlot* VM::getUpvalue(u8 id) {
+UpvalueSlot VM::getUpvalue(u8 id) {
     if (frame->caller == nullptr || frame->caller->stub->numUpvals <= id) {
         throw FNError("interpreter", "Attempt to access nonexistent upvalue",
                       *code.locationOf(ip));
@@ -609,7 +611,7 @@ void VM::step() {
 
     CallFrame *tmp;
 
-    UpvalueSlot* u;
+    UpvalueSlot u;
 
     // note: when an instruction uses an argument that occurs in the bytecode, it is responsible for
     // updating the instruction pointer at the end of its exection (which should be after any
@@ -640,14 +642,14 @@ void VM::step() {
         l = code.readByte(ip+1);
         // TODO: check upvalue exists
         u = frame->caller->upvals[l];
-        push(*u->val);
+        push(**u.val);
         ++ip;
         break;
     case OP_SET_UPVALUE:
         l = code.readByte(ip+1);
         // TODO: check upvalue exists
         u = frame->caller->upvals[l];
-        *u->val = pop();
+        **u.val = pop();
         ++ip;
         break;
 

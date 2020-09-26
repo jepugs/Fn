@@ -29,7 +29,7 @@ public:
     Value str(const string& s);
     Value str(const char* s);
     Value obj();
-    Value func(FuncStub* stub, const std::function<void (UpvalueSlot**)>& populate);
+    Value func(FuncStub* stub, const std::function<void (UpvalueSlot*)>& populate);
     Value foreign(Local minArgs, bool varArgs, Value (*func)(Local, Value*, VM*));
 
     void printStatus();

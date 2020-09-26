@@ -173,18 +173,14 @@ bool FnString::operator==(const FnString& s) const {
 
 Obj::Obj(bool gc) : h(value(this),gc), contents() { }
 
-Function::Function(FuncStub* stub, const std::function<void (UpvalueSlot**)>& populate, bool gc)
+Function::Function(FuncStub* stub, const std::function<void (UpvalueSlot*)>& populate, bool gc)
     : h(value(this),gc), stub(stub) {
-    upvals = new UpvalueSlot*[stub->numUpvals];
+    upvals = new UpvalueSlot[stub->numUpvals];
     populate(upvals);
 }
+
 // TODO: use refcount on upvalues
 Function::~Function() {
-    // for (u32 i = 0; i < stub->upvals; ++i) {
-    //     if(--upvals[i]->refCount == 0) {
-    //         delete upvals[i];
-    //     }
-    // }
     delete[] upvals;
 }
 

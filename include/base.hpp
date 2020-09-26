@@ -65,7 +65,7 @@ struct SourceLoc {
     const int line;
     const int col;
 
-    SourceLoc(const string* filename, int line=1, int col=1)
+    SourceLoc(string* filename, int line=1, int col=1)
         : filename(new string(*filename)), line(line), col(col) { }
     SourceLoc(const char* filename, int line=1, int col=1)
         : filename(new string(filename)), line(line), col(col) { }

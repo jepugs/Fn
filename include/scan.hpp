@@ -67,7 +67,7 @@ struct Token {
 
     // FIXME: it's probably inefficient to copy the whole darn string in the copy constructor/operator
     Token(const Token& tok) : tk(tok.tk), loc(tok.loc) {
-        if (tk == TKString || tk == TKSymbol) {
+        if (tk == TKString || tk == TKSymbol || tk == TKDot) {
             datum.str = new string(*tok.datum.str);
         } else {
             datum = tok.datum;
@@ -77,13 +77,13 @@ struct Token {
         if (this == &tok) return *this;
 
         // free old string if necessary
-        if (tk == TKString || tk == TKSymbol) {
+        if (tk == TKString || tk == TKSymbol || tk == TKDot) {
             delete datum.str;
         }
 
         this->tk = tok.tk;
         // copy new string if necessary
-        if (tk == TKString || tk == TKSymbol) {
+        if (tk == TKString || tk == TKSymbol || tk == TKDot) {
             datum.str = new string(*tok.datum.str);
         } else {
             this->datum = tok.datum;
@@ -93,7 +93,7 @@ struct Token {
 
     ~Token() {
         // must free the string used by symbols and string literals
-        if (tk == TKString || tk == TKSymbol)
+        if (tk == TKString || tk == TKSymbol || tk == TKDot)
             delete datum.str;
     }
 
