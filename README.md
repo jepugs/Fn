@@ -8,9 +8,24 @@
 - A powerful metaprogramming system via macros
 - Many parentheses
 
-At the time of writing, Version 0 of fn is very nearly complete. Version 0 is a minimal prototype of
-fn which supports most of the core language features. You can build it and run code, although
-`import` is not fully implemented, so you are limited to a single module.
+Version 0 is a minimal prototype of fn which supports most of the core language features. There will
+be three parts to the spec: one each for the language, the standard library, and the frontend.
+Currently the language spec is done (up to editing and a few missing details) and fully implemented
+in the interpreter (up to bug-testing and setting the default module environment). See the file
+lang-spec.org for the current draft of the language spec.
+
+## Can I actually use this?
+
+Ok so, like, it works. All the built-in syntax and special forms compile and run as they're supposed
+to. We also leak memory right now, though the garbage collector is not that far away. What I'm
+saying is, you can probably use it soon. I mean, that's my whole point here. I don't care if anyone
+ever reads this README. I'm just sick of Python being the best programming language for what I want
+to do. Whitespace is syntax(!!) in Python, for fuck's sake! fn is so far removed from that bullshit,
+that it has formalized fucking **syntactic forms**, where we formally define whitespace to do
+nothing beyond separating atoms; in all other contexts, it could be deleted. Plus the lambda
+semantics in fn are Good and Righteous. With closures, you can make private member variables, no
+problem! All I'm saying is, I designed fn exactly the way I want it. It's simultaneously
+object-oriented and functional, both in the worst possible way.
 
 ## Building fn
 
@@ -21,30 +36,36 @@ result in the creation of a self-contained executable called fn. You will also n
 
 ### Compatibility
 
-Only 64-bit architectures are supported. fn has been tested (if you can call it that) exclusively in
-x86_64 Linux environments. It appears to work on macOS too, using the gcc10 from macports.
-Currently, the only platform-specific assumption in the code is that `malloc` returns 8-byte aligned
-pointers, which is
-[guaranteed by glibc](https//www.gnu.org/software/libc/manual/html_node/Aligned-Memory-Blocks.html).
-
-The way I'm developing fn should make the codebase fairly portable, especially to UNIX-like
-environments. All the compiler and VM logic is meant to be platform-agnostic, and future filesystem
-and I/O facilities should work in any POSIX environment. That said, I'm mainly a Linux user, and as
-such I'm not going to go out of my way to test on other platforms.
+fn officially supports x86_64 Linux environments. That's all I'll promise. It's developed and tested
+on Arch Linux, although I've successfully built and run it on macOS a couple of times out of
+curiosity. I'm trying to make it support any mostly-POSIX-compliant environment, which means in
+theory it should build and run on everything from OpenBSD to macOS to Windows with MinGW.
 
 
 ## Development plan
 
-fn is a personal project, but I take its quality seriously. That said, it's definitely not ready for
-any use other than sating your sense of curiosity.
+fn is a personal project, but I take its quality seriously. That said, it's not quite ready for
+production use.
 
-To aid in the implementation of fn, I've specced out a version of the language which deliberately
-omits certain features. This so-called **Version 0** (corresponding to semantic version 0.1.0) is
-nearly finished and implemented. I am currently in the process of finalizing the document describing
-the spec, after which point I will be able to finish the interpreter.
+To aid in the implementation of fn, I started by speccing out a somewhat less ambitious version of
+the language called **Version 0**. This will really come in two pieces, the first when I'm done
+implementing the core language (which I'm basically done doing) and the second after I've added a
+small standard library. The timeframe for these additions could be anywhere from days to months
+depending on how much I work on this project, but I'm very close.
 
-I'll start putting out a prereleases of version 0.1.0 as soon as the interpreter is done. I'll still
-have some work to do on the standard library at this point before a proper 0.1.0 release.
+After version 0 is feature complete, I will do one big refactoring/review pass on the whole project
+and then write a thorough suite of unit and integration tests. At this point I should have something
+you could use in a production environment, so I'll release it as version 0.1.0 and try to document
+everything. This will likely mark a hiatus in the development of fn, as I try writing some
+medium-sized programs with it to see how it feels.
+
+After the 0.1.0 release, the majority of the work will shift to implementing macros, improving the
+module system, and adding to the standard library. Other important features which are planned just a
+bit further down the line include an interactive breakpoint debugger, the ability to precompile
+modules to bytecode, multithreading, dynamic variables, pattern matching, and an FFI. I'd also love
+to add static type checking and/or JIT compilation, but those are both pretty heavy features that
+would take more development time than I probably have.
+
 
 ### Version 0 Features
 
