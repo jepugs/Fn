@@ -136,9 +136,34 @@ bool Value::hasKey(const Value& key) const {
     }
     return uobj()->contents.hasKey(key);
 }
+// TODO: add unsafe versions of all these accessors (incl. ones above)
+forward_list<Value> Value::objKeys() const {
+    if (!isObj()) {
+        error(TAG_OBJ);
+    }
+    forward_list<Value> res;
+    for (auto p : uobj()->contents.keys()) {
+        res.push_front(*p);
+    }
+    return res;
+}
 
+optional<ObjHeader*> Value::header() const {
+    if (isCons()) {
+        return &ucons()->h;
+    } else if (isStr()) {
+        return &ustr()->h;
+    } else if (isObj()) {
+        return &uobj()->h;
+    } else if (isFunc()) {
+        return &ufunc()->h;
+    } else if (isForeign()) {
+        return &uforeign()->h;
+    }
+    return { };
+}
 
-ObjHeader::ObjHeader(Value ptr, bool gc) : ptr(ptr), gc(gc), dirty(false) { }
+ObjHeader::ObjHeader(Value ptr, bool gc) : ptr(ptr), gc(gc), mark(false) { }
 
 Cons::Cons(Value head, Value tail, bool gc) : h(value(this),gc), head(head), tail(tail) { }
 

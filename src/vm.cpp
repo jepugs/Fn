@@ -251,10 +251,7 @@ void CallFrame::close(StackAddr n) {
     sp -= n;
     openUpvals.remove_if([this](auto u) {
         if (u.pos >= sp) {
-            *u.slot.open = false;
-            auto v = **u.slot.val;
-            *u.slot.val = new Value();
-            **u.slot.val = v;
+            u.slot.close();
             return true;
         }
         return false;
@@ -275,13 +272,19 @@ void CallFrame::closeAll() {
 
 
 VM::VM()
-    : code(), coreMod(nullptr), alloc(), ip(0),
-      frame(new CallFrame(nullptr, 0, 0, nullptr)), lp(V_NULL) {
+    : code(),
+      coreMod(nullptr),
+      alloc([this] { return generateRoots(); }),
+      ip(0),
+      frame(new CallFrame(nullptr, 0, 0, nullptr)),
+      lp(V_NULL)
+{
     ns = vObj(alloc.obj());
     auto modId = alloc.cons(code.symbol("core"), V_EMPTY);
     modId = alloc.cons(code.symbol("fn"),modId);
     module = initModule(modId);
     coreMod = module;
+    alloc.enableGc();
 }
 
 VM::~VM() {
@@ -294,9 +297,40 @@ VM::~VM() {
     }
 }
 
+Generator<Value> VM::generateRoots() {
+    Generator<Value> stackGen([i=0,this]() mutable -> optional<Value> {
+        auto m = frame->sp + frame->bp;
+        if (i >= m) {
+            return {};
+        }
+        return stack[i++];
+    });
+    Generator<Value> upvalGen;
+    auto f = frame;
+    do {
+        if (f->caller == nullptr) continue;
+        auto n = f->caller->stub->numUpvals;
+        auto u = f->caller->upvals;
+        upvalGen += Generator<Value>([n,u,i=0]() mutable -> optional<Value> {
+                if (i >= n) {
+                    return { };
+                }
+                return **u[i++].val;
+        });
+    } while ((f = f->prev) != nullptr);
+    return stackGen + upvalGen + generate1(value(ns)) + generate1(lp);
+}
+
 Obj* VM::initModule(Value modId) {
     if (vTag(modId) != TAG_CONS) {
         runtimeError("Module initialization failed: module id not a list of symbols.");
+    }
+
+    // disable the gc if necessary
+    auto reenableGc = false;
+    if (alloc.gcIsEnabled()) {
+        reenableGc = true;
+        alloc.disableGc();
     }
 
     // create the module in the ns hierarchy
@@ -345,6 +379,9 @@ Obj* VM::initModule(Value modId) {
     // the file from which this was loaded. The compiler generates code to set this when importing a file.
     modinfo->contents.insert(code.symbol("source"), alloc.str("<internal>"));
 
+    if (reenableGc) {
+        alloc.enableGc();
+    }
     return res;
 }
 
@@ -530,6 +567,8 @@ Addr VM::call(Local numArgs) {
     Value res;
     auto tag = vTag(v1);
     if (tag == TAG_FUNC) {
+        // pause the garbage collector to allow stack manipulation
+        alloc.disableGc();
         auto func = vFunc(v1);
         auto stub = func->stub;
         auto mod = findModule(stub->modId);
@@ -557,9 +596,11 @@ Addr VM::call(Local numArgs) {
             // normal function call
             frame = frame->extendFrame(ip+2, numArgs, func);
         }
-
+        // TODO: maybe put this in finally?
+        alloc.enableGc();
         return stub->addr;
     } else if (tag == TAG_FOREIGN) {
+        alloc.disableGc();
         auto f = vForeign(v1);
         if (numArgs < f->minArgs) {
             throw FNError("interpreter",
@@ -576,6 +617,7 @@ Addr VM::call(Local numArgs) {
         // pop args+1 times (to get the function)
         popTimes(numArgs+1);
         push(res);
+        alloc.enableGc();
         return ip + 2;
     } else {
         // TODO: exception: not a function
@@ -656,7 +698,7 @@ void VM::step() {
     case OP_CLOSURE:
         id = code.readShort(ip+1);
         stub = code.getFunction(code.readShort(ip+1));
-        v1 = alloc.func(stub,
+        push(alloc.func(stub,
                         [this, stub](auto upvals) {
                             for (u32 i = 0; i < stub->numUpvals; ++i) {
                                 auto u = stub->upvals[i];
@@ -667,8 +709,7 @@ void VM::step() {
                                 }
                             }
                                 
-                        });
-        push(v1);
+                        }));
         ip += 2;
         break;
 
@@ -803,6 +844,7 @@ void VM::step() {
         numArgs = frame->numArgs;
         frame->closeAll();
         tmp = frame;
+        // TODO: restore stack pointer
         frame = tmp->prev;
         delete tmp;
 

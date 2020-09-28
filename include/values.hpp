@@ -39,6 +39,8 @@ class Obj;
 class Function;
 class ForeignFunc;
 
+struct ObjHeader;
+
 // rather than providing a constructor for Value, use the (lowercase 'v') value() functions defined
 // below
 union Value {
@@ -64,7 +66,7 @@ union Value {
         return (raw & 0x7) == TAG_STR;
     }
     inline bool isBool() const {
-        return (raw & 0x7) == TAG_BOOL;
+        return (raw & 0xff) == TAG_BOOL;
     }
     inline bool isObj() const {
         return (raw & 0x7) == TAG_OBJ;
@@ -154,6 +156,10 @@ union Value {
     Value& get(const Value& key) const;
     void set(const Value& key, const Value& val) const;
     bool hasKey(const Value& key) const;
+    forward_list<Value> objKeys() const;
+
+    // used to get object header
+    optional<ObjHeader*> header() const;
 
     void error(u64 expected) const;
 };
@@ -188,8 +194,8 @@ struct alignas(32) ObjHeader {
     Value ptr;
     // does the gc manage this object?
     bool gc;
-    // gc dirty bit
-    bool dirty;
+    // gc mark bit (indicates reachable, starts false)
+    bool mark;
 
     ObjHeader(Value ptr, bool gc);
 };
@@ -254,7 +260,16 @@ struct FuncStub {
 // pointer to a Value, which is initially on the stack and migrates to the heap if the Upvalue
 // outlives its lexical scope.
 
-// reference counting is used to free UpvalueSlot objects
+// UpvalueSlots are shared objects which track the location of an upvalue (i.e. a value cell
+// containing a local variable which was captured by a function). 
+
+// Concretely, an UpvalueSlot is a reference-counted pointer to a cell containing a Value.
+// UpvalueSlots are initially expected to point to a location on the interpreter stack;
+// corresponding upvalues are said to be "open". "Closing" an upvalue means copying its value to the
+// stack so that functions may access it even after the stack local environment expires.
+// UpvalueSlots implement this behavior via the field open and the method close(). Once closed, the
+// UpvalueSlot takes ownership of its own value cell, and it will be deleted when the reference count
+// drops to 0.
 struct UpvalueSlot {
     // if true, val is a location on the interpreter stack
     bool* open;
@@ -294,6 +309,15 @@ struct UpvalueSlot {
         this->refCount = u.refCount;
         ++*refCount;
         return *this;
+    }
+
+    // Copies this Upvalue's value cell to the heap. The new value cell will be cleared when the
+    // last reference to this UpvalueSlot is deleted.
+    void close() {
+        *open = false;
+        auto v = **val;
+        *val = new Value;
+        **val = v;
     }
 };
 

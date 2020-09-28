@@ -193,6 +193,9 @@ private:
     Addr call(Local numArgs);
     Addr apply(Local numArgs);
 
+    // get a generator which returns the root objects for the gc
+    Generator<Value> generateRoots();
+
 public:
     // initialize the VM with a blank image
     VM();
