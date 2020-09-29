@@ -1,4 +1,4 @@
-find_package(Boost >=1.65.0 COMPONENTS unit_test_framework)
+find_package(Boost 1.65.0 COMPONENTS unit_test_framework)
 
 function(add_fn_test SOURCE)
   # set the filename to the stem of the file
