@@ -12,12 +12,21 @@ template <typename T> class Generator {
     std::function<optional<T>()> fun;
 
 public:
-    Generator() : fun([] { return std::nullopt; } ) { }
-    Generator(const std::function<optional<T>()>& fun) : fun(fun) { }
-    Generator(std::function<optional<T>()>&& fun) : fun(fun) { }
-    Generator(optional<T> (*fptr)()) : fun([fptr] { return fptr(); } ) { }
-    Generator(Generator<T>& g) : fun(g.fun) { }
-    Generator(Generator<T>&& g) : fun() {
+    Generator()
+        : fun([]() -> optional<T> { return { }; })
+    { }
+    Generator(const std::function<optional<T>()>& fun) 
+        : fun(fun)
+    { }
+    Generator(std::function<optional<T>()>&& fun)
+        : fun(fun)
+    { }
+    Generator(Generator<T>& g)
+        : fun(g.fun)
+    { }
+    Generator(Generator<T>&& g)
+        : fun()
+    {
         fun.swap(g.fun);
     }
 
@@ -93,8 +102,13 @@ public:
     public:
         // default makes the end() iterator
         iterator()
-            : val(std::nullopt), gen([] { return std::nullopt; }) { }
-        iterator(Generator& gen) : val(gen.fun()), gen(gen) { }
+            : val({ })
+            , gen([]() -> optional<T> { return { }; })
+        { }
+        iterator(Generator& gen)
+            : val(gen.fun())
+            , gen(gen)
+        { }
 
         iterator& operator++() {
             val = gen();

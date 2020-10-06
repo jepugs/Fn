@@ -1,9 +1,10 @@
 #include "vm.hpp"
+
 #include "bytes.hpp"
 #include "values.hpp"
 
-#include <iostream>
 #include <cstdlib>
+#include <iostream>
 #include <numeric>
 
 
@@ -11,22 +12,34 @@ namespace fn {
 
 using namespace fn_bytes;
 
-SymbolTable::SymbolTable() : byName(), byId() { }
+SymbolTable::SymbolTable()
+    : byName()
+    , byId()
+{ }
 
-const Symbol* SymbolTable::intern(string str) {
+const Symbol* SymbolTable::intern(const string& str) {
+    auto v = find(str);
+    if (v.has_value()) {
+        return *v;
+    } else {
+        u32 id = byId.size();
+        Symbol s = { .id=id, .name=str };
+        byId.push_back(s);
+        byName.insert(str,s);
+        return &(byId[byId.size() - 1]);
+    }
+}
+
+bool SymbolTable::isInternal(const string& str) const {
+    return byName.get(str).has_value();
+}
+
+inline optional<const Symbol*> SymbolTable::find(const string& str) const {
     auto v = byName.get(str);
     if (v.has_value()) {
         return *v;
     }
-    u32 id = byId.size();
-    Symbol s = { .id=id, .name=str };
-    byId.push_back(s);
-    byName.insert(str,s);
-    return &(byId[byId.size() - 1]);
-}
-
-bool SymbolTable::isInternal(string str) {
-    return byName.get(str).has_value();
+    return { };
 }
 
 u8 FuncStub::getUpvalue(Local slot, bool direct) {
@@ -43,7 +56,11 @@ u8 FuncStub::getUpvalue(Local slot, bool direct) {
     return numUpvals++;
 }
 
-Bytecode::Bytecode() : locs(nullptr), lastLoc(nullptr), symbols() {
+Bytecode::Bytecode()
+    : locs(nullptr)
+    , lastLoc(nullptr)
+    , symbols()
+{
     // allocate 256 bytes to start
     cap = 256;
     // use malloc so we can use realloc
@@ -87,7 +104,7 @@ void Bytecode::ensureCapacity(u32 newCap) {
     data = (u8*)realloc(data, cap);
 }
 
-u32 Bytecode::getSize() {
+u32 Bytecode::getSize() const {
     return size;
 }
 
@@ -102,7 +119,7 @@ void Bytecode::setLoc(SourceLoc l) {
     }
 }
 
-SourceLoc* Bytecode::locationOf(Addr addr) {
+SourceLoc* Bytecode::locationOf(Addr addr) const {
     if(locs == nullptr)
         return nullptr;
 
@@ -137,11 +154,11 @@ void Bytecode::writeShort(u16 s) {
     writeByte(top);
 }
 
-u8 Bytecode::readByte(Addr addr) {
+u8 Bytecode::readByte(Addr addr) const {
     return data[addr];
 }
 
-u16 Bytecode::readShort(Addr addr) {
+u16 Bytecode::readShort(Addr addr) const {
     u16 bot = (u16) readByte(addr);
     u16 top = (u16) readByte(addr + 1);
     return (top << 8) | bot;
@@ -154,15 +171,15 @@ void Bytecode::patchShort(Addr addr, u16 s) {
     data[addr+1] = top;
 }
 
-Value Bytecode::getConstant(u16 id) {
+Value Bytecode::getConstant(u16 id) const {
     return constants[id];
 }
 
-u16 Bytecode::numConstants() {
+u16 Bytecode::numConstants() const {
     return constants.size();
 }
 
-u16 Bytecode::addFunction(Local arity,bool vararg, Value modId) {
+u16 Bytecode::addFunction(Local arity, bool vararg, Value modId) {
     arity -= vararg ? 1 : 0;
     functions.push_back(new FuncStub {
             .positional=arity, 
@@ -175,7 +192,7 @@ u16 Bytecode::addFunction(Local arity,bool vararg, Value modId) {
     return (u16) functions.size() - 1;
 }
 
-FuncStub* Bytecode::getFunction(u16 id) {
+FuncStub* Bytecode::getFunction(u16 id) const {
     // TODO: check bounds?
     return functions[id];
 }
@@ -215,6 +232,10 @@ SymbolTable* Bytecode::getSymbols() {
     return &this->symbols;
 }
 
+const SymbolTable* Bytecode::getSymbols() const {
+    return &this->symbols;
+}
+
 u32 Bytecode::symbolID(const string& name) {
     auto s = symbols.intern(name);
     return s->id;
@@ -222,6 +243,14 @@ u32 Bytecode::symbolID(const string& name) {
 Value Bytecode::symbol(const string& name) {
     auto s = symbols.intern(name);
     return { .raw = (((u64) s->id) << 8) | (u64) TAG_SYM };
+}
+optional<Value> Bytecode::findSymbol(const string& name) const {
+    auto s = symbols.find(name);
+    if (s.has_value()) {
+        return Value{ .raw = (((u64) (*s)->id) << 8) | (u64) TAG_SYM };
+    } else {
+        return { };
+    }
 }
 
 
@@ -272,12 +301,12 @@ void CallFrame::closeAll() {
 
 
 VM::VM()
-    : code(),
-      coreMod(nullptr),
-      alloc([this] { return generateRoots(); }),
-      ip(0),
-      frame(new CallFrame(nullptr, 0, 0, nullptr)),
-      lp(V_NULL)
+    : code()
+    , coreMod(nullptr)
+    , alloc([this] { return generateRoots(); })
+    , ip(0)
+    , frame(new CallFrame(nullptr, 0, 0, nullptr))
+    , lp(V_NULL)
 {
     ns = vObj(alloc.obj());
     auto modId = alloc.cons(code.symbol("core"), V_EMPTY);
@@ -418,11 +447,11 @@ Obj* VM::findModule(Value modId) {
     return res;
 }
 
-u32 VM::getIp() {
+u32 VM::getIp() const {
     return ip;
 }
 
-Value VM::lastPop() {
+Value VM::lastPop() const {
     return lp;
 }
 
@@ -460,7 +489,7 @@ Value VM::getGlobal(Value name) {
     return **res;
 }
 
-UpvalueSlot VM::getUpvalue(u8 id) {
+UpvalueSlot VM::getUpvalue(u8 id) const {
     if (frame->caller == nullptr || frame->caller->stub->numUpvals <= id) {
         throw FNError("interpreter", "Attempt to access nonexistent upvalue",
                       *code.locationOf(ip));
@@ -483,7 +512,7 @@ Allocator* VM::getAlloc() {
     return &alloc;
 }
 
-void VM::runtimeError(const string& msg) {
+void VM::runtimeError(const string& msg) const {
     throw FNError("runtime", "(ip = " + std::to_string(ip) + ") " + msg, *code.locationOf(ip));
 }
 
@@ -513,7 +542,7 @@ Value VM::popTimes(StackAddr n) {
     return stack[frame->bp + frame->sp];
 }
 
-Value VM::peek(StackAddr i) {
+Value VM::peek(StackAddr i) const {
     if (frame->sp <= i) {
         throw FNError("runtime",
                       "Peek out of stack bounds at address " + std::to_string((i32)ip),
@@ -522,7 +551,7 @@ Value VM::peek(StackAddr i) {
     return stack[frame->bp + frame->sp - i - 1];
 }
 
-Value VM::local(Local i) {
+Value VM::local(Local i) const {
     StackAddr pos = i + frame->bp;
     if (frame->sp <= i) {
         throw FNError("runtime", "Out of stack bounds on local.", *code.locationOf(ip));

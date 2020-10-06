@@ -132,10 +132,10 @@ inline u8 instrWidth(u8 instr) {
 
 
 // disassembly a single instruction, writing output to out
-void disassembleInstr(Bytecode& code, u32 ip, std::ostream& out);
+void disassembleInstr(const Bytecode& code, Addr ip, std::ostream& out);
 
 
-void disassemble(Bytecode& code, std::ostream& out);
+void disassemble(const Bytecode& code, std::ostream& out);
 
 
 }

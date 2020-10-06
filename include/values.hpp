@@ -276,14 +276,25 @@ struct UpvalueSlot {
     Value** val;
     u32* refCount;
 
-    UpvalueSlot() : open(nullptr), val(nullptr), refCount(nullptr) { }
-    UpvalueSlot(Value* place) : open(new bool), val(new Value*), refCount(new u32) {
+    UpvalueSlot()
+        : open(nullptr)
+        , val(nullptr)
+        , refCount(nullptr)
+    { }
+    UpvalueSlot(Value* place)
+        : open(new bool)
+        , val(new Value*)
+        , refCount(new u32)
+    {
         *open = true;
         *val = place;
         *refCount = 1;
     }
     UpvalueSlot(const UpvalueSlot& u)
-        : open(u.open), val(u.val), refCount(u.refCount) {
+        : open(u.open)
+        , val(u.val)
+        , refCount(u.refCount)
+    {
         ++*refCount;
     }
     ~UpvalueSlot() {
@@ -360,10 +371,12 @@ private:
 public:
     SymbolTable();
 
-    const Symbol* intern(string str);
-    bool isInternal(string str);
+    const Symbol* intern(const string& str);
+    bool isInternal(const string& str) const;
 
-    const Symbol& operator[](u32 id) {
+    optional<const Symbol*> find(const string& str) const;
+
+    const Symbol& operator[](u32 id) const {
         return byId[id];
     }
 };
@@ -379,7 +392,7 @@ inline bool vSame(const Value& v1, const Value& v2) {
 template<> u32 hash<Value>(const Value& v);
 // Convert a value to a string. symbols can be nullptr here only if we're really careful to know
 // that there are no symbols contained in v.
-string vToString(Value v, SymbolTable* symbols);
+string vToString(Value v, const SymbolTable* symbols);
 
 // These value(type) functions go from C++ values to fn values
 

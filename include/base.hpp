@@ -66,12 +66,25 @@ struct SourceLoc {
     const int col;
 
     SourceLoc(string* filename, int line=1, int col=1)
-        : filename(new string(*filename)), line(line), col(col) { }
+        : filename(new string(*filename))
+        , line(line)
+        , col(col)
+    { }
     SourceLoc(const char* filename, int line=1, int col=1)
-        : filename(new string(filename)), line(line), col(col) { }
+        : filename(new string(filename))
+        , line(line)
+        , col(col)
+    { }
     SourceLoc(const std::shared_ptr<string>& filename, int line, int col)
-        : filename(filename), line(line), col(col) { }
-    SourceLoc(const SourceLoc& loc) : filename(loc.filename), line(loc.line), col(loc.col) { }
+        : filename(filename)
+        , line(line)
+        , col(col)
+    { }
+    SourceLoc(const SourceLoc& loc)
+        : filename(loc.filename)
+        , line(loc.line)
+        , col(loc.col)
+    { }
 };
 
 class FNError : public std::exception {
@@ -86,7 +99,10 @@ class FNError : public std::exception {
 
     // TODO: move this to a .cpp file so we don't need to include sstream
     FNError(const string& subsystem, const string& message, const SourceLoc& origin)
-        : subsystem(subsystem), message(message), origin(origin) {
+        : subsystem(subsystem)
+        , message(message)
+        , origin(origin)
+    {
         // build formatted error message
         std::ostringstream ss;
         ss << "[" + subsystem + "] error at line " << origin.line << ",col " << origin.col

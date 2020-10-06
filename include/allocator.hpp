@@ -1,8 +1,9 @@
 #ifndef __FN_ALLOCATOR_HPP
 #define __FN_ALLOCATOR_HPP
 
-// TODO: move this into the cmake file
-#define GC_DEBUG
+// defining this variable (which should be done via CMake) causes the garbage collector to run
+// frequently and often emit output:
+// #define GC_DEBUG
 
 #include "base.hpp"
 #include "generator.hpp"
@@ -49,10 +50,11 @@ public:
     Allocator(Generator<Value> (*getRoots)());
     ~Allocator();
 
-    u64 memoryUsed();
-    u32 numObjects();
+    // TODO: implement in allocator.cpp
+    u64 memoryUsed() const;
+    u32 numObjects() const;
 
-    bool gcIsEnabled();
+    bool gcIsEnabled() const;
     // enable/disable the garbage collector
     void enableGc();
     void disableGc();

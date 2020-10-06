@@ -221,7 +221,7 @@ static optional<f64> parseNum(const vector<char>& buf) {
 
     // we need characters after the sign bit
     if (i >= buf.size()) {
-        return std::nullopt;
+        return { };
     }
 
     // whether we encounter a digit
@@ -244,35 +244,32 @@ static optional<f64> parseNum(const vector<char>& buf) {
     }
 
     // check for decimal point
-
-    // place value
-    f64 place = 1/base;
-    if (ch != '.') {
-        // only other possibility after this is scientific notation
-        goto scient;
-    }
-    // parse digits
-    ++i;
-    while (i < buf.size() && isDigit(ch=buf[i], base)) {
-        digit = true;
-        res += digitVal(ch) * place;
-        place /= base;
+    if (ch == '.') {
+        // place value
+        f64 place = 1/base;
+        // parse digits
         ++i;
+        while (i < buf.size() && isDigit(ch=buf[i], base)) {
+            digit = true;
+            res += digitVal(ch) * place;
+            place /= base;
+            ++i;
+        }
+        // check if we got to the end
+        if (i == buf.size()) {
+            return sign*res;
+        }
+
+        // make sure there's at least one digit read
+        if (!digit) {
+            return { };
+        }
     }
 
-    // check if we got to the end
-    if (i == buf.size()) {
-        return sign*res;
-    }
 
-    // make sure there's at least one digit read
-    if (!digit) {
-        return { };
-    }
-
-    // label to check for scientific notation
-    scient:
-    // scientific notation only supports base 10
+    // only other possibility after this is scientific notation
+    
+    // scientific notation only supports base 10 at the moment
     if ((ch != 'e' && ch != 'E') || base != 10) {
         // not a number
         return { };
@@ -293,7 +290,7 @@ static optional<f64> parseNum(const vector<char>& buf) {
     // make sure the exponent is there
     if (i == buf.size()) {
         // numbers cannot end with e
-        return std::nullopt;
+        return { };
     }
 
     f64 exponent = 0;
@@ -308,7 +305,7 @@ static optional<f64> parseNum(const vector<char>& buf) {
     }
 
     // this means we found an illegal character
-    return std::nullopt;
+    return { };
 }
 
 

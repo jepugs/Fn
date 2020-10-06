@@ -59,7 +59,9 @@ private:
     }
 
 public:
-    Table(u32 initCap=32) : cap(initCap) {
+    Table(u32 initCap=32)
+        : cap(initCap)
+    {
         threshold = (u32)(REHASH_THRESHOLD * initCap);
         size = 0;
         array = new Entry<K,T>*[initCap];
@@ -68,7 +70,11 @@ public:
         }
     }
     Table(const Table<K,T>& src)
-        : cap(src.cap), threshold(src.threshold), size(src.size), array(new Entry<K,T>*[cap]) {
+        : cap(src.cap)
+        , threshold(src.threshold)
+        , size(src.size)
+        , array(new Entry<K,T>*[cap])
+    {
         for (u32 i = 0; i < cap; ++i) {
             if (src.array[i] != nullptr) {
                 array[i] = new Entry(src.array[i]->key, src.array[i]->val);
@@ -146,7 +152,7 @@ public:
         while(true) {
             if (array[i] == nullptr) {
                 // no entry for this key
-                return std::nullopt;
+                return { };
             } else if (array[i]->key == k) {
                 // found the key
                 return optional(&array[i]->val);

@@ -1,4 +1,5 @@
 #include "bytes.hpp"
+
 #include "values.hpp"
 
 #include <iomanip>
@@ -6,7 +7,7 @@
 namespace fn_bytes {
 
 // disassemble a single instruction, writing output to out
-void disassembleInstr(Bytecode& code, u32 ip, std::ostream& out) {
+void disassembleInstr(const Bytecode& code, Addr ip, std::ostream& out) {
     u8 instr = code[ip];
     switch (instr) {
     case OP_NOP:
@@ -88,7 +89,7 @@ void disassembleInstr(Bytecode& code, u32 ip, std::ostream& out) {
     }
 }
 
-void disassemble(Bytecode& code, std::ostream& out) {
+void disassemble(const Bytecode& code, std::ostream& out) {
     u32 ip = 0;
     // TODO: annotate with line number
     while (ip < code.getSize()) {

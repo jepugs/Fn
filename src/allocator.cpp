@@ -8,33 +8,33 @@ namespace fn {
 #define COLLECT_TH 4096
 
 Allocator::Allocator()
-    : objects(),
-      gcEnabled(false),
-      toCollect(false),
-      memUsage(0),
-      collectThreshold(COLLECT_TH),
-      count(0),
-      getRoots([] { return Generator<Value>(); })
+    : objects()
+    , gcEnabled(false)
+    , toCollect(false)
+    , memUsage(0)
+    , collectThreshold(COLLECT_TH)
+    , count(0)
+    , getRoots([] { return Generator<Value>(); })
 { }
 
 Allocator::Allocator(std::function<Generator<Value>()> getRoots)
-    : objects(),
-      gcEnabled(false),
-      toCollect(false),
-      memUsage(0),
-      collectThreshold(COLLECT_TH),
-      count(0),
-      getRoots(getRoots)
+    : objects()
+    , gcEnabled(false)
+    , toCollect(false)
+    , memUsage(0)
+    , collectThreshold(COLLECT_TH)
+    , count(0)
+    , getRoots(getRoots)
 { }
 
 Allocator::Allocator(Generator<Value> (*getRoots)())
-    : objects(),
-      gcEnabled(false),
-      toCollect(false),
-      memUsage(0),
-      collectThreshold(COLLECT_TH),
-      count(0),
-      getRoots([getRoots] { return getRoots(); })
+    : objects()
+    , gcEnabled(false)
+    , toCollect(false)
+    , memUsage(0)
+    , collectThreshold(COLLECT_TH)
+    , count(0)
+    , getRoots([getRoots] { return getRoots(); })
 { }
 
 Allocator::~Allocator() {
@@ -138,7 +138,7 @@ void Allocator::sweep() {
 #endif
 }
 
-bool Allocator::gcIsEnabled() {
+bool Allocator::gcIsEnabled() const {
     return gcEnabled;
 }
 
@@ -164,9 +164,11 @@ void Allocator::collect() {
     if (memUsage >= collectThreshold) {
         if (gcEnabled) {
             forceCollect();
-            if (memUsage >= 0.5*collectThreshold) {
-                // increase the threshold
-                collectThreshold *= 2;
+            // Increase the collection threshold in order to guarantee that it's more than twice the
+            // current usage. (This is meant to allow the program to grow by spacing out
+            // collections). 
+            while (2*memUsage >= collectThreshold) {
+                collectThreshold <<= 1;
             }
         } else {
             toCollect = true;

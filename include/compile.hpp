@@ -101,7 +101,7 @@ private:
     }
     // attempt to parse a name, i.e. a symbol, a dot form, or a dot token. Returns a vector
     // consisting of the names of its constitutent symbols.
-    vector<string> tokenizeName(optional<Token> t0=std::nullopt);
+    vector<string> tokenizeName(optional<Token> t0={ });
 
 public:
     Compiler(const fs::path& dir, Bytecode* dest, Scanner* sc=nullptr);

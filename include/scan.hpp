@@ -59,14 +59,26 @@ struct Token {
 
     Token() : tk(TKEOF), loc(""), datum({.nothing = nullptr}) { }
     Token(TokenKind tk, SourceLoc loc)
-        : tk(tk), loc(loc), datum({.nothing = nullptr}) { }
+        : tk(tk)
+        , loc(loc)
+        , datum({.nothing = nullptr})
+    { }
     Token(TokenKind tk, SourceLoc loc, double num)
-        : tk(tk), loc(loc), datum({.num = num}) { }
+        : tk(tk)
+        , loc(loc)
+        , datum({.num = num})
+    { }
     Token(TokenKind tk, SourceLoc loc, const string& str)
-        : tk(tk), loc(loc), datum({.str = new string(str)}) { }
+        : tk(tk)
+        , loc(loc)
+        , datum({.str = new string(str)})
+    { }
 
     // FIXME: it's probably inefficient to copy the whole darn string in the copy constructor/operator
-    Token(const Token& tok) : tk(tok.tk), loc(tok.loc) {
+    Token(const Token& tok)
+        : tk(tok.tk)
+        , loc(tok.loc)
+    {
         if (tk == TKString || tk == TKSymbol || tk == TKDot) {
             datum.str = new string(*tok.datum.str);
         } else {
@@ -147,9 +159,15 @@ struct Token {
 class Scanner {
 public:
     Scanner(std::istream* in, const string& filename="", int line=1, int col=0)
-        : input(in), filename(new string(filename)), line(line), col(col) { }
+        : input(in)
+        , filename(new string(filename))
+        , line(line)
+        , col(col)
+    { }
     Scanner(const string& filename)
-        : line(1), col(0) {
+        : line(1)
+        , col(0)
+    {
         input = new std::ifstream(filename, std::ios_base::in);
         closeStream = true;
     }

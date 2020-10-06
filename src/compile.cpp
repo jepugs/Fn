@@ -7,7 +7,11 @@ namespace fn {
 using namespace fn_scan;
 using namespace fn_bytes;
 
-Locals::Locals(Locals* parent, FuncStub* func) : vars(), parent(parent), curFunc(func) { }
+Locals::Locals(Locals* parent, FuncStub* func)
+    : vars()
+    , parent(parent)
+    , curFunc(func)
+{ }
 
 fs::path Compiler::modulePath(const vector<string>& id) {
     // TODO: I think this works on Windows but I should really try it :)
@@ -43,11 +47,6 @@ u8 Locals::addUpvalue(u32 levels, u8 pos) {
         call = call->parent;
     }
 
-    // if (call == nullptr) {
-    //     //        throw FNError("compiler", "tried to add upvalue with insufficient functions",
-    //     //                      );
-    // }
-
     // levels == 1 => this is a direct upvalue, so add it and return
     if (levels == 1) {
         return call->curFunc->getUpvalue(pos, true);
@@ -71,7 +70,12 @@ static inline bool isLegalName(const string& str) {
 }
 
 Compiler::Compiler(const fs::path& dir, Bytecode* dest, Scanner* sc)
-    : dest(dest), sc(sc), sp(0), dir(dir), modules() {
+    : dest(dest)
+    , sc(sc)
+    , sp(0)
+    , dir(dir)
+    , modules()
+{
     // The first module is fn.core
     // TODO: use allocator
     auto modIdVal = dest->consConst(dest->symbol("core"), V_EMPTY);
@@ -102,7 +106,7 @@ static bool checkDelim(TokenKind expected, Token tok) {
 
 optional<Local> Compiler::findLocal(Locals* locals, const string& name, u32* levels) {
     if (locals == nullptr) {
-        return std::nullopt;
+        return { };
     }
 
     auto env = locals;
