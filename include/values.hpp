@@ -357,7 +357,7 @@ struct alignas(32) ForeignFunc {
 
 // Symbols in fn are represented by a 32-bit unsigned ID
 struct Symbol {
-    u32 id;
+    SymbolId id;
     string name;
 };
 
@@ -376,7 +376,7 @@ public:
 
     optional<const Symbol*> find(const string& str) const;
 
-    const Symbol& operator[](u32 id) const {
+    const Symbol& operator[](SymbolId id) const {
         return byId[id];
     }
 };

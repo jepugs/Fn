@@ -54,10 +54,8 @@ typedef u32 Addr;
 typedef u8 LocalId;
 // used to identify bytecode constant
 typedef u16 ConstId;
-
-// standard library imports
-//typedef string std::string;
-//typedef vector std::vector;
+// used to identify symbols
+typedef u32 SymbolId;
 
 // debugging information
 struct SourceLoc {
