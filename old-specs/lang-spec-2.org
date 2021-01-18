@@ -1,0 +1,130 @@
+* Program Structure
+
+An fn program consists of a sequence of *expressions* delimited by whitespace. At runtime, these
+expressions are *evaluated* in the order in which they appear. fn has no concept of a statement (i.e.
+a unit of code which has no return value), instead providing a constant null value for computations
+which have no meaningful resultant value. Evaluating certain expressions causes *side effects*, which
+are changes in the execution environment in the form of either I/O or mutation.
+
+There are two types of syntactic forms in fn, namely *lists* and *atoms*. As the name implies, atoms are
+syntax primitives which are indivisible, i.e. they do not contain any subforms. Atoms may be
+classified as *numbers*, *strings*, or *symbols*. Number and string atoms represent constant values,
+whereas symbols have different meanings depending on the context in which they are used, but in most
+contexts name variables.
+
+Lists consist of a sequence of 0 or more syntactic forms separated by whitespace and contained
+within a pair of parentheses. All non-trivial computation is expressed via lists, and nesting of
+lists gives fn code an intrinsic tree structure.
+
+As the term list can also refer to the list data type in fn, we will sometimes use the terms
+*syntactic list* or *list object* in order to avoid ambiguity. This name collision is not accidental, as
+fn's metaprogramming facilities automatically convert between syntactic lists and data lists. That
+is to say, there is a canonical way to represent every expression in fn source code as a data
+structure in the execution environment.
+
+We refer to the first subform of a list as the *operator* and the other subforms as *arguments*. The
+evaluation semantics of an expressions are determined solely by the operator. Notably, certain
+symbols, termed *special operators*, are reserved to denote language primitives. These symbols may not
+be used as variable names.
+
+#+BEGIN_SRC fn
+;; line comments begin with one or more semicolons
+
+;; atoms
+-42 ; number
+"hello, world!" ; string
+var ; symbol
+
+;; lists
+(+ 4 7) ; function call. result = 11
+(def my-var "value") ; special operator (defines variables
+;; nested lists. with is a special operator which creates local variables
+(with (l 7)
+  (* l l)) ; result = 49
+#+END_SRC
+
+fn also has a fair amount of syntax beyond parentheses and atoms. However, all of this additional
+syntax is automatically expanded into lists by the parser before evaluation. There are two reasons
+for this: first, it preserves the tidy correspondence between syntactic and data lists, and second,
+it makes it easier to specify evaluation semantics because we may canonically represent all
+expressions via parenthesized lists and atoms.
+
+** Atom Syntax
+
+A few examples:
+
+#+BEGIN_SRC fn
+;; numbers
+7
+-23
+1.2e3
+
+;; strings
+"hello, world!"
+"two\nlines"
+
+;; symbols
+x
+my-symbol
+symbol\ with\ space
+#+END_SRC
+
+
+* Function Parameters
+
+Functions in fn can be created using the ~fn~ special operator. The first argument to this operator is
+a *parameter list* which specifies the arguments accepted and provides names so that they may
+referenced in the *function body*, which is the sequence of expressions following the parameter list.
+
+Function calls have the syntax ~(<function> <arg1> <arg2> ...)~. The operator may be any
+function-valued expression. When a function is called, the arguments are bound to local variables in
+a way specified in the parameter list, and then the function body is evaluated in the newly-created
+variable environment. In addition, functions may use any variables in the lexical environment in
+which they are defined. When a function object outlives the defining environment, the necessary
+local values are copied to the heap for future use. This process is termed *variable capture*.
+
+A parameter list consists of 0 or more positional parameters, followed optionally by a variadic
+parameter and/or a variadic keyword parameter. In a function call containing no keywords, the
+positional parameters are bound to arguments in the order in which they are specified, while
+variadic arguments are bound to a list of arguments occurring after the positional ones. Positional
+parameters are indicated by symbols.
+
+Default values for positional parameters may be specified by providing a list of length 2 instead of
+a symbol. The first subform of this list must be a symbol. The second subform may be any expression
+and will be evaluated at the time of the function call in the event that an argument is not
+provided. Such parameters are called *optional*, while parameters without a default value are called
+*required*. As the name suggests, attempting to call a function without providing values for all
+required parameters will result in an error.
+
+Keyword arguments allow variables to be specified by name. A keyword is a symbol whose name begins
+with a colon character ~:~. Keywords may not be used as variable names, and attempting to evaluate a
+keyword will always result in an error. When a keyword occurs as a function argument it must always
+be followed by another argument. This argument is then bound to the parameter indicated by the
+keyword. For example:
+
+#+BEGIN_SRC fn
+(def my-log 
+  (fn (x (base 10))
+    (compute-a-logarithm-here)))
+
+(my-log 2) ; x = 2, base = 10
+(my-log 2 4) ; x = 2, base = 4
+(my-log :base 2 :x 10) ; x = 10, base = 2
+(my-log :base 3) ; error, required argument x not given
+#+END_SRC
+
+Variadic parameters consist of a symbol in the parameter list preceded by the special symbol ~&~. As
+with keywords and special operators, ~&~ may not be bound to a variable name. No positional parameters
+may be specified after a variadic parameter. When a function is called, the variadic parameter is
+bound to all non-keyword arguments following the last positional argument.
+
+Variadic keyword parameters are denoted like variadic parameters, except they are proceeded by ~:&~.
+When a function is called, the variadic keyword parameter is bound to a table containing all keyword
+arguments which do not correspond to explicitly named positional parameters. The keys for the table
+are the symbols with the colon stripped from their name. Generally, variadic keyword parameters
+should only be used in cases where one function wraps another which accepts many arguments. In this
+case, ~apply~ may be used to pass the variadic keywords on to another function.
+
+Even in the above use case, if the function being wrapped has a small number parameters, it is still
+likely preferrable to explicitly denote these, as it allows malformed argument lists to be detected
+earlier in the call stack.

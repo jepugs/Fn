@@ -1,0 +1,97 @@
+* Architecture of the fn Interpreter
+
+fn employs a layered architecture, meaning (a) the codebase is logically divided into modules which
+encapsulate related functionality behind a stable interface and (b) these modules are arranged into
+layers such that all of a module's dependencies include only modules below it.
+
+#+CAPTION: A drawing showing fn's layers and dependencies.
+#+NAME: fig:LAYERS
+#+ATTR_ORG: :width 800
+#+ATTR_HTML: :width 800
+[[file:layers.jpg]]
+
+As can seen in the diagram above, there are currently seven modules in fn, with two more planned in
+the near future:
+
+- Frontend :: Does command line argument processing and invokes the Compiler and VM. Also implements
+  the repl, although this may be factored out into a separate module in the future.
+
+- Compiler :: The compiler module provides the Compiler class, an object which operates on text
+  streams, compiling fn source code to bytecode for the virtual machine.
+- VM :: The VM module implements a stack-based virtual machine designed to efficiently execute fn
+  programs.
+
+- Scanner :: Converts a text stream to a string of tokens which can then be used by the compiler
+- Parser (planned) :: Parses Scanner output into AST objects for use by a future version of the
+  compiler.
+- Bytes :: Contains definitions of all VM opcodes as well as disassembly routines. There is a
+  Bytecode object (currently in VM) which is planned to be migrated to this module.
+- Allocator :: Provides value creation and memory management (incl. garbage collection) facilities.
+- Import (planned) :: Provides facilities to find fn source files in the filesystem. This should be
+  platform-agnostic.
+
+- Values :: Core functionality for manipulating fn values.
+
+
+* Coding Conventions
+
+The coding style of fn is meant to conserve vertical space where possible. This allows more code to
+fit on the screen, making it easier to read and edit. Thus we favor putting the opening brace on the
+same line as control structures in most cases.
+
+The code snippet below details all the formatting decisions fn observes for brace placement and
+function definition.
+
+#+BEGIN_SRC c++
+// Constructor initializer lists are one line per item, with the commas aligned with the colon:
+Example::Example(const std::string& name, u32 id)
+    : name(name)
+    , id(id)
+    , buf()
+{ }
+// I plan to update the style 
+
+// When a function signature is more than one line, put the opening brace on a new line. Otherwise,
+// put it on the same line (see the two examples below)
+
+// short argument lists go all on one line
+void shortArgs(std::vector<u8> arg1,  f32 arg2) { 
+    // ...
+}
+
+// for long argument lists, put one argument/line and line them up like this:
+void longArgs(std::vector<u8> arg1,
+              std::forward_list<std::string> arg2, 
+              std::function<std::optional<i32>(u32)> arg3)
+{
+    // ...
+}
+
+// all control flow structures have the opening brace on the same line
+if (test()) {
+    // ...
+}
+
+while (flag) {
+    // ...
+}
+
+for (;;) {
+    // ...
+}
+
+// for else/if blocks, put closing brace on the same line as the next clause
+if (test) {
+    // ...
+} else if (test2) {
+    // ...
+} else {
+    // ...
+}
+
+// braceless if is only used if there is no else clause
+if (condition)
+    // ...
+else  // BAD! This else violates the style
+    // ...
+#+END_SRC
