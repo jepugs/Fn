@@ -1,8 +1,45 @@
+#+title: Fn Language Specification
+#+author: Jack Pugmire
+
+#+latex_header: \usepackage{amsmath}
+#+latex_header: \newcommand{\FnObj}{\text{FnObj}}
+#+latex_header: \newcommand{\List}{\text{List}}
+#+latex_header: \newcommand{\Function}{\text{Function}}
+#+latex_header: \newcommand{\Namespace}{\text{Namespace}}
+#+latex_header: \newcommand{\Symbol}{\text{Symbol}}
+#+latex_header: \newcommand{\Ident}{\text{Ident}}
+#+latex_header: \newcommand{\Keyw}{\text{Keyw}}
+#+latex_header: \newcommand{\Reserv}{\text{Reserv}}
+#+latex_header: \newcommand{\Err}{\text{Err}}
+#+latex_header: \newcommand{\Error}{\text{Error}}
+#+latex_header: \newcommand{\Result}{\text{Result}}
+#+latex_header: \newcommand{\Expr}{\text{Expr}}
+#+latex_header: \newcommand{\Env}{\text{Env}}
+#+latex_header: \newcommand{\Glob}{\text{Glob}}
+#+latex_header: \newcommand{\symb}[1]{\texttt{'{#1}}}
+#+latex_header: \newcommand{\Nothing}{\text{Nothing}}
+
+# math operators for structures, sequences, and KV-stores
+#+latex_header: \DeclareMathOperator{\Len}{Len}
+#+latex_header: \DeclareMathOperator{\Extend}{Extend}
+#+latex_header: \DeclareMathOperator{\Seq}{Seq}
+#+latex_header: \DeclareMathOperator{\KV}{KV}
+#+latex_header: \DeclareMathOperator{\Bind}{Bind}
+#+latex_header: \DeclareMathOperator{\Bound}{Bound}
+#+latex_header: \DeclareMathOperator{\Lookup}{Lookup}
+#+latex_header: \DeclareMathOperator{\Resolve}{Resolve}
+#+latex_header: \DeclareMathOperator{\Eval}{Eval}
+
+#+begin_latex
+\frenchspacing
+#+end_latex
+
 * About this Document
 
 This document is a minimal formal spec of fn for Version 0.1.0. The goal is to completely describe
 fn without any ambiguity so that it may be implemented precisely, with no undefined behavior. It is
 meant mainly as an aid to the implementor.
+
 
 * Syntax
 
@@ -169,64 +206,201 @@ a.d.b.d  -> (dot a b c d)
 #+end_src
 
 
-* Special forms
+* Objects and Types
+
+Values in fn are referred to as *objects*. The set of all fn objects is denoted FnObj[fn:fnobj1].
+Every object has associated to it exactly one *type*, which for our purposes is a named set containing
+that object. Thus Fn's types are a collection of disjoint sets which collectively classify all
+objects. Broadly, objects can be separated into two groups depending on their type, namely *atoms* and
+*compound structures*. Atoms are values which may be represented by a single, indivisible syntactic
+unit, whereas compound types can only be defined using more complex syntactic forms.
+
+** Atomic types
+
+- Null :: $\{\mathtt{null}\}$, where ~null~ is a special constant indicating no return value.
+- Bool :: $\{\mathtt{true}, \mathtt{false}\}$ where ~true~ and ~false~ are special constants
+  representing boolean values.
+- Number :: A set of floating point numbers. In particular, these are 62-bit floating point numers
+  formatted as IEEE 754 64-bit floating-point, but with two fewer significand bits. (Not quite
+  double precision, but one-and-nine-thousand-three-hundred-seventy-five-ten-thousandths precision).
+- String :: Sequences of bytes with length less than 2^32. Strings do not necessarily contain text.
+- Symbol :: Internalized strings. Symbol is in natural bijection with String, with the associated
+  string being called the symbol's *name*.
+
+** Compound types
+
+- List :: Finite sequences of objects. Lists must be constructible[fn:fnobj2].
+- Table :: Generalized key-value stores associating objects to objects. Tables must be
+  constructible[fn:fnobj2].
+- Function :: A subroutine which accepts arguments and returns a value. Functions may have side
+  effects, although the vast majority of function objects in fn are referentially transparent, as
+  God intended. Formally, we represent functions as a tuple $(P,E,L)$, where $P$ is a parameter list,
+  $E$ is as list of expressions, and $L$ is a local environment. See [[Functions]] for more.
+- Namespace :: A key-value store mapping symbols to values. Namespaces are similar to Tables, but
+  have different mutability rules.
+
+
+[fn:fnobj1] This is a set in the mathematical sense. This is ensured by the constructibility
+requirements on Lists, Tables, and Namespaces. In fact, this restriction makes it countable.
+[fn:fnobj2] We restrict List and Table to only include *constructible* lists and tables. Constructible
+here means that they can be built in finitely many steps using certain primitive operations. These
+primitive operations will be defined in full detail in a future version of this spec. For now we say
+that they can be built by a terminating fn program.
+
+** Symbol Notation and Subsets
+
+Symbols are denoted in monospace font with a single quote proceeding their name, e.g. ~'symbol~. For
+this reason, we will not generally denote symbols
+
+For convenience, we define the following subsets of Symbol:
+- Keyw is the set of symbols whose names begin with a colon character (:). Elements of this set are
+  called *keywords*.
+- Reserv is the set of symbols which name special constants such as true, false, and null, as well
+  as other language primitives. Elements of this set are referred to as *reserved words*. See below
+  for a full definition.
+- $\Ident = \mathrm{Symbol} \setminus \left(\mathrm{Keyw} \cup \mathrm{Reserv}\right)$.
+  Elements of this set are called *identifiers*.
+
+Full definition of Reserv:
+\begin{align*}
+\Reserv = \{&\symb{\&}, \symb{\$}, \symb{and}, \symb{apply}, \symb{case}, \symb{cond},\symb{def},
+\symb{defmacro},\\
+&\symb{do}, \symb{dot}, \symb{dollar-fn}, \symb{false}, \symb{fn}, \symb{if}, \symb{import},\\
+&\symb{let},\symb{null}, \symb{or}, \symb{quasiquote}, \symb{quote}, \symb{set}, \symb{true},\\
+&\symb{unquote},\symb{unquote-splice}, \symb{with} \}
+\end{align*}
+
+
+* Formal Semantics
+
+This section makes frequent reference to the types/sets defined in [[Objects and Types]]. Where
+necessary, we provide full formal definitions for these sets. We use the term *object* to refer to
+elements of FnObj as specified in this section. Moreover, as this section makes heavy use of formal
+mathematical functions, we will refer to elements of $\Function \subset \FnObj$ as *function
+objects*, reserving the term function for actual functions.
+
+As there are cases in which syntactically valid code may result in an error, we define $\Error =
+\{\Err\}$, where $\Err$ is a special constant indicating, and $\Result = \FnObj \cup \Error$.
+
+Fn's semantics are described by a function $\Eval : \Expr \times \Env \times \Glob \to \Result
+\times \Env \times \Glob$. Here $\Expr$ is the set of syntactic forms, $\Env$ is the set of
+environments (see below), and $\Glob$ is the set of *global state objects*. Global state objects are
+an abstraction representing all state which exists outside of the Fn interpreter. They are treated
+as black boxes. The majority of operations in Fn do not depend on or alter the global state in any
+interesting way[fn:semantics1]. When defining $Eval$ on such operations, we will often drop the
+$\Glob$ parameter, treating Eval instead as a function $\Expr \times \Env \to \Result \times \Env$,
+with the understanding the calculation will affect the world outside of Fn in some unknowable (and
+usually invisible) way.
+
+[fn:semantics1] To a certain extent, Eval's behavior will always be depend on the global state
+object. For instance, if you run out of RAM or your computer catches on fire, this will likely
+result in some kind of error. We will only worry about cases where evaluation depends on some kind
+of predictable I/O.
+
+** Structures, Sequences, and KV-stores
+
+The following constructions and conventions are used throughout this section to make our notation
+less cumbersome.
+
+A *structure* is a tuple whose components have names. When we introduce a new structure, we specify
+names for the elements. The name of the structure, denoted in CamelCase, is used to refer to the set
+of all such structures[fn:struct1]. E.g. "An ExampleStruct is a structure $(Part1,Part2,Part3)$." We
+use dot notation to refer to elements of a structure. Continuing the prior example, for $E \in
+\text{ExampleStruct}$, we write $E.Part1$, $E.Part2$, or $E.Part3$ to refer to the respective
+components.
+
+For our purposes, all *sequences* have finite length. Sequences use the usual notation, e.g. $\{x_1,
+x_2, \dots, x_n\}$ or $\{x_i\}_{i=1}^N$. For $S$ a set, we write
+\[
+\Seq(S) = \{\text{finite length sequences in } S\}
+\]
+Subscript notation is used to refer to sequence elements. When using this notation, we treat the
+sequence as if it were indexed by natural numbers starting from 1. In addition, we define
+\[
+\Len\left({\{x_i\}_{i=1}^N}\right) = N
+\]
+\[
+\Extend\left(\{x_i\}_{i=1}^N, x_{N+1}\right) = \{x_i\}_{i=1}^{N+1}}
+\]
+
+A *KV-store* is a structure $(keys,values,map)$, where $keys$ is a finite set, $values$ is an
+arbitrary set, and map is a set function $keys \to values$. $\KV(K,V)$ is the set of KV-stores $s$
+such that $x.keys \subset K$ and $x.values = V$. We define the following operations on KV-stores:
+
+\[
+\Bind : \KV(K,V) \times K \times V \to \KV(K,V)
+\]
+\[
+\Bind(s,x,v) = (s.keys\cup \{x\},V,m'),~
+m'(y) = \left
+\begin{cases}
+v & y = x \\
+s.map(y) & y \neq x
+\end{cases}\right.
+\]
+
+\[
+\Bound : \KV(K,V) \times K \to \{0,1\}
+\]
+\[
+\Bound(s,x) = \left\begin{cases}
+1 & x \in s.keys \\
+0 & x \notin s.keys
+\end{cases}\right.
+\]
+
+\[
+\Lookup : \KV(K,V) \times K \to \KV(K,V)\cup\{\Nothing\}
+\]
+\[
+\Lookup(s,x) = \left\begin{cases}
+s.map(x) & x \in s.keys \\
+\Nothing & x \notin s.keys
+\end{cases}\right.
+\]
+
+I.e. Bind extends KV stores, Bound checks for keys, and Lookup gets values, returning the constant
+$\Nothing$ if there is no such key. We thus have that for any $s \in \KV(K,V)$, $Lookup(s,x) =
+\Nothing$ if and only if $Bound(s,x) = 0$.
+
+[fn:struct1] We must restrict to a universe of constructible structures to ensure that we have a
+set. This is not an issue in practice.
+
+
+** Global State Object
+
+** Namespaces, Environments, and Closures
+
+** Functions
+
+** Definition of Eval
+
+*** Variables
+
+*** Special Forms
+
+*** Function Calls
+
+
+* Old sections (probably won't finish)
+
+These sections are kept in this document for future reference. I won't work on them any more, but
+may reuse parts of them in future revisions
+
+** Special forms
 
 #+begin_src
-def-form          ::= "(" "def" (identifier expression)+ ")"
-do-form           ::= "(" "do" expression* ")"
-let-form          ::= "(" "let" (identifier expression)+ ")"
-quote-form        ::= "(" "quote" syntactic-form ")"
-unquote-form      ::= "(" "unquote" expression ")"
+def-form ::= "(" "def" (identifier expression)+ ")"
+do-form ::= "(" "do" expression* ")"
+let-form ::= "(" "let" (identifier expression)+ ")"
+quote-form ::= "(" "quote" syntactic-form ")"
+unquote-form ::= "(" "unquote" expression ")"
 unquote-splice-form ::= "(" "unquote-splice" expression ")"
-with-form         ::= "(" "with" "(" (identifier expression)+ ")" expression* ")"
+with-form ::= "(" "with" "(" (identifier expression)+ ")" expression* ")"
 #+end_src
 
 
-* Functions
-
-A *function* is a pair consisting of a parameter list (see below) and a sequence of 1 or more
-expressions. The expressions are called the *function body*.
-
-
-
-* Parameters
-
-Parameters
-
-A *parameter list* is a finite sequence of parameters. The parameter list may also include a variadic
-parameter and/or a variadic keyword parameter.
-
-Parameter list grammar:
-
-#+begin_src
-param-list        ::=  "(" [pos-param+] end-params ")"
-pos-param         ::= identifier 
-                    | "(" identifier expression ")"
-end-params        ::= [variadic-param] [variadic-kw-param]
-                    | [variadic-kw-param] [variadic-param]
-variadic-param    ::= "&" identifier
-variadic-kw-param ::= ":&" identifier
-#+end_src
-
-** Parameter semantics
-
-Every function has *parameters*. Parameters determine
-- what arguments the function requires/accepts
-- which local variables are bound in the function body
-
-A positional parameter may be identifier or a pair consisting of an identifier and an expression,
-referred to as an init form. Functions may have any number (including 0) positional parameters.
-
-A variadic parameter is an identifier preceded by the special symbol ~&~.
-
-There are three types of parameters: positional parameters, variadic parameters, and variadic
-keyword parameters. A function may have any number (including 0) of positional parameters and either
-0 or 1 of each type of variadic parameter.
-
-Positional parameters may be either an identifier or a pair consisting of an identifier and a 
-
-
-* Quotation/Quasiquotation
+** Quotation/Quasiquotation
 
 quote accepts one argument and returns it as an fn data structure. This is also the primary way to
 get symbols as data objects.
@@ -240,3 +414,121 @@ gensym.
 - the datum of an unquote-splice form is evaluated and must be a list. It will be spliced
   element-wise into the list in which it occurs. An unquote-splice form on the top level of a
   quasiquote will generate an error
+
+** Namespaces and Environments
+
+A *namespace* is a pair $N = (names,bindings)$ with $names \subset \Ident$, $|names|$ finite, and
+$bindings$ a map $names \to \FnObj$. $bindings$ is the *binding map* of the namespace. We define the
+following functions on namespaces:
+
+\[
+\Bind : \Namespace \times \Ident \times \FnObj \to \Namespace
+\]
+\[
+\Bind(N,x,v) = (N.names\cup \{x\},b')
+\]
+\[\text{where } b'(y) = \left
+\begin{cases}
+v & y = x \\
+N.bindings(y) & y \neq x
+\end{cases}\right.
+\]
+
+\[
+\Bound : \Namespace \times \Ident \to \{0,1\}
+\]
+\[
+\Bound(N,x) = \left\begin{cases}
+1 & x \in N.names \\
+0 & x \notin N.names
+\end{cases}\right.
+\]
+
+\[
+\Resolve : \Namespace \times \Ident \to \Result
+\]
+\[
+\Resolve(N,x) = \left\begin{cases}
+N.bindings(x) & x \in N.names \\
+\Err & x \notin N.names
+\end{cases}\right.
+\]
+
+Env denotes the set of *environments*, which are tuples $(local,parent)$ of namespaces. Conceptually, an
+environments consists of a local namespace and a parent namespace. We also define Bind, Bound, and
+Resolve on environments.
+
+\[
+\Bind : \Env \times \Ident \times \FnObj \to \Namespace
+\]
+\[
+\Bind(E,x,v) = (\Bind(E.local,x,v),E.parent)
+\]
+
+\[
+\Bound : \Env \times \Ident \to \{0,1\}
+\]
+\[
+\Bound((L,P),x) = \left\begin{cases}
+0 & \Bound(L,x) = \Bound(P,x) = 0 \\
+1 & \text{otherwise}
+\end{cases}\right.
+\]
+
+\[
+\Resolve : \Env \times \Ident \to \Result
+\]
+\[
+\Resolve((L,P)) = \left\begin{cases}
+\Resolve(L,x) & \Bound(L,x) = 1 \\
+\Resolve(P,x) & \Bound(L,x) = 0
+\end{cases}\right.
+\]
+
+I.e. operations on environments happen in the local namespace wherever possible, and fall back to
+the parent namespace when necessary. Thus we may think of environments as chains of namespaces.
+
+** Functions
+
+A *parameter* represents a binding created by calling a function object. Parameters consist of an
+identifier and a default value:
+\[
+\text{Param} = \left\{(x,d) : x \in \text{Ident}, d \in\Result \right\}
+\]
+A default value $d = \Err$ is used to indicate that the parameter is required.
+
+We then define function objects as tuples $(P,C,B)$, where $P$ is a list of parameters, $C$ is a
+*closure*, and $B$ is a list of expressions, called the function's *body*. *Closures* are special
+global objects which are references to environments[fn:functions1]. When a function is called, the
+environment referenced by the closure is updated, so that changes made to local variables referenced
+by the function are persistent across multiple calls. In addition, closures may be shared across
+multiple functions.
+
+Top-level definitions in fn are immutable. However, by defining global functions which update the
+variables in their closures, persistent global state may be created. For example:
+#+begin_src
+(with (counter 0)
+  (def (get-count)
+    (set counter (+ 1 counter))
+    counter))
+
+(get-count) ; returns 1
+(get-count) ; returns 2
+#+end_src
+
+This is considered bad style in general, but there are certain circumstances in which it may be
+okay. These include:
+- memoization of computationally intensive or recursive functions
+- updating seeds for PRNG functions
+- rare situations in which you must maintain a reference to a single, global hardware resource
+Again, it must be emphasized that persistent state should be avoided whenever possible. This is why
+you have to go out of your way and use closures to create it. The main reason why mutable local
+variables are provided in the first place is for the situations in which mutation leads to more
+efficient or straightforward algorithms, not so that global variables can be created.
+
+
+[fn:functions1] For convenience, we presently consider closures to be a part of the global state
+object, even though they are technically internal to the Fn interpreter.
+
+
+
