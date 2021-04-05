@@ -7,14 +7,14 @@ namespace fn {
 using namespace fn_scan;
 using namespace fn_bytes;
 
-Locals::Locals(Locals* parent, FuncStub* func)
+locals::locals(locals* parent, func_stub* func)
     : vars()
     , parent(parent)
-    , curFunc(func)
+    , cur_func(func)
 { }
 
-fs::path Compiler::modulePath(const vector<string>& id) {
-    // TODO: I think this works on Windows but I should really try it :)
+fs::path compiler::module_path(const vector<string>& id) {
+    // t_od_o: i think this works on windows but i should really try it :)
     auto res = dir;
     for (auto s : id) {
         res /= s;
@@ -23,7 +23,7 @@ fs::path Compiler::modulePath(const vector<string>& id) {
     return res;
 }
 
-// FIXME: this is probably a dumb algorithm
+// f_ix_me: this is probably a dumb algorithm
 template<> u32 hash<vector<string>>(const vector<string>& v) {
     constexpr u32 p = 13729;
     u32 ct = 1;
@@ -36,28 +36,28 @@ template<> u32 hash<vector<string>>(const vector<string>& v) {
 }
 
 // levels must be >= 1 and must be <= the depth of nested function bodies
-u8 Locals::addUpvalue(u32 levels, u8 pos) {
+u8 locals::add_upvalue(u32 levels, u8 pos) {
     // get to the next call frame
-    // add an upvalue to curFun
-    // climb up until srcEnv is reached, adding upvalues to each function along the way
+    // add an upvalue to cur_fun
+    // climb up until src_env is reached, adding upvalues to each function along the way
 
     // find the most recent call frame
     auto call = this;
-    while (call->curFunc == nullptr && call != nullptr) {
+    while (call->cur_func == nullptr && call != nullptr) {
         call = call->parent;
     }
 
     // levels == 1 => this is a direct upvalue, so add it and return
     if (levels == 1) {
-        return call->curFunc->getUpvalue(pos, true);
+        return call->cur_func->get_upvalue(pos, true);
     }
 
     // levels > 1 => need to get the upvalue from an enclosing function
-    u8 slot = call->parent->addUpvalue(levels - 1, pos);
-    return call->curFunc->getUpvalue(slot, false);
+    u8 slot = call->parent->add_upvalue(levels - 1, pos);
+    return call->cur_func->get_upvalue(slot, false);
 }
 
-static inline bool isLegalName(const string& str) {
+static inline bool is_legal_name(const string& str) {
     if (str == "and" || str == "cond" || str == "def" || str == "def*" || str == "defmacro"
         || str == "defsym" || str == "do" || str == "dollar-fn" || str == "dot" || str == "fn"
         || str == "if" || str == "import" || str == "let" || str == "macrolet" || str == "or"
@@ -69,47 +69,47 @@ static inline bool isLegalName(const string& str) {
     return true;
 }
 
-Compiler::Compiler(const fs::path& dir, Bytecode* dest, Scanner* sc)
+compiler::compiler(const fs::path& dir, bytecode* dest, scanner* sc)
     : dest(dest)
     , sc(sc)
     , sp(0)
     , dir(dir)
     , modules()
 {
-    // The first module is fn.core
-    // TODO: use allocator
-    auto modIdVal = dest->consConst(dest->symbol("core"), V_EMPTY);
-    modIdVal = dest->consConst(dest->symbol("fn"), dest->getConstant(modIdVal));
-    curModId = modIdVal;
+    // the first module is fn.core
+    // t_od_o: use allocator
+    auto mod_id_val = dest->cons_const(dest->symbol("core"), V_EMPTY);
+    mod_id_val = dest->cons_const(dest->symbol("fn"), dest->get_constant(mod_id_val));
+    cur_mod_id = mod_id_val;
 }
 
-Compiler::~Compiler() {
-    // TODO: free locals at least or something
+compiler::~compiler() {
+    // t_od_o: free locals at least or something
 }
 
-static inline bool isRightDelim(Token tok) {
+static inline bool is_right_delim(token tok) {
     auto tk = tok.tk;
-    return tk == TKRBrace || tk == TKRBracket || tk == TKRParen;
+    return tk == t_kr_brace || tk == t_kr_bracket || tk == t_kr_paren;
 }
 
 // returns true when
-static bool checkDelim(TokenKind expected, Token tok) {
+static bool check_delim(token_kind expected, token tok) {
     if (tok.tk == expected) {
         return true;
-    } else if (isRightDelim(tok)) {
-        throw FNError("compiler", "Mismatched closing delimiter " + tok.to_string(), tok.loc);
-    } else if (tok.tk == TKEOF) {
-        throw FNError("compiler", "Encountered EOF while scanning", tok.loc);
+    } else if (is_right_delim(tok)) {
+        throw fn_error("compiler", "mismatched closing delimiter " + tok.to_string(), tok.loc);
+    } else if (tok.tk == t_ke_of) {
+        throw fn_error("compiler", "encountered e_of while scanning", tok.loc);
     }
     return false;
 }
 
-optional<Local> Compiler::findLocal(Locals* locals, const string& name, u32* levels) {
-    if (locals == nullptr) {
+optional<local_addr> compiler::find_local(locals* l, const string& name, u32* levels) {
+    if (l == nullptr) {
         return { };
     }
 
-    auto env = locals;
+    auto env = l;
     optional<u8*> res;
     *levels = 0;
     // keep track of how many enclosing functions we need to go into
@@ -120,13 +120,13 @@ optional<Local> Compiler::findLocal(Locals* locals, const string& name, u32* lev
         }
 
         // here we're about to ascend to an enclosing function, so we need an upvalue
-        if (env->curFunc != nullptr) {
+        if (env->cur_func != nullptr) {
             *levels += 1;
         }
     } while ((env = env->parent) != nullptr);
 
     if (*levels > 0 && res.has_value()) {
-        return locals->addUpvalue(*levels, **res);
+        return l->add_upvalue(*levels, **res);
     } else if (res.has_value()) {
         return **res;
     }
@@ -134,577 +134,577 @@ optional<Local> Compiler::findLocal(Locals* locals, const string& name, u32* lev
     return { };
 }
 
-void Compiler::compileVar(Locals* locals, const string& name) {
+void compiler::compile_var(locals* l, const string& name) {
     u32 levels;
-    auto id = findLocal(locals, name, &levels);
+    auto id = find_local(l, name, &levels);
     if (!id.has_value()) {
         // global
-        auto id = dest->symConst(name);
-        dest->writeByte(OP_CONST);
-        dest->writeShort(id);
-        dest->writeByte(OP_GLOBAL);
+        auto id = dest->sym_const(name);
+        dest->write_byte(OP_CONST);
+        dest->write_short(id);
+        dest->write_byte(OP_GLOBAL);
     } else {
-        dest->writeByte(levels > 0 ? OP_UPVALUE : OP_LOCAL);
-        dest->writeByte(*id);
+        dest->write_byte(levels > 0 ? OP_UPVALUE : OP_LOCAL);
+        dest->write_byte(*id);
     }
     ++sp;
 }
 
-// helper function that converts the string from a TKDot token to a vector consisting of the names
+// helper function that converts the string from a t_kdot token to a vector consisting of the names
 // of its parts.
-static inline vector<string> tokenizeDotString(const string& s) {
+static inline vector<string> tokenize_dot_string(const string& s) {
     vector<string> res;
     u32 start = 0;
-    u32 dotPos = 0;
+    u32 dot_pos = 0;
     bool escaped = false;
 
-    while (dotPos < s.size()) {
+    while (dot_pos < s.size()) {
         // find the next unescaped dot
-        while (dotPos < s.size()) {
-            ++dotPos;
+        while (dot_pos < s.size()) {
+            ++dot_pos;
             if (escaped) {
                 escaped = false;
-            } else if (s[dotPos] == '\\') {
+            } else if (s[dot_pos] == '\\') {
                 escaped = true;
-            } else if (s[dotPos] == '.') {
+            } else if (s[dot_pos] == '.') {
                 break;
             }
         }
-        res.push_back(s.substr(start, dotPos-start));
-        start = dotPos+1;
-        ++dotPos;
+        res.push_back(s.substr(start, dot_pos-start));
+        start = dot_pos+1;
+        ++dot_pos;
     }
     return res;
 }
 
-vector<string> Compiler::tokenizeName(optional<Token> t0) {
-    Token tok;
+vector<string> compiler::tokenize_name(optional<token> t0) {
+    token tok;
     if (t0.has_value()) {
         tok = *t0;
     } else {
-        tok = sc->nextToken();
+        tok = sc->next_token();
     }
 
-    if (tok.tk == TKSymbol) {
+    if (tok.tk == t_ksymbol) {
         vector<string> v;
         v.push_back(*tok.datum.str);
         return v;
     }
-    if (tok.tk == TKDot) {
-        return tokenizeDotString(*tok.datum.str);
+    if (tok.tk == t_kdot) {
+        return tokenize_dot_string(*tok.datum.str);
     }
 
-    if (tok.tk != TKLParen) {
+    if (tok.tk != t_kl_paren) {
         // not a symbol or a dot form
-        throw FNError("compiler",
-                      "Name is not a symbol or a dot form: " + tok.to_string(),
+        throw fn_error("compiler",
+                      "name is not a symbol or a dot form: " + tok.to_string(),
                       tok.loc);
     }
 
-    tok = sc->nextToken();
-    if (tok.tk != TKSymbol || *tok.datum.str != "dot") {
-        throw FNError("compiler",
-                      "Name is not a symbol or a dot form",
+    tok = sc->next_token();
+    if (tok.tk != t_ksymbol || *tok.datum.str != "dot") {
+        throw fn_error("compiler",
+                      "name is not a symbol or a dot form",
                       tok.loc);
     }
 
     vector<string> res;
-    tok = sc->nextToken();
-    while (!checkDelim(TKRParen, tok)) {
-        if (tok.tk != TKSymbol) {
-            throw FNError("compiler", "Arguments to dot must be symbols.", tok.loc);
+    tok = sc->next_token();
+    while (!check_delim(t_kr_paren, tok)) {
+        if (tok.tk != t_ksymbol) {
+            throw fn_error("compiler", "arguments to dot must be symbols.", tok.loc);
         }
         res.push_back(*tok.datum.str);
-        tok = sc->nextToken();
+        tok = sc->next_token();
     }
     return res;
 }
 
 
-void Compiler::compileBlock(Locals* locals) {
-    auto tok = sc->nextToken();
+void compiler::compile_block(locals* l) {
+    auto tok = sc->next_token();
     // location on stack to put result
-    auto oldSp = sp;
-    dest->writeByte(OP_NULL);
+    auto old_sp = sp;
+    dest->write_byte(OP_NULL);
     ++sp;
-    if(checkDelim(TKRParen, tok)) {
+    if(check_delim(t_kr_paren, tok)) {
         // empty body yields a null value
         return;
     }
 
     // create a new environment
-    auto newEnv = new Locals(locals);
+    auto new_env = new locals(l);
 
-    compileExpr(newEnv, &tok);
-    while (!checkDelim(TKRParen, tok = sc->nextToken())) {
-        dest->writeByte(OP_POP);
+    compile_expr(new_env, &tok);
+    while (!check_delim(t_kr_paren, tok = sc->next_token())) {
+        dest->write_byte(OP_POP);
         --sp;
-        compileExpr(newEnv, &tok);
+        compile_expr(new_env, &tok);
     }
 
-    dest->writeByte(OP_SET_LOCAL);
-    dest->writeByte(oldSp);
+    dest->write_byte(OP_SET_LOCAL);
+    dest->write_byte(old_sp);
     --sp;
-    dest->writeByte(OP_CLOSE);
-    dest->writeByte(sp - oldSp - 1);
+    dest->write_byte(OP_CLOSE);
+    dest->write_byte(sp - old_sp - 1);
 
-    sp = oldSp + 1;
+    sp = old_sp + 1;
 
     // don't need this any more :)
-    delete newEnv;
+    delete new_env;
 }
 
-void Compiler::compileAnd(Locals* locals) {
-    forward_list<Addr> patchLocs;
+void compiler::compile_and(locals* l) {
+    forward_list<bc_addr> patch_locs;
 
-    auto tok = sc->nextToken();
-    if(checkDelim(TKRParen, tok)) {
+    auto tok = sc->next_token();
+    if(check_delim(t_kr_paren, tok)) {
         // and with no arguments yields a true value
-        dest->writeByte(OP_TRUE);
+        dest->write_byte(OP_TRUE);
         ++sp;
         return;
     }
 
-    compileExpr(locals, &tok);
+    compile_expr(l, &tok);
     // copy the top of the stack because cjump consumes it
-    dest->writeByte(OP_COPY);
-    dest->writeByte(0);
-    dest->writeByte(OP_CJUMP);
-    dest->writeShort(0);
-    patchLocs.push_front(dest->getSize());
-    while (!checkDelim(TKRParen, (tok=sc->nextToken()))) {
-        dest->writeByte(OP_POP);
-        compileExpr(locals, &tok);
-        dest->writeByte(OP_COPY);
-        dest->writeByte(0);
-        dest->writeByte(OP_CJUMP);
-        dest->writeShort(0);
-        patchLocs.push_front(dest->getSize());
+    dest->write_byte(OP_COPY);
+    dest->write_byte(0);
+    dest->write_byte(OP_CJUMP);
+    dest->write_short(0);
+    patch_locs.push_front(dest->get_size());
+    while (!check_delim(t_kr_paren, (tok=sc->next_token()))) {
+        dest->write_byte(OP_POP);
+        compile_expr(l, &tok);
+        dest->write_byte(OP_COPY);
+        dest->write_byte(0);
+        dest->write_byte(OP_CJUMP);
+        dest->write_short(0);
+        patch_locs.push_front(dest->get_size());
     }
-    dest->writeByte(OP_JUMP);
-    dest->writeShort(2);
-    auto endAddr = dest->getSize();
-    dest->writeByte(OP_POP);
-    dest->writeByte(OP_FALSE);
+    dest->write_byte(OP_JUMP);
+    dest->write_short(2);
+    auto end_addr = dest->get_size();
+    dest->write_byte(OP_POP);
+    dest->write_byte(OP_FALSE);
 
-    for (auto u : patchLocs) {
-        dest->patchShort(u-2, endAddr - u);
+    for (auto u : patch_locs) {
+        dest->patch_short(u-2, end_addr - u);
     }
 }
 
-void Compiler::compileApply(Locals* locals) {
-    auto oldSp = sp;
+void compiler::compile_apply(locals* l) {
+    auto old_sp = sp;
 
-    auto tok = sc->nextToken();
-    if (checkDelim(TKRParen, tok)) {
-        throw FNError("compiler", "Too few arguments to apply.", tok.loc);
+    auto tok = sc->next_token();
+    if (check_delim(t_kr_paren, tok)) {
+        throw fn_error("compiler", "too few arguments to apply.", tok.loc);
     }
-    compileExpr(locals, &tok);
+    compile_expr(l, &tok);
 
-    tok = sc->nextToken();
-    if (checkDelim(TKRParen, tok)) {
-        throw FNError("compiler", "Too few arguments to apply.", tok.loc);
+    tok = sc->next_token();
+    if (check_delim(t_kr_paren, tok)) {
+        throw fn_error("compiler", "too few arguments to apply.", tok.loc);
     }
-    u32 numArgs = 0;
+    u32 num_args = 0;
     do {
-        ++numArgs;
-        compileExpr(locals, &tok);
-    } while (!checkDelim(TKRParen,tok=sc->nextToken()));
-    if (numArgs > 255) {
-        throw FNError("compiler", "Too many arguments to apply.", tok.loc);
+        ++num_args;
+        compile_expr(l, &tok);
+    } while (!check_delim(t_kr_paren,tok=sc->next_token()));
+    if (num_args > 255) {
+        throw fn_error("compiler", "too many arguments to apply.", tok.loc);
     }
-    dest->writeByte(OP_APPLY);
-    dest->writeByte(numArgs);
+    dest->write_byte(OP_APPLY);
+    dest->write_byte(num_args);
 
-    sp = oldSp+1;
+    sp = old_sp+1;
 }
 
-void Compiler::compileCond(Locals* locals) {
-    auto tok = sc->nextToken();
-    if (checkDelim(TKRParen, tok)) {
-        dest->writeByte(OP_NULL);
+void compiler::compile_cond(locals* l) {
+    auto tok = sc->next_token();
+    if (check_delim(t_kr_paren, tok)) {
+        dest->write_byte(OP_NULL);
         ++sp;
         return;
     }
     // locations where we need to patch the end address
-    forward_list<Addr> patchLocs;
-    while (!checkDelim(TKRParen, tok)) {
-        compileExpr(locals,&tok);
+    forward_list<bc_addr> patch_locs;
+    while (!check_delim(t_kr_paren, tok)) {
+        compile_expr(l,&tok);
         --sp;
-        dest->writeByte(OP_CJUMP);
-        dest->writeShort(0);
-        auto patchAddr = dest->getSize();
-        compileExpr(locals);
+        dest->write_byte(OP_CJUMP);
+        dest->write_short(0);
+        auto patch_addr = dest->get_size();
+        compile_expr(l);
         --sp;
-        dest->writeByte(OP_JUMP);
-        dest->writeShort(0);
-        patchLocs.push_front(dest->getSize());
+        dest->write_byte(OP_JUMP);
+        dest->write_short(0);
+        patch_locs.push_front(dest->get_size());
 
         // patch in the else jump address
-        dest->patchShort(patchAddr-2,dest->getSize() - patchAddr);
-        tok = sc->nextToken();
+        dest->patch_short(patch_addr-2,dest->get_size() - patch_addr);
+        tok = sc->next_token();
     }
 
     // return null when no tests success
-    dest->writeByte(OP_NULL);
+    dest->write_byte(OP_NULL);
     ++sp;
     // patch in the end address for non-null results
-    for (auto a : patchLocs) {
-        dest->patchShort(a-2, dest->getSize() - a);
+    for (auto a : patch_locs) {
+        dest->patch_short(a-2, dest->get_size() - a);
     }
 }
 
 // compile def expressions
-void Compiler::compileDef(Locals* locals) {
-    Token tok = sc->nextToken();
-    if (tok.tk != TKSymbol) {
-        throw FNError("compiler", "First argument to def must be a symbol.", tok.loc);
+void compiler::compile_def(locals* l) {
+    token tok = sc->next_token();
+    if (tok.tk != t_ksymbol) {
+        throw fn_error("compiler", "first argument to def must be a symbol.", tok.loc);
     }
-    // TODO: check for legal symbols
-    if(!isLegalName(*tok.datum.str)) {
-        throw FNError("compiler", "Illegal variable name " + *tok.datum.str, tok.loc);
+    // t_od_o: check for legal symbols
+    if(!is_legal_name(*tok.datum.str)) {
+        throw fn_error("compiler", "illegal variable name " + *tok.datum.str, tok.loc);
     }
 
     // write the name symbol
-    constant(dest->symConst(*tok.datum.str));
+    constant(dest->sym_const(*tok.datum.str));
     ++sp;
     // compile the value expression
-    compileExpr(locals);
-    // set the global. This leaves the symbol on the stack
-    dest->writeByte(OP_SET_GLOBAL);
+    compile_expr(l);
+    // set the global. this leaves the symbol on the stack
+    dest->write_byte(OP_SET_GLOBAL);
     --sp;
 
     // make sure there's a close paren
-    Token last = sc->nextToken();
-    if (!checkDelim(TKRParen, last)) {
-        throw FNError("compiler", "Too many arguments to def", last.loc);
+    token last = sc->next_token();
+    if (!check_delim(t_kr_paren, last)) {
+        throw fn_error("compiler", "too many arguments to def", last.loc);
     }
 
 }
 
-void Compiler::compileDo(Locals* locals) {
-    compileBlock(locals);
+void compiler::compile_do(locals* l) {
+    compile_block(l);
 }
 
-void Compiler::compileDotToken(Locals* locals, Token& tok) {
-    auto toks = tokenizeDotString(*tok.datum.str);
-    compileVar(locals,toks[0]);
-    // note: this compileVar call already sets sp to what we want it at the end
+void compiler::compile_dot_token(locals* l, token& tok) {
+    auto toks = tokenize_dot_string(*tok.datum.str);
+    compile_var(l,toks[0]);
+    // note: this compile_var call already sets sp to what we want it at the end
     for (u32 i = 1; i < toks.size(); ++i) {
-        dest->writeByte(OP_CONST);
-        dest->writeShort(dest->symConst(toks[i]));
-        dest->writeByte(OP_OBJ_GET);
+        dest->write_byte(OP_CONST);
+        dest->write_short(dest->sym_const(toks[i]));
+        dest->write_byte(OP_OBJ_GET);
     }
 }
 
-void Compiler::compileDotExpr(Locals* locals) {
+void compiler::compile_dot_expr(locals* l) {
     vector<string> toks;
 
-    auto tok = sc->nextToken();
-    if (checkDelim(TKRParen, tok)) {
-        throw FNError("compiler", "Too few arguments to dot.", tok.loc);
+    auto tok = sc->next_token();
+    if (check_delim(t_kr_paren, tok)) {
+        throw fn_error("compiler", "too few arguments to dot.", tok.loc);
     }
-    while (!checkDelim(TKRParen, tok)) {
-        if (tok.tk != TKSymbol) {
-            throw FNError("compiler", "Arguments to dot must be symbols.", tok.loc);
+    while (!check_delim(t_kr_paren, tok)) {
+        if (tok.tk != t_ksymbol) {
+            throw fn_error("compiler", "arguments to dot must be symbols.", tok.loc);
         }
         toks.push_back(*tok.datum.str);
-        tok = sc->nextToken();
+        tok = sc->next_token();
     }
-    compileVar(locals,toks[0]);
-    // note: this compileVar call already sets sp to what we want it at the end
+    compile_var(l,toks[0]);
+    // note: this compile_var call already sets sp to what we want it at the end
     for (u32 i = 1; i < toks.size(); ++i) {
-        constant(dest->symConst(toks[i]));
-        dest->writeByte(OP_OBJ_GET);
+        constant(dest->sym_const(toks[i]));
+        dest->write_byte(OP_OBJ_GET);
     }
 }
 
-void Compiler::compileFn(Locals* locals) {
-    // first, read all arguments and set up locals
-    Token tok = sc->nextToken();
-    if (tok.tk != TKLParen) {
-        throw FNError("compiler", "Second argument of fn must be an argument list.", tok.loc);
+void compiler::compile_fn(locals* l) {
+    // first, read all arguments and set up l
+    token tok = sc->next_token();
+    if (tok.tk != t_kl_paren) {
+        throw fn_error("compiler", "second argument of fn must be an argument list.", tok.loc);
     }
 
-    // start out by jumping to the end of the function body. We will patch in the distance to jump
+    // start out by jumping to the end of the function body. we will patch in the distance to jump
     // later on.
-    dest->writeByte(OP_JUMP);
-    auto patchAddr = dest->getSize();
+    dest->write_byte(OP_JUMP);
+    auto patch_addr = dest->get_size();
     // write the placholder offset
-    dest->writeShort(0);
+    dest->write_short(0);
 
-    auto enclosed = new Locals(locals);
-    auto oldSp = sp;
+    auto enclosed = new locals(l);
+    auto old_sp = sp;
     sp = 0;
 
     bool vararg = false;
-    // TODO: add new function object
-    // TODO: check args < 256
-    while (!checkDelim(TKRParen, tok=sc->nextToken())) {
-        if (tok.tk != TKSymbol) {
-            throw FNError("compiler", "Argument names must be symbols.", tok.loc);
+    // t_od_o: add new function object
+    // t_od_o: check args < 256
+    while (!check_delim(t_kr_paren, tok=sc->next_token())) {
+        if (tok.tk != t_ksymbol) {
+            throw fn_error("compiler", "argument names must be symbols.", tok.loc);
         }
         // & indicates a variadic argument
         if (*tok.datum.str == "&") {
             vararg = true;
             break;
-        } else if (!isLegalName(*tok.datum.str)) {
-            throw FNError("compiler", "Illegal variable name " + *tok.datum.str, tok.loc);
+        } else if (!is_legal_name(*tok.datum.str)) {
+            throw fn_error("compiler", "illegal variable name " + *tok.datum.str, tok.loc);
         }
 
-        // TODO: check for repeated names
+        // t_od_o: check for repeated names
         enclosed->vars.insert(*tok.datum.str, sp);
         ++sp;
     }
 
     if (vararg) {
         // check that we have a symbol for the variable name
-        tok = sc->nextToken();
-        if (tok.tk != TKSymbol) {
-            throw FNError("compiler", "Argument names must be symbols.", tok.loc);
+        tok = sc->next_token();
+        if (tok.tk != t_ksymbol) {
+            throw fn_error("compiler", "argument names must be symbols.", tok.loc);
         }
         enclosed->vars.insert(*tok.datum.str, sp);
         ++sp;
 
-        tok = sc->nextToken();
-        if (!checkDelim(TKRParen, tok)) {
-            throw FNError("compiler",
-                          "Trailing tokens after variadic parameter in fn argument list.",
+        tok = sc->next_token();
+        if (!check_delim(t_kr_paren, tok)) {
+            throw fn_error("compiler",
+                          "trailing tokens after variadic parameter in fn argument list.",
                           tok.loc);
         }
     }
 
-    auto funcId = dest->addFunction(sp, vararg, dest->getConstant(curModId));
-    enclosed->curFunc = dest->getFunction(funcId);
+    auto func_id = dest->add_function(sp, vararg, dest->get_constant(cur_mod_id));
+    enclosed->cur_func = dest->get_function(func_id);
 
     // compile the function body
-    compileBlock(enclosed);
-    dest->writeByte(OP_RETURN);
+    compile_block(enclosed);
+    dest->write_byte(OP_RETURN);
 
     delete enclosed;
 
-    // FIXME: since jump takes a signed offset, need to ensure that offset is positive if converted
-    // to a signed number. Otherwise emit an error.
-    auto offset = dest->getSize() - patchAddr - 2;
-    dest->patchShort(patchAddr, offset);
+    // f_ix_me: since jump takes a signed offset, need to ensure that offset is positive if converted
+    // to a signed number. otherwise emit an error.
+    auto offset = dest->get_size() - patch_addr - 2;
+    dest->patch_short(patch_addr, offset);
 
-    dest->writeByte(OP_CLOSURE);
-    dest->writeShort(funcId);
-    sp = oldSp + 1;
+    dest->write_byte(OP_CLOSURE);
+    dest->write_short(func_id);
+    sp = old_sp + 1;
 }
 
-void Compiler::compileIf(Locals* locals) {
+void compiler::compile_if(locals* l) {
     // compile the test
-    compileExpr(locals);
-    dest->writeByte(OP_CJUMP);
+    compile_expr(l);
+    dest->write_byte(OP_CJUMP);
     --sp;
     // this will hold the else address
-    dest->writeShort(0);
+    dest->write_short(0);
 
     // then clause
-    auto thenAddr = dest->getSize();
-    compileExpr(locals);
+    auto then_addr = dest->get_size();
+    compile_expr(l);
     --sp;
     // jump to the end of the if
-    dest->writeByte(OP_JUMP);
-    dest->writeShort(0);
+    dest->write_byte(OP_JUMP);
+    dest->write_short(0);
 
     // else clause
-    auto elseAddr = dest->getSize();
-    compileExpr(locals);
+    auto else_addr = dest->get_size();
+    compile_expr(l);
     // sp is now where we want it
 
-    dest->patchShort(thenAddr - 2, elseAddr - thenAddr);
-    dest->patchShort(elseAddr - 2, dest->getSize() - elseAddr);
+    dest->patch_short(then_addr - 2, else_addr - then_addr);
+    dest->patch_short(else_addr - 2, dest->get_size() - else_addr);
 
-    auto tok = sc->nextToken();
-    if (!checkDelim(TKRParen, tok)) {
-        throw FNError("compiler", "Too many arguments to if", tok.loc);
+    auto tok = sc->next_token();
+    if (!check_delim(t_kr_paren, tok)) {
+        throw fn_error("compiler", "too many arguments to if", tok.loc);
     }
 }
 
-void Compiler::compileImport(Locals* locals) {
-    // TODO: handle dot form
-    auto tok = sc->nextToken();
-    auto strs = tokenizeName(tok);
+void compiler::compile_import(locals* l) {
+    // t_od_o: handle dot form
+    auto tok = sc->next_token();
+    auto strs = tokenize_name(tok);
 
     auto x = modules.get(strs);
-    u16 modId;                  // a constant holding the module ID
+    u16 mod_id;                  // a constant holding the module i_d
     if (!x.has_value()) {
-        // build the module ID as a value (a cons)
-        // TODO: use allocator
-        auto modIdVal = V_EMPTY;
-        ConstId lastId;
+        // build the module i_d as a value (a cons)
+        // t_od_o: use allocator
+        auto mod_id_val = V_EMPTY;
+        const_id last_id;
         for (int i = strs.size(); i > 0; --i) {
-            lastId = dest->consConst(dest->symbol(strs[i-1]), modIdVal);
-            modIdVal = dest->getConstant(lastId);
+            last_id = dest->cons_const(dest->symbol(strs[i-1]), mod_id_val);
+            mod_id_val = dest->get_constant(last_id);
         }
-        modId = lastId;
+        mod_id = last_id;
     } else {
-        modId = **x;
+        mod_id = **x;
     }
 
-    // TODO: check the name is legal
+    // t_od_o: check the name is legal
     // push module name to the stack
-    auto nameId = dest->symConst(strs[strs.size()-1]);
-    dest->writeByte(OP_CONST);
-    dest->writeShort(nameId);
+    auto name_id = dest->sym_const(strs[strs.size()-1]);
+    dest->write_byte(OP_CONST);
+    dest->write_short(name_id);
 
     // push the module id
-    dest->writeByte(OP_CONST);
-    dest->writeShort(modId);
-    dest->writeByte(OP_IMPORT);
+    dest->write_byte(OP_CONST);
+    dest->write_short(mod_id);
+    dest->write_byte(OP_IMPORT);
 
     // load a new module
     if (!x.has_value()) {
         // switch to the new module
-        dest->writeByte(OP_COPY);
-        dest->writeByte(0);
-        dest->writeByte(OP_MODULE);
-        auto prevModId = curModId;
-        curModId = modId;
+        dest->write_byte(OP_COPY);
+        dest->write_byte(0);
+        dest->write_byte(OP_MODULE);
+        auto prev_mod_id = cur_mod_id;
+        cur_mod_id = mod_id;
 
-        // TODO: find and compile file contents
-        auto src = modulePath(strs);
-        compileFile(src);
+        // t_od_o: find and compile file contents
+        auto src = module_path(strs);
+        compile_file(src);
 
         // switch back
-        dest->writeByte(OP_CONST);
-        dest->writeShort(prevModId);
-        dest->writeByte(OP_IMPORT);
-        dest->writeByte(OP_MODULE);
-        curModId = prevModId;
+        dest->write_byte(OP_CONST);
+        dest->write_short(prev_mod_id);
+        dest->write_byte(OP_IMPORT);
+        dest->write_byte(OP_MODULE);
+        cur_mod_id = prev_mod_id;
     }
 
     // bind the global variable
-    dest->writeByte(OP_SET_GLOBAL);
+    dest->write_byte(OP_SET_GLOBAL);
     ++sp;
 
-    if(!checkDelim(TKRParen, tok=sc->nextToken())) {
-        throw FNError("compiler", "Too many arguments to import.", tok.loc);
+    if(!check_delim(t_kr_paren, tok=sc->next_token())) {
+        throw fn_error("compiler", "too many arguments to import.", tok.loc);
     }
 }
 
-void Compiler::compileLet(Locals* locals) {
-    auto tok = sc->nextToken();
-    if (checkDelim(TKRParen, tok)) {
-        throw FNError("compiler", "Too few arguments to let.", tok.loc);
+void compiler::compile_let(locals* l) {
+    auto tok = sc->next_token();
+    if (check_delim(t_kr_paren, tok)) {
+        throw fn_error("compiler", "too few arguments to let.", tok.loc);
     }
 
     // toplevel
-    if (locals == nullptr) {
-        throw FNError("compiler",
-                      "Let cannot occur at the top level.",
+    if (l == nullptr) {
+        throw fn_error("compiler",
+                      "let cannot occur at the top level.",
                       tok.loc);
     }
 
-    // TODO: check for duplicate variable names
+    // t_od_o: check for duplicate variable names
     do {
-        // TODO: islegalname
-        if (tok.tk != TKSymbol) {
-            throw FNError("compiler",
-                          "Illegal argument to let. Variable name must be a symbol.",
+        // t_od_o: islegalname
+        if (tok.tk != t_ksymbol) {
+            throw fn_error("compiler",
+                          "illegal argument to let. variable name must be a symbol.",
                           tok.loc);
         }
 
         auto loc = sp++; // location of the new variable on the stack
         // initially bind the variable to null (early binding enables recursion)
-        dest->writeByte(OP_NULL);
-        locals->vars.insert(*tok.datum.str,loc);
+        dest->write_byte(OP_NULL);
+        l->vars.insert(*tok.datum.str,loc);
 
         // compile value expression
-        compileExpr(locals);
-        dest->writeByte(OP_SET_LOCAL);
-        dest->writeByte(loc);
+        compile_expr(l);
+        dest->write_byte(OP_SET_LOCAL);
+        dest->write_byte(loc);
         --sp;
-    } while (!checkDelim(TKRParen, tok=sc->nextToken()));
+    } while (!check_delim(t_kr_paren, tok=sc->next_token()));
 
     // return null
-    dest->writeByte(OP_NULL);
+    dest->write_byte(OP_NULL);
     ++sp;
 }
 
-void Compiler::compileOr(Locals* locals) {
-    forward_list<Addr> patchLocs;
+void compiler::compile_or(locals* l) {
+    forward_list<bc_addr> patch_locs;
 
-    auto tok = sc->nextToken();
-    if(checkDelim(TKRParen, tok)) {
+    auto tok = sc->next_token();
+    if(check_delim(t_kr_paren, tok)) {
         // or with no arguments yields a false value
-        dest->writeByte(OP_FALSE);
+        dest->write_byte(OP_FALSE);
         ++sp;
         return;
     }
 
-    compileExpr(locals, &tok);
+    compile_expr(l, &tok);
     // copy the top of the stack because cjump consumes it
-    dest->writeByte(OP_COPY);
-    dest->writeByte(0);
-    dest->writeByte(OP_CJUMP);
-    dest->writeShort(3);
-    dest->writeByte(OP_JUMP);
-    dest->writeShort(0);
-    patchLocs.push_front(dest->getSize());
-    while (!checkDelim(TKRParen, (tok=sc->nextToken()))) {
-        dest->writeByte(OP_POP);
-        compileExpr(locals, &tok);
-        dest->writeByte(OP_COPY);
-        dest->writeByte(0);
-        dest->writeByte(OP_CJUMP);
-        dest->writeShort(3);
-        dest->writeByte(OP_JUMP);
-        dest->writeShort(0);
-        patchLocs.push_front(dest->getSize());
+    dest->write_byte(OP_COPY);
+    dest->write_byte(0);
+    dest->write_byte(OP_CJUMP);
+    dest->write_short(3);
+    dest->write_byte(OP_JUMP);
+    dest->write_short(0);
+    patch_locs.push_front(dest->get_size());
+    while (!check_delim(t_kr_paren, (tok=sc->next_token()))) {
+        dest->write_byte(OP_POP);
+        compile_expr(l, &tok);
+        dest->write_byte(OP_COPY);
+        dest->write_byte(0);
+        dest->write_byte(OP_CJUMP);
+        dest->write_short(3);
+        dest->write_byte(OP_JUMP);
+        dest->write_short(0);
+        patch_locs.push_front(dest->get_size());
     }
-    dest->writeByte(OP_POP);
-    dest->writeByte(OP_FALSE);
-    auto endAddr = dest->getSize();
+    dest->write_byte(OP_POP);
+    dest->write_byte(OP_FALSE);
+    auto end_addr = dest->get_size();
 
-    for (auto u : patchLocs) {
-        dest->patchShort(u-2, endAddr - u);
+    for (auto u : patch_locs) {
+        dest->patch_short(u-2, end_addr - u);
     }
 }
 
 // prefix tells if we're using the prefix notation 'sym or paren notation (quote sym)
-void Compiler::compileQuote(Locals* locals, bool prefix) {
-    auto tok = sc->nextToken();
+void compiler::compile_quote(locals* l, bool prefix) {
+    auto tok = sc->next_token();
 
-    if(tok.tk != TKSymbol) {
-        throw FNError("compiler", "Argument to quote must be a symbol.", tok.loc);
+    if(tok.tk != t_ksymbol) {
+        throw fn_error("compiler", "argument to quote must be a symbol.", tok.loc);
     }
 
-    dest->writeByte(OP_CONST);
-    auto id = dest->symConst(*tok.datum.str);
+    dest->write_byte(OP_CONST);
+    auto id = dest->sym_const(*tok.datum.str);
 
     // scan for the close paren unless we're using prefix notation
-    if (!prefix && !checkDelim(TKRParen, tok=sc->nextToken())) {
-        throw FNError("compiler","Too many arguments in quote form", tok.loc);
-    }    dest->writeShort(id);
+    if (!prefix && !check_delim(t_kr_paren, tok=sc->next_token())) {
+        throw fn_error("compiler","too many arguments in quote form", tok.loc);
+    }    dest->write_short(id);
     ++sp;
 }
 
-void Compiler::compileSet(Locals* locals) {
+void compiler::compile_set(locals* l) {
     // tokenize the name
-    auto tok = sc->nextToken();
-    auto name = tokenizeName(tok);
+    auto tok = sc->next_token();
+    auto name = tokenize_name(tok);
 
     // note: assume name.size() >= 1
     if (name.size() == 1) {
         // variable set
         u32 levels;
-        auto id = findLocal(locals, name[0], &levels);
-        auto sym = dest->symConst(name[0]);
+        auto id = find_local(l, name[0], &levels);
+        auto sym = dest->sym_const(name[0]);
         if (id.has_value()) {
             // local
-            compileExpr(locals);
-            dest->writeByte(levels > 0 ? OP_SET_UPVALUE : OP_SET_LOCAL);
-            dest->writeByte(*id);
+            compile_expr(l);
+            dest->write_byte(levels > 0 ? OP_SET_UPVALUE : OP_SET_LOCAL);
+            dest->write_byte(*id);
             --sp;
         } else {
             // global
             constant(sym);
             ++sp;
-            compileExpr(locals);
-            dest->writeByte(OP_SET_GLOBAL);
+            compile_expr(l);
+            dest->write_byte(OP_SET_GLOBAL);
             sp -= 2;
         }
         constant(sym);
@@ -712,21 +712,21 @@ void Compiler::compileSet(Locals* locals) {
     } else {
         // object set
         // compute the object
-        compileVar(locals, name[0]);
+        compile_var(l, name[0]);
         for (size_t i = 1; i < name.size()-1; ++i) {
             // push the key symbol
-            constant(dest->symConst(name[i]));
-            dest->writeByte(OP_OBJ_GET);
+            constant(dest->sym_const(name[i]));
+            dest->write_byte(OP_OBJ_GET);
         }
         // final symbol
-        auto sym = dest->symConst(name[name.size()-1]);
+        auto sym = dest->sym_const(name[name.size()-1]);
         constant(sym);
 
         ++sp; // at this point the stack is ->[key] obj (initial-stack-pointer) ...
 
         // compile the value expression
-        compileExpr(locals);
-        dest->writeByte(OP_OBJ_SET);
+        compile_expr(l);
+        dest->write_byte(OP_OBJ_SET);
         sp -= 2;
 
         // return symbol name
@@ -734,237 +734,237 @@ void Compiler::compileSet(Locals* locals) {
         ++sp;
     }
 
-    if (!checkDelim(TKRParen, tok=sc->nextToken())) {
-        throw FNError("compiler", "Too many arguments to set.", tok.loc);
+    if (!check_delim(t_kr_paren, tok=sc->next_token())) {
+        throw fn_error("compiler", "too many arguments to set.", tok.loc);
     }
 }
 
-// braces expand to (Object args ...) forms
-void Compiler::compileBraces(Locals* locals) {
-    auto oldSp = sp;
-    // get the Object variable
-    compileVar(locals, "Object");
+// braces expand to (object args ...) forms
+void compiler::compile_braces(locals* l) {
+    auto old_sp = sp;
+    // get the object variable
+    compile_var(l, "object");
     // compile the arguments
-    auto tok = sc->nextToken();
-    u32 numArgs = 0;
-    while (!checkDelim(TKRBrace, tok)) {
-        compileExpr(locals,&tok);
-        ++numArgs;
-        tok = sc->nextToken();
+    auto tok = sc->next_token();
+    u32 num_args = 0;
+    while (!check_delim(t_kr_brace, tok)) {
+        compile_expr(l,&tok);
+        ++num_args;
+        tok = sc->next_token();
     }
     
-    if (numArgs > 255) {
-        throw FNError("compiler","Too many arguments (more than 255) between braces", tok.loc);
+    if (num_args > 255) {
+        throw fn_error("compiler","too many arguments (more than 255) between braces", tok.loc);
     }
 
     // do the call
-    dest->writeByte(OP_CALL);
-    dest->writeByte((u8)numArgs);
-    sp = oldSp + 1;
+    dest->write_byte(OP_CALL);
+    dest->write_byte((u8)num_args);
+    sp = old_sp + 1;
 }
 
-// brackets expand to (List args ...) forms
-void Compiler::compileBrackets(Locals* locals) {
-    auto oldSp = sp;
-    // get the Object variable
-    compileVar(locals, "List");
+// brackets expand to (list args ...) forms
+void compiler::compile_brackets(locals* l) {
+    auto old_sp = sp;
+    // get the object variable
+    compile_var(l, "list");
     // compile the arguments
-    auto tok = sc->nextToken();
-    u32 numArgs = 0;
-    while (!checkDelim(TKRBracket, tok)) {
-        compileExpr(locals,&tok);
-        ++numArgs;
-        tok = sc->nextToken();
+    auto tok = sc->next_token();
+    u32 num_args = 0;
+    while (!check_delim(t_kr_bracket, tok)) {
+        compile_expr(l,&tok);
+        ++num_args;
+        tok = sc->next_token();
     }
     
-    if (numArgs > 255) {
-        throw FNError("compiler","Too many arguments (more than 255) between braces", tok.loc);
+    if (num_args > 255) {
+        throw fn_error("compiler","too many arguments (more than 255) between braces", tok.loc);
     }
 
     // do the call
-    dest->writeByte(OP_CALL);
-    dest->writeByte((u8)numArgs);
-    sp = oldSp + 1;
+    dest->write_byte(OP_CALL);
+    dest->write_byte((u8)num_args);
+    sp = old_sp + 1;
 }
 
 // compile function call
-void Compiler::compileCall(Locals* locals, Token* t0) {
+void compiler::compile_call(locals* l, token* t0) {
     // first, compile the operator
-    Token tok = *t0;
-    auto oldSp = sp;
-    compileExpr(locals, t0);
+    token tok = *t0;
+    auto old_sp = sp;
+    compile_expr(l, t0);
 
     // now, compile the arguments
-    u32 numArgs = 0;
-    while (!checkDelim(TKRParen, tok=sc->nextToken())) {
-        ++numArgs;
-        compileExpr(locals, &tok);
+    u32 num_args = 0;
+    while (!check_delim(t_kr_paren, tok=sc->next_token())) {
+        ++num_args;
+        compile_expr(l, &tok);
     }
 
-    if (numArgs > 255) {
-        throw FNError("compiler","Too many arguments (more than 255) for function call", tok.loc);
+    if (num_args > 255) {
+        throw fn_error("compiler","too many arguments (more than 255) for function call", tok.loc);
     }
 
     // finally, compile the call itself
-    dest->writeByte(OP_CALL);
-    dest->writeByte((u8)numArgs);
-    sp = oldSp + 1;
+    dest->write_byte(OP_CALL);
+    dest->write_byte((u8)num_args);
+    sp = old_sp + 1;
 }
 
-void Compiler::compileExpr(Locals* locals, Token* t0) {
-    Token tok = t0 == nullptr ? sc->nextToken() : *t0;
-    Token next;
-    dest->setLoc(tok.loc);
+void compiler::compile_expr(locals* l, token* t0) {
+    token tok = t0 == nullptr ? sc->next_token() : *t0;
+    token next;
+    dest->set_loc(tok.loc);
 
     u16 id;
 
-    if (isRightDelim(tok)) {
-        throw FNError("compiler", "Unexpected closing delimiter '" + tok.to_string() +"'.", tok.loc);
+    if (is_right_delim(tok)) {
+        throw fn_error("compiler", "unexpected closing delimiter '" + tok.to_string() +"'.", tok.loc);
     }
 
     switch (tok.tk) {
-    case TKEOF:
+    case t_ke_of:
         // just exit
         return;
 
     // constants
-    case TKNumber:
-        id = dest->numConst(tok.datum.num);
+    case t_knumber:
+        id = dest->num_const(tok.datum.num);
         constant(id);
         sp++;
         break;
-    case TKString:
-        id = dest->symConst(*tok.datum.str);
+    case t_kstring:
+        id = dest->sym_const(*tok.datum.str);
         constant(id);
         sp++;
         break;
 
     // symbol dispatch
-    case TKSymbol:
+    case t_ksymbol:
         if (*tok.datum.str == "null") {
-            dest->writeByte(OP_NULL);
+            dest->write_byte(OP_NULL);
             sp++;
         } else if(*tok.datum.str == "false") {
-            dest->writeByte(OP_FALSE);
+            dest->write_byte(OP_FALSE);
             sp++;
         } else if(*tok.datum.str == "true") {
-            dest->writeByte(OP_TRUE);
+            dest->write_byte(OP_TRUE);
             sp++;
         } else {
-            compileVar(locals, *tok.datum.str);
+            compile_var(l, *tok.datum.str);
         }
         break;
 
-    case TKDot:
-        compileDotToken(locals,tok);
+    case t_kdot:
+        compile_dot_token(l,tok);
         break;
 
-    case TKLBrace: 
-        compileBraces(locals);
+    case t_kl_brace: 
+        compile_braces(l);
         break;
-    case TKLBracket:
-        compileBrackets(locals);
-        break;
-
-    case TKDollarBrace:
-    case TKDollarBracket:
-    case TKDollarParen:
-    case TKDollarBacktick:
-        throw FNError("compiler", "Unimplemented syntax: '" + tok.to_string() + "'.", tok.loc);
+    case t_kl_bracket:
+        compile_brackets(l);
         break;
 
-    case TKQuote:
-        compileQuote(locals, true);
+    case t_kdollar_brace:
+    case t_kdollar_bracket:
+    case t_kdollar_paren:
+    case t_kdollar_backtick:
+        throw fn_error("compiler", "unimplemented syntax: '" + tok.to_string() + "'.", tok.loc);
         break;
 
-    case TKBacktick:
-        throw FNError("compiler", "Unimplemented syntax: '" + tok.to_string() + "'.", tok.loc);
+    case t_kquote:
+        compile_quote(l, true);
         break;
-    case TKComma:
-        throw FNError("compiler", "Unimplemented syntax: '" + tok.to_string() + "'.", tok.loc);
+
+    case t_kbacktick:
+        throw fn_error("compiler", "unimplemented syntax: '" + tok.to_string() + "'.", tok.loc);
         break;
-    case TKCommaSplice:
-        throw FNError("compiler", "Unimplemented syntax: '" + tok.to_string() + "'.", tok.loc);
+    case t_kcomma:
+        throw fn_error("compiler", "unimplemented syntax: '" + tok.to_string() + "'.", tok.loc);
+        break;
+    case t_kcomma_splice:
+        throw fn_error("compiler", "unimplemented syntax: '" + tok.to_string() + "'.", tok.loc);
         break;
 
     // parentheses
-    case TKLParen:
-        next = sc->nextToken();
-        if (next.tk == TKSymbol) {
+    case t_kl_paren:
+        next = sc->next_token();
+        if (next.tk == t_ksymbol) {
             string* op = next.datum.str;
             if (*op == "and") {
-                compileAnd(locals);
+                compile_and(l);
             } else if (*op == "apply") {
-                compileApply(locals);
+                compile_apply(l);
             } else if (*op == "cond") {
-                compileCond(locals);
+                compile_cond(l);
             } else if (*op == "def") {
-                compileDef(locals);
+                compile_def(l);
             } else if (*op == "dot") {
-                compileDotExpr(locals);
+                compile_dot_expr(l);
             } else if (*op == "do") {
-                compileDo(locals);
+                compile_do(l);
             } else if (*op == "fn") {
-                compileFn(locals);
+                compile_fn(l);
             } else if (*op == "if") {
-                compileIf(locals);
+                compile_if(l);
             } else if (*op == "import") {
-                compileImport(locals);
+                compile_import(l);
             } else if (*op == "let") {
-                compileLet(locals);
+                compile_let(l);
             } else if (*op == "or") {
-                compileOr(locals);
+                compile_or(l);
             } else if (*op == "quote") {
-                compileQuote(locals, false);
+                compile_quote(l, false);
             } else if (*op == "set") {
-                compileSet(locals);
+                compile_set(l);
             } else {
-                compileCall(locals, &next);
+                compile_call(l, &next);
             }
         } else {
-            compileCall(locals, &next);
+            compile_call(l, &next);
         }
         break;
 
     default:
         // unimplemented
-        throw FNError("compiler", "Unexpected token " + tok.to_string(), tok.loc);
+        throw fn_error("compiler", "unexpected token " + tok.to_string(), tok.loc);
         std::cerr << "compiler warning:  expr type\n";
-        dest->writeByte(OP_NOP);
+        dest->write_byte(OP_NOP);
         break;
     }
 
 }
 
-void Compiler::compile() {
-    Token tok = sc->nextToken();
-    while (tok.tk != TKEOF) {
-        compileExpr(nullptr, &tok);
-        tok = sc->nextToken();
-        dest->writeByte(OP_POP);
+void compiler::compile() {
+    token tok = sc->next_token();
+    while (tok.tk != t_ke_of) {
+        compile_expr(nullptr, &tok);
+        tok = sc->next_token();
+        dest->write_byte(OP_POP);
         --sp;
     }
 }
 
-void Compiler::compileFile(const string& filename) {
-    compileFile(fs::path(filename));
+void compiler::compile_file(const string& filename) {
+    compile_file(fs::path(filename));
 }
-void Compiler::compileFile(const fs::path& filename) {
+void compiler::compile_file(const fs::path& filename) {
     std::ifstream in(filename);
     if (!in.is_open()) {
-        auto errStr = new string("compiler");
-        SourceLoc loc(errStr, 0, 0);
-        // TODO: get error from perror
-        throw FNError("Compiler", "Error opening file '" + filename.string() + "'.", loc);
-        delete errStr;
+        auto err_str = new string("compiler");
+        source_loc loc(err_str, 0, 0);
+        // t_od_o: get error from perror
+        throw fn_error("compiler", "error opening file '" + filename.string() + "'.", loc);
+        delete err_str;
     }
 
     // basically just need to set the scanner
-    auto oldSc = sc;
-    sc = new Scanner(&in, filename);
+    auto old_sc = sc;
+    sc = new scanner(&in, filename);
     compile();
     delete sc;
-    sc = oldSc;
+    sc = old_sc;
 }
 
 

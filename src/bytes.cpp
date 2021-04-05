@@ -7,7 +7,7 @@
 namespace fn_bytes {
 
 // disassemble a single instruction, writing output to out
-void disassembleInstr(const Bytecode& code, Addr ip, std::ostream& out) {
+void disassemble_instr(const bytecode& code, bc_addr ip, std::ostream& out) {
     u8 instr = code[ip];
     switch (instr) {
     case OP_NOP:
@@ -32,10 +32,10 @@ void disassembleInstr(const Bytecode& code, Addr ip, std::ostream& out) {
         out << "set-upvalue " << (i32)code[ip+1];
         break;
     case OP_CLOSURE:
-        out << "closure " << code.readShort(ip+1);
+        out << "closure " << code.read_short(ip+1);
         break;
     case OP_CLOSE:
-        out << "close " << (i32)((code.readByte(ip+1)));;
+        out << "close " << (i32)((code.read_byte(ip+1)));;
         break;
     case OP_GLOBAL:
         out << "global";
@@ -44,7 +44,7 @@ void disassembleInstr(const Bytecode& code, Addr ip, std::ostream& out) {
         out << "set-global";
         break;
     case OP_CONST:
-        out << "const " << code.readShort(ip+1);
+        out << "const " << code.read_short(ip+1);
         break;
     case OP_NULL:
         out << "null";
@@ -68,16 +68,16 @@ void disassembleInstr(const Bytecode& code, Addr ip, std::ostream& out) {
         out << "import";
         break;
     case OP_JUMP:
-        out << "jump " << (i32)(static_cast<i16>(code.readShort(ip+1)));
+        out << "jump " << (i32)(static_cast<i16>(code.read_short(ip+1)));
         break;
     case OP_CJUMP:
-        out << "cjump " << (i32)(static_cast<i16>(code.readShort(ip+1)));
+        out << "cjump " << (i32)(static_cast<i16>(code.read_short(ip+1)));
         break;
     case OP_CALL:
-        out << "call " << (i32)((code.readByte(ip+1)));;
+        out << "call " << (i32)((code.read_byte(ip+1)));;
         break;
     case OP_APPLY:
-        out << "apply " << (i32)((code.readByte(ip+1)));;
+        out << "apply " << (i32)((code.read_byte(ip+1)));;
         break;
     case OP_RETURN:
         out << "return";
@@ -89,26 +89,26 @@ void disassembleInstr(const Bytecode& code, Addr ip, std::ostream& out) {
     }
 }
 
-void disassemble(const Bytecode& code, std::ostream& out) {
+void disassemble(const bytecode& code, std::ostream& out) {
     u32 ip = 0;
-    // TODO: annotate with line number
-    while (ip < code.getSize()) {
+    // t_od_o: annotate with line number
+    while (ip < code.get_size()) {
         u8 instr = code[ip];
         // write line
         out << std::setw(6) << ip << "  ";
-        disassembleInstr(code, ip, out);
+        disassemble_instr(code, ip, out);
 
         // additional information
         if (instr == OP_CONST) {
             // write constant value
             out << " ; "
-                << vToString(code.getConstant(code.readShort(ip+1)), code.getSymbols());
+                << v_to_string(code.get_constant(code.read_short(ip+1)), code.get_symbols());
         } else if (instr == OP_CLOSURE) {
-            out << " ; addr = " << code.getFunction(code.readShort(ip+1))->addr;
+            out << " ; addr = " << code.get_function(code.read_short(ip+1))->addr;
         }
 
         out << "\n";
-        ip += instrWidth(instr);
+        ip += instr_width(instr);
     }
 }
 

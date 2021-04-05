@@ -1,7 +1,7 @@
 // values.hpp -- utility functions for working with fn values
 
-#ifndef __FN_VALUES_HPP
-#define __FN_VALUES_HPP
+#ifndef __f_n_v_al_ue_s_h_pp
+#define __f_n_v_al_ue_s_h_pp
 
 #include "base.hpp"
 #include "table.hpp"
@@ -13,9 +13,9 @@ namespace fn {
 
 /// value representation
 
-// all values are 64-bits wide. Either 3 or 8 bits are used to hold the tag. The reason for the
+// all values are 64-bits wide. either 3 or 8 bits are used to hold the tag. the reason for the
 // variable tag size is that 3-bit tags can be associated with an 8-byte-aligned pointer (so we only
-// need 61 bits to hold the pointer, since the last 3 bits are 0). This requires that none of the
+// need 61 bits to hold the pointer, since the last 3 bits are 0). this requires that none of the
 // 3-bit tags occur as prefixes to the 8-bit tags.
 
 // 3-bit tags
@@ -33,489 +33,493 @@ constexpr u64 TAG_BOOL  = 0017;
 constexpr u64 TAG_EMPTY = 0027;
 constexpr u64 TAG_SYM   = 0037;
 
-class Cons;
-class FnString;
-class Obj;
-class Function;
-class ForeignFunc;
+class cons;
+class fn_string;
+class object;
+class function;
+class foreign_func;
+struct symbol;
 
-struct ObjHeader;
+struct obj_header;
 
-// rather than providing a constructor for Value, use the (lowercase 'v') value() functions defined
+// rather than providing a constructor for value, use the (lowercase 'v') value() functions defined
 // below
-union Value {
+union value {
     u64 raw;
     void* ptr;
-    f64 numVal;
-
+    f64 num_val;
+    
     // implemented in values.cpp
-    bool operator==(const Value& v) const;
+    bool operator==(const value& v) const;
+    bool operator!=(const value& v) const;
 
     // assignment operators
-    Value& operator+=(const Value& v);
+    value& operator+=(const value& v);
 
     // functions to check for a tag
-    inline bool isNum() const {
+    inline bool is_num() const {
         return (raw & 0x7) == TAG_NUM;
     }
-    bool isInt() const;
-    inline bool isCons() const {
+    bool is_int() const;
+    inline bool is_cons() const {
         return (raw & 0x7) == TAG_CONS;
     }
-    inline bool isStr() const {
+    inline bool is_str() const {
         return (raw & 0x7) == TAG_STR;
     }
-    inline bool isBool() const {
+    inline bool is_bool() const {
         return (raw & 0xff) == TAG_BOOL;
     }
-    inline bool isObj() const {
+    inline bool is_object() const {
         return (raw & 0x7) == TAG_OBJ;
     }
-    inline bool isFunc() const {
+    inline bool is_func() const {
         return (raw & 0x7) == TAG_FUNC;
     }
-    inline bool isForeign() const {
+    inline bool is_foreign() const {
         return (raw & 0x7) == TAG_FOREIGN;
     }
-    inline bool isSym() const {
+    inline bool is_sym() const {
         return (raw & 0xff) == TAG_SYM;
     }
 
-    inline bool isNull() const {
+    inline bool is_null() const {
         return raw == TAG_NULL;
     }
-    inline bool isTrue() const {
+    inline bool is_true() const {
         return raw == ((1 << 8) | TAG_BOOL);
     }
-    inline bool isFalse() const {
+    inline bool is_false() const {
         return raw == TAG_BOOL;
     }
-    inline bool isEmpty() const {
+    inline bool is_empty() const {
         return raw == TAG_EMPTY;
     }
 
     // unsafe generic pointer accessor
-    inline void* getPointer() const {
+    inline void* get_pointer() const {
         return reinterpret_cast<void*>(raw & (~7));
     }
 
-    // unsafe accessors are prefixed with u. They don't check type tags or throw value errors.
+    // unsafe accessors are prefixed with u. they don't check type tags or throw value errors.
     inline f64 unum() const {
-        return numVal;
+        return num_val;
     }
-    inline Cons* ucons() const {
-        return reinterpret_cast<Cons*>(raw & (~7));
+    inline cons* ucons() const {
+        return reinterpret_cast<cons*>(raw & (~7));
     }
-    inline FnString* ustr() const {
-        return reinterpret_cast<FnString*>(raw & (~7));
+    inline fn_string* ustr() const {
+        return reinterpret_cast<fn_string*>(raw & (~7));
     }
-    inline Obj* uobj() const {
-        return reinterpret_cast<Obj*>(raw & (~7));
+    inline object* uobj() const {
+        return reinterpret_cast<object*>(raw & (~7));
     }
-    inline Function* ufunc() const {
-        return reinterpret_cast<Function*>(raw & (~7));
+    inline function* ufunc() const {
+        return reinterpret_cast<function*>(raw & (~7));
     }
-    inline ForeignFunc* uforeign() const {
-        return reinterpret_cast<ForeignFunc*>(raw & (~7));
+    inline foreign_func* uforeign() const {
+        return reinterpret_cast<foreign_func*>(raw & (~7));
     }
 
     // safe accessors will check tags and throw value errors when appropriate
-    f64 num() const;
-    Cons* cons() const;
-    FnString* str() const;
-    Obj* obj() const;
-    Function* func() const;
-    ForeignFunc* foreign() const;
+    f64 vnum() const;
+    cons* vcons() const;
+    fn_string* vstr() const;
+    object* vobj() const;
+    function* vfunc() const;
+    foreign_func* vforeign() const;
 
-    // all functions below are safe. Foreign functions can call them without first checking the
+    // all functions below are safe. foreign functions can call them without first checking the
     // types of the arguments provided, and an appropriate value error will be generated and handled
-    // by the VM.
+    // by the v_m.
 
     // num functions
     // arithmetic operators are only work on numbers
-    Value operator+(const Value& v) const;
-    Value operator-(const Value& v) const;
-    Value operator*(const Value& v) const;
-    Value operator/(const Value& v) const;
+    value operator+(const value& v) const;
+    value operator-(const value& v) const;
+    value operator*(const value& v) const;
+    value operator/(const value& v) const;
 
-    Value pow(const Value& expt) const;
+    value pow(const value& expt) const;
 
     // cons functions
     // these only work on cons, not empty
-    Value& rhead() const;
-    Value& rtail() const;
+    value& rhead() const;
+    value& rtail() const;
 
-    // list functions. Work on cons and empty
-    Value head() const;
-    Value tail() const;
+    // list functions. work on cons and empty
+    value head() const;
+    value tail() const;
 
     // str functions
-    u32 strLen() const;
+    u32 str_len() const;
 
     // obj functions
-    Value& get(const Value& key) const;
-    void set(const Value& key, const Value& val) const;
-    bool hasKey(const Value& key) const;
-    forward_list<Value> objKeys() const;
+    value& get(const value& key) const;
+    void set(const value& key, const value& val) const;
+    bool has_key(const value& key) const;
+    forward_list<value> obj_keys() const;
 
     // used to get object header
-    optional<ObjHeader*> header() const;
+    optional<obj_header*> header() const;
 
     void error(u64 expected) const;
 };
 
 // constant values
-constexpr Value V_NULL  = { .raw = TAG_NULL };
-constexpr Value V_FALSE = { .raw = TAG_BOOL };
-constexpr Value V_TRUE  = { .raw = (1 << 8) | TAG_BOOL };
-constexpr Value V_EMPTY = { .raw = TAG_EMPTY };
+constexpr value V_NULL  = { .raw = TAG_NULL };
+constexpr value V_FALSE = { .raw = TAG_BOOL };
+constexpr value V_TRUE  = { .raw = (1 << 8) | TAG_BOOL };
+constexpr value V_EMPTY = { .raw = TAG_EMPTY };
 
-inline void* getPointer(Value v) {
-    // mask out the three LSB with 0's
+inline void* get_pointer(value v) {
+    // mask out the three l_sb with 0's
     return (void*)(v.raw & (~7));
 };
 
 // this error is generated when a value is expected to have a certain tag and has a different one.
-class ValueError : public std::exception {
+class value_error : public std::exception {
 public:
     // expected tag
     u64 expected;
-    Value actual;
+    value actual;
 
-    ValueError(u64 expected, Value actual) : expected(expected), actual(actual) { }
+    value_error(u64 expected, value actual) : expected(expected), actual(actual) { }
 };
 
 
-/// Value structures
+/// value structures
 
 // common header object for all objects requiring additional memory management
-struct alignas(32) ObjHeader {
-    // a value pointing to this. (Also encodes the type via the tag)
-    Value ptr;
+struct alignas(32) obj_header {
+    // a value pointing to this. (also encodes the type via the tag)
+    value ptr;
     // does the gc manage this object?
     bool gc;
     // gc mark bit (indicates reachable, starts false)
     bool mark;
 
-    ObjHeader(Value ptr, bool gc);
+    obj_header(value ptr, bool gc);
 };
 
-// Cons cells
-struct alignas(32) Cons {
-    ObjHeader h;
-    Value head;
-    Value tail;
+// cons cells
+struct alignas(32) cons {
+    obj_header h;
+    value head;
+    value tail;
 
-    Cons(Value head, Value tail, bool gc=false);
+    cons(value head, value tail, bool gc=false);
 };
 
-struct alignas(32) FnString {
-    ObjHeader h;
+struct alignas(32) fn_string {
+    obj_header h;
     const u32 len;
     const char* data;
 
-    FnString(const string& src, bool gc=false);
-    FnString(const char* src, bool gc=false);
-    ~FnString();
+    fn_string(const string& src, bool gc=false);
+    fn_string(const char* src, bool gc=false);
+    ~fn_string();
 
-    bool operator==(const FnString& s) const;
+    bool operator==(const fn_string& s) const;
 };
 
-struct alignas(32) Obj {
-    ObjHeader h;
-    Table<Value,Value> contents;
+struct alignas(32) object {
+    obj_header h;
+    table<value,value> contents;
 
-    Obj(bool gc=false);
+    object(bool gc=false);
 };
 
 // upvalue
-struct Upvalue {
-    Local slot;
+struct upvalue {
+    local_addr slot;
     bool direct;
 };
 
-// A stub describing a function. These go in the bytecode object
-struct FuncStub {
+// a stub describing a function. these go in the bytecode object
+struct func_stub {
     // arity information
-    Local positional;   // number of positional arguments, including optional & keyword arguments
-    Local required;     // number of required positional arguments (minimum arity)
+    local_addr positional;   // number of positional arguments, including optional & keyword arguments
+    local_addr required;     // number of required positional arguments (minimum arity)
     bool varargs;          // whether this function has a variadic argument
 
     // upvalues
-    Local numUpvals;
-    vector<Upvalue> upvals;
+    local_addr num_upvals;
+    vector<upvalue> upvals;
 
-    // module ID as a list
-    Value modId;
+    // module i_d as a list
+    value mod_id;
 
     // bytecode address
-    Addr addr;              // bytecode address of the function
+    bc_addr addr;              // bytecode address of the function
 
-    // get an upvalue and return its id. Adds a new upvalue if one doesn't exist
-    Local getUpvalue(Local id, bool direct);
+    // get an upvalue and return its id. adds a new upvalue if one doesn't exist
+    local_addr get_upvalue(local_addr id, bool direct);
 };
 
-// We will use pointers to UpvalueSlots to create two levels of indirection. In this way,
-// UpvalueSlot objects can be shared between function objects. Meanwhile, UpvalueSlot contains a
-// pointer to a Value, which is initially on the stack and migrates to the heap if the Upvalue
+// we will use pointers to upvalue_slots to create two levels of indirection. in this way,
+// upvalue_slot objects can be shared between function objects. meanwhile, upvalue_slot contains a
+// pointer to a value, which is initially on the stack and migrates to the heap if the upvalue
 // outlives its lexical scope.
 
-// UpvalueSlots are shared objects which track the location of an upvalue (i.e. a value cell
-// containing a local variable which was captured by a function). 
+// upvalue_slots are shared objects which track the location of an upvalue (i.e. a value cell
+// containing a local_addr variable which was captured by a function). 
 
-// Concretely, an UpvalueSlot is a reference-counted pointer to a cell containing a Value.
-// UpvalueSlots are initially expected to point to a location on the interpreter stack;
-// corresponding upvalues are said to be "open". "Closing" an upvalue means copying its value to the
-// stack so that functions may access it even after the stack local environment expires.
-// UpvalueSlots implement this behavior via the field open and the method close(). Once closed, the
-// UpvalueSlot takes ownership of its own value cell, and it will be deleted when the reference count
+// concretely, an upvalue_slot is a reference-counted pointer to a cell containing a value.
+// upvalue_slots are initially expected to point to a location on the interpreter stack;
+// corresponding upvalues are said to be "open". "closing" an upvalue means copying its value to the
+// stack so that functions may access it even after the stack local_addr environment expires.
+// upvalue_slots implement this behavior via the field open and the method close(). once closed, the
+// upvalue_slot takes ownership of its own value cell, and it will be deleted when the reference count
 // drops to 0.
-struct UpvalueSlot {
+struct upvalue_slot {
     // if true, val is a location on the interpreter stack
     bool* open;
-    Value** val;
-    u32* refCount;
+    value** val;
+    u32* ref_count;
 
-    UpvalueSlot()
+    upvalue_slot()
         : open(nullptr)
         , val(nullptr)
-        , refCount(nullptr)
+        , ref_count(nullptr)
     { }
-    UpvalueSlot(Value* place)
+    upvalue_slot(value* place)
         : open(new bool)
-        , val(new Value*)
-        , refCount(new u32)
+        , val(new value*)
+        , ref_count(new u32)
     {
         *open = true;
         *val = place;
-        *refCount = 1;
+        *ref_count = 1;
     }
-    UpvalueSlot(const UpvalueSlot& u)
+    upvalue_slot(const upvalue_slot& u)
         : open(u.open)
         , val(u.val)
-        , refCount(u.refCount)
+        , ref_count(u.ref_count)
     {
-        ++*refCount;
+        ++*ref_count;
     }
-    ~UpvalueSlot() {
-        if (refCount == nullptr) {
+    ~upvalue_slot() {
+        if (ref_count == nullptr) {
             return;
         }
 
-        --*refCount;
-        if (*refCount == 0) {
+        --*ref_count;
+        if (*ref_count == 0) {
             if (!*open) {
                 // closed upvals need to have their data deleted
                 delete *val;
             }
             delete open;
             delete val;
-            delete refCount;
+            delete ref_count;
         }
     }
 
-    UpvalueSlot& operator=(const UpvalueSlot& u) {
+    upvalue_slot& operator=(const upvalue_slot& u) {
         this->open = u.open;
         this->val = u.val;
-        this->refCount = u.refCount;
-        ++*refCount;
+        this->ref_count = u.ref_count;
+        ++*ref_count;
         return *this;
     }
 
-    // Copies this Upvalue's value cell to the heap. The new value cell will be cleared when the
-    // last reference to this UpvalueSlot is deleted.
+    // copies this upvalue's value cell to the heap. the new value cell will be cleared when the
+    // last reference to this upvalue_slot is deleted.
     void close() {
         *open = false;
         auto v = **val;
-        *val = new Value;
+        *val = new value;
         **val = v;
     }
 };
 
-struct alignas(32) Function {
-    ObjHeader h;
-    FuncStub* stub;
-    UpvalueSlot* upvals;
+struct alignas(32) function {
+    obj_header h;
+    func_stub* stub;
+    upvalue_slot* upvals;
 
     // warning: you must manually set up the upvalues
-    Function(FuncStub* stub, const std::function<void (UpvalueSlot*)>& populate, bool gc=false);
-    // TODO: use refcount on upvalues
-    ~Function();
+    function(func_stub* stub, const std::function<void (upvalue_slot*)>& populate, bool gc=false);
+    // t_od_o: use refcount on upvalues
+    ~function();
 };
 
-struct VM;
+struct virtual_machine;
 
-// Foreign functions
-struct alignas(32) ForeignFunc {
-    ObjHeader h;
-    Local minArgs;
-    bool varArgs;
-    Value (*func)(Local, Value*, VM*);
+// foreign functions
+struct alignas(32) foreign_func {
+    obj_header h;
+    local_addr min_args;
+    bool var_args;
+    value (*func)(local_addr, value*, virtual_machine*);
 
-    ForeignFunc(Local minArgs, bool varArgs, Value (*func)(Local, Value*, VM*), bool gc=false);
+    foreign_func(local_addr min_args, bool var_args, value (*func)(local_addr, value*, virtual_machine*), bool gc=false);
 };
 
-// Symbols in fn are represented by a 32-bit unsigned ID
-struct Symbol {
-    SymbolId id;
+// symbols in fn are represented by a 32-bit unsigned i_d
+struct symbol {
+    symbol_id id;
     string name;
 };
 
-// The point of the symbol table is to have fast two-way lookup going from a symbol's name to its id
+// the point of the symbol table is to have fast two-way lookup going from a symbol's name to its id
 // and vice versa.
-class SymbolTable {
+class symbol_table {
 private:
-    Table<string,Symbol> byName;
-    vector<Symbol> byId;
+    table<string,symbol> by_name;
+    vector<symbol> by_id;
 
 public:
-    SymbolTable();
+    symbol_table();
 
-    const Symbol* intern(const string& str);
-    bool isInternal(const string& str) const;
+    const symbol* intern(const string& str);
+    bool is_internal(const string& str) const;
 
-    optional<const Symbol*> find(const string& str) const;
+    optional<const symbol*> find(const string& str) const;
 
-    const Symbol& operator[](SymbolId id) const {
-        return byId[id];
+    const symbol& operator[](symbol_id id) const {
+        return by_id[id];
     }
 };
 
-
-/// Utility functions
-
-// Check if two values are the same in memory
-inline bool vSame(const Value& v1, const Value& v2) {
-    return v1.raw == v2.raw;
-}
-// Hash an arbitrary value. vEqual(v1,v2) implies the hashes are also equal.
-template<> u32 hash<Value>(const Value& v);
-// Convert a value to a string. symbols can be nullptr here only if we're really careful to know
-// that there are no symbols contained in v.
-string vToString(Value v, const SymbolTable* symbols);
-
-// These value(type) functions go from C++ values to fn values
-
-inline Value value(f64 num) {
-    Value res = { .numVal=num };
+/// as_value functions to create values
+inline value as_value(f64 num) {
+    value res = { .num_val=num };
     // make the first three bits 0
     res.raw &= (~7);
     res.raw |= TAG_NUM;
     return res;
 }
-inline Value value(bool b) {
+inline value as_value(bool b) {
     return { .raw=(b << 8) | TAG_BOOL};
 }
-inline Value value(int num) {
-    Value res = { .numVal=(f64)num };
+inline value as_value(int num) {
+    value res = { .num_val=(f64)num };
     // make the first three bits 0
     res.raw &= (~7);
     res.raw |= TAG_NUM;
     return res;
 }
-inline Value value(i64 num) {
-    Value res = { .numVal=(f64)num };
+inline value as_value(i64 num) {
+    value res = { .num_val=(f64)num };
     // make the first three bits 0
     res.raw &= (~7);
     res.raw |= TAG_NUM;
     return res;
 }
-// FIXME: we probably shouldn't have this function allocate memory for the string; rather, once the
-// GC is up and running, we should pass in a pointer which we already know is 8-byte aligned
-inline Value value(const FnString* str) {
+// f_ix_me: we probably shouldn't have this function allocate memory for the string; rather, once the
+// g_c is up and running, we should pass in a pointer which we already know is 8-byte aligned
+inline value as_value(const fn_string* str) {
     u64 raw = reinterpret_cast<u64>(str);
     return { .raw = raw | TAG_STR };
 }
-// NOTE: not sure whether it's a good idea to have this one
-// inline Value value(bool b) {
-//     return { .raw =  static_cast<u64>(b) | TAG_BOOL };
+// n_ot_e: not sure whether it's a good idea to have this one
+// inline value as_value(bool b) {
+//     return { .raw =  static_cast<u64>(b) | TAG_b_oo_l };
 // }
-inline Value value(Symbol s) {
+inline value as_value(symbol s) {
     return { .raw = (s.id << 8) | TAG_SYM };
 }
-inline Value value(Function* ptr) {
+inline value as_value(function* ptr) {
     u64 raw = reinterpret_cast<u64>(ptr);
     return { .raw = raw | TAG_FUNC };
 }
-inline Value value(ForeignFunc* ptr) {
+inline value as_value(foreign_func* ptr) {
     u64 raw = reinterpret_cast<u64>(ptr);
     return { .raw = raw | TAG_FOREIGN };
 }
-inline Value value(Cons* ptr) {
+inline value as_value(cons* ptr) {
     u64 raw = reinterpret_cast<u64>(ptr);
     return { .raw = raw | TAG_CONS };
 }
-inline Value value(Obj* ptr) {
+inline value as_value(object* ptr) {
     u64 raw = reinterpret_cast<u64>(ptr);
     return { .raw = raw | TAG_OBJ };
 }
+
+
+/// utility functions
+
+// check if two values are the same in memory
+inline bool v_same(const value& v1, const value& v2) {
+    return v1.raw == v2.raw;
+}
+// hash an arbitrary value. v_equal(v1,v2) implies the hashes are also equal.
+template<> u32 hash<value>(const value& v);
+// convert a value to a string. symbols can be nullptr here only if we're really careful to know
+// that there are no symbols contained in v.
+string v_to_string(value v, const symbol_table* symbols);
+
+// these value(type) functions go from c++ values to fn values
+
 
 // naming convention: function names prefixed with a lowercase v are used to test/access properties
 // of values.
 
 // get the first 3 bits of the value
-inline u64 vShortTag(Value v) {
+inline u64 v_short_tag(value v) {
     return v.raw & 7;
 }
-// get the entire tag of a value. The return value of this expression is intended to be used in a
-// switch statement for handling different types of Value.
-inline u64 vTag(Value v) {
-    auto t = vShortTag(v);
+// get the entire tag of a value. the return value of this expression is intended to be used in a
+// switch statement for handling different types of value.
+inline u64 v_tag(value v) {
+    auto t = v_short_tag(v);
     if (t != TAG_EXT) {
         return t;
     }
     return v.raw & 255;
 }
 
-// these functions make the opposite conversion, going from fn values to C++ values. None of them
+// these functions make the opposite conversion, going from fn values to c++ values. none of them
 // are safe (i.e. you should check the tags before doing any of these operations)
 
 // all values corresponding to pointers are structured the same way
-inline void* vPointer(Value v) {
-    // mask out the three LSB with 0's
+inline void* v_pointer(value v) {
+    // mask out the three l_sb with 0's
     return (void*)(v.raw & (~7));
 }
 
-inline f64 vNum(Value v) {
+inline f64 v_num(value v) {
     return v.unum();
 }
-inline FnString* vStr(Value v) {
-    return (FnString*) vPointer(v);
+inline fn_string* v_str(value v) {
+    return (fn_string*) v_pointer(v);
 }
-inline Function* vFunc(Value v) {
-    return (Function*) vPointer(v);
+inline function* v_func(value v) {
+    return (function*) v_pointer(v);
 }
-inline ForeignFunc* vForeign(Value v) {
-    return (ForeignFunc*) vPointer(v);
+inline foreign_func* v_foreign(value v) {
+    return (foreign_func*) v_pointer(v);
 }
-inline Cons* vCons(Value v) {
-    return (Cons*) vPointer(v);
+inline cons* v_cons(value v) {
+    return (cons*) v_pointer(v);
 }
-inline Obj* vObj(Value v) {
-    return (Obj*) vPointer(v);
+inline object* v_obj(value v) {
+    return (object*) v_pointer(v);
 }
-inline bool vBool(Value v) {
+inline bool v_bool(value v) {
     return static_cast<bool>(v.raw >> 8);
 }
 
 
-// since getting the entire Symbol object requires access to the symbol table, we provide vSymId to
-// access the Symbol's id directly (rather than vSym, which would require a SymbolTable argument).
-inline u32 vSymId(Value v) {
+// since getting the entire symbol object requires access to the symbol table, we provide v_sym_id to
+// access the symbol's id directly (rather than v_sym, which would require a symbol_table argument).
+inline u32 v_sym_id(value v) {
     return (u32) (v.raw >> 8);
 }
 
-// check the 'truthiness' of a value. This returns true for all values but V_NULL and V_FALSE.
-inline bool vTruthy(Value v) {
-    return v != V_FALSE && v != V_NULL;
+// check the 'truthiness' of a value. this returns true for all values but V_NULL and V_FALSE.
+inline bool v_truthy(value v) {
+    return !v_same(v,V_FALSE) && !v_same(v,V_NULL);
 }
 
 // list accessors
-inline Value vHead(Value v) {
-    return vCons(v)->head;
+inline value v_head(value v) {
+    return v_cons(v)->head;
 }
-inline Value vTail(Value v) {
-    return vCons(v)->tail;
+inline value v_tail(value v) {
+    return v_cons(v)->tail;
 }
 
 }

@@ -1,5 +1,5 @@
-#ifndef __FN_COMPILE_HPP
-#define __FN_COMPILE_HPP
+#ifndef __f_n_c_om_pi_le_h_pp
+#define __f_n_c_om_pi_le_h_pp
 
 #include <filesystem>
 
@@ -16,109 +16,109 @@ using namespace fn_scan;
 
 namespace fs = std::filesystem;
 
-// Locals object tracks all state
-struct Locals {
+// locals object tracks all state
+struct locals {
     // table of local variable locations
-    Table<string,u8> vars;
+    table<string,local_addr> vars;
     // parent environment
-    Locals* parent;
+    locals* parent;
 
-    // the function we're currently compiling. This is needed to keep track of upvalues
-    FuncStub* curFunc;
+    // the function we're currently compiling. this is needed to keep track of upvalues
+    func_stub* cur_func;
 
-    Locals(Locals* parent=nullptr, FuncStub* curFunc=nullptr);
+    locals(locals* parent=nullptr, func_stub* cur_func=nullptr);
     // add an upvalue which has the specified number of levels of indirection (each level corresponds
     // to one more enclosing function before)
-    u8 addUpvalue(u32 levels, u8 pos);
+    u8 add_upvalue(u32 levels, u8 pos);
 };
 
-class Compiler {
+class compiler {
 private:
-    Bytecode* dest;
-    Scanner* sc;
+    bytecode* dest;
+    scanner* sc;
     // compiler's internally-tracked stack pointer
     u8 sp;
 
-    // compiler working directory. This is used as an import path.
+    // compiler working directory. this is used as an import path.
     fs::path dir;
-    // table of imported modules. Associates a sequence of strings (i.e. the symbols in a dot
-    // expression) to a constant containing that module's ID.
-    Table<vector<string>,u16> modules;
-    // constant holding the current module's ID
-    u16 curModId;
+    // table of imported modules. associates a sequence of strings (i.e. the symbols in a dot
+    // expression) to a constant containing that module's i_d.
+    table<vector<string>,u16> modules;
+    // constant holding the current module's i_d
+    u16 cur_mod_id;
 
-    // Search for the path to a module given a vector denoting the (dot-separated) components of its
+    // search for the path to a module given a vector denoting the (dot-separated) components of its
     // name.
-    fs::path modulePath(const vector<string>& id);
+    fs::path module_path(const vector<string>& id);
 
-    // compile a single expression, consuming tokens. t0 is an optional first token. Running will
+    // compile a single expression, consuming tokens. t0 is an optional first token. running will
     // leave the expression on top of the stack.
-    void compileExpr(Locals* locals, Token* t0=nullptr);
+    void compile_expr(locals* l, token* t0=nullptr);
 
     // compile a sequence of expressions terminated by ')', creating a new lexical scope
-    void compileBlock(Locals* locals);
+    void compile_block(locals* l);
 
     // special forms
-    void compileAnd(Locals* locals);
-    void compileApply(Locals* locals);
-    void compileCond(Locals* locals);
-    void compileDef(Locals* locals);
-    void compileDo(Locals* locals);
-    void compileDotExpr(Locals* locals);
-    void compileDotToken(Locals* locals, Token& tok);
-    void compileFn(Locals* locals);
-    void compileIf(Locals* locals);
-    void compileImport(Locals* locals); // TODO
-    void compileLet(Locals* locals);
-    void compileOr(Locals* locals);
-    void compileQuote(Locals* locals, bool prefix);
-    void compileSet(Locals* locals);
+    void compile_and(locals* l);
+    void compile_apply(locals* l);
+    void compile_cond(locals* l);
+    void compile_def(locals* l);
+    void compile_do(locals* l);
+    void compile_dot_expr(locals* l);
+    void compile_dot_token(locals* l, token& tok);
+    void compile_fn(locals* l);
+    void compile_if(locals* l);
+    void compile_import(locals* l); // t_od_o
+    void compile_let(locals* l);
+    void compile_or(locals* l);
+    void compile_quote(locals* l, bool prefix);
+    void compile_set(locals* l);
 
     // braces and brackets
-    void compileBraces(Locals* locals);
-    void compileBrackets(Locals* locals);
+    void compile_braces(locals* l);
+    void compile_brackets(locals* l);
 
     // parentheses
-    void compileCall(Locals* locals, Token* t0);
+    void compile_call(locals* l, token* t0);
 
     // variables
 
-    // Find a local variable by its name. Returns std::nullopt when no global variable is found,
-    // otherwise the corresponding Local value (i.e. stack position or upvalue ID). The value
+    // find a local variable by its name. returns std::nullopt when no global variable is found,
+    // otherwise the corresponding local value (i.e. stack position or upvalue i_d). the value
     // pointed to by levels will be set to the number of layers of enclosing functions that need to
     // be visited to access the variable, thus a value of 0 indicates a local variable on the stack
     // while a value greater than 0 indicates an upvalue.
-    optional<Local> findLocal(Locals* locals, const string& name, u32* levels);
+    optional<local_addr> find_local(locals* l, const string& name, u32* levels);
     // compile a variable reference
-    void compileVar(Locals* locals, const string& name);
+    void compile_var(locals* l, const string& name);
 
     // helpers functions
 
     // note: this doesn't update the stack pointer
     inline void constant(u16 id) {
-        dest->writeByte(fn_bytes::OP_CONST);
-        dest->writeShort(id);
+        dest->write_byte(fn_bytes::OP_CONST);
+        dest->write_short(id);
     }
-    // attempt to parse a name, i.e. a symbol, a dot form, or a dot token. Returns a vector
+    // attempt to parse a name, i.e. a symbol, a dot form, or a dot token. returns a vector
     // consisting of the names of its constitutent symbols.
-    vector<string> tokenizeName(optional<Token> t0={ });
+    vector<string> tokenize_name(optional<token> t0={ });
 
 public:
-    Compiler(const fs::path& dir, Bytecode* dest, Scanner* sc=nullptr);
-    ~Compiler();
-    // compile all scanner input until EOF. Running the generated code should leave the interpreter
-    // stack empty, with lastPop() returning the result of the final toplevel expression
+    compiler(const fs::path& dir, bytecode* dest, scanner* sc=nullptr);
+    ~compiler();
+    // compile all scanner input until e_of. running the generated code should leave the interpreter
+    // stack empty, with last_pop() returning the result of the final toplevel expression
     void compile();
-    // compile the contents of the specified file (in place). This doesn't affect the current
+    // compile the contents of the specified file (in place). this doesn't affect the current
     // module, so if this file corresponds to a new module, that must be set up ahead of time.
-    void compileFile(const fs::path& filename);
-    void compileFile(const string& filename);
+    void compile_file(const fs::path& filename);
+    void compile_file(const string& filename);
 
     // set a new scanner
-    void setScanner(Scanner* sc);
+    void setscanner(scanner* sc);
 };
 
-// hash function used by the compiler for module IDs
+// hash function used by the compiler for module i_ds
 template<> u32 hash<vector<string>>(const vector<string>& v);
 
 }

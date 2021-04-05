@@ -6,7 +6,7 @@
 namespace fn_scan {
 
 // is whitespace
-static inline bool isWS(char c) {
+static inline bool is_ws(char c) {
     switch (c) {
     case ' ':
     case '\f':
@@ -20,8 +20,8 @@ static inline bool isWS(char c) {
 }
 
 // is symbol constituent character
-static inline bool isSymChar(char c) {
-    if (isWS(c)) return false;
+static inline bool is_sym_char(char c) {
+    if (is_ws(c)) return false;
 
     switch (c) {
     case '(':
@@ -41,47 +41,47 @@ static inline bool isSymChar(char c) {
     return true;
 }
 
-// tell if a number/letter is a digit in the given base (e.g. in base 16, digits are [0-9A-Fa-f])
+// tell if a number/letter is a digit in the given base (e.g. in base 16, digits are [0-9a-fa-f])
 // supports base from 2 to 36
-static inline bool isDigit(char c, u32 base=10) {
-    char maxDigit = base < 10 ? '0'+base-1 : '9';
-    if (c >= '0' && c <= maxDigit) {
+static inline bool is_digit(char c, u32 base=10) {
+    char max_digit = base < 10 ? '0'+base-1 : '9';
+    if (c >= '0' && c <= max_digit) {
         return true;
     }
-    char maxCap = 'A' + base - 11;
-    if (c >= 'A' && c <= maxCap) {
+    char max_cap = 'a' + base - 11;
+    if (c >= 'a' && c <= max_cap) {
         return true;
     }
-    char maxLow = 'a' + base - 11;
-    if (c >= 'a' && c <= maxLow) {
+    char max_low = 'a' + base - 11;
+    if (c >= 'a' && c <= max_low) {
         return true;
     }
     return false;
 }
 
 // get the value of a number/letter as an integer (e.g. '7'->7, 'b'->11)
-static inline i32 digitVal(char c) {
-    if (c <= 'A') {
+static inline i32 digit_val(char c) {
+    if (c <= 'a') {
         // number
         return c - '0';
     } else if (c < 'a') {
         // capital letter
-        return c - 'A' + 10;
+        return c - 'a' + 10;
     } else {
         // lowercase letter
         return c - 'a' + 10;
     }
 }
 
-Scanner::~Scanner() {
-    if (closeStream) {
+scanner::~scanner() {
+    if (close_stream) {
         std::ifstream* ptr = dynamic_cast<std::ifstream*>(input);
         ptr->close();
     }
 }
 
 // increment the scanner position, keeping track of lines and columns
-void Scanner::advance(char ch) {
+void scanner::advance(char ch) {
     if (ch == '\n') {
         ++line;
         col = 0;
@@ -90,98 +90,98 @@ void Scanner::advance(char ch) {
     }
 }
 
-Token Scanner::makeToken(TokenKind tk) {
-    return Token(tk, SourceLoc(filename, line, col));
+token scanner::make_token(token_kind tk) {
+    return token(tk, source_loc(filename, line, col));
 }
-Token Scanner::makeToken(TokenKind tk, string str) {
-    return Token(tk, SourceLoc(filename, line, col), str);
+token scanner::make_token(token_kind tk, string str) {
+    return token(tk, source_loc(filename, line, col), str);
 }
-Token Scanner::makeToken(TokenKind tk, double num) {
-    return Token(tk, SourceLoc(filename, line, col), num);
+token scanner::make_token(token_kind tk, double num) {
+    return token(tk, source_loc(filename, line, col), num);
 }
 
 // this is the main scanning function
-Token Scanner::nextToken() {
+token scanner::next_token() {
     while (!eof()) {
-        auto c = getChar();
-        if (isWS(c)) {
+        auto c = get_char();
+        if (is_ws(c)) {
             continue;
         }
         switch (c) {
         case ';': // comment
-            while (getChar() != '\n');
+            while (get_char() != '\n');
             break;
 
         // paired delimiters
         case '{':
-            return makeToken(TKLBrace);
+            return make_token(t_kl_brace);
         case '}':
-            return makeToken(TKRBrace);
+            return make_token(t_kr_brace);
         case '[':
-            return makeToken(TKLBracket);
+            return make_token(t_kl_bracket);
         case ']':
-            return makeToken(TKRBracket);
+            return make_token(t_kr_bracket);
         case '(':
-            return makeToken(TKLParen);
+            return make_token(t_kl_paren);
         case ')':
-            return makeToken(TKRParen);
+            return make_token(t_kr_paren);
 
         // quotation
         case '\'':
-            return makeToken(TKQuote);
+            return make_token(t_kquote);
         case '`':
-            return makeToken(TKBacktick);
+            return make_token(t_kbacktick);
         case ',':
             // check if next character is @
-            // IMPLNOTE: an EOF at this point would be a syntax error, but we let it slide up to the
+            // i_mp_ln_ot_e: an e_of at this point would be a syntax error, but we let it slide up to the
             // parser for the sake of better error generation
-            if (!eof() && peekChar() == '@') {
-                getChar();
-                return makeToken(TKCommaSplice);
+            if (!eof() && peek_char() == '@') {
+                get_char();
+                return make_token(t_kcomma_splice);
             } else {
-                return makeToken(TKComma);
+                return make_token(t_kcomma);
             }
 
         // dollar sign
         case '$':
-            // IMPLNOTE: unlike the case for unquote, eof here could still result in a syntactically
+            // i_mp_ln_ot_e: unlike the case for unquote, eof here could still result in a syntactically
             // valid (albeit probably dumb) program
             if (eof()) {
-                scanSymOrNum(c);
+                scan_sym_or_num(c);
                 break;
             }
-            c = peekChar();
+            c = peek_char();
             switch (c) {
             case '`':
-                return makeToken(TKDollarBacktick);
+                return make_token(t_kdollar_backtick);
                 break;
             case '{':
-                return makeToken(TKDollarBrace);
+                return make_token(t_kdollar_brace);
                 break;
             case '[':
-                return makeToken(TKDollarBracket);
+                return make_token(t_kdollar_bracket);
                 break;
             case '(':
-                return makeToken(TKDollarParen);
+                return make_token(t_kdollar_paren);
                 break;
             }
             break;
 
             // string literals
         case '"':
-            return scanStringLiteral();
+            return scan_string_literal();
             break;
 
             // symbol or number
         default:
-            return scanSymOrNum(c);
+            return scan_sym_or_num(c);
         }
     }
-    // if we get here, we encountered EOF
-    return makeToken(TKEOF);
+    // if we get here, we encountered e_of
+    return make_token(t_ke_of);
 }
 
-string stripEscapeChars(const string& s) {
+string strip_escape_chars(const string& s) {
     vector<char> buf;
     bool escaped = false;
     for (char ch : s) {
@@ -199,7 +199,7 @@ string stripEscapeChars(const string& s) {
     return string(buf.data(),buf.size());
 }
 
-static optional<f64> parseNum(const vector<char>& buf) {
+static optional<f64> parse_num(const vector<char>& buf) {
     // index
     u32 i = 0;
 
@@ -231,10 +231,10 @@ static optional<f64> parseNum(const vector<char>& buf) {
     f64 res = 0;
     char ch;
     // first integer character
-    while (i < buf.size() && isDigit(ch=buf[i], base)) {
+    while (i < buf.size() && is_digit(ch=buf[i], base)) {
         digit = true;
         res *= base;
-        res += digitVal(ch);
+        res += digit_val(ch);
         ++i;
     }
 
@@ -249,9 +249,9 @@ static optional<f64> parseNum(const vector<char>& buf) {
         f64 place = 1/base;
         // parse digits
         ++i;
-        while (i < buf.size() && isDigit(ch=buf[i], base)) {
+        while (i < buf.size() && is_digit(ch=buf[i], base)) {
             digit = true;
-            res += digitVal(ch) * place;
+            res += digit_val(ch) * place;
             place /= base;
             ++i;
         }
@@ -270,18 +270,18 @@ static optional<f64> parseNum(const vector<char>& buf) {
     // only other possibility after this is scientific notation
     
     // scientific notation only supports base 10 at the moment
-    if ((ch != 'e' && ch != 'E') || base != 10) {
+    if ((ch != 'e' && ch != 'e') || base != 10) {
         // not a number
         return { };
     }
     // parse base 10 exponent
     ++i;
     // check for sign
-    f64 expSign = 1;
+    f64 exp_sign = 1;
     if (i < buf.size()) {
         if (buf[i] == '-') {
             ++i;
-            expSign = -1;
+            exp_sign = -1;
         } else if (buf[i] == '+') {
             ++i;
         }
@@ -294,14 +294,14 @@ static optional<f64> parseNum(const vector<char>& buf) {
     }
 
     f64 exponent = 0;
-    while (i < buf.size() && isDigit(ch=buf[i])) {
+    while (i < buf.size() && is_digit(ch=buf[i])) {
         exponent *= 10;
-        exponent += digitVal(ch);
+        exponent += digit_val(ch);
         ++i;
     }
     // check if we got to the end
     if (i == buf.size()) {
-        return sign*res*pow(10,expSign*exponent);
+        return sign*res*pow(10,exp_sign*exponent);
     }
 
     // this means we found an illegal character
@@ -309,23 +309,23 @@ static optional<f64> parseNum(const vector<char>& buf) {
 }
 
 
-Token Scanner::scanSymOrNum(char first) {
+token scanner::scan_sym_or_num(char first) {
     if (first == '.') {
-        error("Tokens may not begin with '.'.");
+        error("tokens may not begin with '.'.");
     }
     bool escaped = first == '\\';
     // whether this is really a symbol or a dot form
     bool dot = false;
     // whether the previous symbol was a dot
-    bool prevDot = false;
+    bool prev_dot = false;
     vector<char> buf;
     buf.push_back(first);
 
     char c;
     while(true) {
         if (escaped) {
-            // IMPLNOTE: this throws an exception at EOF, which is the desired behavior
-            buf.push_back(getChar());
+            // i_mp_ln_ot_e: this throws an exception at e_of, which is the desired behavior
+            buf.push_back(get_char());
             escaped = false;
             continue;
         }
@@ -334,18 +334,18 @@ Token Scanner::scanSymOrNum(char first) {
             break;
         }
 
-        if (!isSymChar(c = peekChar())) {
+        if (!is_sym_char(c = peek_char())) {
             break;
         }
-        getChar();
+        get_char();
         if (c == '.') {
-            if (prevDot) {
-                error("Successive unescaped dots.");
+            if (prev_dot) {
+                error("successive unescaped dots.");
             }
             dot = true;
-            prevDot = true;
+            prev_dot = true;
         } else {
-            prevDot = false;
+            prev_dot = false;
         }
         if (c == '\\') {
             escaped = true;
@@ -354,42 +354,42 @@ Token Scanner::scanSymOrNum(char first) {
     }
 
 
-    // TODO: rather than rely on stod, we shoud probably use our own number scanner
-    auto d = parseNum(buf);
+    // t_od_o: rather than rely on stod, we shoud probably use our own number scanner
+    auto d = parse_num(buf);
     if (d.has_value()) {
-        return makeToken(TKNumber, *d);
+        return make_token(t_knumber, *d);
     }
 
     if (buf[buf.size()-1] == '.') {
-        error("Non-numeric tokens may not end with a dot.");
+        error("non-numeric tokens may not end with a dot.");
     }
 
     string s(buf.data(),buf.size());
     if (dot) {
-        return makeToken(TKDot, s);
+        return make_token(t_kdot, s);
     }
 
-    return makeToken(TKSymbol, stripEscapeChars(s));
+    return make_token(t_ksymbol, strip_escape_chars(s));
 }
 
-Token Scanner::scanStringLiteral() {
-    char c = getChar();
+token scanner::scan_string_literal() {
+    char c = get_char();
     vector<char> buf;
 
     while (c != '"') {
         if (c == '\\') {
-            c = getStringEscapeChar();
+            c = get_string_escape_char();
         }
         buf.push_back(c);
-        c = getChar();
+        c = get_char();
     }
 
-    return makeToken(TKString, string(buf.data(),buf.size()));
+    return make_token(t_kstring, string(buf.data(),buf.size()));
 }
 
-char Scanner::getStringEscapeChar() {
-    // TODO: implement multi-character escape sequences
-    char c = getChar();
+char scanner::get_string_escape_char() {
+    // t_od_o: implement multi-character escape sequences
+    char c = get_char();
     switch (c) {
     case '\'':
         return '\'';
@@ -415,26 +415,26 @@ char Scanner::getStringEscapeChar() {
         return '\v';
     }
 
-    error("Unrecognized string escape sequence.");
+    error("unrecognized string escape sequence.");
     return '\0'; // this is just to shut up the interpreter
 }
 
-bool Scanner::eof() {
+bool scanner::eof() {
     return input->peek() == EOF;
 }
 
-char Scanner::getChar() {
+char scanner::get_char() {
     if (eof()) {
-        error("Unexpected EOF while scanning.");
+        error("unexpected e_of while scanning.");
     }
     char c = input->get();
     advance(c);
     return c;
 }
 
-char Scanner::peekChar() {
+char scanner::peek_char() {
     if (eof()) {
-        error("Unexpected EOF while scanning.");
+        error("unexpected e_of while scanning.");
     }
     return input->peek();
 }

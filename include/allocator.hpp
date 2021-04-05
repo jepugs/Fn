@@ -1,7 +1,7 @@
 #ifndef __FN_ALLOCATOR_HPP
 #define __FN_ALLOCATOR_HPP
 
-// defining this variable (which should be done via CMake) causes the garbage collector to run
+// defining this variable (which should be done via c_make) causes the garbage collector to run
 // frequently and often emit output:
 // #define GC_DEBUG
 
@@ -15,62 +15,65 @@
 namespace fn {
 
 
-class Allocator {
+class allocator {
 private:
     // note: we guarantee that every pointer in this array is actually memory managed by this
     // garbage collector
-    std::list<ObjHeader*> objects;
-    // flag used to determine garbage collector behavior. Starts out false to allow initialization
-    bool gcEnabled;
+    std::list<obj_header*> objects;
+    // flag used to determine garbage collector behavior. starts out false to allow initialization
+    bool gc_enabled;
     // if true, garbage collection will automatically run when next enabled
-    bool toCollect;
-    u64 memUsage;
-    // gc is invoked when memUsage > collectThreshold. collectThreshold is increased if memUsage >
-    // 0.5*collectThreshold after a collection.
-    u64 collectThreshold;
+    bool to_collect;
+    u64 mem_usage;
+    // gc is invoked when mem_usage > collect_threshold. collect_threshold is increased if mem_usage >
+    // 0.5*collect_threshold after a collection.
+    u64 collect_threshold;
     // number of objects
     u32 count;
 
-    std::function<Generator<Value>()> getRoots;
+    std::function<generator<value>()> get_roots;
 
-    void dealloc(Value v);
+    void dealloc(value v);
 
     // get a list of objects accessible from the given value
-    //forward_list<ObjHeader*> accessible(Value v);
-    Generator<Value> accessible(Value v);
+    //forward_list<obj_header*> accessible(value v);
+    generator<value> accessible(value v);
 
-    void markDescend(ObjHeader* o);
+    void mark_descend(obj_header* o);
 
     void mark();
     void sweep();
 
 public:
-    Allocator();
-    Allocator(std::function<Generator<Value>()> getRoots);
-    Allocator(Generator<Value> (*getRoots)());
-    ~Allocator();
+    allocator();
+    allocator(std::function<generator<value>()> get_roots);
+    allocator(generator<value> (*get_roots)());
+    ~allocator();
 
     // TODO: implement in allocator.cpp
-    u64 memoryUsed() const;
-    u32 numObjects() const;
+    u64 memory_used() const;
+    u32 num_objects() const;
 
-    bool gcIsEnabled() const;
+    bool gc_is_enabled() const;
     // enable/disable the garbage collector
-    void enableGc();
-    void disableGc();
+    void enable_gc();
+    void disable_gc();
     // invoke the gc if enough memory is used
     void collect();
     // invoke the gc no matter what
-    void forceCollect();
+    void force_collect();
 
-    Value cons(Value hd, Value tl);
-    Value str(const string& s);
-    Value str(const char* s);
-    Value obj();
-    Value func(FuncStub* stub, const std::function<void (UpvalueSlot*)>& populate);
-    Value foreign(Local minArgs, bool varArgs, Value (*func)(Local, Value*, VM*));
+    value add_cons(value hd, value tl);
+    value add_str(const string& s);
+    value add_str(const char* s);
+    value add_obj();
+    value add_func(func_stub* stub,
+                   const std::function<void (upvalue_slot*)>& populate);
+    value add_foreign(local_addr min_args,
+                      bool var_args,
+                      value (*func)(local_addr, value*, virtual_machine*));
 
-    void printStatus();
+    void print_status();
 };
 
 }

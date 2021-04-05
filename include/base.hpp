@@ -45,58 +45,58 @@ template<typename T> u32 hash(const T& v);
 
 /// semantic typedefs
 // addresses on the stack
-typedef u16 StackAddr;
+typedef u16 stack_addr;
 // addresses in the current call frame (i.e. arguments and local variables)
-typedef u8 Local;
+typedef u8 local_addr;
 // 32-bit integers represent addresses in the bytecode
-typedef u32 Addr;
+typedef u32 bc_addr;
 // used to identify local variables and upvalues
-typedef u8 LocalId;
+typedef u8 local_id;
 // used to identify bytecode constant
-typedef u16 ConstId;
+typedef u16 const_id;
 // used to identify symbols
-typedef u32 SymbolId;
+typedef u32 symbol_id;
 
 // debugging information
-struct SourceLoc {
+struct source_loc {
     const std::shared_ptr<string> filename;
     const int line;
     const int col;
 
-    SourceLoc(string* filename, int line=1, int col=1)
+    source_loc(string* filename, int line=1, int col=1)
         : filename(new string(*filename))
         , line(line)
         , col(col)
     { }
-    SourceLoc(const char* filename, int line=1, int col=1)
+    source_loc(const char* filename, int line=1, int col=1)
         : filename(new string(filename))
         , line(line)
         , col(col)
     { }
-    SourceLoc(const std::shared_ptr<string>& filename, int line, int col)
+    source_loc(const std::shared_ptr<string>& filename, int line, int col)
         : filename(filename)
         , line(line)
         , col(col)
     { }
-    SourceLoc(const SourceLoc& loc)
+    source_loc(const source_loc& loc)
         : filename(loc.filename)
         , line(loc.line)
         , col(loc.col)
     { }
 };
 
-class FNError : public std::exception {
-    // Pointer to the formatted error message. Need this to ensure that the return value of what()
+class fn_error : public std::exception {
+    // pointer to the formatted error message. need this to ensure that the return value of what()
     // is properly cleaned up when the object is destroyed.
     string *formatted;
 
     public:
     const string subsystem;
     const string message;
-    const SourceLoc origin;
+    const source_loc origin;
 
-    // TODO: move this to a .cpp file so we don't need to include sstream
-    FNError(const string& subsystem, const string& message, const SourceLoc& origin)
+    // t_od_o: move this to a .cpp file so we don't need to include sstream
+    fn_error(const string& subsystem, const string& message, const source_loc& origin)
         : subsystem(subsystem)
         , message(message)
         , origin(origin)
@@ -108,7 +108,7 @@ class FNError : public std::exception {
         formatted = new string(ss.str());
         
     }
-    ~FNError() {
+    ~fn_error() {
         delete formatted;
     }
 

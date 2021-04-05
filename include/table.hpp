@@ -20,36 +20,36 @@ template<> inline u32 hash<string>(const string& s) {
 }
 
 // hash table entry
-template <typename K, typename T> struct Entry {
+template <typename K, typename T> struct entry {
     const K key;
     T val;
 
-    Entry(const K& k, T& v) : key(k), val(v) { }
+    entry(const K& k, T& v) : key(k), val(v) { }
 };
 
-/// hash table with string keys. Uses linear probing.
-template <typename K, typename T> class Table {
+/// hash table with string keys. uses linear probing.
+template <typename K, typename T> class table {
 private:
     u32 cap;
     u32 threshold;
     u32 size;
-    Entry<K,T> **array;
+    entry<K,T> **array;
 
-    // Increase the capacity by a factor of 2. This involves recomputing all hashes
-    void increaseCap() {
+    // increase the capacity by a factor of 2. this involves recomputing all hashes
+    void increase_cap() {
         auto *prev = array;
-        auto oldCap = cap;
+        auto old_cap = cap;
 
         // initialize a new array
         cap *= 2;
         threshold = (u32)(REHASH_THRESHOLD * this->cap);
-        array = new Entry<K,T>*[this->cap];
+        array = new entry<K,T>*[this->cap];
         for (u32 i =0; i < cap; ++i) {
             array[i] = nullptr;
         }
 
         // insert the old data, deleting old entries as we go
-        for (u32 i=0; i<oldCap; ++i) {
+        for (u32 i=0; i<old_cap; ++i) {
             if (prev[i] != nullptr) {
                 insert(prev[i]->key, prev[i]->val);
                 delete prev[i];
@@ -59,31 +59,31 @@ private:
     }
 
 public:
-    Table(u32 initCap=32)
-        : cap(initCap)
+    table(u32 init_cap=32)
+        : cap(init_cap)
     {
-        threshold = (u32)(REHASH_THRESHOLD * initCap);
+        threshold = (u32)(REHASH_THRESHOLD * init_cap);
         size = 0;
-        array = new Entry<K,T>*[initCap];
-        for (u32 i =0; i < initCap; ++i) {
+        array = new entry<K,T>*[init_cap];
+        for (u32 i =0; i < init_cap; ++i) {
             array[i] = nullptr;
         }
     }
-    Table(const Table<K,T>& src)
+    table(const table<K,T>& src)
         : cap(src.cap)
         , threshold(src.threshold)
         , size(src.size)
-        , array(new Entry<K,T>*[cap])
+        , array(new entry<K,T>*[cap])
     {
         for (u32 i = 0; i < cap; ++i) {
             if (src.array[i] != nullptr) {
-                array[i] = new Entry(src.array[i]->key, src.array[i]->val);
+                array[i] = new entry(src.array[i]->key, src.array[i]->val);
             } else {
                 array[i] = nullptr;
             }
         }
     }
-    ~Table() {
+    ~table() {
         for (u32 i=0; i < cap; ++i) {
             if (array[i] != nullptr)
                 delete array[i];
@@ -91,7 +91,7 @@ public:
         delete[] array;
     }
 
-    Table<K,T>& operator=(const Table<K,T>& src) {
+    table<K,T>& operator=(const table<K,T>& src) {
         // clean up the old data and just replace this using new
         for (u32 i=0; i < cap; ++i) {
             if (array[i] != nullptr)
@@ -102,11 +102,11 @@ public:
         cap = src.cap;
         threshold = src.threshold;
         size = src.size;
-        array = new Entry<K,T>*[cap];
+        array = new entry<K,T>*[cap];
 
         for (u32 i = 0; i < cap; ++i) {
             if (src.array[i] != nullptr) {
-                array[i] = new Entry(src.array[i]->key, src.array[i]->val);
+                array[i] = new entry(src.array[i]->key, src.array[i]->val);
             } else {
                 array[i] = nullptr;
             }
@@ -115,14 +115,14 @@ public:
         return *this;
     }
 
-    u32 getSize() {
+    u32 get_size() {
         return size;
     }
 
     // insert/overwrite a new entry
     T& insert(const K& k, T v) {
         if (size >= threshold) {
-            increaseCap();
+            increase_cap();
         }
 
         u32 h = hash<K>(k);
@@ -131,7 +131,7 @@ public:
             if (array[i] == nullptr) {
                 // no collision; make a new entry
                 ++size;
-                array[i] = new Entry<K,T>(k, v);
+                array[i] = new entry<K,T>(k, v);
                 break;
             } else if (array[i]->key == k) {
                 // no collision; overwrite previous entry
@@ -161,7 +161,7 @@ public:
         }
     }
 
-    bool hasKey(const K& k) const {
+    bool has_key(const K& k) const {
         u32 h = hash(k);
         u32 i = h % this->cap;
         // do linear probing
@@ -187,7 +187,7 @@ public:
         return res;
     }
 
-    bool operator==(const Table<K,T>& x) const {
+    bool operator==(const table<K,T>& x) const {
         if (this->size != x.size) {
             return false;
         }

@@ -17,44 +17,44 @@ using namespace fn_bytes;
 namespace fs = std::filesystem;
 using std::endl;
 
-void showUsage() {
+void show_usage() {
     std::cout <<
-        "Usage: fn [options] [-e string | file] ...\n"
-        "Description:\n"
+        "usage: fn [options] [-e string | file] ...\n"
+        "description:\n"
         "  fn programming language interpreter and repl.\n"
-        "Options:\n"
-        //"  -c            (UNIMPLEMENTED) compile files\n"
+        "options:\n"
+        //"  -c            (u_ni_mp_le_me_nt_ed) compile files\n"
         "  -d            output disassembled bytecode instead of executing\n"
         "  -e string     evaluate the fn expressions in the string, printing the result.\n"
-        "                  Multiple -e (options and filenames) can be mixed, in which\n"
+        "                  multiple -e (options and filenames) can be mixed, in which\n"
         "                  case they will be evaluated in the order supplied.\n"
         "  -h            show this help message and exit\n"
         "  -i            start a repl (after running provided strings and files)\n"
-        //"  -o file       (UNIMPLEMENTED) write the output of -d or -c to the file\n"
+        //"  -o file       (u_ni_mp_le_me_nt_ed) write the output of -d or -c to the file\n"
         ;
 }
 
-// TODO: Add current path parameter
-void compileString(VM* vm, const string& str) {
-    auto code = vm->getBytecode();
+// t_od_o: add current path parameter
+void compile_string(virtual_machine* vm, const string& str) {
+    auto code = vm->get_bytecode();
     std::istringstream in(str);
-    fn_scan::Scanner sc(&in, "<cmdline>");
-    Compiler c(fs::current_path(), code, &sc);
+    fn_scan::scanner sc(&in, "<cmdline>");
+    compiler c(fs::current_path(), code, &sc);
     c.compile();
 }
 
-// TODO: Add current path parameter
+// t_od_o: add current path parameter
 // returns -1 on failure
-int compileFile(VM* vm, const string& filename) {
-    auto code = vm->getBytecode();
+int compile_file(virtual_machine* vm, const string& filename) {
+    auto code = vm->get_bytecode();
     std::ifstream in(filename);
     if (!in.is_open()) {
-        // TODO: might be better to make this an FNError so we can have a single toplevel handler
+        // t_od_o: might be better to make this an fn_error so we can have a single toplevel handler
         perror(("error opening file " + filename).c_str());
         return -1;
     } else {
-        Compiler c(fs::current_path(), code);
-        c.compileFile(filename);
+        compiler c(fs::current_path(), code);
+        c.compile_file(filename);
     }
 
     return 0;
@@ -62,14 +62,14 @@ int compileFile(VM* vm, const string& filename) {
 
 int main(int argc, char** argv) {
     int opt;
-    // this contains filenames and strings to evaluate. The first character of each entry indicates
+    // this contains filenames and strings to evaluate. the first character of each entry indicates
     // whether it is a filename ('f') or a string ('s').
     vector<string> evals;
     // if true, then output disassembled bytecode rather instead of running
     bool dis = false;
     bool inter = false;
     
-    // this depends on GNU getopt
+    // this depends on g_nu getopt
     while ((opt = getopt(argc, argv, "-cde:hio:")) != -1) {
         switch (opt) {
         case 'c':
@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
             evals.push_back("s" + string(optarg));
             break;
         case 'h':
-            showUsage();
+            show_usage();
             return 0;
         case 'i':
             inter = true;
@@ -110,13 +110,13 @@ int main(int argc, char** argv) {
     }
 
 
-    VM vm;
+    virtual_machine vm;
     init(&vm);
     for (auto s : evals) {
         if (s[0] == 's') {
-            compileString(&vm, s.substr(1));
+            compile_string(&vm, s.substr(1));
         } else {
-            if (compileFile(&vm, s.substr(1)) == -1) {
+            if (compile_file(&vm, s.substr(1)) == -1) {
                 // exit on error; error message should already be printed
                 return -1;
             }
@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
 
     if (dis) {
         // disassembly mode
-        auto code = vm.getBytecode();
+        auto code = vm.get_bytecode();
         disassemble(*code, std::cout);
         return 0;
     }
@@ -133,8 +133,8 @@ int main(int argc, char** argv) {
     // time to actually run the vm
     vm.execute();
 
-    // FIXME: for now we print out the last value, but we probably really shouldn't
-    std::cout << vToString(vm.lastPop(),vm.getBytecode()->getSymbols()) << endl;
+    // f_ix_me: for now we print out the last value, but we probably really shouldn't
+    std::cout << v_to_string(vm.last_pop(),vm.get_bytecode()->get_symbols()) << endl;
 
     // do the repl if necessary
     if (inter) {
@@ -142,16 +142,16 @@ int main(int argc, char** argv) {
         while (!std::cin.eof()) {
             std::cout << "fn> ";
             std::getline(std::cin, line);
-            compileString(&vm, line);
+            compile_string(&vm, line);
             vm.execute();
             // print value
-            std::cout << vToString(vm.lastPop(),vm.getBytecode()->getSymbols()) << endl;
+            std::cout << v_to_string(vm.last_pop(),vm.get_bytecode()->get_symbols()) << endl;
         }
     }
 
-    vm.getAlloc()->printStatus();
-    //std::cout << "ip = " << vm.getIp() << endl;
-    //std::cout << showValue(vm.getGlobal("y")) << endl;
+    vm.get_alloc()->print_status();
+    //std::cout << "ip = " << vm.get_ip() << endl;
+    //std::cout << show_value(vm.get_global("y")) << endl;
     return 0;
 }
 

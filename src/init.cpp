@@ -9,134 +9,134 @@
 
 namespace fn {
 
-#define FN_FUN(name) static Value name(Local numArgs, Value* args, VM* vm)
+#define FN_FUN(name) static value name(local_addr num_args, value* args, virtual_machine* vm)
 
-static Value fnEq(Local numArgs, Value* args, VM* vm) {
-    if (numArgs == 0) return V_TRUE;
+static value fn_eq(local_addr num_args, value* args, virtual_machine* vm) {
+    if (num_args == 0) return V_TRUE;
 
     auto v1 = args[0];
-    for (Local i = 1; i < numArgs; ++i) {
+    for (local_addr i = 1; i < num_args; ++i) {
         if (v1 != args[i])
             return V_FALSE;
     }
     return V_TRUE;
 }
 
-FN_FUN(fnNullQ) {
-    return value(args[0] == V_NULL);
+FN_FUN(fn_null_q) {
+    return as_value(args[0] == V_NULL);
 }
 
-FN_FUN(fnBool) {
-    return value(vTruthy(args[0]));
+FN_FUN(fn_bool) {
+    return as_value(v_truthy(args[0]));
 }
 
-FN_FUN(fnBoolQ) {
-    return value(vTag(args[0]) == TAG_BOOL);
+FN_FUN(fn_bool_q) {
+    return as_value(v_tag(args[0]) == TAG_BOOL);
 }
 
-FN_FUN(fnNot) {
-    return value(!vTruthy(args[0]));
+FN_FUN(fn_not) {
+    return as_value(!v_truthy(args[0]));
 }
 
-// FN_FUN(fnNum) {
-//     switch(vTag(args[0])) {
+// FN_FUN(fn_num) {
+//     switch(v_tag(args[0])) {
 //     case TAG_NUM:
 //         return args[0];
 //     case TAG_STR:
 //         try {
-//             auto d = stod(*vStr(args[0]));
-//             return value(d);
-//         } catch(...) { // TODO: this should probably be a runtime warning...
-//             vm->runtimeError("String argument to Num does not represent a number."); 
-//             return value(0.0);
+//             auto d = stod(*v_str(args[0]));
+//             return as_value(d);
+//         } catch(...) { // t_od_o: this should probably be a runtime warning...
+//             vm->runtime_error("string argument to num does not represent a number."); 
+//             return as_value(0.0);
 //         }
 //     case TAG_NULL:
-//         return value(0.0);
+//         return as_value(0.0);
 //     case TAG_BOOL:
-//         return value((f64)vBool(args[0]));
+//         return as_value((f64)v_bool(args[0]));
 //     default:
-//         vm->runtimeError("Num cannot convert value of the given type.");
-//         return value(0.0);
+//         vm->runtime_error("num cannot convert value of the given type.");
+//         return as_value(0.0);
 //     }
 // }
 
-FN_FUN(fnNumQ) {
-    return value(vShortTag(args[0]) == TAG_NUM);
+FN_FUN(fn_num_q) {
+    return as_value(v_short_tag(args[0]) == TAG_NUM);
 }
 
-FN_FUN(fnIntQ) {
-    return value(vShortTag(args[0]) == TAG_NUM
-                 && vNum(args[0]) == (u64)vNum(args[0]));
+FN_FUN(fn_int_q) {
+    return as_value(v_short_tag(args[0]) == TAG_NUM
+                 && v_num(args[0]) == (u64)v_num(args[0]));
 }
 
-static Value fnAdd(Local numArgs, Value* args, VM* vm) {
+static value fn_add(local_addr num_args, value* args, virtual_machine* vm) {
     f64 res = 0;
-    for (Local i = 0; i < numArgs; ++i) {
-        res += args[i].num();
+    for (local_addr i = 0; i < num_args; ++i) {
+        res += args[i].vnum();
     }
-    return value(res);
+    return as_value(res);
 }
 
-static Value fnSub(Local numArgs, Value* args, VM* vm) {
-    if (numArgs == 0)
-        return value(0);
-    f64 res = args[0].num();
-    if (numArgs == 1) {
-        return value(-res);
+static value fn_sub(local_addr num_args, value* args, virtual_machine* vm) {
+    if (num_args == 0)
+        return as_value(0);
+    f64 res = args[0].vnum();
+    if (num_args == 1) {
+        return as_value(-res);
     }
-    for (Local i = 1; i < numArgs; ++i) {
-        res -= args[i].num();
+    for (local_addr i = 1; i < num_args; ++i) {
+        res -= args[i].vnum();
     }
-    return value(res);
+    return as_value(res);
 }
 
-static Value fnMul(Local numArgs, Value* args, VM* vm) {
+static value fn_mul(local_addr num_args, value* args, virtual_machine* vm) {
     f64 res = 1.0;
-    for (Local i = 0; i < numArgs; ++i) {
-        res *= args[i].num();
+    for (local_addr i = 0; i < num_args; ++i) {
+        res *= args[i].vnum();
     }
-    return value(res);
+    return as_value(res);
 }
 
-static Value fnDiv(Local numArgs, Value* args, VM* vm) {
-    if (numArgs == 0)
-        return value(1.0);
+static value fn_div(local_addr num_args, value* args, virtual_machine* vm) {
+    if (num_args == 0)
+        return as_value(1.0);
 
-    f64 res = args[0].num();
-    if (numArgs == 1) {
-        return value(1/res);
+    f64 res = args[0].vnum();
+    if (num_args == 1) {
+        return as_value(1/res);
     }
-    for (Local i = 1; i < numArgs; ++i) {
-        res /= args[i].num();
+    for (local_addr i = 1; i < num_args; ++i) {
+        res /= args[i].vnum();
     }
-    return value(res);
+    return as_value(res);
 }
 
-FN_FUN(fnPow) {
+FN_FUN(fn_pow) {
     return args[0].pow(args[1]);
 }
 
-FN_FUN(fnMod) {
-    if (!args[0].isInt() || !args[1].isInt()) {
-        vm->runtimeError("mod arguments must be integers");
+FN_FUN(fn_mod) {
+    if (!args[0].is_int() || !args[1].is_int()) {
+        vm->runtime_error("mod arguments must be integers");
     }
-    i64 u = (i64)args[0].num();
-    i64 v = (i64)args[1].num();
-    return value(u % v);
+    i64 u = (i64)args[0].vnum();
+    i64 v = (i64)args[1].vnum();
+    return as_value(u % v);
 }
 
-FN_FUN(fnFloor) {
-    return value(std::floor(args[0].num()));
+FN_FUN(fn_floor) {
+    return as_value(std::floor(args[0].vnum()));
 }
 
-FN_FUN(fnCeil) {
-    return value(std::ceil(args[0].num()));
+FN_FUN(fn_ceil) {
+    return as_value(std::ceil(args[0].vnum()));
 }
 
-FN_FUN(fnGt) {
-    auto v = args[0].num();
-    for (Local i = 1; i < numArgs; ++i) {
-        auto u = args[i].num();
+FN_FUN(fn_gt) {
+    auto v = args[0].vnum();
+    for (local_addr i = 1; i < num_args; ++i) {
+        auto u = args[i].vnum();
         if (v > u) {
             v = u;
             continue;
@@ -146,10 +146,10 @@ FN_FUN(fnGt) {
     return V_TRUE;
 }
 
-FN_FUN(fnLt) {
-    auto v = args[0].num();
-    for (Local i = 1; i < numArgs; ++i) {
-        auto u = args[i].num();
+FN_FUN(fn_lt) {
+    auto v = args[0].vnum();
+    for (local_addr i = 1; i < num_args; ++i) {
+        auto u = args[i].vnum();
         if (v < u) {
             v = u;
             continue;
@@ -159,10 +159,10 @@ FN_FUN(fnLt) {
     return V_TRUE;
 }
 
-FN_FUN(fnGe) {
-    auto v = args[0].num();
-    for (Local i = 1; i < numArgs; ++i) {
-        auto u = args[i].num();
+FN_FUN(fn_ge) {
+    auto v = args[0].vnum();
+    for (local_addr i = 1; i < num_args; ++i) {
+        auto u = args[i].vnum();
         if (v >= u) {
             v = u;
             continue;
@@ -172,10 +172,10 @@ FN_FUN(fnGe) {
     return V_TRUE;
 }
 
-FN_FUN(fnLe) {
-    auto v = args[0].num();
-    for (Local i = 1; i < numArgs; ++i) {
-        auto u = args[i].num();
+FN_FUN(fn_le) {
+    auto v = args[0].vnum();
+    for (local_addr i = 1; i < num_args; ++i) {
+        auto u = args[i].vnum();
         if (v <= u) {
             v = u;
             continue;
@@ -185,99 +185,99 @@ FN_FUN(fnLe) {
     return V_TRUE;
 }
 
-FN_FUN(fnObject) {
-    if (numArgs % 2 != 0) {
-        vm->runtimeError("Object must have an even number of arguments.");
+FN_FUN(fn_object) {
+    if (num_args % 2 != 0) {
+        vm->runtime_error("object must have an even number of arguments.");
     }
-    // TODO: use allocator
-    auto res = vm->getAlloc()->obj();
-    for (Local i = 0; i < numArgs; i += 2) {
-        vObj(res)->contents.insert(args[i],args[i+1]);
+    // t_od_o: use allocator
+    auto res = vm->get_alloc()->add_obj();
+    for (local_addr i = 0; i < num_args; i += 2) {
+        v_obj(res)->contents.insert(args[i],args[i+1]);
     }
     return res;
 }
 
-FN_FUN(fnObjectQ) {
-    return value(vShortTag(args[0])==TAG_OBJ);
+FN_FUN(fn_object_q) {
+    return as_value(v_short_tag(args[0])==TAG_OBJ);
 }
 
-FN_FUN(fnList) {
+FN_FUN(fn_list) {
     auto res = V_EMPTY;
-    for (Local i = numArgs; i > 0; --i) {
-        res = vm->getAlloc()->cons(args[i-1], res);
+    for (local_addr i = num_args; i > 0; --i) {
+        res = vm->get_alloc()->add_cons(args[i-1], res);
     }
     return res;
 }
 
-FN_FUN(fnListQ) {
-    return value(args[0].isEmpty() || args[0].isCons());
+FN_FUN(fn_list_q) {
+    return as_value(args[0].is_empty() || args[0].is_cons());
 }
 
-FN_FUN(fnHasKey) {
-    return value(args[0].hasKey(args[1]));
+FN_FUN(fn_has_key) {
+    return as_value(args[0].has_key(args[1]));
 }
 
-FN_FUN(fnGet) {
+FN_FUN(fn_get) {
     auto res = args[0].get(args[1]);
-    for (Local i = 2; i < numArgs; ++i) {
+    for (local_addr i = 2; i < num_args; ++i) {
         res = res.get(args[i]);
     }
     return res;
 }
 
-static Value fnPrint(Local numArgs, Value* args, VM* vm) {
-    std::cout << vToString(args[0], vm->getBytecode()->getSymbols());
+static value fn_print(local_addr num_args, value* args, virtual_machine* vm) {
+    std::cout << v_to_string(args[0], vm->get_bytecode()->get_symbols());
     return V_NULL;
 }
 
-static Value fnPrintln(Local numArgs, Value* args, VM* vm) {
-    std::cout << vToString(args[0], vm->getBytecode()->getSymbols()) << "\n";
+static value fn_println(local_addr num_args, value* args, virtual_machine* vm) {
+    std::cout << v_to_string(args[0], vm->get_bytecode()->get_symbols()) << "\n";
     return V_NULL;
 }
 
 
-void init(VM* vm) {
-    vm->addForeign("=", fnEq, 0, true);
-    vm->addForeign("null?", fnNullQ, 1, false);
-    vm->addForeign("Bool", fnBool, 1, false);
-    vm->addForeign("bool?", fnBoolQ, 1, false);
-    vm->addForeign("not", fnNot, 1, false);
-    //vm->addForeign("Num", fnNum, 1, false);
-    vm->addForeign("num?", fnNumQ, 1, false);
-    vm->addForeign("int?", fnIntQ, 1, false);
-    vm->addForeign("+", fnAdd, 0, true);
-    vm->addForeign("-", fnSub, 0, true);
-    vm->addForeign("*", fnMul, 0, true);
-    vm->addForeign("/", fnDiv, 0, true);
-    vm->addForeign("^", fnPow, 2, false);
-    vm->addForeign("mod", fnMod, 2, false);
-    vm->addForeign("floor", fnFloor, 1, false);
-    vm->addForeign("ceil", fnCeil, 1, false);
-    vm->addForeign(">", fnGt, 2, true);
-    vm->addForeign("<", fnLt, 2, true);
-    vm->addForeign(">=", fnGe, 2, true);
-    vm->addForeign("<=", fnLe, 2, true);
-    vm->addForeign("Object", fnObject, 0, true);
-    vm->addForeign("object?", fnObjectQ, 1, false);
-    vm->addForeign("has-key", fnHasKey, 2, false);
-    vm->addForeign("get", fnGet, 2, true);
-    //vm->addForeign("get-keys", fnGetKeys, 1, false);
-    //vm->addForeign("get-props", fnGetProps, 1, false);
-    //vm->addForeign("extend", fnDiv, 1, true);
-    vm->addForeign("List", fnList, 0, true);
-    vm->addForeign("list?", fnListQ, 1, false);
-    //vm->addForeign("empty?", fnEmptyQ, 0, false);
-    //vm->addForeign("as-list", fnLAsist, 1, false);
-    //vm->addForeign("cons", fnDiv, 0, true);
-    //vm->addForeign("append", fnDiv, 0, true);
-    //vm->addForeign("reverse", fnDiv, 0, true);
-    //vm->addForeign("String", fnString, 0, true);
-    //vm->addForeign("string?", fnStringQ, 0, false);
-    //vm->addForeign("substring", fnSubstring, 3, false);
-    //vm->addForeign("hash", fnHash, 1, false);
-    vm->addForeign("print", fnPrint, 1, false);
-    vm->addForeign("println", fnPrintln, 1, false);
-    //vm->addForeign("apply", fnDiv, 2, true);
+void init(virtual_machine* vm) {
+    vm->add_foreign("=", fn_eq, 0, true);
+    vm->add_foreign("null?", fn_null_q, 1, false);
+    vm->add_foreign("bool", fn_bool, 1, false);
+    vm->add_foreign("bool?", fn_bool_q, 1, false);
+    vm->add_foreign("not", fn_not, 1, false);
+    //vm->add_foreign("num", fn_num, 1, false);
+    vm->add_foreign("num?", fn_num_q, 1, false);
+    vm->add_foreign("int?", fn_int_q, 1, false);
+    vm->add_foreign("+", fn_add, 0, true);
+    vm->add_foreign("-", fn_sub, 0, true);
+    vm->add_foreign("*", fn_mul, 0, true);
+    vm->add_foreign("/", fn_div, 0, true);
+    vm->add_foreign("^", fn_pow, 2, false);
+    vm->add_foreign("mod", fn_mod, 2, false);
+    vm->add_foreign("floor", fn_floor, 1, false);
+    vm->add_foreign("ceil", fn_ceil, 1, false);
+    vm->add_foreign(">", fn_gt, 2, true);
+    vm->add_foreign("<", fn_lt, 2, true);
+    vm->add_foreign(">=", fn_ge, 2, true);
+    vm->add_foreign("<=", fn_le, 2, true);
+    vm->add_foreign("object", fn_object, 0, true);
+    vm->add_foreign("object?", fn_object_q, 1, false);
+    vm->add_foreign("has-key", fn_has_key, 2, false);
+    vm->add_foreign("get", fn_get, 2, true);
+    //vm->add_foreign("get-keys", fn_get_keys, 1, false);
+    //vm->add_foreign("get-props", fn_get_props, 1, false);
+    //vm->add_foreign("extend", fn_div, 1, true);
+    vm->add_foreign("list", fn_list, 0, true);
+    vm->add_foreign("list?", fn_list_q, 1, false);
+    //vm->add_foreign("empty?", fn_empty_q, 0, false);
+    //vm->add_foreign("as-list", fn_lasist, 1, false);
+    //vm->add_foreign("cons", fn_div, 0, true);
+    //vm->add_foreign("append", fn_div, 0, true);
+    //vm->add_foreign("reverse", fn_div, 0, true);
+    //vm->add_foreign("string", fn_string, 0, true);
+    //vm->add_foreign("string?", fn_string_q, 0, false);
+    //vm->add_foreign("substring", fn_substring, 3, false);
+    //vm->add_foreign("hash", fn_hash, 1, false);
+    vm->add_foreign("print", fn_print, 1, false);
+    vm->add_foreign("println", fn_println, 1, false);
+    //vm->add_foreign("apply", fn_div, 2, true);
 }
 
 }

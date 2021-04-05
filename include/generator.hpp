@@ -1,5 +1,5 @@
-#ifndef __FN_GENERATOR_HPP
-#define __FN_GENERATOR_HPP
+#ifndef __f_n_g_en_er_at_or_h_pp
+#define __f_n_g_en_er_at_or_h_pp
 
 #include "base.hpp"
 
@@ -8,23 +8,23 @@
 
 namespace fn {
 
-template <typename T> class Generator {
+template <typename T> class generator {
     std::function<optional<T>()> fun;
 
 public:
-    Generator()
+    generator()
         : fun([]() -> optional<T> { return { }; })
     { }
-    Generator(const std::function<optional<T>()>& fun) 
+    generator(const std::function<optional<T>()>& fun) 
         : fun(fun)
     { }
-    Generator(std::function<optional<T>()>&& fun)
+    generator(std::function<optional<T>()>&& fun)
         : fun(fun)
     { }
-    Generator(Generator<T>& g)
+    generator(generator<T>& g)
         : fun(g.fun)
     { }
-    Generator(Generator<T>&& g)
+    generator(generator<T>&& g)
         : fun()
     {
         fun.swap(g.fun);
@@ -34,11 +34,11 @@ public:
         return fun();
     }
 
-    Generator operator+(Generator& other) {
+    generator operator+(generator& other) {
         bool first = true;
         auto f = fun;
         std::function snd = other.fun;
-        return Generator([=]() mutable {
+        return generator([=]() mutable {
             auto v = f();
             if (first && !v.has_value()) {
                 first = false;
@@ -48,11 +48,11 @@ public:
             return v;
         });
     }
-    Generator operator+(Generator&& other) {
+    generator operator+(generator&& other) {
         bool first = true;
         auto f = fun;
         std::function snd = (std::function<optional<T>()>&&)other.fun;
-        return Generator([=]() mutable {
+        return generator([=]() mutable {
             auto v = f();
             if (first && !v.has_value()) {
                 first = false;
@@ -63,16 +63,16 @@ public:
         });
     }
 
-    Generator& operator=(const Generator& other) {
+    generator& operator=(const generator& other) {
         fun = other.fun;
         return *this;
     }
-    Generator& operator=(Generator&& other) {
+    generator& operator=(generator&& other) {
         fun.swap(other.fun);
         return *this;
     }
 
-    Generator& operator+=(Generator<T>& other) {
+    generator& operator+=(generator<T>& other) {
         fun = [f=this->fun,this,g=other.fun]() mutable {
             auto v = f();
             if (v.has_value()) {
@@ -83,7 +83,7 @@ public:
         };
         return *this;
     }
-    Generator& operator+=(Generator<T>&& other) {
+    generator& operator+=(generator<T>&& other) {
         fun = [done=false,f=this->fun,this,g{std::move(other.fun)}]() mutable {
             auto v = f();
             if (done || v.has_value()) {
@@ -98,14 +98,14 @@ public:
 
     class iterator {
         optional<T> val;
-        Generator gen;
+        generator gen;
     public:
         // default makes the end() iterator
         iterator()
             : val({ })
             , gen([]() -> optional<T> { return { }; })
         { }
-        iterator(Generator& gen)
+        iterator(generator& gen)
             : val(gen.fun())
             , gen(gen)
         { }
@@ -120,6 +120,9 @@ public:
         // equality can only happen when both iterators are at the end
         bool operator==(const iterator& other) const {
             return !(val.has_value() || other.val.has_value());
+        }
+        bool operator!=(const iterator& other) const {
+            return (val.has_value() || other.val.has_value());
         }
 
         using iterator_category = std::input_iterator_tag;
@@ -137,12 +140,12 @@ public:
     }
 };
 
-template<typename T,typename R> Generator<T> generator(const R& callable) {
-    return Generator<T>([callable] { return callable(); });
+template<typename T,typename R> generator<T> mk_generator(const R& callable) {
+    return generator<T>([callable] { return callable(); });
 }
 
-template<typename T> Generator<T> generate1(T obj) {
-    return Generator<T>([obj,done=false]() mutable -> optional<T> {
+template<typename T> generator<T> generate1(T obj) {
+    return generator<T>([obj,done=false]() mutable -> optional<T> {
         if (done) {
             return { };
         }
@@ -151,10 +154,10 @@ template<typename T> Generator<T> generate1(T obj) {
     });
 }
 
-template<typename T, typename R> Generator<T> genIter(const R& iterable) {
+template<typename t, typename r> generator<t> gen_iter(const r& iterable) {
     auto it = iterable.begin();
     auto end = iterable.end();
-    return Generator([it,end]() mutable -> optional<T> {
+    return mk_generator([it,end]() mutable -> optional<t> {
             if (it == end) {
                 return { };
             }
