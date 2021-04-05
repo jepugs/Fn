@@ -9,12 +9,12 @@
 using namespace fn;
 using namespace fn_scan;
 
-static inline void testToken(const char* str, TokenKind k, int nth=0) {
+static inline void test_token(const char* str, token_kind k, int nth=0) {
     std::istringstream in(str);
-    auto sc = new Scanner(&in, "<test-input>");
-    auto tok = sc->nextToken();
+    auto sc = new scanner(&in, "<test-input>");
+    auto tok = sc->next_token();
     while (nth > 0) {
-        tok = sc->nextToken();
+        tok = sc->next_token();
         --nth;
     }
     BOOST_TEST(tok.tk == k);
@@ -22,57 +22,57 @@ static inline void testToken(const char* str, TokenKind k, int nth=0) {
     delete sc;
 }
 
-static inline void testNumToken(const char* str, f64 num, int nth=0) {
+static inline void test_num_token(const char* str, f64 num, int nth=0) {
     std::istringstream in(str);
-    auto sc = new Scanner(&in, "<test-input>");
-    auto tok = sc->nextToken();
+    auto sc = new scanner(&in, "<test-input>");
+    auto tok = sc->next_token();
     while (nth > 0) {
-        tok = sc->nextToken();
+        tok = sc->next_token();
         --nth;
     }
-    BOOST_TEST(tok.tk == TKNumber);
+    BOOST_TEST(tok.tk == tk_number);
     BOOST_TEST(tok.datum.num == num);
 
     delete sc;
 }
 
-static inline void testStrToken(const char* str, const char* cmp, int nth=0) {
+static inline void test_str_token(const char* str, const char* cmp, int nth=0) {
     std::istringstream in(str);
-    auto sc = new Scanner(&in, "<test-input>");
-    auto tok = sc->nextToken();
+    auto sc = new scanner(&in, "<test-input>");
+    auto tok = sc->next_token();
     while (nth > 0) {
-        tok = sc->nextToken();
+        tok = sc->next_token();
         --nth;
     }
-    BOOST_TEST(tok.tk == TKString);
+    BOOST_TEST(tok.tk == tk_string);
     BOOST_TEST(*tok.datum.str == cmp);
 
     delete sc;
 }
 
-static inline void testSymToken(const char* str, const char* cmp, int nth=0) {
+static inline void test_sym_token(const char* str, const char* cmp, int nth=0) {
     std::istringstream in(str);
-    auto sc = new Scanner(&in, "<test-input>");
-    auto tok = sc->nextToken();
+    auto sc = new scanner(&in, "<test-input>");
+    auto tok = sc->next_token();
     while (nth > 0) {
-        tok = sc->nextToken();
+        tok = sc->next_token();
         --nth;
     }
-    BOOST_TEST(tok.tk == TKSymbol);
+    BOOST_TEST(tok.tk == tk_symbol);
     BOOST_TEST(*tok.datum.str == cmp);
 
     delete sc;
 }
 
-static inline void testDotToken(const char* str, const char* cmp, int nth=0) {
+static inline void test_dot_token(const char* str, const char* cmp, int nth=0) {
     std::istringstream in(str);
-    auto sc = new Scanner(&in, "<test-input>");
-    auto tok = sc->nextToken();
+    auto sc = new scanner(&in, "<test-input>");
+    auto tok = sc->next_token();
     while (nth > 0) {
-        tok = sc->nextToken();
+        tok = sc->next_token();
         --nth;
     }
-    BOOST_TEST(tok.tk == TKDot);
+    BOOST_TEST(tok.tk == tk_dot);
     BOOST_TEST(*tok.datum.str == cmp);
 
     delete sc;
@@ -80,102 +80,102 @@ static inline void testDotToken(const char* str, const char* cmp, int nth=0) {
 
 
 BOOST_AUTO_TEST_CASE( token_test ) {
-    testToken("{", TKLBrace);
-    testToken("}", TKRBrace);
-    testToken("[", TKLBracket);
-    testToken("]", TKRBracket);
-    testToken("(", TKLParen);
-    testToken(")", TKRParen);
-    testToken("${", TKDollarBrace);
-    testToken("$[", TKDollarBracket);
-    testToken("$(", TKDollarParen);
-    testToken("$`", TKDollarBacktick);
-    testToken("'", TKQuote);
-    testToken("`", TKBacktick);
-    testToken(",", TKComma);
+    test_token("{", tk_lbrace);
+    test_token("}", tk_rbrace);
+    test_token("[", tk_lbracket);
+    test_token("]", tk_rbracket);
+    test_token("(", tk_lparen);
+    test_token(")", tk_rparen);
+    test_token("${", tk_dollar_brace);
+    test_token("$[", tk_dollar_bracket);
+    test_token("$(", tk_dollar_paren);
+    test_token("$`", tk_dollar_backtick);
+    test_token("'", tk_quote);
+    test_token("`", tk_backtick);
+    test_token(",", tk_comma);
 }
 
 BOOST_AUTO_TEST_CASE( num_token_test ) {
-    testNumToken("2", 2);
-    testNumToken("+2", 2);
-    testNumToken("-2.0", -2.0);
-    testNumToken("-2.0e2", -200.0);
-    testNumToken("+12.5e-2", 0.125);
-    testNumToken("+0.5e+2", 50);
-    testNumToken("0xef2bCa", 0xef2bCa);
-    testNumToken("0x1.2", 0x1.2P0);
-    testNumToken("0xa.b", 0xa.bP0);
-    testNumToken("0xB62.ba0", 0xB62.ba0P0);
+    test_num_token("2", 2);
+    test_num_token("+2", 2);
+    test_num_token("-2.0", -2.0);
+    test_num_token("-2.0e2", -200.0);
+    test_num_token("+12.5e-2", 0.125);
+    test_num_token("+0.5e+2", 50);
+    test_num_token("0xEF2BCA", 0xEF2BCA);
+    test_num_token("0x1.2", 0x1.2P0);
+    test_num_token("0xa.b", 0xa.bP0);
+    test_num_token("0xb62.ba0", 0xb62.ba0P0);
 }
 
 BOOST_AUTO_TEST_CASE( str_token_test ) { 
-    testStrToken("\"\"", "");
-    testStrToken("\"Hello, World!\"", "Hello, World!");
-    testStrToken("\"Hello,\n\tWorld!\"", "Hello,\n\tWorld!");
+    test_str_token("\"\"", "");
+    test_str_token("\"Hello, World!\"", "Hello, World!");
+    test_str_token("\"Hello,\n\t_world!\"", "Hello,\n\t_world!");
 
-    testStrToken("\"\\'\"", "'");
-    testStrToken("\"\\?\"", "\?");
-    testStrToken("\"\\\\\"", "\\");
-    testStrToken("\"\\\"\"", "\"");
-    testStrToken("\"\\a\"", "\a");
-    testStrToken("\"\\b\"", "\b");
-    testStrToken("\"\\f\"", "\f");
-    testStrToken("\"\\n\"", "\n");
-    testStrToken("\"\\r\"", "\r");
-    testStrToken("\"\\t\"", "\t");
-    testStrToken("\"\\v\"", "\v");
+    test_str_token("\"\\'\"", "'");
+    test_str_token("\"\\?\"", "\?");
+    test_str_token("\"\\\\\"", "\\");
+    test_str_token("\"\\\"\"", "\"");
+    test_str_token("\"\\a\"", "\a");
+    test_str_token("\"\\b\"", "\b");
+    test_str_token("\"\\f\"", "\f");
+    test_str_token("\"\\n\"", "\n");
+    test_str_token("\"\\r\"", "\r");
+    test_str_token("\"\\t\"", "\t");
+    test_str_token("\"\\v\"", "\v");
 }
 
 BOOST_AUTO_TEST_CASE( sym_token_test ) {
-    testSymToken("quote", "quote");
-    testSymToken("2\\.0", "2.0");
-    testSymToken("with\\ space", "with space");
-    testSymToken("\\e\\s\\c\\a\\p\\e\\!", "escape!");
+    test_sym_token("quote", "quote");
+    test_sym_token("2\\.0", "2.0");
+    test_sym_token("with\\ space", "with space");
+    test_sym_token("\\e\\s\\c\\a\\p\\e\\!", "escape!");
 }
 
 BOOST_AUTO_TEST_CASE( dot_token_test ) {
-    testDotToken("ns.fn.core", "ns.fn.core");
-    testDotToken("pk\\.g.m\\.od", "pk\\.g.m\\.od");
-    testDotToken("\\+2.0", "\\+2.0");
+    test_dot_token("ns.fn.core", "ns.fn.core");
+    test_dot_token("pk\\.g.m\\.od", "pk\\.g.m\\.od");
+    test_dot_token("\\+2.0", "\\+2.0");
 }
 
 
 BOOST_AUTO_TEST_CASE( displaced_token_test1 ) {
-    testToken("(def x 2) {", TKLBrace, 5);
-    testToken("(def x 2) }", TKRBrace, 5);
-    testToken("(def x 2) [", TKLBracket, 5);
-    testToken("(def x 2) ]", TKRBracket, 5);
-    testToken("(def x 2) (", TKLParen, 5);
-    testToken("(def x 2) )", TKRParen, 5);
-    testToken("(def x 2) ${", TKDollarBrace, 5);
-    testToken("(def x 2) $[", TKDollarBracket, 5);
-    testToken("(def x 2) $(", TKDollarParen, 5);
-    testToken("(def x 2) $`", TKDollarBacktick, 5);
-    testToken("(def x 2) '", TKQuote, 5);
-    testToken("(def x 2) `", TKBacktick, 5);
-    testToken("(def x 2) ,", TKComma, 5);
-    testToken("(def x 2) ,@", TKCommaSplice, 5);
+    test_token("(def x 2) {", tk_lbrace, 5);
+    test_token("(def x 2) }", tk_rbrace, 5);
+    test_token("(def x 2) [", tk_lbracket, 5);
+    test_token("(def x 2) ]", tk_rbracket, 5);
+    test_token("(def x 2) (", tk_lparen, 5);
+    test_token("(def x 2) )", tk_rparen, 5);
+    test_token("(def x 2) ${", tk_dollar_brace, 5);
+    test_token("(def x 2) $[", tk_dollar_bracket, 5);
+    test_token("(def x 2) $(", tk_dollar_paren, 5);
+    test_token("(def x 2) $`", tk_dollar_backtick, 5);
+    test_token("(def x 2) '", tk_quote, 5);
+    test_token("(def x 2) `", tk_backtick, 5);
+    test_token("(def x 2) ,", tk_comma, 5);
+    test_token("(def x 2) ,@", tk_comma_at, 5);
 
-    testNumToken("(def x 2) -1.8e4", -1.8e4, 5);
-    testStrToken("(def x 2) \"hi\\n\"", "hi\n", 5);
-    testSymToken("(def x 2) sym\\ ", "sym ", 5);
+    test_num_token("(def x 2) -1.8e4", -1.8e4, 5);
+    test_str_token("(def x 2) \"hi\\n\"", "hi\n", 5);
+    test_sym_token("(def x 2) sym\\ ", "sym ", 5);
 }
 
 BOOST_AUTO_TEST_CASE( displaced_token_test2 ) {
-    testToken("'quot 0xef \"stri\\ng\" null {", TKLBrace, 5);
-    testToken("'quot 0xef \"stri\\ng\" null }", TKRBrace, 5);
-    testToken("'quot 0xef \"stri\\ng\" null [", TKLBracket, 5);
-    testToken("'quot 0xef \"stri\\ng\" null ]", TKRBracket, 5);
-    testToken("'quot 0xef \"stri\\ng\" null (", TKLParen, 5);
-    testToken("'quot 0xef \"stri\\ng\" null )", TKRParen, 5);
-    testToken("'quot 0xef \"stri\\ng\" null ${", TKDollarBrace, 5);
-    testToken("'quot 0xef \"stri\\ng\" null $[", TKDollarBracket, 5);
-    testToken("'quot 0xef \"stri\\ng\" null $(", TKDollarParen, 5);
-    testToken("'quot 0xef \"stri\\ng\" null $`", TKDollarBacktick, 5);
-    testToken("'quot 0xef \"stri\\ng\" null '", TKQuote, 5);
-    testToken("'quot 0xef \"stri\\ng\" null `", TKBacktick, 5);
-    testToken("'quot 0xef \"stri\\ng\" null ,", TKComma, 5);
-    testToken("'quot 0xef \"stri\\ng\" null ,@", TKCommaSplice, 5);
+    test_token("'quot 0xef \"stri\\ng\" null {", tk_lbrace, 5);
+    test_token("'quot 0xef \"stri\\ng\" null }", tk_rbrace, 5);
+    test_token("'quot 0xef \"stri\\ng\" null [", tk_lbracket, 5);
+    test_token("'quot 0xef \"stri\\ng\" null ]", tk_rbracket, 5);
+    test_token("'quot 0xef \"stri\\ng\" null (", tk_lparen, 5);
+    test_token("'quot 0xef \"stri\\ng\" null )", tk_rparen, 5);
+    test_token("'quot 0xef \"stri\\ng\" null ${", tk_dollar_brace, 5);
+    test_token("'quot 0xef \"stri\\ng\" null $[", tk_dollar_bracket, 5);
+    test_token("'quot 0xef \"stri\\ng\" null $(", tk_dollar_paren, 5);
+    test_token("'quot 0xef \"stri\\ng\" null $`", tk_dollar_backtick, 5);
+    test_token("'quot 0xef \"stri\\ng\" null '", tk_quote, 5);
+    test_token("'quot 0xef \"stri\\ng\" null `", tk_backtick, 5);
+    test_token("'quot 0xef \"stri\\ng\" null ,", tk_comma, 5);
+    test_token("'quot 0xef \"stri\\ng\" null ,@", tk_comma_at, 5);
 }
 
 // TODO: test exceptions and I/O

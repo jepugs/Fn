@@ -16,31 +16,31 @@ string strip_escape_chars(const string& s);
 
 enum token_kind {
     // eof
-    t_ke_of,
+    tk_eof,
     // paired delimiters
-    t_kl_brace,
-    t_kr_brace,
-    t_kl_bracket,
-    t_kr_bracket,
-    t_kl_paren,
-    t_kr_paren,
+    tk_lbrace,
+    tk_rbrace,
+    tk_lbracket,
+    tk_rbracket,
+    tk_lparen,
+    tk_rparen,
     // dollar syntax
-    t_kdollar_brace,
-    t_kdollar_bracket,
-    t_kdollar_paren,
-    t_kdollar_backtick,
+    tk_dollar_brace,
+    tk_dollar_bracket,
+    tk_dollar_paren,
+    tk_dollar_backtick,
     // quotation
-    t_kquote,
-    t_kbacktick,
-    t_kcomma,
-    t_kcomma_splice,
+    tk_quote,
+    tk_backtick,
+    tk_comma,
+    tk_comma_at,
     // atoms
-    t_knumber,
-    t_kstring,
+    tk_number,
+    tk_string,
     // note: symbols may include dot characters
-    t_ksymbol,
+    tk_symbol,
     // obj.key dot form
-    t_kdot
+    tk_dot
 };
 
 union token_datum {
@@ -57,7 +57,7 @@ struct token {
     source_loc loc;
     token_datum datum;
 
-    token() : tk(t_ke_of), loc(""), datum({.nothing = nullptr}) { }
+    token() : tk(tk_eof), loc(""), datum({.nothing = nullptr}) { }
     token(token_kind tk, source_loc loc)
         : tk(tk)
         , loc(loc)
@@ -79,7 +79,7 @@ struct token {
         : tk(tok.tk)
         , loc(tok.loc)
     {
-        if (tk == t_kstring || tk == t_ksymbol || tk == t_kdot) {
+        if (tk == tk_string || tk == tk_symbol || tk == tk_dot) {
             datum.str = new string(*tok.datum.str);
         } else {
             datum = tok.datum;
@@ -89,13 +89,13 @@ struct token {
         if (this == &tok) return *this;
 
         // free old string if necessary
-        if (tk == t_kstring || tk == t_ksymbol || tk == t_kdot) {
+        if (tk == tk_string || tk == tk_symbol || tk == tk_dot) {
             delete datum.str;
         }
 
         this->tk = tok.tk;
         // copy new string if necessary
-        if (tk == t_kstring || tk == t_ksymbol || tk == t_kdot) {
+        if (tk == tk_string || tk == tk_symbol || tk == tk_dot) {
             datum.str = new string(*tok.datum.str);
         } else {
             this->datum = tok.datum;
@@ -105,49 +105,49 @@ struct token {
 
     ~token() {
         // must free the string used by symbols and string literals
-        if (tk == t_kstring || tk == t_ksymbol || tk == t_kdot)
+        if (tk == tk_string || tk == tk_symbol || tk == tk_dot)
             delete datum.str;
     }
 
     string to_string() const {
         switch (tk) {
-        case t_ke_of:
+        case tk_eof:
             return "e_of";
-        case t_kl_brace:
+        case tk_lbrace:
             return "{";
-        case t_kr_brace:
+        case tk_rbrace:
             return "}";
-        case t_kl_bracket:
+        case tk_lbracket:
             return "[";
-        case t_kr_bracket:
+        case tk_rbracket:
             return "]";
-        case t_kl_paren:
+        case tk_lparen:
             return "(";
-        case t_kr_paren:
+        case tk_rparen:
             return ")";
-        case t_kdollar_backtick:
+        case tk_dollar_backtick:
             return "$`";
-        case t_kdollar_brace:
+        case tk_dollar_brace:
             return "${";
-        case t_kdollar_bracket:
+        case tk_dollar_bracket:
             return "$[";
-        case t_kdollar_paren:
+        case tk_dollar_paren:
             return "$(";
-        case t_kquote:
+        case tk_quote:
             return "'";
-        case t_kbacktick:
+        case tk_backtick:
             return "`";
-        case t_kcomma:
+        case tk_comma:
             return ",";
-        case t_kcomma_splice:
+        case tk_comma_at:
             return ",@";
-        case t_knumber:
+        case tk_number:
             return std::to_string(this->datum.num);
-        case t_kstring:
+        case tk_string:
             // f_ix_me: this should probably do proper escaping
             return "\"" + *(this->datum.str) + "\"";
-        case t_ksymbol:
-        case t_kdot:
+        case tk_symbol:
+        case tk_dot:
             return *(this->datum.str);
         }
         // this is unreachable code to silence a compiler warning

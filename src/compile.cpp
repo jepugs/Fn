@@ -89,7 +89,7 @@ compiler::~compiler() {
 
 static inline bool is_right_delim(token tok) {
     auto tk = tok.tk;
-    return tk == t_kr_brace || tk == t_kr_bracket || tk == t_kr_paren;
+    return tk == tk_rbrace || tk == tk_rbracket || tk == tk_rparen;
 }
 
 // returns true when
@@ -98,7 +98,7 @@ static bool check_delim(token_kind expected, token tok) {
         return true;
     } else if (is_right_delim(tok)) {
         throw fn_error("compiler", "mismatched closing delimiter " + tok.to_string(), tok.loc);
-    } else if (tok.tk == t_ke_of) {
+    } else if (tok.tk == tk_eof) {
         throw fn_error("compiler", "encountered e_of while scanning", tok.loc);
     }
     return false;
@@ -150,7 +150,7 @@ void compiler::compile_var(locals* l, const string& name) {
     ++sp;
 }
 
-// helper function that converts the string from a t_kdot token to a vector consisting of the names
+// helper function that converts the string from a tk_dot token to a vector consisting of the names
 // of its parts.
 static inline vector<string> tokenize_dot_string(const string& s) {
     vector<string> res;
@@ -185,16 +185,16 @@ vector<string> compiler::tokenize_name(optional<token> t0) {
         tok = sc->next_token();
     }
 
-    if (tok.tk == t_ksymbol) {
+    if (tok.tk == tk_symbol) {
         vector<string> v;
         v.push_back(*tok.datum.str);
         return v;
     }
-    if (tok.tk == t_kdot) {
+    if (tok.tk == tk_dot) {
         return tokenize_dot_string(*tok.datum.str);
     }
 
-    if (tok.tk != t_kl_paren) {
+    if (tok.tk != tk_lparen) {
         // not a symbol or a dot form
         throw fn_error("compiler",
                       "name is not a symbol or a dot form: " + tok.to_string(),
@@ -202,7 +202,7 @@ vector<string> compiler::tokenize_name(optional<token> t0) {
     }
 
     tok = sc->next_token();
-    if (tok.tk != t_ksymbol || *tok.datum.str != "dot") {
+    if (tok.tk != tk_symbol || *tok.datum.str != "dot") {
         throw fn_error("compiler",
                       "name is not a symbol or a dot form",
                       tok.loc);
@@ -210,8 +210,8 @@ vector<string> compiler::tokenize_name(optional<token> t0) {
 
     vector<string> res;
     tok = sc->next_token();
-    while (!check_delim(t_kr_paren, tok)) {
-        if (tok.tk != t_ksymbol) {
+    while (!check_delim(tk_rparen, tok)) {
+        if (tok.tk != tk_symbol) {
             throw fn_error("compiler", "arguments to dot must be symbols.", tok.loc);
         }
         res.push_back(*tok.datum.str);
@@ -227,7 +227,7 @@ void compiler::compile_block(locals* l) {
     auto old_sp = sp;
     dest->write_byte(OP_NULL);
     ++sp;
-    if(check_delim(t_kr_paren, tok)) {
+    if(check_delim(tk_rparen, tok)) {
         // empty body yields a null value
         return;
     }
@@ -236,7 +236,7 @@ void compiler::compile_block(locals* l) {
     auto new_env = new locals(l);
 
     compile_expr(new_env, &tok);
-    while (!check_delim(t_kr_paren, tok = sc->next_token())) {
+    while (!check_delim(tk_rparen, tok = sc->next_token())) {
         dest->write_byte(OP_POP);
         --sp;
         compile_expr(new_env, &tok);
@@ -258,7 +258,7 @@ void compiler::compile_and(locals* l) {
     forward_list<bc_addr> patch_locs;
 
     auto tok = sc->next_token();
-    if(check_delim(t_kr_paren, tok)) {
+    if(check_delim(tk_rparen, tok)) {
         // and with no arguments yields a true value
         dest->write_byte(OP_TRUE);
         ++sp;
@@ -272,7 +272,7 @@ void compiler::compile_and(locals* l) {
     dest->write_byte(OP_CJUMP);
     dest->write_short(0);
     patch_locs.push_front(dest->get_size());
-    while (!check_delim(t_kr_paren, (tok=sc->next_token()))) {
+    while (!check_delim(tk_rparen, (tok=sc->next_token()))) {
         dest->write_byte(OP_POP);
         compile_expr(l, &tok);
         dest->write_byte(OP_COPY);
@@ -296,20 +296,20 @@ void compiler::compile_apply(locals* l) {
     auto old_sp = sp;
 
     auto tok = sc->next_token();
-    if (check_delim(t_kr_paren, tok)) {
+    if (check_delim(tk_rparen, tok)) {
         throw fn_error("compiler", "too few arguments to apply.", tok.loc);
     }
     compile_expr(l, &tok);
 
     tok = sc->next_token();
-    if (check_delim(t_kr_paren, tok)) {
+    if (check_delim(tk_rparen, tok)) {
         throw fn_error("compiler", "too few arguments to apply.", tok.loc);
     }
     u32 num_args = 0;
     do {
         ++num_args;
         compile_expr(l, &tok);
-    } while (!check_delim(t_kr_paren,tok=sc->next_token()));
+    } while (!check_delim(tk_rparen,tok=sc->next_token()));
     if (num_args > 255) {
         throw fn_error("compiler", "too many arguments to apply.", tok.loc);
     }
@@ -321,14 +321,14 @@ void compiler::compile_apply(locals* l) {
 
 void compiler::compile_cond(locals* l) {
     auto tok = sc->next_token();
-    if (check_delim(t_kr_paren, tok)) {
+    if (check_delim(tk_rparen, tok)) {
         dest->write_byte(OP_NULL);
         ++sp;
         return;
     }
     // locations where we need to patch the end address
     forward_list<bc_addr> patch_locs;
-    while (!check_delim(t_kr_paren, tok)) {
+    while (!check_delim(tk_rparen, tok)) {
         compile_expr(l,&tok);
         --sp;
         dest->write_byte(OP_CJUMP);
@@ -357,7 +357,7 @@ void compiler::compile_cond(locals* l) {
 // compile def expressions
 void compiler::compile_def(locals* l) {
     token tok = sc->next_token();
-    if (tok.tk != t_ksymbol) {
+    if (tok.tk != tk_symbol) {
         throw fn_error("compiler", "first argument to def must be a symbol.", tok.loc);
     }
     // t_od_o: check for legal symbols
@@ -376,7 +376,7 @@ void compiler::compile_def(locals* l) {
 
     // make sure there's a close paren
     token last = sc->next_token();
-    if (!check_delim(t_kr_paren, last)) {
+    if (!check_delim(tk_rparen, last)) {
         throw fn_error("compiler", "too many arguments to def", last.loc);
     }
 
@@ -401,11 +401,11 @@ void compiler::compile_dot_expr(locals* l) {
     vector<string> toks;
 
     auto tok = sc->next_token();
-    if (check_delim(t_kr_paren, tok)) {
+    if (check_delim(tk_rparen, tok)) {
         throw fn_error("compiler", "too few arguments to dot.", tok.loc);
     }
-    while (!check_delim(t_kr_paren, tok)) {
-        if (tok.tk != t_ksymbol) {
+    while (!check_delim(tk_rparen, tok)) {
+        if (tok.tk != tk_symbol) {
             throw fn_error("compiler", "arguments to dot must be symbols.", tok.loc);
         }
         toks.push_back(*tok.datum.str);
@@ -422,7 +422,7 @@ void compiler::compile_dot_expr(locals* l) {
 void compiler::compile_fn(locals* l) {
     // first, read all arguments and set up l
     token tok = sc->next_token();
-    if (tok.tk != t_kl_paren) {
+    if (tok.tk != tk_lparen) {
         throw fn_error("compiler", "second argument of fn must be an argument list.", tok.loc);
     }
 
@@ -440,8 +440,8 @@ void compiler::compile_fn(locals* l) {
     bool vararg = false;
     // t_od_o: add new function object
     // t_od_o: check args < 256
-    while (!check_delim(t_kr_paren, tok=sc->next_token())) {
-        if (tok.tk != t_ksymbol) {
+    while (!check_delim(tk_rparen, tok=sc->next_token())) {
+        if (tok.tk != tk_symbol) {
             throw fn_error("compiler", "argument names must be symbols.", tok.loc);
         }
         // & indicates a variadic argument
@@ -460,14 +460,14 @@ void compiler::compile_fn(locals* l) {
     if (vararg) {
         // check that we have a symbol for the variable name
         tok = sc->next_token();
-        if (tok.tk != t_ksymbol) {
+        if (tok.tk != tk_symbol) {
             throw fn_error("compiler", "argument names must be symbols.", tok.loc);
         }
         enclosed->vars.insert(*tok.datum.str, sp);
         ++sp;
 
         tok = sc->next_token();
-        if (!check_delim(t_kr_paren, tok)) {
+        if (!check_delim(tk_rparen, tok)) {
             throw fn_error("compiler",
                           "trailing tokens after variadic parameter in fn argument list.",
                           tok.loc);
@@ -518,7 +518,7 @@ void compiler::compile_if(locals* l) {
     dest->patch_short(else_addr - 2, dest->get_size() - else_addr);
 
     auto tok = sc->next_token();
-    if (!check_delim(t_kr_paren, tok)) {
+    if (!check_delim(tk_rparen, tok)) {
         throw fn_error("compiler", "too many arguments to if", tok.loc);
     }
 }
@@ -580,14 +580,14 @@ void compiler::compile_import(locals* l) {
     dest->write_byte(OP_SET_GLOBAL);
     ++sp;
 
-    if(!check_delim(t_kr_paren, tok=sc->next_token())) {
+    if(!check_delim(tk_rparen, tok=sc->next_token())) {
         throw fn_error("compiler", "too many arguments to import.", tok.loc);
     }
 }
 
 void compiler::compile_let(locals* l) {
     auto tok = sc->next_token();
-    if (check_delim(t_kr_paren, tok)) {
+    if (check_delim(tk_rparen, tok)) {
         throw fn_error("compiler", "too few arguments to let.", tok.loc);
     }
 
@@ -601,7 +601,7 @@ void compiler::compile_let(locals* l) {
     // t_od_o: check for duplicate variable names
     do {
         // t_od_o: islegalname
-        if (tok.tk != t_ksymbol) {
+        if (tok.tk != tk_symbol) {
             throw fn_error("compiler",
                           "illegal argument to let. variable name must be a symbol.",
                           tok.loc);
@@ -617,7 +617,7 @@ void compiler::compile_let(locals* l) {
         dest->write_byte(OP_SET_LOCAL);
         dest->write_byte(loc);
         --sp;
-    } while (!check_delim(t_kr_paren, tok=sc->next_token()));
+    } while (!check_delim(tk_rparen, tok=sc->next_token()));
 
     // return null
     dest->write_byte(OP_NULL);
@@ -628,7 +628,7 @@ void compiler::compile_or(locals* l) {
     forward_list<bc_addr> patch_locs;
 
     auto tok = sc->next_token();
-    if(check_delim(t_kr_paren, tok)) {
+    if(check_delim(tk_rparen, tok)) {
         // or with no arguments yields a false value
         dest->write_byte(OP_FALSE);
         ++sp;
@@ -644,7 +644,7 @@ void compiler::compile_or(locals* l) {
     dest->write_byte(OP_JUMP);
     dest->write_short(0);
     patch_locs.push_front(dest->get_size());
-    while (!check_delim(t_kr_paren, (tok=sc->next_token()))) {
+    while (!check_delim(tk_rparen, (tok=sc->next_token()))) {
         dest->write_byte(OP_POP);
         compile_expr(l, &tok);
         dest->write_byte(OP_COPY);
@@ -668,7 +668,7 @@ void compiler::compile_or(locals* l) {
 void compiler::compile_quote(locals* l, bool prefix) {
     auto tok = sc->next_token();
 
-    if(tok.tk != t_ksymbol) {
+    if(tok.tk != tk_symbol) {
         throw fn_error("compiler", "argument to quote must be a symbol.", tok.loc);
     }
 
@@ -676,7 +676,7 @@ void compiler::compile_quote(locals* l, bool prefix) {
     auto id = dest->sym_const(*tok.datum.str);
 
     // scan for the close paren unless we're using prefix notation
-    if (!prefix && !check_delim(t_kr_paren, tok=sc->next_token())) {
+    if (!prefix && !check_delim(tk_rparen, tok=sc->next_token())) {
         throw fn_error("compiler","too many arguments in quote form", tok.loc);
     }    dest->write_short(id);
     ++sp;
@@ -734,7 +734,7 @@ void compiler::compile_set(locals* l) {
         ++sp;
     }
 
-    if (!check_delim(t_kr_paren, tok=sc->next_token())) {
+    if (!check_delim(tk_rparen, tok=sc->next_token())) {
         throw fn_error("compiler", "too many arguments to set.", tok.loc);
     }
 }
@@ -747,7 +747,7 @@ void compiler::compile_braces(locals* l) {
     // compile the arguments
     auto tok = sc->next_token();
     u32 num_args = 0;
-    while (!check_delim(t_kr_brace, tok)) {
+    while (!check_delim(tk_rbrace, tok)) {
         compile_expr(l,&tok);
         ++num_args;
         tok = sc->next_token();
@@ -771,7 +771,7 @@ void compiler::compile_brackets(locals* l) {
     // compile the arguments
     auto tok = sc->next_token();
     u32 num_args = 0;
-    while (!check_delim(t_kr_bracket, tok)) {
+    while (!check_delim(tk_rbracket, tok)) {
         compile_expr(l,&tok);
         ++num_args;
         tok = sc->next_token();
@@ -796,7 +796,7 @@ void compiler::compile_call(locals* l, token* t0) {
 
     // now, compile the arguments
     u32 num_args = 0;
-    while (!check_delim(t_kr_paren, tok=sc->next_token())) {
+    while (!check_delim(tk_rparen, tok=sc->next_token())) {
         ++num_args;
         compile_expr(l, &tok);
     }
@@ -823,24 +823,24 @@ void compiler::compile_expr(locals* l, token* t0) {
     }
 
     switch (tok.tk) {
-    case t_ke_of:
+    case tk_eof:
         // just exit
         return;
 
     // constants
-    case t_knumber:
+    case tk_number:
         id = dest->num_const(tok.datum.num);
         constant(id);
         sp++;
         break;
-    case t_kstring:
+    case tk_string:
         id = dest->sym_const(*tok.datum.str);
         constant(id);
         sp++;
         break;
 
     // symbol dispatch
-    case t_ksymbol:
+    case tk_symbol:
         if (*tok.datum.str == "null") {
             dest->write_byte(OP_NULL);
             sp++;
@@ -855,42 +855,42 @@ void compiler::compile_expr(locals* l, token* t0) {
         }
         break;
 
-    case t_kdot:
+    case tk_dot:
         compile_dot_token(l,tok);
         break;
 
-    case t_kl_brace: 
+    case tk_lbrace: 
         compile_braces(l);
         break;
-    case t_kl_bracket:
+    case tk_lbracket:
         compile_brackets(l);
         break;
 
-    case t_kdollar_brace:
-    case t_kdollar_bracket:
-    case t_kdollar_paren:
-    case t_kdollar_backtick:
+    case tk_dollar_brace:
+    case tk_dollar_bracket:
+    case tk_dollar_paren:
+    case tk_dollar_backtick:
         throw fn_error("compiler", "unimplemented syntax: '" + tok.to_string() + "'.", tok.loc);
         break;
 
-    case t_kquote:
+    case tk_quote:
         compile_quote(l, true);
         break;
 
-    case t_kbacktick:
+    case tk_backtick:
         throw fn_error("compiler", "unimplemented syntax: '" + tok.to_string() + "'.", tok.loc);
         break;
-    case t_kcomma:
+    case tk_comma:
         throw fn_error("compiler", "unimplemented syntax: '" + tok.to_string() + "'.", tok.loc);
         break;
-    case t_kcomma_splice:
+    case tk_comma_at:
         throw fn_error("compiler", "unimplemented syntax: '" + tok.to_string() + "'.", tok.loc);
         break;
 
     // parentheses
-    case t_kl_paren:
+    case tk_lparen:
         next = sc->next_token();
-        if (next.tk == t_ksymbol) {
+        if (next.tk == tk_symbol) {
             string* op = next.datum.str;
             if (*op == "and") {
                 compile_and(l);
@@ -938,7 +938,7 @@ void compiler::compile_expr(locals* l, token* t0) {
 
 void compiler::compile() {
     token tok = sc->next_token();
-    while (tok.tk != t_ke_of) {
+    while (tok.tk != tk_eof) {
         compile_expr(nullptr, &tok);
         tok = sc->next_token();
         dest->write_byte(OP_POP);

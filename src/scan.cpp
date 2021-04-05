@@ -114,32 +114,32 @@ token scanner::next_token() {
 
         // paired delimiters
         case '{':
-            return make_token(t_kl_brace);
+            return make_token(tk_lbrace);
         case '}':
-            return make_token(t_kr_brace);
+            return make_token(tk_rbrace);
         case '[':
-            return make_token(t_kl_bracket);
+            return make_token(tk_lbracket);
         case ']':
-            return make_token(t_kr_bracket);
+            return make_token(tk_rbracket);
         case '(':
-            return make_token(t_kl_paren);
+            return make_token(tk_lparen);
         case ')':
-            return make_token(t_kr_paren);
+            return make_token(tk_rparen);
 
         // quotation
         case '\'':
-            return make_token(t_kquote);
+            return make_token(tk_quote);
         case '`':
-            return make_token(t_kbacktick);
+            return make_token(tk_backtick);
         case ',':
             // check if next character is @
             // i_mp_ln_ot_e: an e_of at this point would be a syntax error, but we let it slide up to the
             // parser for the sake of better error generation
             if (!eof() && peek_char() == '@') {
                 get_char();
-                return make_token(t_kcomma_splice);
+                return make_token(tk_comma_at);
             } else {
-                return make_token(t_kcomma);
+                return make_token(tk_comma);
             }
 
         // dollar sign
@@ -153,16 +153,16 @@ token scanner::next_token() {
             c = peek_char();
             switch (c) {
             case '`':
-                return make_token(t_kdollar_backtick);
+                return make_token(tk_dollar_backtick);
                 break;
             case '{':
-                return make_token(t_kdollar_brace);
+                return make_token(tk_dollar_brace);
                 break;
             case '[':
-                return make_token(t_kdollar_bracket);
+                return make_token(tk_dollar_bracket);
                 break;
             case '(':
-                return make_token(t_kdollar_paren);
+                return make_token(tk_dollar_paren);
                 break;
             }
             break;
@@ -178,7 +178,7 @@ token scanner::next_token() {
         }
     }
     // if we get here, we encountered e_of
-    return make_token(t_ke_of);
+    return make_token(tk_eof);
 }
 
 string strip_escape_chars(const string& s) {
@@ -357,7 +357,7 @@ token scanner::scan_sym_or_num(char first) {
     // t_od_o: rather than rely on stod, we shoud probably use our own number scanner
     auto d = parse_num(buf);
     if (d.has_value()) {
-        return make_token(t_knumber, *d);
+        return make_token(tk_number, *d);
     }
 
     if (buf[buf.size()-1] == '.') {
@@ -366,10 +366,10 @@ token scanner::scan_sym_or_num(char first) {
 
     string s(buf.data(),buf.size());
     if (dot) {
-        return make_token(t_kdot, s);
+        return make_token(tk_dot, s);
     }
 
-    return make_token(t_ksymbol, strip_escape_chars(s));
+    return make_token(tk_symbol, strip_escape_chars(s));
 }
 
 token scanner::scan_string_literal() {
@@ -384,7 +384,7 @@ token scanner::scan_string_literal() {
         c = get_char();
     }
 
-    return make_token(t_kstring, string(buf.data(),buf.size()));
+    return make_token(tk_string, string(buf.data(),buf.size()));
 }
 
 char scanner::get_string_escape_char() {
