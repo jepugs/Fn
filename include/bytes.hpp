@@ -1,6 +1,6 @@
 // bytecode definitions
-#ifndef __f_n_b_yt_es_h_pp
-#define __f_n_b_yt_es_h_pp
+#ifndef __FN_BYTES_HPP
+#define __FN_BYTES_HPP
 
 #include "base.hpp"
 #include "vm.hpp"

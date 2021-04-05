@@ -1,5 +1,5 @@
-#ifndef __f_n_g_en_er_at_or_h_pp
-#define __f_n_g_en_er_at_or_h_pp
+#ifndef __FN_GENERATOR_HPP
+#define __FN_GENERATOR_HPP
 
 #include "base.hpp"
 

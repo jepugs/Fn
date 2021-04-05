@@ -1,5 +1,5 @@
-#ifndef __f_n_c_om_pi_le_h_pp
-#define __f_n_c_om_pi_le_h_pp
+#ifndef __FN_COMPILE_HPP
+#define __FN_COMPILE_HPP
 
 #include <filesystem>
 

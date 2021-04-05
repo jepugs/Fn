@@ -1,6 +1,6 @@
 // init.hpp -- initialization routines for the virtual_machine
-#ifndef __f_n_i_ni_t_h_pp
-#define __f_n_i_ni_t_h_pp
+#ifndef __FN_INIT_HPP
+#define __FN_INIT_HPP
 
 #include "vm.hpp"
 

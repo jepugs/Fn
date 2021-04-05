@@ -1,7 +1,7 @@
 // values.hpp -- utility functions for working with fn values
 
-#ifndef __f_n_v_al_ue_s_h_pp
-#define __f_n_v_al_ue_s_h_pp
+#ifndef __FN_VALUES_HPP
+#define __FN_VALUES_HPP
 
 #include "base.hpp"
 #include "table.hpp"

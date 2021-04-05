@@ -1,5 +1,5 @@
-#ifndef __f_n_s_ca_n_h_pp
-#define __f_n_s_ca_n_h_pp
+#ifndef __FN_SCAN_HPP
+#define __FN_SCAN_HPP
 
 #include "base.hpp"
 
