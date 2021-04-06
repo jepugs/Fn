@@ -3,6 +3,7 @@ add_library(fn_lib OBJECT
             bytes.cpp
             compile.cpp
             init.cpp
+            parse.cpp
             scan.cpp
             values.cpp
             vm.cpp
