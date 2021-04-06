@@ -20,6 +20,9 @@ template<class T> using optional = std::optional<T>;
 template<class T> using vector = std::vector<T>;
 using string = std::string;
 
+template<class T> using shared_ptr = std::shared_ptr<T>;
+template<class T> using unique_ptr = std::unique_ptr<T>;
+
 /// integer/float typedefs by bitwidth
 typedef uint8_t u8;
 typedef uint16_t u16;

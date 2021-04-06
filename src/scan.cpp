@@ -48,8 +48,8 @@ static inline bool is_digit(char c, u32 base=10) {
     if (c >= '0' && c <= max_digit) {
         return true;
     }
-    char max_cap = 'a' + base - 11;
-    if (c >= 'a' && c <= max_cap) {
+    char max_cap = 'A' + base - 11;
+    if (c >= 'A' && c <= max_cap) {
         return true;
     }
     char max_low = 'a' + base - 11;
@@ -59,14 +59,15 @@ static inline bool is_digit(char c, u32 base=10) {
     return false;
 }
 
-// get the value of a number/letter as an integer (e.g. '7'->7, 'b'->11)
+// get the value of a number/letter as an integer (e.g. '7'->7, 'b'->11). Gives
+// junk on anything other than numerals or latin letters.
 static inline i32 digit_val(char c) {
-    if (c <= 'a') {
+    if (c <= '9') {
         // number
         return c - '0';
     } else if (c < 'a') {
         // capital letter
-        return c - 'a' + 10;
+        return c - 'A' + 10;
     } else {
         // lowercase letter
         return c - 'a' + 10;
@@ -133,8 +134,9 @@ token scanner::next_token() {
             return make_token(tk_backtick);
         case ',':
             // check if next character is @
-            // i_mp_ln_ot_e: an e_of at this point would be a syntax error, but we let it slide up to the
-            // parser for the sake of better error generation
+            // IMPLNOTE: an EOF at this point would be a syntax error, but we
+            // let it slide up to the parser for the sake of better error
+            // generation
             if (!eof() && peek_char() == '@') {
                 get_char();
                 return make_token(tk_comma_at);
@@ -324,7 +326,7 @@ token scanner::scan_sym_or_num(char first) {
     char c;
     while(true) {
         if (escaped) {
-            // i_mp_ln_ot_e: this throws an exception at e_of, which is the desired behavior
+            // IMPLNOTE: this throws an exception at EOF, which is the desired behavior
             buf.push_back(get_char());
             escaped = false;
             continue;
@@ -354,7 +356,7 @@ token scanner::scan_sym_or_num(char first) {
     }
 
 
-    // t_od_o: rather than rely on stod, we shoud probably use our own number scanner
+    // TODO: rather than rely on stod, we shoud probably use our own number scanner
     auto d = parse_num(buf);
     if (d.has_value()) {
         return make_token(tk_number, *d);
