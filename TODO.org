@@ -1,0 +1,41 @@
+* Fn To-Do List
+
+** Refactoring
+
+Source code changes which involve renaming or restructuring parts of the
+program. Most of these are due to me not understanding C++.
+  
+- [ ] Make constructors explicit
+- [ ] Check all smart pointer uses for correctness
+- [ ] Replace scanner exceptions with error tokens
+- [ ] Replace parser exceptions with error forms
+- [ ] Runtime errors are still generated via exceptions
+
+** Testing
+
+Unit tests and integration tests that need to be written or changed.
+
+- [ ] parser unit tests
+- [ ] value manipulation unit tests
+- [ ] virtual machine manipulation unit tests
+- [ ] virtual machine dispatch unit tests
+
+** Features/Changes
+
+Big things I gotta do.
+
+- [ ] Replace token compiler with ast compiler
+- [ ] Implement macros
+- [ ] Default namespace configuration
+- [ ] Import behavior
+- [ ] Built-in functions
+- [ ] Change namespace mutability rules
+
+** Documentation
+
+Documentation that's gotta be written.
+
+- [ ] Full spec for lexical analysis
+- [ ] Full spec for parser
+- [ ] Data model/built-in structures
+- [ ] Technical description of VM incl table of opcodes.
