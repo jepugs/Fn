@@ -310,28 +310,65 @@ Fixnum and bigint data types
 Array data type (efficient random access)
 
 
-* Variable Environments
+* Variable and Namespaces
 
-The variable environment (of an expression) is the collection of all variables
-accessible to that expression. A variable environment consists of two pieces, a
-*namespace* and a *local environment*. When a variable expression is evaluated,
-the local environment is searched first, and if no matching binding is found,
-then the namespace is searched.
+For our purposes, a *variable* is a place to hold a value which is named by an
+identifier. Variables are defined through dedicated language facilities, and
+their values may be recalled using their names.
 
-Both namespaces and local environments are essentially key-value stores
-associating symbols to objects. Namespaces, however, are first-class objects
-which may be directly passed around and manipulated. On the other hand, local
-environments may only be manipulated via dedicated language primitives.
+** Global Variables
 
-From the perspective of a given expression, the local environment is a flat
-key-value store, however because Fn is lexically scoped, there exists a natural
-hierarchical interpretation of the local environment, with the top of the
-hierarchy is the namespace and each level of lexical scope adds one more level
-to the hierarchy.
+Global variables may be defined or accessed at any point in the program source.
+A runtime error occurs if an attempt is made to access a global variable before
+its definition.
 
-Per the usual lexical scoping rules, if there is a name collision between two
-variables the definition which is deeper in the hierarchy will *shadow* the
-previous one until it leaves scope.
+Global variables are created using the ~def~ special operator.
+
+Global variables are stored in namespaces. Namespaces exist in a global
+hierarchy which is accessible at runtime using the special global variable ~ns~.
+See [[Namespace Loading]] for details.
+
+At any given expression in an Fn program, there is understood to be a single
+active global namespace. References to global variables made in the expression
+are resolved in this namespace.
+
+** Local Variables and Shadowing
+
+Local variables in Fn are managed using the lexical scope semantics typical of
+modern programming languages. Local variables may be introduced using the
+special operators ~with~ or ~let~. We say a local variable is "in scope" if it is
+accessible from a given lexical context in source code (so global variables are
+always in scope).
+
+If there are multiple local variables in scope with the same name, then the
+variable introduced at the deepest level takes precedent, (rendering those
+higher up in scope temporarily inaccessible).
+
+** Namespace Loading
+
+Namespace loading is the process of importing a namespace from an external
+source. This is done using the ~import~ operator.
+
+All loaded namespaces are identified by a unique import-designator, determined
+on initial import. Successive uses of ~import~ with the same designator (or the
+same file name) will not trigger namespace loading.
+
+A file name is provided to ~import~, either as a string or a dot-delimited path
+name. (In the latter case, there is an implied ".fn" file extension which is not
+typed). The following occurs:
+- Find the file by checking directories in the search path (see [[Search Path]]),
+  signaling an error if no match is found.
+- Evaluate the contents of the file, saving its global namespace.
+- Insert the namespace into the "ns" object.
+- Create a global variable bound to the imported namespace
+
+*** Search Path
+
+The search path is, by default: "~/.local/lib/fn", "/usr/local/lib/fn",
+"/usr/lib/fn" in that order.
+
+String filenames are always resolved relative to the directory containing the
+file, (so absolute paths can be provided by beginning the path name with a "/").
 
 ** [Future Addition] Dynamically-scoped variables
 
@@ -593,12 +630,30 @@ test-expr ::= expr
 Evaluates test-expr. If the result is logically true, returns the value of the
 second argument, otherwise returns the value of the final argument.
 
-*** TODO import
+*** import
 Syntax:
 #+begin_src
-import-expr ::= "(" "import" ( filename | dot-expr ) ")"
-filename ::= string
+import-expr ::= "(" "import" import-designator [identifier]
+                    [import-designator] ")"
+import-designator ::= dot-expr | string | symbol
 #+end_src
+
+Load a namespace and bind it to a global variable. If an identifier is provided,
+then that name is used. Otherwise, the variable name is chosen based upon the
+kind of import-designator provided:
+- if it is a dot form, then the last key in the dot form is used (e.g. ~pkg.lib~
+  would give a variable name ~lib~).
+- if it is a symbol, the symbol itself is used
+- if it is a string, then the stem of the filename is converted to a symbol and
+  then used
+
+In addition, if the special identifier ~_~ is used, then no variable is created
+(but namespace loading will still occur).
+
+Specifying a second import designator allows the position in ns object to be
+controlled.
+
+See [[Namespace Loading]] for information about how files are located.
 
 *** fn
 Syntax:
