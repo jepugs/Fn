@@ -10,10 +10,12 @@ namespace fn_parse {
 using namespace fn;
 using namespace fn_scan;
 
+// note: ak_error currently unused. In the future it will be associated with a
+// string
 enum ast_kind {
     ak_atom,
+    ak_error,
     ak_list
-    // TODO: introduce ak_error type to indicate a parse error
 };
 
 enum atom_type {
@@ -32,6 +34,7 @@ struct ast_atom  {
 
     ast_atom(f64 num);
     ast_atom(const fn_string& str);
+    ast_atom(fn_string&& str);
     ast_atom(const symbol& sym);
 
     // copy constructor
@@ -54,9 +57,12 @@ struct ast_node {
         vector<ast_node*>* list;
     } datum;
 
+    ast_node(const source_loc& loc); // makes an error node
     ast_node(const ast_atom& at, const source_loc& loc);
     // the vector here is copied
     ast_node(const vector<ast_node*>& list, const source_loc& loc);
+
+    string as_string(const symbol_table* symtab);
 
     ~ast_node();
 };

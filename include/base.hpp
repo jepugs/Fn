@@ -69,23 +69,23 @@ struct source_loc {
     source_loc(string* filename, int line=1, int col=1)
         : filename(new string(*filename))
         , line(line)
-        , col(col)
-    { }
+        , col(col) {
+    }
     source_loc(const char* filename, int line=1, int col=1)
         : filename(new string(filename))
         , line(line)
-        , col(col)
-    { }
+        , col(col) {
+    }
     source_loc(const std::shared_ptr<string>& filename, int line, int col)
         : filename(filename)
         , line(line)
-        , col(col)
-    { }
+        , col(col) {
+    }
     source_loc(const source_loc& loc)
         : filename(loc.filename)
         , line(loc.line)
-        , col(loc.col)
-    { }
+        , col(loc.col) {
+    }
 };
 
 class fn_error : public std::exception {
@@ -102,8 +102,7 @@ class fn_error : public std::exception {
     fn_error(const string& subsystem, const string& message, const source_loc& origin)
         : subsystem(subsystem)
         , message(message)
-        , origin(origin)
-    {
+        , origin(origin) {
         // build formatted error message
         std::ostringstream ss;
         ss << "[" + subsystem + "] error at line " << origin.line << ",col " << origin.col

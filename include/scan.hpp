@@ -47,7 +47,9 @@ union token_datum {
     // used for numbers. this better be 64 bits.
     f64 num;
     // used for string literals and symbol names
-    string *str;
+    string* str;
+    // used for dots
+    vector<string>* ids;
     // placeholder null pointer for other token types
     void *nothing;
 };
@@ -61,26 +63,31 @@ struct token {
     token(token_kind tk, source_loc loc)
         : tk(tk)
         , loc(loc)
-        , datum({.nothing = nullptr})
-    { }
+        , datum({.nothing = nullptr}) {
+    }
     token(token_kind tk, source_loc loc, double num)
         : tk(tk)
         , loc(loc)
-        , datum({.num = num})
-    { }
+        , datum({.num = num}) {
+    }
     token(token_kind tk, source_loc loc, const string& str)
         : tk(tk)
         , loc(loc)
-        , datum({.str = new string(str)})
-    { }
+        , datum({.str = new string(str)}) {
+    }
+    token(token_kind tk, source_loc loc, const vector<string>& ids)
+        : tk(tk)
+        , loc(loc)
+        , datum({.ids = new vector<string>(ids)}) {
+    }
 
-    // f_ix_me: it's probably inefficient to copy the whole darn string in the copy constructor/operator
     token(const token& tok)
         : tk(tok.tk)
-        , loc(tok.loc)
-    {
-        if (tk == tk_string || tk == tk_symbol || tk == tk_dot) {
+        , loc(tok.loc) {
+        if (tk == tk_string || tk == tk_symbol) {
             datum.str = new string(*tok.datum.str);
+        } else if (tk == tk_dot) {
+            datum.ids = new vector<string>(*tok.datum.ids);
         } else {
             datum = tok.datum;
         }
@@ -89,14 +96,18 @@ struct token {
         if (this == &tok) return *this;
 
         // free old string if necessary
-        if (tk == tk_string || tk == tk_symbol || tk == tk_dot) {
+        if (tk == tk_string || tk == tk_symbol) {
             delete datum.str;
+        } else if (tk == tk_dot) {
+            delete datum.ids;
         }
 
         this->tk = tok.tk;
         // copy new string if necessary
-        if (tk == tk_string || tk == tk_symbol || tk == tk_dot) {
+        if (tk == tk_string || tk == tk_symbol) {
             datum.str = new string(*tok.datum.str);
+        } else if (tk == tk_dot) {
+            datum.ids = new vector<string>(*tok.datum.ids);
         } else {
             this->datum = tok.datum;
         }
@@ -105,8 +116,11 @@ struct token {
 
     ~token() {
         // must free the string used by symbols and string literals
-        if (tk == tk_string || tk == tk_symbol || tk == tk_dot)
+        if (tk == tk_string || tk == tk_symbol) {
             delete datum.str;
+        } else if (tk == tk_dot) {
+            delete datum.ids;
+        }
     }
 
     string to_string() const {
@@ -162,12 +176,11 @@ public:
         : input(in)
         , filename(new string(filename))
         , line(line)
-        , col(col)
-    { }
+        , col(col) {
+    }
     scanner(const string& filename)
         : line(1)
-        , col(0)
-    {
+        , col(0) {
         input = new std::ifstream(filename, std::ios_base::in);
         close_stream = true;
     }
@@ -190,10 +203,24 @@ private:
     void advance(char ch);
 
     // methods to scan variable-length tokens
+    token scan_atom(char first); // needs first character of the token
     token scan_sym_or_num(char first); // needs first character of the token
+    token scan_dot(string first); // needs first string of the token
     token scan_string_literal();
     // scan a string escape sequence and return the corresponding character
     char get_string_escape_char();
+
+    // Scanner state machine: these functions act as entry points for various
+    // points in a hand-programmed state machine that processes symbols,
+    // numbers, and dots. There are strict requirements on the situations in
+    // which these may be called. See src/scan.cpp for details.
+    token scan_num_state(vector<char>& buf, char first, int sign);
+    token scan_digit_state(vector<char>& buf,
+                           optional<char> first,
+                           int sign,
+                           u32 base);
+    token scan_frac_state(f64 integral, int sign, u32 base);
+    token scan_sym_state(vector<char>& buf);
 
     // tell if e_of has been reached
     bool eof();
@@ -202,9 +229,10 @@ private:
     char peek_char();
 
     // functions to make token objects with the proper location info
-    token make_token(token_kind tk);
-    token make_token(token_kind tk, string str);
-    token make_token(token_kind tk, double num);
+    token make_token(token_kind tk) const;
+    token make_token(token_kind tk, const string& str) const;
+    token make_token(token_kind tk, double num) const;
+    token make_token(token_kind tk, const vector<string>& ids) const;
 
     // throw an appropriate fn_error
     inline void error(const char* msg) {

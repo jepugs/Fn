@@ -216,9 +216,14 @@ struct alignas(32) fn_string {
     const u32 len;
     const char* data;
 
+    // these constructors copy data
     fn_string(const string& src, bool gc=false);
+    // src must be null terminated
     fn_string(const char* src, bool gc=false);
+    fn_string(const fn_string& src, bool gc=false);
     ~fn_string();
+
+    string as_string();
 
     bool operator==(const fn_string& s) const;
 };

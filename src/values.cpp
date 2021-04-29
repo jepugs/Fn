@@ -177,8 +177,7 @@ cons::cons(value head, value tail, bool gc)
 
 fn_string::fn_string(const string& src, bool gc)
     : h(as_value(this),gc)
-    , len(src.size())
-{
+    , len(src.size()) {
     auto v = new char[len+1];
     v[len] = '\0';
     std::memcpy(v, src.c_str(), len);
@@ -186,16 +185,27 @@ fn_string::fn_string(const string& src, bool gc)
 }
 fn_string::fn_string(const char* src, bool gc)
     : h(as_value(this),gc)
-    , len(string(src).size())
-{
+    , len(string(src).size()) {
     string s(src);
     auto v = new char[len+1];
     v[len] = '\0';
     std::memcpy(v, s.c_str(), len);
     data = v;
 }
+fn_string::fn_string(const fn_string& src, bool gc)
+    : h(as_value(this),gc)
+    , len(src.len) {
+    auto v = new char[len+1];
+    v[len] = '\0';
+    std::memcpy(v, src.data, len);
+    data = v;
+}
 fn_string::~fn_string() {
     delete[] data;
+}
+
+string fn_string::as_string() {
+    return string(data, len);
 }
 
 bool fn_string::operator==(const fn_string& s) const {

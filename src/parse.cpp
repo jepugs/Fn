@@ -15,15 +15,23 @@ ast_atom::ast_atom(const fn_string& str)
     datum.str = new fn_string(str);
 }
 
+ast_atom::ast_atom(fn_string&& str)
+    : type(at_string) {
+    datum.str = new fn_string(str);
+}
+
 ast_atom::ast_atom(const symbol& sym)
-    : type(at_number) {
+    : type(at_symbol) {
     datum.sym = sym.id;
 }
 
 ast_atom::ast_atom(const ast_atom& at)
-    : type(at.type) 
-    , datum(at.datum) {
-    datum = at.datum;
+    : type(at.type) {
+    if (type == at_string) {
+        datum.str = new fn_string(*at.datum.str);
+    } else {
+        datum = at.datum;
+    }
 }
 
 ast_atom::ast_atom(ast_atom&& at)
@@ -64,8 +72,14 @@ ast_atom& ast_atom::operator=(ast_atom&& at) {
 
 ast_atom::~ast_atom() {
     if (type == at_string) {
-        delete datum.str;
+        //delete datum.str;
     }
+}
+
+ast_node::ast_node(const source_loc& loc)
+    : loc{loc}
+    , kind{ak_error}
+    , datum{.atom = nullptr} {
 }
 
 ast_node::ast_node(const ast_atom& at, const source_loc& loc)
@@ -81,15 +95,53 @@ ast_node::ast_node(const vector<ast_node*>& list, const source_loc& loc)
 }
 
 ast_node::~ast_node() {
-    if (kind == ak_atom) {
+    switch (kind) {
+    case ak_atom:
         delete datum.atom;
-    } else {
+        break;
+    case ak_error:
+        break;
+    case ak_list:
         for (auto ptr : *datum.list) {
             delete ptr;
         }
         delete datum.list;
+        break;
     }
 }
+
+string ast_node::as_string(const symbol_table* symtab) {
+    string res = "";
+    switch (kind) {
+    case ak_atom:
+        switch (datum.atom->type) {
+        case at_number:
+            return std::to_string(datum.atom->datum.num);
+            break;
+        case at_string:
+            return "\"" + datum.atom->datum.str->as_string() + "\"";
+            break;
+        case at_symbol:
+            return (*symtab)[datum.atom->datum.sym].name;
+            break;
+        }
+        break;
+
+    case ak_list:
+        res = "(";
+        for (auto x : *datum.list) {
+            res = res + x->as_string(symtab) + " ";
+        }
+        res = res + ")";
+        break;
+
+    case ak_error:
+        break;
+    }
+
+    return res;
+}
+
 
 #define parse_error(msg, loc) throw fn_error("fn_parse", msg, loc)
 
@@ -107,11 +159,24 @@ void parse_to_delimiter(scanner* sc,
     }
 }
 
+void parse_prefix(scanner* sc,
+                  symbol_table* symtab,
+                  vector<ast_node*>& buf,
+                  const string& op,
+                  const source_loc& loc,
+                  optional<token> t0 = std::nullopt) {
+    buf.push_back(new ast_node(ast_atom(*(symtab->intern(op))),
+                               loc));
+    buf.push_back(parse_node(sc, symtab, t0));
+}
+
 ast_node* parse_node(scanner* sc, symbol_table* symtab, optional<token> t0) {
     auto tok = t0.has_value() ? *t0 : sc->next_token();
     ast_node* res = nullptr;
     string* str = tok.datum.str;
     vector<ast_node*> buf;
+
+    ast_atom at(1.0);
 
     switch (tok.tk) {
     case tk_eof:
@@ -121,6 +186,8 @@ ast_node* parse_node(scanner* sc, symbol_table* symtab, optional<token> t0) {
         res = new ast_node(ast_atom(tok.datum.num), tok.loc);
         break;
     case tk_string:
+        // at = ast_atom(fn_string(*str));
+        // res = new ast_node(at, tok.loc);
         res = new ast_node(ast_atom(fn_string(*str)), tok.loc);
         break;
     case tk_symbol:
@@ -135,8 +202,8 @@ ast_node* parse_node(scanner* sc, symbol_table* symtab, optional<token> t0) {
         parse_error("Unmatched delimiter ')'.", tok.loc);
         break;
     case tk_lbrace:
-        buf.push_back(new ast_node(ast_atom(*(*symtab).intern("Object")), tok.loc));
-        parse_to_delimiter(sc, symtab, buf, tk_rparen);
+        buf.push_back(new ast_node(ast_atom(*(*symtab).intern("Table")), tok.loc));
+        parse_to_delimiter(sc, symtab, buf, tk_rbrace);
         res = new ast_node(buf, tok.loc);
         break;
     case tk_rbrace:
@@ -144,7 +211,7 @@ ast_node* parse_node(scanner* sc, symbol_table* symtab, optional<token> t0) {
         break;
     case tk_lbracket:
         buf.push_back(new ast_node(ast_atom(*(*symtab).intern("List")), tok.loc));
-        parse_to_delimiter(sc, symtab, buf, tk_rparen);
+        parse_to_delimiter(sc, symtab, buf, tk_rbracket);
         res = new ast_node(buf, tok.loc);
         break;
     case tk_rbracket:
@@ -158,32 +225,41 @@ ast_node* parse_node(scanner* sc, symbol_table* symtab, optional<token> t0) {
         break;
 
     case tk_quote:
-        buf.push_back(new ast_node(ast_atom(*(*symtab).intern("quote")), tok.loc));
-        buf.push_back(parse_node(sc,symtab));
+        parse_prefix(sc, symtab, buf, "quote", tok.loc);
         res = new ast_node(buf, tok.loc);
         break;
     case tk_backtick:
-        buf.push_back(new ast_node(ast_atom(*(*symtab).intern("quasiquote")), tok.loc));
-        buf.push_back(parse_node(sc,symtab));
+        parse_prefix(sc, symtab, buf, "quasiquote", tok.loc);
         res = new ast_node(buf, tok.loc);
         break;
     case tk_comma:
-        buf.push_back(new ast_node(ast_atom(*(*symtab).intern("unquote")), tok.loc));
-        buf.push_back(parse_node(sc,symtab));
+        parse_prefix(sc, symtab, buf, "unquote", tok.loc);
         res = new ast_node(buf, tok.loc);
         break;
     case tk_comma_at:
-        buf.push_back(new ast_node(ast_atom(*(*symtab).intern("unquote-splicing")), tok.loc));
-        buf.push_back(parse_node(sc,symtab));
+        parse_prefix(sc, symtab, buf, "unquote-splicing", tok.loc);
         res = new ast_node(buf, tok.loc);
         break;
 
     case tk_dollar_backtick:
+        parse_prefix(sc, symtab, buf, "dollar-fn", tok.loc,
+                     token(tk_backtick, tok.loc));
+        res = new ast_node(buf, tok.loc);
+        break;
     case tk_dollar_brace:
+        parse_prefix(sc, symtab, buf, "dollar-fn", tok.loc,
+                     token(tk_lbrace, tok.loc));
+        res = new ast_node(buf, tok.loc);
+        break;
     case tk_dollar_bracket:
+        parse_prefix(sc, symtab, buf, "dollar-fn", tok.loc,
+                     token(tk_lbracket, tok.loc));
+        res = new ast_node(buf, tok.loc);
+        break;
     case tk_dollar_paren:
-        parse_error("Unimplemented syntax (token_kind = " + tok.tk + string(")"),
-                    tok.loc);
+        parse_prefix(sc, symtab, buf, "dollar-fn", tok.loc,
+                     token(tk_lparen, tok.loc));
+        res = new ast_node(buf, tok.loc);
         break;
     }
     return res;

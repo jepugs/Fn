@@ -15,6 +15,7 @@ program. Most of these are due to me not understanding C++.
 
 Unit tests and integration tests that need to be written or changed.
 
+- [ ] add memcheck to unit tests
 - [ ] parser unit tests
 - [ ] value manipulation unit tests
 - [ ] virtual machine manipulation unit tests

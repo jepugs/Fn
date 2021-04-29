@@ -2,6 +2,7 @@
 #include "bytes.hpp"
 #include "compile.hpp"
 #include "init.hpp"
+#include "parse.hpp"
 #include "scan.hpp"
 #include "table.hpp"
 #include "values.hpp"
@@ -41,6 +42,14 @@ void compile_string(virtual_machine* vm, const string& str) {
     fn_scan::scanner sc(&in, "<cmdline>");
     compiler c(fs::current_path(), code, &sc);
     c.compile();
+}
+
+void parse_string(const string& str) {
+    std::istringstream in(str);
+    fn_scan::scanner sc(&in, "<cmdline>");
+    symbol_table symtab;
+    auto ast = fn_parse::parse_node(&sc, &symtab);
+    std::cout << ast->as_string(&symtab) << "\n";
 }
 
 // t_od_o: add current path parameter
@@ -109,47 +118,59 @@ int main(int argc, char** argv) {
         inter = true;
     }
 
-
-    virtual_machine vm;
-    init(&vm);
+    // ignore everything and just do some parsing
     for (auto s : evals) {
         if (s[0] == 's') {
-            compile_string(&vm, s.substr(1));
+            parse_string(s.substr(1));
         } else {
-            if (compile_file(&vm, s.substr(1)) == -1) {
-                // exit on error; error message should already be printed
-                return -1;
-            }
+            // if (compile_file(&vm, s.substr(1)) == -1) {
+            //     // exit on error; error message should already be printed
+            //     return -1;
+            // }
         }
     }
 
-    if (dis) {
-        // disassembly mode
-        auto code = vm.get_bytecode();
-        disassemble(*code, std::cout);
-        return 0;
-    }
 
-    // time to actually run the vm
-    vm.execute();
+    // virtual_machine vm;
+    // init(&vm);
+    // for (auto s : evals) {
+    //     if (s[0] == 's') {
+    //         compile_string(&vm, s.substr(1));
+    //     } else {
+    //         if (compile_file(&vm, s.substr(1)) == -1) {
+    //             // exit on error; error message should already be printed
+    //             return -1;
+    //         }
+    //     }
+    // }
 
-    // f_ix_me: for now we print out the last value, but we probably really shouldn't
-    std::cout << v_to_string(vm.last_pop(),vm.get_bytecode()->get_symbols()) << endl;
+    // if (dis) {
+    //     // disassembly mode
+    //     auto code = vm.get_bytecode();
+    //     disassemble(*code, std::cout);
+    //     return 0;
+    // }
 
-    // do the repl if necessary
-    if (inter) {
-        string line;
-        while (!std::cin.eof()) {
-            std::cout << "fn> ";
-            std::getline(std::cin, line);
-            compile_string(&vm, line);
-            vm.execute();
-            // print value
-            std::cout << v_to_string(vm.last_pop(),vm.get_bytecode()->get_symbols()) << endl;
-        }
-    }
+    // // time to actually run the vm
+    // vm.execute();
 
-    vm.get_alloc()->print_status();
+    // // f_ix_me: for now we print out the last value, but we probably really shouldn't
+    // std::cout << v_to_string(vm.last_pop(),vm.get_bytecode()->get_symbols()) << endl;
+
+    // // do the repl if necessary
+    // if (inter) {
+    //     string line;
+    //     while (!std::cin.eof()) {
+    //         std::cout << "fn> ";
+    //         std::getline(std::cin, line);
+    //         compile_string(&vm, line);
+    //         vm.execute();
+    //         // print value
+    //         std::cout << v_to_string(vm.last_pop(),vm.get_bytecode()->get_symbols()) << endl;
+    //     }
+    // }
+
+    // vm.get_alloc()->print_status();
     //std::cout << "ip = " << vm.get_ip() << endl;
     //std::cout << show_value(vm.get_global("y")) << endl;
     return 0;

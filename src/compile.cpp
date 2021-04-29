@@ -58,15 +58,12 @@ u8 locals::add_upvalue(u32 levels, u8 pos) {
 }
 
 static inline bool is_legal_name(const string& str) {
-    if (str == "and" || str == "cond" || str == "def" || str == "def*" || str == "defmacro"
-        || str == "defsym" || str == "do" || str == "dollar-fn" || str == "dot" || str == "fn"
-        || str == "if" || str == "import" || str == "let" || str == "macrolet" || str == "or"
-        || str == "quasi-quote" || str == "quote" || str == "set" || str == "symlet"
-        || str == "unquote" || str == "unquote-splicing"
-        || str == "null" || str == "false" || str == "true" || str == "ns" || str == "&") {
-        return false;
-    }
-    return true;
+    return !(str == "and" || str == "cond" || str == "def" || str == "def*" || str == "defmacro"
+             || str == "defsym" || str == "do" || str == "dollar-fn" || str == "dot" || str == "fn"
+             || str == "if" || str == "import" || str == "let" || str == "macrolet" || str == "or"
+             || str == "quasi-quote" || str == "quote" || str == "set" || str == "symlet"
+             || str == "unquote" || str == "unquote-splicing" || str == "null"
+             || str == "false" || str == "true" || str == "ns" || str == "&");
 }
 
 compiler::compiler(const fs::path& dir, bytecode* dest, scanner* sc)
@@ -84,7 +81,7 @@ compiler::compiler(const fs::path& dir, bytecode* dest, scanner* sc)
 }
 
 compiler::~compiler() {
-    // t_od_o: free locals at least or something
+    // TODO: free locals at least or something
 }
 
 static inline bool is_right_delim(token tok) {
