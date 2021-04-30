@@ -126,7 +126,7 @@ struct token {
     string to_string() const {
         switch (tk) {
         case tk_eof:
-            return "e_of";
+            return "EOF";
         case tk_lbrace:
             return "{";
         case tk_rbrace:
@@ -204,27 +204,25 @@ private:
 
     // methods to scan variable-length tokens
     token scan_atom(char first); // needs first character of the token
-    token scan_sym_or_num(char first); // needs first character of the token
-    token scan_dot(string first); // needs first string of the token
     token scan_string_literal();
     // scan a string escape sequence and return the corresponding character
     char get_string_escape_char();
 
-    // Scanner state machine: these functions act as entry points for various
-    // points in a hand-programmed state machine that processes symbols,
-    // numbers, and dots. There are strict requirements on the situations in
-    // which these may be called. See src/scan.cpp for details.
-    token scan_num_state(vector<char>& buf, char first, int sign);
-    token scan_digit_state(vector<char>& buf,
-                           optional<char> first,
-                           int sign,
-                           u32 base);
-    token scan_frac_state(f64 integral, int sign, u32 base);
-    token scan_sym_state(vector<char>& buf);
+    // Scanning utility methods. Fn's scanner is basically modeled after a state
+    // machine, but it is hand-written. Unfortunately, to avoid backtracking,
+    // this leads to some very opaque and repetitive code.
+    void scan_to_dot(vector<char>& buf);
+    optional<f64> try_scan_num(vector<char>& buf, char first);
+    optional<f64> try_scan_digits(vector<char>& buf,
+                                  char first,
+                                  int sign,
+                                  u32 base);
+    optional<f64> try_scan_frac(vector <char>& buf, i32* exp, u32 base);
+    optional<i32> try_scan_exp(vector<char>& buf);
 
-    // tell if e_of has been reached
+    // tell if EOF has been reached
     bool eof();
-    // these raise appropriate exceptions at e_of
+    // these raise appropriate exceptions at EOF
     char get_char();
     char peek_char();
 

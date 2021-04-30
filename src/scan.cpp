@@ -149,8 +149,8 @@ token scanner::next_token() {
 
         // dollar sign
         case '$':
-            // i_mp_ln_ot_e: unlike the case for unquote, eof here could still result in a syntactically
-            // valid (albeit probably dumb) program
+            // IMPLNOTE: unlike the case for unquote, EOF here could still
+            // result in a syntactically valid (albeit probably dumb) program
             if (eof()) {
                 scan_atom(c);
                 break;
@@ -172,11 +172,11 @@ token scanner::next_token() {
             }
             break;
 
-            // string literals
+        // string literals
         case '"':
             return scan_string_literal();
 
-            // symbol or number
+        // symbol or number
         default:
             return scan_atom(c);
         }
@@ -185,266 +185,164 @@ token scanner::next_token() {
     return make_token(tk_eof);
 }
 
-string strip_escape_chars(const string& s) {
-    vector<char> buf;
-    bool escaped = false;
-    for (char ch : s) {
-        if (escaped) {
-            buf.push_back(ch);
-            escaped = false;
-            continue;
-        }
-        if (ch == '\\') {
-            escaped = true;
-            continue;
-        }
-        buf.push_back(ch);
+void scanner::scan_to_dot(vector<char>& buf) {
+    if (eof()) {
+        return;
     }
-    return string(buf.data(),buf.size());
+
+    // check if the last character was an escape
+    if (buf.size() > 0 && buf.back() == '\\') {
+        buf.pop_back(); // get rid of the escape char
+        buf.push_back(get_char());
+        if (eof()) {
+            return;
+        }
+    }
+    char ch = peek_char();
+
+    while (is_sym_char(ch)) {
+        if (ch == '.') {
+            return;
+        } else if (ch == '\\') {
+            // escape character
+            get_char();
+        }
+        buf.push_back(get_char());
+        if (eof()) {
+            return;
+        }
+        ch = peek_char();
+    }
 }
 
-static optional<f64> parse_num(const vector<char>& buf) {
-    // index
-    u32 i = 0;
-
-    // check for sign
-    f64 sign = 1;
-    if (buf[i] == '-') {
-        sign = -1;
-        ++i;
-    } else if (buf[i] == '+') {
-        ++i;
-    }
-
-    // check for hexadecimal
-    f64 base = 10;
-    if (i+1 < buf.size() && buf[i] == '0' && buf[i+1] == 'x') {
-        base = 16;
-        i += 2;
-    }
-
-    // we need characters after the sign bit
-    if (i >= buf.size()) {
-        return { };
-    }
-
-    // whether we encounter a digit
-    bool digit = false;
-
-    // get integer part
-    f64 res = 0;
-    char ch;
-    // first integer character
-    while (i < buf.size() && is_digit(ch=buf[i], base)) {
-        digit = true;
-        res *= base;
-        res += digit_val(ch);
-        ++i;
-    }
-
-    // check if we got to the end
-    if (i == buf.size()) {
-        return sign*res;
-    }
-
-    // check for decimal point
-    if (ch == '.') {
-        // place value
-        f64 place = 1/base;
-        // parse digits
-        ++i;
-        while (i < buf.size() && is_digit(ch=buf[i], base)) {
-            digit = true;
-            res += digit_val(ch) * place;
-            place /= base;
-            ++i;
-        }
-        // check if we got to the end
-        if (i == buf.size()) {
-            return sign*res;
-        }
-
-        // make sure there's at least one digit read
-        if (!digit) {
-            return { };
-        }
-    }
-
-
-    // only other possibility after this is scientific notation
-    
-    // scientific notation only supports base 10 at the moment
-    if ((ch != 'e' && ch != 'e') || base != 10) {
-        // not a number
-        return { };
-    }
-    // parse base 10 exponent
-    ++i;
-    // check for sign
-    f64 exp_sign = 1;
-    if (i < buf.size()) {
-        if (buf[i] == '-') {
-            ++i;
-            exp_sign = -1;
-        } else if (buf[i] == '+') {
-            ++i;
-        }
-    }
-
-    // make sure the exponent is there
-    if (i == buf.size()) {
-        // numbers cannot end with e
-        return { };
-    }
-
-    f64 exponent = 0;
-    while (i < buf.size() && is_digit(ch=buf[i])) {
-        exponent *= 10;
-        exponent += digit_val(ch);
-        ++i;
-    }
-    // check if we got to the end
-    if (i == buf.size()) {
-        return sign*res*pow(10,exp_sign*exponent);
-    }
-
-    // this means we found an illegal character
-    return { };
-}
-
-token scanner::scan_dot(string first) {
-    vector<string> ids;
-    ids.push_back(first);
-    
-    vector<char> buf;
-
-    // this will be an error if on EOF (desired behavior)
-    char c = get_char();
-    while (true) {
-        if (c == '.') {
-            error("multiple successive dots.");
-        }
-        do {
-            if (c == '\\') {
-                c = get_char();
-            }
-            buf.push_back(c);
-            if (eof()) {
-                break;
-            }
-            c = get_char();
-        } while (c != '.' && is_sym_char(c));
-
-        ids.push_back(string(buf.data(), buf.size()));
-        buf.clear();
-        if (c != '.') {
-            break;
-        }
-    }
-
-    return make_token(tk_dot, ids);
-}
-
-// atom processor is a hand-programmed state machine. This leads to
-// unfortunately opaque code. Each of the _state functions corresponds to some
-// point in the state machine. Along the way, a buffer of read characters is
-// passed around.
 token scanner::scan_atom(char first) {
-    // stores the characters read so far, needed if we end up reading a symbol.
     vector<char> buf;
     buf.push_back(first);
 
-    char ch;
-    switch (first) {
-    case '+':
+    if (first == '+' || first == '-') {
+        // oh no we need specialized behavior
+    }
+
+    auto num = try_scan_num(buf, first);
+    if (num.has_value()) {
+        return make_token(tk_number, *num);
+    }
+
+    vector<string> ids;
+    scan_to_dot(buf);
+
+    while (true) {
+        ids.push_back(string(buf.data(), buf.size()));
+        buf.clear();
         if (eof()) {
-            return scan_sym_state(buf);
+            break;
         }
-        ch = get_char();
-        buf.push_back(ch);
-        return scan_num_state(buf, ch, 1);
-    case '-':
+
+        char ch = peek_char();
+        if (ch != '.') {
+            // terminated on non-symbol character
+            break;
+        }
+        get_char();
         if (eof()) {
-            return scan_sym_state(buf);
+            error("Illegal dot syntax.");
         }
-        ch = get_char();
-        buf.push_back(ch);
-        return scan_num_state(buf, ch, -1);
-    case '.':
-        return scan_frac_state(0, 1, 10);
-    default:
-        if (is_digit(first)) {
-            return scan_num_state(buf, first, 1);
-        } else {
-            return scan_sym_state(buf);
-        }
+
+        scan_to_dot(buf);
+    }
+
+    if (ids.size() == 1) {
+        return make_token(tk_symbol, ids[0]);
+    } else {
+        return make_token(tk_dot, ids);
     }
 }
 
-// Assumptions:
-// - first is first character of atom after sign (if present).
-// - buf.back() == first
-// - scanner starts one character after first
-token scanner::scan_num_state(vector<char>& buf, char first, int sign) {
+optional<f64> scanner::try_scan_num(vector<char>& buf, char first) {
     char ch;
+    int sign = 1;
 
-    // the main issue is dealing with hexadecimal
+    // account for signs first:
+    if (first == '+') {
+        if (eof()) {
+            return 0;
+        }
+        first = get_char();
+    } else if (first == '-') {
+        if (eof()) {
+            return 0;
+        }
+        sign = -1;
+        first = get_char();
+    }
+
+    // We have two main problems: dealing with +/- and dealing with hexadecimal.
+    // In order to avoid backtracking, this involves a lot of nasty conditional
+    // code.
     if (first == '0') {
         // possibilities: hex, dec w/ leading 0, symbol w/ leading 0
         if (eof()) {
-            return make_token(tk_number, 0);
+            return 0;
         }
         ch = get_char();
         buf.push_back(ch);
         if (ch == 'x' || ch == 'X') {
-            // possibilities: hexadecimal, symbol leading with "0x" or "0X"
             if (eof()) {
-                // return symbol 0x
-                return scan_sym_state(buf);
-            } else {
-                return scan_digit_state(buf, std::nullopt, sign, 16);
+                return std::nullopt;
             }
+            ch = get_char();
+            buf.push_back(ch);
+            return try_scan_digits(buf, ch, sign, 16);
         } else if (ch == '.') {
-            // possibilities: "0." (number 0), 0.fraction
             if (eof()) {
-                return make_token(tk_number, 0);
-            } else {
-                return scan_frac_state(0, sign, 10);
+                return 0;
             }
+            return try_scan_digits(buf, ch, sign, 10);
         } else {
-            // possibilities: number, symbol leading with a digit
-            return scan_digit_state(buf, std::nullopt, sign, 10);
+            return try_scan_digits(buf, ch, sign, 10);
         }
-    } else if (is_digit(first)) {
-        return scan_digit_state(buf, first, sign, 10);
-    } else if (first == '.') {
-        return scan_frac_state(0, sign, 10);
-    } else {
-        return scan_sym_state(buf);
+    } else if (is_digit(first) || first == '.') {
+        return try_scan_digits(buf, first, sign, 10);
     }
+
+    return std::nullopt;
 }
 
-// assumptions:
-// - if first is provided, *first == buf.back() and scanner starts right after
-// - otherwise, scanner starts on first digit character.
-token scanner::scan_digit_state(vector<char>& buf,
-                                optional<char> first,
-                                int sign,
-                                u32 base) {
+// apply scientific notation exponent to num
+inline f64 apply_exp(f64 num, i32 exp, u32 base=10) {
+    if (exp > 0) {
+        for (; exp > 0; --exp) {
+            num *= base;
+        }
+    } else {
+        for (; exp < 0; ++exp) {
+            num /= base;
+        }
+    }
+    return num;
+}
+
+optional<f64> scanner::try_scan_digits(vector<char>& buf,
+                                       char first,
+                                       int sign,
+                                       u32 base) {
     u64 total = 0;
 
-    if (first.has_value()) {
-        if (is_digit(*first, base)) {
-            total = digit_val(*first);
-            if (eof()) {
-                return make_token(tk_number, (f64)total*sign);
-            }
-        } else {
-            return scan_sym_state(buf);
+    if (is_digit(first, base)) {
+        total = digit_val(first);
+        if (eof()) {
+            return (f64)total*sign;
         }
-    } else if (eof()) {
-        // no more characters so fall symbol
-        return scan_sym_state(buf);
+    } else if (first == '.') {
+        i32 exp = 0;
+        auto f = try_scan_frac(buf, &exp, base);
+        if (f.has_value()) {
+            return apply_exp(sign*(*f), exp);
+        } else {
+            error("Illegal dot syntax.");
+        }
+    } else {
+        return std::nullopt;
     }
 
     char ch = peek_char();
@@ -453,7 +351,7 @@ token scanner::scan_digit_state(vector<char>& buf,
         buf.push_back(get_char());
         total = base*total + digit_val(ch);
         if (eof()) {
-            return make_token(tk_number, (f64)total*sign);
+            return (f64)total*sign;
         }
         ch = peek_char();
     }
@@ -461,170 +359,108 @@ token scanner::scan_digit_state(vector<char>& buf,
     if (ch == '.') {
         get_char();
         if (eof()) {
-            return make_token(tk_number, (f64)total*sign);
+            return (f64)total*sign;
         }
-        return scan_frac_state(total*sign, sign, base);
+        i32 exp = 0;
+        auto f = try_scan_frac(buf, &exp, base);
+        if (f.has_value()) {
+            return apply_exp((*f + (f64)total)*sign, exp);
+        } else {
+            error("Dot token may not begin with an integer.");
+        }
+    } else if (base == 10 && (ch == 'e' || ch == 'E')) {
+        // scientific notation
+        get_char();
+        auto p = try_scan_exp(buf);
+        if (p.has_value()) {
+            return apply_exp((f64)total*sign, *p);
+        } else {
+            return std::nullopt;
+        }
     } else if (is_sym_char(ch)) {
-        buf.push_back(get_char());
-        return scan_sym_state(buf);
-    } else {
-        return make_token(tk_number, (f64)total*sign);
+        return std::nullopt;
     }
+
+    return (f64)total*sign;
 }
 
-// Assumptions:
-// - scanner starts on the first character after '.'
-// Note that on failure, this indicates illegal dot syntax and causes an error.
-token scanner::scan_frac_state(f64 integral, int sign, u32 base) {
-    if (eof()) {
-        error("Dot by itself is not a valid atom.");
+optional<f64> scanner::try_scan_frac(vector <char>& buf, i32* exp, u32 base) {
+    // error on EOF (desired behavior)
+    char ch = get_char();
+    f64 total = 0;
+    int pow = 0;
+    *exp = 0;
+
+    while (is_digit(ch, base)) {
+        total = total*base + digit_val(ch);
+        ++pow;
+        if (eof()) {
+            for (; pow > 0; --pow) {
+                total /= base;
+            }
+            return total;
+        }
+        ch = get_char();
     }
 
-    char ch = peek_char();
-    f64 frac = 0;
-    while (is_digit(ch, base)) {
-        get_char();
-        frac = (frac + digit_val(ch)) / base;
+    if (ch == '.') {
+        error("Illegal dot syntax.");
+    } else if (base == 10 && (ch == 'e' || ch == 'E')) {
+        auto p = try_scan_exp(buf);
+        if (p.has_value()) {
+            *exp = *p;
+        } else {
+            return std::nullopt;
+        }
+    } else if (is_sym_char(ch)) {
+        return std::nullopt;
+    }
 
+    for (; pow > 0; --pow) {
+        total /= base;
+    }
+    return total;
+}
+
+optional<i32> scanner::try_scan_exp(vector<char>& buf) {
+    if (eof()) {
+        return std::nullopt;
+    }
+
+    int sign = 1;
+    u32 res = 0;
+    char ch = peek_char();
+
+    if (ch == '+') {
         if (eof()) {
-            return make_token(tk_number, integral + frac*sign);
+            return std::nullopt;
+        }
+        get_char();
+        ch = peek_char();
+    } else if (ch == '-') {
+        if (eof()) {
+            return std::nullopt;
+        }
+        sign = -1;
+        get_char();
+        ch = peek_char();
+    }
+
+
+    while (is_digit(ch)) {
+        get_char();
+        res = (res*10) + digit_val(ch);
+        if (eof()) {
+            return sign*res;
         }
         ch = peek_char();
     }
 
-    if (is_sym_char(ch) || ch == '.') {
-        error("Illegal dot syntax.");
-    }
-    return make_token(tk_number, integral + frac*sign);
-}
-
-token scanner::scan_sym_state(vector<char>& buf) {
-    return make_token(tk_symbol, "no-reader");
-}
-
-// token scanner::scan_atom(char first) {
-//     // Note: for the sake of clarity and readability, this algorithm makes
-//     // multiple passes over the input.
-//     vector<char> buf;
-//     vector<string> ids;
-//     char c = first;
-
-//     // while (is_sym_char(c)) {
-//     //     if (c == '\\') {
-//     //         buf.push_back(c);
-//     //         c = get_char();
-//     //     }
-//     //     buf.push_back(c);
-//     //     if (eof()) {
-//     //         break;
-//     //     }
-//     //     c = get_char();
-//     // }
-
-//     while (true) {
-//         if (c == '.') {
-//             error("Illegal dot syntax");
-//         }
-//         do {
-//             if (c == '\\') {
-//                 c = get_char();
-//             }
-//             buf.push_back(c);
-//             if (eof()) {
-//                 break;
-//             }
-//             c = get_char();
-//         } while (c != '.' && is_sym_char(c));
-
-//         ids.push_back(string(buf.data(), buf.size()));
-//         buf.clear();
-//         if (c != '.') {
-//             break;
-//         }    // collect all symbol consituents/escapes in the buffer
-//     }
-
-//     // check if the token is a number
-//     optional<double> d = std::nullopt;
-//     if (ids.size() == 1) {
-//         d = parse_num(ids[0]);
-//     } else if (ids.size() == 2) {
-//         // FIXME: we have already split the num
-//     }
-//     if (d.has_value()) {
-//         return *d;
-//     } else {
-//         // scan a dot or a symbol
-//     }
-// }
-
-// token scanner::parse_atom(const vector<char>& chars) {
-//     // check for number first
-//     auto d = parse_num(chars);
-//     if (d.has_value()) {
-//         return *d;
-//     }
-
-//     vector<char> buf;
-//     bool escaped = false;
-//     char c;
-//     for (c : chars) {
-//         if (escaped) {
-//             escaped = false;
-//         } else if (c == '\\') {
-//             escaped = true;
-//             continue;
-//         } else if (c == '.') {
-//             break;
-//             // read dot
-//         }
-//         buf.push_back(c);
-//     }
-// }
-
-token scanner::scan_sym_or_num(char first) {
-    if (first == '.') {
-        error("tokens may not begin with '.'.");
-    }
-    bool escaped = first == '\\';
-    vector<char> buf;
-    buf.push_back(first);
-
-    char c;
-    while (true) {
-        if (escaped) {
-            // IMPLNOTE: this throws an exception at EOF, which is the desired behavior
-            buf.push_back(get_char());
-            escaped = false;
-            continue;
-        }
-        if (eof()) {
-            // it's fine for eof to terminate a symbol unless the last character is an escape
-            break;
-        }
-
-        if (!is_sym_char(c = peek_char())) {
-            break;
-        }
-        get_char();
-        if (c == '.') {
-            return scan_dot(string(buf.data(), buf.size()));
-        } else if (c == '\\') {
-            escaped = true;
-        }
-        buf.push_back(c);
+    if (eof() || !(is_sym_char(ch))) {
+        return sign*res;
     }
 
-    auto d = parse_num(buf);
-    if (d.has_value()) {
-        return make_token(tk_number, *d);
-    }
-
-    if (buf[buf.size()-1] == '.') {
-        error("non-numeric tokens may not end with a dot.");
-    }
-
-    string s(buf.data(),buf.size());
-    return make_token(tk_symbol, strip_escape_chars(s));
+    return std::nullopt;
 }
 
 token scanner::scan_string_literal() {
@@ -643,7 +479,7 @@ token scanner::scan_string_literal() {
 }
 
 char scanner::get_string_escape_char() {
-    // t_od_o: implement multi-character escape sequences
+    // TODO: implement multi-character escape sequences
     char c = get_char();
     switch (c) {
     case '\'':
@@ -670,8 +506,8 @@ char scanner::get_string_escape_char() {
         return '\v';
     }
 
-    error("unrecognized string escape sequence.");
-    return '\0'; // this is just to shut up the interpreter
+    error("Unrecognized string escape sequence.");
+    return '\0'; // this is just to shut up the C++ compiler
 }
 
 bool scanner::eof() {
@@ -680,7 +516,7 @@ bool scanner::eof() {
 
 char scanner::get_char() {
     if (eof()) {
-        error("unexpected e_of while scanning.");
+        error("Unexpected EOF while scanning.");
     }
     char c = input->get();
     advance(c);
@@ -689,7 +525,7 @@ char scanner::get_char() {
 
 char scanner::peek_char() {
     if (eof()) {
-        error("unexpected e_of while scanning.");
+        error("Unexpected EOF while scanning.");
     }
     return input->peek();
 }
