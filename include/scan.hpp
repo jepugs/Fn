@@ -158,11 +158,22 @@ struct token {
         case tk_number:
             return std::to_string(this->datum.num);
         case tk_string:
-            // f_ix_me: this should probably do proper escaping
+            // FIXME: this should probably have escapes
             return "\"" + *(this->datum.str) + "\"";
         case tk_symbol:
-        case tk_dot:
             return *(this->datum.str);
+        case tk_dot:
+            {
+                auto res = (*(this->datum.ids))[0];
+
+                u32 u;
+                for (u = 1; u < res.size(); ++u) {
+                    auto s = (*(this->datum.ids))[u];
+                    res = res + "." + res;
+                }
+
+                return res;
+            }
         }
         // this is unreachable code to silence a compiler warning
         return "";
@@ -201,25 +212,6 @@ private:
 
     // increment the scanner position, keeping track of lines and columns
     void advance(char ch);
-
-    // methods to scan variable-length tokens
-    token scan_atom(char first); // needs first character of the token
-    token scan_string_literal();
-    // scan a string escape sequence and return the corresponding character
-    char get_string_escape_char();
-
-    // Scanning utility methods. Fn's scanner is basically modeled after a state
-    // machine, but it is hand-written. Unfortunately, to avoid backtracking,
-    // this leads to some very opaque and repetitive code.
-    void scan_to_dot(vector<char>& buf);
-    optional<f64> try_scan_num(vector<char>& buf, char first);
-    optional<f64> try_scan_digits(vector<char>& buf,
-                                  char first,
-                                  int sign,
-                                  u32 base);
-    optional<f64> try_scan_frac(vector <char>& buf, i32* exp, u32 base);
-    optional<i32> try_scan_exp(vector<char>& buf);
-
     // tell if EOF has been reached
     bool eof();
     // these raise appropriate exceptions at EOF
@@ -231,6 +223,32 @@ private:
     token make_token(token_kind tk, const string& str) const;
     token make_token(token_kind tk, double num) const;
     token make_token(token_kind tk, const vector<string>& ids) const;
+
+    // methods to scan variable-length tokens
+
+    // scan a string literal
+    token scan_string_literal();
+    // scan a string escape sequence, writing the generated characters to buf
+    void get_string_escape_char(vector<char>& buf);
+    // used for certain escape sequences
+    void hex_digits_to_bytes(vector<char>& buf, u32 num_bytes);
+    void octal_to_byte(vector<char>& buf, u8 first);
+
+    // this method scans number, symbol, and dot tokens
+    token scan_atom(char first); // needs first character of the token
+
+    // Helper methods for scanning atoms. The algorithm is inspired by a state
+    // machine, but written by hand. To avoid backtracking, there are pretty
+    // strict restrictions on the conditions under which each method below may
+    // be called. Refer to the source in src/scan.cpp for more information.
+    void scan_to_dot(vector<char>& buf);
+    optional<f64> try_scan_num(vector<char>& buf, char first);
+    optional<f64> try_scan_digits(vector<char>& buf,
+                                  char first,
+                                  int sign,
+                                  u32 base);
+    optional<f64> try_scan_frac(vector <char>& buf, i32* exp, u32 base);
+    optional<i32> try_scan_exp(vector<char>& buf);
 
     // throw an appropriate fn_error
     inline void error(const char* msg) {

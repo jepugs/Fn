@@ -74,6 +74,109 @@ fn without any ambiguity so that it may be implemented precisely, with no undefi
 meant mainly as an aid to the implementor.
 
 
+* Lexical Analysis
+
+The component which processes Fn source into lexical tokens is called the
+*scanner*. Conceptually, we put in a sequence of bytes and get back a sequence
+of tokens.
+
+Tokens are dividide into two groups: fixed width and variable width. The fixed
+width tokens are:
+- '(' :: left paren
+- ')' :: right paren
+- '[' :: left bracket
+- ']' :: right bracket
+- '{' :: left brace
+- '}' :: right brace
+- '\'' :: quote
+- '`' :: backtick
+- ',@' :: comma at
+- ',' :: comma
+- '$`' :: dollar backtick
+- '$(' :: dollar paren
+- '$[' :: dollar bracket
+- '${' :: dollar brace
+
+Fixed width tokens are generated when the scanner encounters one of the
+corresponding quoted strings above.
+
+Variable width tokens are:
+- <number> :: numeric literal
+- <string> :: string literal
+- <symbol> :: symbol
+- <dot> :: dot expression (2 or more symbols separated by '.')
+
+** Comments
+
+A comment begins when the unescaped character ~';'~ is encountered outside a
+string. Comments end at the end of the line.
+
+** Numbers, Symbols, and Dots
+
+Numbers are defined according to regular expressions as in the following
+pseudo-BNF grammar:
+
+#+begin_src
+<number> ::= "[+-]?(<dec>|<hex>)"
+<dec>    ::= "[0-9]+\.?<exp>?"
+           | "[0-9]*\.[0-9]+<exp>?"
+<exp>    ::= "[eE][+-]?[0-9]+"
+<hex>    ::= "0[Xx][0-9A-Fa-f]+\.?"
+           | "0[Xx][0-9A-Fa-f]*\.[0-9A-Fa-f]"
+#+end_src
+
+A symbol is defined to be a sequence of symbol characters and escaped characters
+which is not a number. Symbol characters are all printable ASCII characters
+other than whitespace or those contained in the string ~";(){}[]\"\\'`,."~. An
+escaped character is a sequence of two characters, the escape ~'\\'~ followed by
+an arbitrary character. When the symbol is internalized, the escape character is
+ignored, so its name will contain only the second character of the escape
+sequence.
+
+If an escape character is followed by EOF, a scanning error is raised.
+
+Note that by injecting an escape character, one may cause numbers to be treated
+as symbols. Adding an escape in front of any normal character normally no
+effect, but in this case, it causes the number reader to fail, so the number's
+characters will read as a symbol.
+
+Finally, a dot token is a symbol token which contains the dot character ~'.'~,
+subject to some additional restrictions. Dots can not occur in the first or last
+position of the string, and it can not contain successive dots. In addition, the
+substring before the first dot may not be a syntactically valid number. If any
+of these conditions is violated, a scanning error is raised.
+
+** TODO String Literals
+
+String scanning starts when the scanner encounters the (unescaped) character
+~'"'~ and ends when it encounters an unescaped ~'"'~. Along the way, all bytes
+encountered are read verbatim, except for the escape character '\\', which is
+followed by an escape sequence. The entire escape sequence is read into the
+string according to the following table [fn:c-string-escapes]:
+- '\'' :: single quote
+- '\"' :: double quote
+- '\?' :: question mark
+- '\a' :: ASCII bell
+- '\b' :: backspace
+- '\f' :: form feed
+- '\n' :: newline
+- '\r' :: ASCII carriage return
+- '\t' :: tab
+- '\v' :: vertical tab
+- '\NNN' (NNN is a 1- to 3- digit octal number) :: byte NNN (octal)
+- '\xNN' (NN any two-digit hex number) :: the byte NN (hexadecimal)
+- '\uC' (C any 4-digit hex unicode code point) :: unicode code point (2 bytes)
+- '\UC' (C any 8-digit hex unicode code point) :: unicode code point (4 bytes)
+
+[fn:c-string-escapes] These string escapes are mainly the same as the ones in C.
+
+** Source Encoding
+
+Currently, Fn only supports ASCII encoded text files. Behavior on other/extended
+encodings is undefined. In the future, Fn will be extended so that UTF-8
+characters can appear in strings and symbols.
+
+
 * Syntax
 
 The goal of this section is to establish the necessary definitions and equivalences so that we may

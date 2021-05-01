@@ -48,8 +48,15 @@ void parse_string(const string& str) {
     std::istringstream in(str);
     fn_scan::scanner sc(&in, "<cmdline>");
     symbol_table symtab;
-    auto ast = fn_parse::parse_node(&sc, &symtab);
-    std::cout << ast->as_string(&symtab) << "\n";
+    fn_parse::ast_node* ast;
+    try {
+        ast = fn_parse::parse_node(&sc, &symtab);
+        std::cout << ast->as_string(&symtab) << "\n";
+    } catch(const fn_error& e) {
+        std::cerr << e.what() << "\n";
+        return;
+    }
+    delete ast;
 }
 
 // t_od_o: add current path parameter

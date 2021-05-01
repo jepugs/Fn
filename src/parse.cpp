@@ -72,7 +72,7 @@ ast_atom& ast_atom::operator=(ast_atom&& at) {
 
 ast_atom::~ast_atom() {
     if (type == at_string) {
-        //delete datum.str;
+        delete datum.str;
     }
 }
 
@@ -110,6 +110,68 @@ ast_node::~ast_node() {
     }
 }
 
+static string print_grouped(const symbol_table* symtab,
+                            char open,
+                            char close,
+                            const vector<ast_node*>& list) {
+    string res{open};
+    if (list.size() == 0) {
+        return res + close;
+    }
+    u32 u;
+    ast_node* node;
+    for (u = 0; u < list.size() - 1; ++u) {
+        node = list[u];
+        res = res + node->as_string(symtab) + " ";
+    }
+    node = list[u];
+    res = res + node->as_string(symtab) + close;
+    return res;
+}
+
+string with_escapes(const string& src) {
+    vector<char> buf;
+    for (u32 u = 0; u < src.length(); ++u) {
+        auto ch = src.at(u);
+        switch (ch) {
+        case '\\':
+        case '.':
+        case '(':
+        case ')':
+        case '\'':
+        case '"':
+        case '`':
+        case ',':
+        case '[':
+        case ']':
+        case '{':
+        case '}':
+        case ' ':
+        case '\n':
+        case '\t':
+            buf.push_back('\\');
+            break;
+        }
+        buf.push_back(ch);
+    }
+    return string{buf.data(), buf.size()};
+}
+
+string with_str_escapes(const string& src) {
+    vector<char> buf;
+    for (u32 u = 0; u < src.length(); ++u) {
+        auto ch = src.at(u);
+        switch (ch) {
+        case '\\':
+        case '"':
+            buf.push_back('\\');
+            break;
+        }
+        buf.push_back(ch);
+    }
+    return string{buf.data(), buf.size()};
+}
+
 string ast_node::as_string(const symbol_table* symtab) {
     string res = "";
     switch (kind) {
@@ -119,20 +181,18 @@ string ast_node::as_string(const symbol_table* symtab) {
             return std::to_string(datum.atom->datum.num);
             break;
         case at_string:
-            return "\"" + datum.atom->datum.str->as_string() + "\"";
+            return "\""
+                + with_str_escapes(datum.atom->datum.str->as_string())
+                + "\"";
             break;
         case at_symbol:
-            return (*symtab)[datum.atom->datum.sym].name;
+            return with_escapes((*symtab)[datum.atom->datum.sym].name);
             break;
         }
         break;
 
     case ak_list:
-        res = "(";
-        for (auto x : *datum.list) {
-            res = res + x->as_string(symtab) + " ";
-        }
-        res = res + ")";
+        res = print_grouped(symtab, '(', ')', *datum.list);
         break;
 
     case ak_error:
@@ -220,8 +280,10 @@ ast_node* parse_node(scanner* sc, symbol_table* symtab, optional<token> t0) {
 
     case tk_dot:
         buf.push_back(new ast_node(ast_atom(*(*symtab).intern("dot")), tok.loc));
-        parse_error("Unimplemented syntax (token_kind = " + tok.tk + string(")"),
-                    tok.loc);
+        for (auto s : *tok.datum.ids) {
+            buf.push_back(new ast_node(ast_atom(*(*symtab).intern(s)), tok.loc));
+        }
+        res = new ast_node(buf, tok.loc);
         break;
 
     case tk_quote:

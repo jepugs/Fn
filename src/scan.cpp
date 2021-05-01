@@ -219,20 +219,18 @@ token scanner::scan_atom(char first) {
     vector<char> buf;
     buf.push_back(first);
 
-    if (first == '+' || first == '-') {
-        // oh no we need specialized behavior
-    }
-
     auto num = try_scan_num(buf, first);
     if (num.has_value()) {
         return make_token(tk_number, *num);
+    } else if (!is_sym_char(peek_char())) {
+        return make_token(tk_symbol, string{buf.data(), buf.size()});
     }
 
     vector<string> ids;
     scan_to_dot(buf);
 
     while (true) {
-        ids.push_back(string(buf.data(), buf.size()));
+        ids.push_back(string{buf.data(), buf.size()});
         buf.clear();
         if (eof()) {
             break;
@@ -268,12 +266,14 @@ optional<f64> scanner::try_scan_num(vector<char>& buf, char first) {
             return 0;
         }
         first = get_char();
+        buf.push_back(first);
     } else if (first == '-') {
         if (eof()) {
             return 0;
         }
         sign = -1;
         first = get_char();
+        buf.push_back(first);
     }
 
     // We have two main problems: dealing with +/- and dealing with hexadecimal.
@@ -386,12 +386,13 @@ optional<f64> scanner::try_scan_digits(vector<char>& buf,
 
 optional<f64> scanner::try_scan_frac(vector <char>& buf, i32* exp, u32 base) {
     // error on EOF (desired behavior)
-    char ch = get_char();
+    char ch = peek_char();
     f64 total = 0;
     int pow = 0;
     *exp = 0;
 
     while (is_digit(ch, base)) {
+        buf.push_back(get_char());
         total = total*base + digit_val(ch);
         ++pow;
         if (eof()) {
@@ -400,12 +401,13 @@ optional<f64> scanner::try_scan_frac(vector <char>& buf, i32* exp, u32 base) {
             }
             return total;
         }
-        ch = get_char();
+        ch = peek_char();
     }
 
     if (ch == '.') {
         error("Illegal dot syntax.");
     } else if (base == 10 && (ch == 'e' || ch == 'E')) {
+        buf.push_back(get_char());
         auto p = try_scan_exp(buf);
         if (p.has_value()) {
             *exp = *p;
@@ -469,45 +471,101 @@ token scanner::scan_string_literal() {
 
     while (c != '"') {
         if (c == '\\') {
-            c = get_string_escape_char();
+            get_string_escape_char(buf);
+        } else {
+            buf.push_back(c);
         }
-        buf.push_back(c);
         c = get_char();
     }
 
     return make_token(tk_string, string(buf.data(),buf.size()));
 }
 
-char scanner::get_string_escape_char() {
-    // TODO: implement multi-character escape sequences
-    char c = get_char();
-    switch (c) {
-    case '\'':
-        return '\'';
-    case '\"':
-        return '\"';
-    case '?':
-        return '\?';
-    case '\\':
-        return '\\';
-    case 'a':
-        return '\a';
-    case 'b':
-        return '\b';
-    case 'f':
-        return '\f';
-    case 'n':
-        return '\n';
-    case 'r':
-        return '\r';
-    case 't':
-        return '\t';
-    case 'v':
-        return '\v';
+void scanner::hex_digits_to_bytes(vector<char>& buf, u32 num_bytes) {
+    for (u32 i = 0; i < num_bytes; ++i) {
+        char ch1;
+        char ch2;
+        if (eof()
+            || !is_digit(ch1 = get_char(), 16)
+            || eof()
+            || !is_digit(ch2 = get_char(), 16)) {
+            error("Too few hexadecimal digits in string escape code.");
+        }
+        u8 val = (digit_val(ch1) << 4) + digit_val(ch2);
+        buf.push_back((char)val);
     }
+}
 
-    error("Unrecognized string escape sequence.");
-    return '\0'; // this is just to shut up the C++ compiler
+// read (up to 3) octal digits and write a byte.
+void scanner::octal_to_byte(vector<char>& buf, u8 first) {
+    u8 total = first;
+    // read up to 2 more digits
+    for (int i = 0; i < 2; ++i) {
+        char ch = peek_char();
+        if (is_digit(ch, 8)) {
+            get_char();
+            total = (total << 3) + digit_val(ch);
+        } else {
+            break;
+        }
+    }
+    buf.push_back((char)total);
+}
+
+void scanner::get_string_escape_char(vector<char>& buf) {
+    // TODO: implement multi-character escape sequences
+    char ch = get_char();
+    switch (ch) {
+    case '\'':
+        buf.push_back('\'');
+        break;
+    case '\"':
+        buf.push_back('\"');
+        break;
+    case '?':
+        buf.push_back('\?');
+        break;
+    case '\\':
+        buf.push_back('\\');
+        break;
+    case 'a':
+        buf.push_back('\a');
+        break;
+    case 'b':
+        buf.push_back('\b');
+        break;
+    case 'f':
+        buf.push_back('\f');
+        break;
+    case 'n':
+        buf.push_back('\n');
+        break;
+    case 'r':
+        buf.push_back('\r');
+        break;
+    case 't':
+        buf.push_back('\t');
+        break;
+    case 'v':
+        buf.push_back('\v');
+        break;
+    case 'x':
+        hex_digits_to_bytes(buf, 1);
+        break;
+    case 'u':
+        hex_digits_to_bytes(buf, 2);
+        break;
+    case 'U':
+        hex_digits_to_bytes(buf, 4);
+        break;
+    default:
+        // check for octal
+        if (is_digit(ch, 8)) {
+            octal_to_byte(buf, digit_val(ch));
+        } else {
+            error("Unrecognized string escape sequence.");
+        }
+    }
 }
 
 bool scanner::eof() {
