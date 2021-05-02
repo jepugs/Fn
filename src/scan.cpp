@@ -268,6 +268,7 @@ optional<f64> scanner::try_scan_num(vector<char>& buf, char first) {
         first = peek_char();
         if (is_sym_char(first)) {
             buf.push_back(get_char());
+        } else {
             return std::nullopt;
         }
     } else if (first == '-') {
@@ -278,6 +279,7 @@ optional<f64> scanner::try_scan_num(vector<char>& buf, char first) {
         first = peek_char();
         if (is_sym_char(first)) {
             buf.push_back(get_char());
+        } else {
             return std::nullopt;
         }
     }

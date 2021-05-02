@@ -23,7 +23,7 @@ static inline void test_token(const char* str, token_kind k, int nth=0) {
 }
 
 static inline void test_num_token(const char* str, f64 num, int nth=0) {
-    std::istringstream in(str);
+    std::istringstream in{str};
     auto sc = new scanner(&in, "<test-input>");
     auto tok = sc->next_token();
     while (nth > 0) {
