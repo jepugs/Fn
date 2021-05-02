@@ -37,14 +37,28 @@ private:
 
     void compile_subexpr(local_table& locals, const fn_parse::ast_node* expr);
 
-    void constant(const_id id) {
-        dest->write_byte(fn_bytes::OP_CONST);
-        dest->write_short(id);
-    }
     // Find a local variable. An upvalue is created in the enclosing locals
     // structure if necessary. *is_upval is set to true if this is an upvalue
     // (indirect reference), false otherwise.
     optional<u8> find_local(local_table& locals, bool* is_upval, symbol_id name);
+
+    void constant(const_id id) {
+        dest->write_byte(fn_bytes::OP_CONST);
+        dest->write_short(id);
+    }
+
+    void write_byte(u8 byte) {
+        dest->write_byte(byte);
+    }
+    void write_short(u16 u) {
+        dest->write_short(u);
+    }
+    void patch_short(bc_addr where, u16 u) {
+        dest->patch_short(where, u);
+    }
+    bc_addr cur_addr() {
+        return dest->get_size();
+    }
 
     void compile_atom(local_table& locals,
                       const fn_parse::ast_atom& atom,

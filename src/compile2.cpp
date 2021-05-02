@@ -96,11 +96,11 @@ void compiler::compile_atom(local_table& locals,
         // TODO: check for special symbols
         s = &(*symtab)[atom.datum.sym];
         if (s->name == "null") {
-            dest->write_byte(OP_NULL);
+            write_byte(OP_NULL);
         } else if(s->name == "true") {
-            dest->write_byte(OP_TRUE);
+            write_byte(OP_TRUE);
         } else if (s->name == "false") {
-            dest->write_byte(OP_FALSE);
+            write_byte(OP_FALSE);
         } else {
             compile_var(locals, atom.datum.sym, loc);
         }
@@ -114,13 +114,13 @@ void compiler::compile_var(local_table& locals,
     bool up;
     auto l = find_local(locals, &up, sym);
     if (l.has_value()) {
-        dest->write_byte(up ? OP_UPVALUE : OP_LOCAL);
-        dest->write_byte(*l);
+        write_byte(up ? OP_UPVALUE : OP_LOCAL);
+        write_byte(*l);
     } else {
         auto id = dest->sym_const(sym);
-        dest->write_byte(OP_CONST);
-        dest->write_short(id);
-        dest->write_byte(OP_GLOBAL);
+        write_byte(OP_CONST);
+        write_short(id);
+        write_byte(OP_GLOBAL);
     }
     ++locals.sp;
 }
@@ -195,8 +195,8 @@ void compiler::compile_call(local_table& locals,
     if (num_args > 255) {
         error("Function call with more than 255 arguments.", list.back()->loc);
     }
-    dest->write_byte(OP_CALL);
-    dest->write_byte((u8)num_args);
+    write_byte(OP_CALL);
+    write_byte((u8)num_args);
     locals.sp = base_sp + 1;
 }
 
@@ -207,19 +207,19 @@ void compiler::compile_and(local_table& locals,
     for (u32 i = 1; i < list.size(); ++i) {
         compile_subexpr(locals, list[i]);
         // skip to end jump on false
-        dest->write_byte(OP_CJUMP);
-        dest->write_short(0);
+        write_byte(OP_CJUMP);
+        write_short(0);
         --locals.sp;
-        patch_locs.push_front(dest->get_size());
+        patch_locs.push_front(cur_addr());
     }
-    dest->write_byte(OP_TRUE);
-    dest->write_byte(OP_JUMP);
-    dest->write_short(1);
-    auto end_addr = dest->get_size();
+    write_byte(OP_TRUE);
+    write_byte(OP_JUMP);
+    write_short(1);
+    auto end_addr = cur_addr();
     for (auto u : patch_locs) {
-        dest->patch_short(u - 2, end_addr - u);
+        patch_short(u - 2, end_addr - u);
     }
-    dest->write_byte(OP_FALSE);
+    write_byte(OP_FALSE);
     ++locals.sp;
 }
 
@@ -239,15 +239,15 @@ void compiler::compile_def(local_table& locals,
     constant(dest->sym_const(sym));
     ++locals.sp;
     compile_subexpr(locals, list[2]);
-    dest->write_byte(OP_SET_GLOBAL);
-    dest->write_byte(OP_NULL);
+    write_byte(OP_SET_GLOBAL);
+    write_byte(OP_NULL);
 }
 
 void compiler::compile_do(local_table& locals,
                           const vector<ast_node*>& list,
                           const source_loc& loc) {
     if (list.size() == 1) {
-        dest->write_byte(OP_NULL);
+        write_byte(OP_NULL);
         ++locals.sp;
         return;
     }
@@ -255,7 +255,7 @@ void compiler::compile_do(local_table& locals,
     u32 i;
     for (i = 1; i < list.size()-1; ++i) {
         compile_subexpr(locals, list[i]);
-        dest->write_byte(OP_POP);
+        write_byte(OP_POP);
         --locals.sp;
     }
     compile_subexpr(locals, list[i]);
@@ -269,23 +269,23 @@ void compiler::compile_if(local_table& locals,
     }
     compile_subexpr(locals, list[1]);
 
-    dest->write_byte(OP_CJUMP);
-    dest->write_short(0);
+    write_byte(OP_CJUMP);
+    write_short(0);
     --locals.sp;
 
-    auto then_addr = dest->get_size();
+    auto then_addr = cur_addr();
     compile_subexpr(locals, list[2]);
-    dest->write_byte(OP_JUMP);
-    dest->write_short(0);
+    write_byte(OP_JUMP);
+    write_short(0);
 
     // put the stack pointer back since only one expression will be evaluated
     --locals.sp;
-    auto else_addr = dest->get_size();
+    auto else_addr = cur_addr();
     compile_subexpr(locals, list[3]);
 
-    auto end_addr = dest->get_size();
-    dest->patch_short(then_addr - 2, else_addr - then_addr);
-    dest->patch_short(else_addr - 2, end_addr - else_addr);
+    auto end_addr = cur_addr();
+    patch_short(then_addr - 2, else_addr - then_addr);
+    patch_short(else_addr - 2, end_addr - else_addr);
 }
 
 void compiler::compile_let(local_table& locals,
@@ -310,12 +310,12 @@ void compiler::compile_let(local_table& locals,
         auto sym = list[i]->datum.atom->datum.sym;
         auto loc = locals.sp++;
         // initial value null (in case of recursive reads)
-        dest->write_byte(OP_NULL);
+        write_byte(OP_NULL);
         locals.vars.insert(sym, loc);
         compile_subexpr(locals, list[i+1]);
-        dest->write_byte(OP_SET_LOCAL);
-        dest->write_byte(loc);
-        dest->write_byte(OP_NULL);
+        write_byte(OP_SET_LOCAL);
+        write_byte(loc);
+        write_byte(OP_NULL);
     }
 }
 
@@ -326,21 +326,21 @@ void compiler::compile_or(local_table& locals,
     for (u32 i = 1; i < list.size(); ++i) {
         compile_subexpr(locals, list[i]);
         // skip the next jump on false
-        dest->write_byte(OP_CJUMP);
-        dest->write_short(3);
+        write_byte(OP_CJUMP);
+        write_short(3);
         --locals.sp;
-        dest->write_byte(OP_JUMP);
-        dest->write_short(0);
-        patch_locs.push_front(dest->get_size());
+        write_byte(OP_JUMP);
+        write_short(0);
+        patch_locs.push_front(cur_addr());
     }
-    dest->write_byte(OP_FALSE);
-    dest->write_byte(OP_JUMP);
-    dest->write_short(1);
-    auto end_addr = dest->get_size();
+    write_byte(OP_FALSE);
+    write_byte(OP_JUMP);
+    write_short(1);
+    auto end_addr = cur_addr();
     for (auto u : patch_locs) {
-        dest->patch_short(u - 2, end_addr - u);
+        patch_short(u - 2, end_addr - u);
     }
-    dest->write_byte(OP_TRUE);
+    write_byte(OP_TRUE);
     ++locals.sp;
 }
 
@@ -349,7 +349,7 @@ void compiler::compile_expr() {
     auto expr = parse_node(sc, symtab);
     compile_subexpr(l, expr);
     delete expr;
-    dest->write_byte(OP_POP);
+    write_byte(OP_POP);
 }
 
 void compiler::compile_to_eof() {
