@@ -5,7 +5,7 @@ namespace fn {
 using namespace fn_parse;
 using namespace fn_bytes;
 
-locals::locals(locals* parent, func_stub* func)
+local_table::local_table(local_table* parent, func_stub* func)
     : vars{}
     , parent{parent}
     , cur_func{func}
@@ -15,7 +15,7 @@ locals::locals(locals* parent, func_stub* func)
     }
 }
 
-u8 locals::add_upvalue(u32 levels, u8 pos) {
+u8 local_table::add_upvalue(u32 levels, u8 pos) {
     auto call = this;
     while (call->cur_func == nullptr && call != nullptr) {
         call = call->parent;
@@ -31,7 +31,7 @@ u8 locals::add_upvalue(u32 levels, u8 pos) {
     return call->cur_func->get_upvalue(slot, false);
 }
 
-void compiler::compile_subexpr(locals& locals, const ast_node* expr) {
+void compiler::compile_subexpr(local_table& locals, const ast_node* expr) {
     if (expr->kind == ak_atom) {
         compile_atom(locals, *expr->datum.atom, expr->loc);
     } else if (expr->kind == ak_list) {
@@ -43,7 +43,7 @@ void compiler::compile_subexpr(locals& locals, const ast_node* expr) {
 }
 
 
-optional<local_addr> compiler::find_local(locals& locals,
+optional<local_addr> compiler::find_local(local_table& locals,
                                           bool* is_upval,
                                           symbol_id name) {
     auto& l = locals;
@@ -76,10 +76,11 @@ optional<local_addr> compiler::find_local(locals& locals,
     return std::nullopt;
 }
 
-void compiler::compile_atom(locals& locals,
+void compiler::compile_atom(local_table& locals,
                             const ast_atom& atom,
                             const source_loc& loc) {
     const_id id;
+    const symbol* s;
     switch (atom.type) {
     case at_number:
         id = dest->num_const(atom.datum.num);
@@ -93,12 +94,21 @@ void compiler::compile_atom(locals& locals,
         break;
     case at_symbol:
         // TODO: check for special symbols
-        compile_var(locals, atom.datum.sym, loc);
+        s = &(*symtab)[atom.datum.sym];
+        if (s->name == "null") {
+            dest->write_byte(OP_NULL);
+        } else if(s->name == "true") {
+            dest->write_byte(OP_TRUE);
+        } else if (s->name == "false") {
+            dest->write_byte(OP_FALSE);
+        } else {
+            compile_var(locals, atom.datum.sym, loc);
+        }
         break;
     }
 }
 
-void compiler::compile_var(locals& locals,
+void compiler::compile_var(local_table& locals,
                            symbol_id sym,
                            const source_loc& loc) {
     bool up;
@@ -115,7 +125,7 @@ void compiler::compile_var(locals& locals,
     ++locals.sp;
 }
 
-void compiler::compile_list(locals& locals,
+void compiler::compile_list(local_table& locals,
                             const vector<ast_node*>& list,
                             const source_loc& loc) {
     if (list.size() == 0) {
@@ -126,21 +136,94 @@ void compiler::compile_list(locals& locals,
         && list[0]->datum.atom->type == at_symbol) {
         auto sym = list[0]->datum.atom->datum.sym;
         const string& name = (*symtab)[sym].name;
-        if (name == "") {
+        if (name == "and") {
+            compile_and(locals, list, list[0]->loc);
+        // } else if (name == "cond") {
+        //     compile_cond(locals, list, list[0]->loc);
         } else if (name == "def") {
             compile_def(locals, list, list[0]->loc);
+        // } else if (name == "defmacro") {
+        //     compile_defmacro(locals, list, list[0]->loc);
+        // } else if (name == "defn") {
+        //     compile_defn(locals, list, list[0]->loc);
         } else if (name == "do") {
             compile_do(locals, list, list[0]->loc);
+        // } else if (name == "dot") {
+        //     compile_dot(locals, list, list[0]->loc);
+        // } else if (name == "dollar-fn") {
+        //     compile_dollar_fn(locals, list, list[0]->loc);
+        } else if (name == "if") {
+            compile_if(locals, list, list[0]->loc);
+        // } else if (name == "import") {
+        //     compile_import(locals, list, list[0]->loc);
+        // } else if (name == "fn") {
+        //     compile_fn(locals, list, list[0]->loc);
         } else if (name == "let") {
             compile_let(locals, list, list[0]->loc);
+        // } else if (name == "letfn") {
+        //     compile_letfn(locals, list, list[0]->loc);
+        } else if (name == "or") {
+            compile_or(locals, list, list[0]->loc);
+        // } else if (name == "quasiquote") {
+        //     compile_quasiquote(locals, list, list[0]->loc);
+        // } else if (name == "quote") {
+        //     compile_quote(locals, list, list[0]->loc);
+        // } else if (name == "unquote") {
+        //     compile_unquote(locals, list, list[0]->loc);
+        // } else if (name == "unquote-splicing") {
+        //     compile_unquote_splicing(locals, list, list[0]->loc);
+        // } else if (name == "set!") {
+        //     compile_set(locals, list, list[0]->loc);
+        // } else if (name == "with") {
+        //     compile_with(locals, list, list[0]->loc);
         } else {
-            // TODO: function call
-            compile_subexpr(locals, list[0]);
+            compile_call(locals, list);
         }
+    } else {
+        compile_call(locals, list);
     }
 }
 
-void compiler::compile_def(locals& locals,
+void compiler::compile_call(local_table& locals,
+                            const vector<ast_node*>& list) {
+    auto base_sp = locals.sp;
+    u32 num_args = -1;
+    for (auto x : list) {
+        compile_subexpr(locals, x);
+        ++num_args;
+    }
+    if (num_args > 255) {
+        error("Function call with more than 255 arguments.", list.back()->loc);
+    }
+    dest->write_byte(OP_CALL);
+    dest->write_byte((u8)num_args);
+    locals.sp = base_sp + 1;
+}
+
+void compiler::compile_and(local_table& locals,
+                           const vector<fn_parse::ast_node*>& list,
+                           const source_loc& loc) {
+    forward_list<bc_addr> patch_locs;
+    for (u32 i = 1; i < list.size(); ++i) {
+        compile_subexpr(locals, list[i]);
+        // skip to end jump on false
+        dest->write_byte(OP_CJUMP);
+        dest->write_short(0);
+        --locals.sp;
+        patch_locs.push_front(dest->get_size());
+    }
+    dest->write_byte(OP_TRUE);
+    dest->write_byte(OP_JUMP);
+    dest->write_short(1);
+    auto end_addr = dest->get_size();
+    for (auto u : patch_locs) {
+        dest->patch_short(u - 2, end_addr - u);
+    }
+    dest->write_byte(OP_FALSE);
+    ++locals.sp;
+}
+
+void compiler::compile_def(local_table& locals,
                            const vector<ast_node*>& list,
                            const source_loc& loc) {
     if (list.size() != 3) {
@@ -160,7 +243,7 @@ void compiler::compile_def(locals& locals,
     dest->write_byte(OP_NULL);
 }
 
-void compiler::compile_do(locals& locals,
+void compiler::compile_do(local_table& locals,
                           const vector<ast_node*>& list,
                           const source_loc& loc) {
     if (list.size() == 1) {
@@ -178,7 +261,34 @@ void compiler::compile_do(locals& locals,
     compile_subexpr(locals, list[i]);
 }
 
-void compiler::compile_let(locals& locals,
+void compiler::compile_if(local_table& locals,
+                          const vector<ast_node*>& list,
+                          const source_loc& loc) {
+    if (list.size() != 4) {
+        error("Wrong number of arguments to if.", loc);
+    }
+    compile_subexpr(locals, list[1]);
+
+    dest->write_byte(OP_CJUMP);
+    dest->write_short(0);
+    --locals.sp;
+
+    auto then_addr = dest->get_size();
+    compile_subexpr(locals, list[2]);
+    dest->write_byte(OP_JUMP);
+    dest->write_short(0);
+
+    // put the stack pointer back since only one expression will be evaluated
+    --locals.sp;
+    auto else_addr = dest->get_size();
+    compile_subexpr(locals, list[3]);
+
+    auto end_addr = dest->get_size();
+    dest->patch_short(then_addr - 2, else_addr - then_addr);
+    dest->patch_short(else_addr - 2, end_addr - else_addr);
+}
+
+void compiler::compile_let(local_table& locals,
                            const vector<ast_node*>& list,
                            const source_loc& loc) {
     // TODO: fix something about this
@@ -209,8 +319,33 @@ void compiler::compile_let(locals& locals,
     }
 }
 
+void compiler::compile_or(local_table& locals,
+                          const vector<fn_parse::ast_node*>& list,
+                          const source_loc& loc) {
+    forward_list<bc_addr> patch_locs;
+    for (u32 i = 1; i < list.size(); ++i) {
+        compile_subexpr(locals, list[i]);
+        // skip the next jump on false
+        dest->write_byte(OP_CJUMP);
+        dest->write_short(3);
+        --locals.sp;
+        dest->write_byte(OP_JUMP);
+        dest->write_short(0);
+        patch_locs.push_front(dest->get_size());
+    }
+    dest->write_byte(OP_FALSE);
+    dest->write_byte(OP_JUMP);
+    dest->write_short(1);
+    auto end_addr = dest->get_size();
+    for (auto u : patch_locs) {
+        dest->patch_short(u - 2, end_addr - u);
+    }
+    dest->write_byte(OP_TRUE);
+    ++locals.sp;
+}
+
 void compiler::compile_expr() {
-    locals l;
+    local_table l;
     auto expr = parse_node(sc, symtab);
     compile_subexpr(l, expr);
     delete expr;

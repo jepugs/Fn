@@ -70,20 +70,20 @@ constexpr u8 OP_IMPORT = 0x19;
 
 // control flow & function calls
 
-// jump s_ho_rt; add signed s_ho_rt to ip
+// jump SHORT; add signed s_ho_rt to ip
 constexpr u8 OP_JUMP = 0x30;
-// cjump s_ho_rt; if top of the stack is falsey, add signed s_ho_rt to ip
+// cjump SHORT; if top of the stack is falsey, add signed SHORT to ip
 constexpr u8 OP_CJUMP = 0x31;
-// call b_yt_e; perform a function call
+// call BYTE; perform a function call
 constexpr u8 OP_CALL = 0x32;
 // return; return from the current function
 constexpr u8 OP_RETURN = 0x33;
 
-// apply b_yt_e; like call, but the last argument is actually a list to be expanded as individual
+// apply BYTE; like call, but the last argument is actually a list to be expanded as individual
 // arugments
 constexpr u8 OP_APPLY = 0x34;
 
-// tcall b_yt_e; perform a tail call
+// tcall BYTE; perform a tail call
 //constexpr u8 OP_t_ca_ll = 0x35;
 
 

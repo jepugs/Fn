@@ -11,11 +11,11 @@
 
 namespace fn {
 
-struct locals {
+struct local_table {
     // table of local variable locations
     table<symbol_id,u8> vars;
     // parent environment
-    locals* parent;
+    local_table* parent;
 
     // the function we're currently compiling. this is needed to keep track of upvalues
     func_stub* cur_func;
@@ -23,7 +23,7 @@ struct locals {
     // stack pointer
     u8 sp;
 
-    locals(locals* parent=nullptr, func_stub* cur_func=nullptr);
+    local_table(local_table* parent=nullptr, func_stub* cur_func=nullptr);
     // add an upvalue which has the specified number of levels of indirection (each level corresponds
     // to one more enclosing function before)
     u8 add_upvalue(u32 levels, u8 pos);
@@ -35,7 +35,7 @@ private:
     fn_scan::scanner* sc;
     symbol_table* symtab;
 
-    void compile_subexpr(locals& locals, const fn_parse::ast_node* expr);
+    void compile_subexpr(local_table& locals, const fn_parse::ast_node* expr);
 
     void constant(const_id id) {
         dest->write_byte(fn_bytes::OP_CONST);
@@ -44,27 +44,77 @@ private:
     // Find a local variable. An upvalue is created in the enclosing locals
     // structure if necessary. *is_upval is set to true if this is an upvalue
     // (indirect reference), false otherwise.
-    optional<u8> find_local(locals& locals, bool* is_upval, symbol_id name);
+    optional<u8> find_local(local_table& locals, bool* is_upval, symbol_id name);
 
-    void compile_atom(locals& locals,
+    void compile_atom(local_table& locals,
                       const fn_parse::ast_atom& atom,
                       const source_loc& loc);
-    void compile_var(locals& locals, symbol_id id, const source_loc& loc);
-    void compile_list(locals& locals,
+    void compile_var(local_table& locals, symbol_id id, const source_loc& loc);
+    void compile_list(local_table& locals,
                       const vector<fn_parse::ast_node*>& list,
                       const source_loc& loc);
+    void compile_call(local_table& locals, const vector<fn_parse::ast_node*>& list);
 
-    void compile_do(locals& locals,
+    void compile_and(local_table& locals,
+                     const vector<fn_parse::ast_node*>& list,
+                     const source_loc& loc);
+    void compile_cond(local_table& locals,
+                      const vector<fn_parse::ast_node*>& list,
+                      const source_loc& loc);
+    void compile_def(local_table& locals,
+                     const vector<fn_parse::ast_node*>& list,
+                     const source_loc& loc);
+    void compile_defmacro(local_table& locals,
+                          const vector<fn_parse::ast_node*>& list,
+                          const source_loc& loc);
+    void compile_defn(local_table& locals,
+                      const vector<fn_parse::ast_node*>& list,
+                      const source_loc& loc);
+    void compile_do(local_table& locals,
                     const vector<fn_parse::ast_node*>& list,
                     const source_loc& loc);
-    void compile_def(locals& locals,
+    void compile_dot(local_table& locals,
                      const vector<fn_parse::ast_node*>& list,
                      const source_loc& loc);
-    void compile_let(locals& locals,
+    void compile_dollar_fn(local_table& locals,
+                           const vector<fn_parse::ast_node*>& list,
+                           const source_loc& loc);
+    void compile_if(local_table& locals,
+                    const vector<fn_parse::ast_node*>& list,
+                    const source_loc& loc);
+    void compile_import(local_table& locals,
+                        const vector<fn_parse::ast_node*>& list,
+                        const source_loc& loc);
+    void compile_fn(local_table& locals,
+                    const vector<fn_parse::ast_node*>& list,
+                    const source_loc& loc);
+    void compile_let(local_table& locals,
                      const vector<fn_parse::ast_node*>& list,
                      const source_loc& loc);
-
-
+    void compile_letfn(local_table& locals,
+                       const vector<fn_parse::ast_node*>& list,
+                       const source_loc& loc);
+    void compile_or(local_table& locals,
+                    const vector<fn_parse::ast_node*>& list,
+                    const source_loc& loc);
+    void compile_quasiquote(local_table& locals,
+                            const vector<fn_parse::ast_node*>& list,
+                            const source_loc& loc);
+    void compile_quote(local_table& locals,
+                       const vector<fn_parse::ast_node*>& list,
+                       const source_loc& loc);
+    void compile_unquote(local_table& locals,
+                         const vector<fn_parse::ast_node*>& list,
+                         const source_loc& loc);
+    void compile_unquote_splicing(local_table& locals,
+                                  const vector<fn_parse::ast_node*>& list,
+                                  const source_loc& loc);
+    void compile_set(local_table& locals,
+                     const vector<fn_parse::ast_node*>& list,
+                     const source_loc& loc);
+    void compile_with(local_table& locals,
+                      const vector<fn_parse::ast_node*>& list,
+                      const source_loc& loc);
 public:
     compiler(bytecode* dest, fn_scan::scanner* sc, symbol_table* symtab)
         : dest(dest)

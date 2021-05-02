@@ -645,6 +645,20 @@ Expressions are evaluated one at a time until a logically false value is
 encountered, then returns ~false~. If the end of the list is reached, returns
 ~true~.
 
+*** cond
+Syntax:
+#+begin_src
+cond-expr ::= "(" "cond" cond-case+ ")"
+cond-case ::= expr expr
+#+end_src
+
+For each cond-case, the following is done:
+- evaluate the first expression
+- if the first expression is logically true, return the value of the second
+  expression
+- otherwise, proceed to the next cond-case.
+
+If the end of the list is reached, returns ~null~.
 *** def
 Syntax:
 #+begin_src
@@ -660,6 +674,14 @@ either case, if the identifier is already bound, an exception is raised.
 
 Returns ~null~.
 
+*** TODO defmacro
+Syntax:
+#+begin_src
+defmacro-expr ::= "(" "defmacro" macro-proto expr+ ")"
+macro-proto ::= "(" identifier param-list ")"
+#+end_src
+
+*** defn
 *** do
 Syntax:
 #+begin_src
@@ -714,28 +736,6 @@ The parameter list for the created function accepts as many positional
 parameters as the highest value of N and a variadic parameter only if ~$&~
 appears in the expression. (This is accomplished by performing code-walking,
 including macroexpansion, before compiling the ~dollar-fn~).
-
-*** cond
-Syntax:
-#+begin_src
-cond-expr ::= "(" "cond" cond-case+ ")"
-cond-case ::= expr expr
-#+end_src
-
-For each cond-case, the following is done:
-- evaluate the first expression
-- if the first expression is logically true, return the value of the second
-  expression
-- otherwise, proceed to the next cond-case.
-
-If the end of the list is reached, returns ~null~.
-
-*** TODO defmacro
-Syntax:
-#+begin_src
-defmacro-expr ::= "(" "defmacro" macro-proto expr+ ")"
-macro-proto ::= "(" identifier param-list ")"
-#+end_src
 
 *** if
 Syntax:
@@ -804,6 +804,7 @@ existing variables with the same name.
 
 Returns null.
 
+*** letfn
 *** or
 Syntax:
 #+begin_src
