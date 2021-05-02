@@ -108,8 +108,10 @@ Variable width tokens are:
 
 ** Comments
 
-A comment begins when the unescaped character ~';'~ is encountered outside a
-string. Comments end at the end of the line.
+A comments begins with the unescaped character ~';'~ and end at the end of the
+line.
+
+Comments are skipped over without generating a token.
 
 ** Numbers, Symbols, and Dots
 
@@ -175,6 +177,18 @@ string according to the following table [fn:c-string-escapes]:
 Currently, Fn only supports ASCII encoded text files. Behavior on other/extended
 encodings is undefined. In the future, Fn will be extended so that UTF-8
 characters can appear in strings and symbols.
+
+
+* TODO Parsing
+
+The *parser* is the next piece of the pipeline after the scanner. The parser
+converts streams of tokens into abstract syntax tree objects.
+
+Fn has a remarkably simple structure once parsed. The produced objects are trees
+whose leaves are either symbols, string literals, or numeric literals. These
+leaf forms are collectively referred to as *atoms*, and correspond to symbol,
+string, or number (resp) values in Fn. This correspondence is important to Fn's
+metaprogramming facility, macros.
 
 
 * Syntax

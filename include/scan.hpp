@@ -198,6 +198,8 @@ public:
     ~scanner();
 
     token next_token();
+    // tell if EOF has been reached
+    bool eof();
 
 
 private:
@@ -212,8 +214,6 @@ private:
 
     // increment the scanner position, keeping track of lines and columns
     void advance(char ch);
-    // tell if EOF has been reached
-    bool eof();
     // these raise appropriate exceptions at EOF
     char get_char();
     char peek_char();

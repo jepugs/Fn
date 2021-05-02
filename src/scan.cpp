@@ -222,7 +222,7 @@ token scanner::scan_atom(char first) {
     auto num = try_scan_num(buf, first);
     if (num.has_value()) {
         return make_token(tk_number, *num);
-    } else if (!is_sym_char(peek_char())) {
+    } else if (eof() || !is_sym_char(peek_char())) {
         return make_token(tk_symbol, string{buf.data(), buf.size()});
     }
 
@@ -263,17 +263,23 @@ optional<f64> scanner::try_scan_num(vector<char>& buf, char first) {
     // account for signs first:
     if (first == '+') {
         if (eof()) {
-            return 0;
+            return std::nullopt;
         }
-        first = get_char();
-        buf.push_back(first);
+        first = peek_char();
+        if (is_sym_char(first)) {
+            buf.push_back(get_char());
+            return std::nullopt;
+        }
     } else if (first == '-') {
         if (eof()) {
-            return 0;
+            return std::nullopt;
         }
         sign = -1;
-        first = get_char();
-        buf.push_back(first);
+        first = peek_char();
+        if (is_sym_char(first)) {
+            buf.push_back(get_char());
+            return std::nullopt;
+        }
     }
 
     // We have two main problems: dealing with +/- and dealing with hexadecimal.
@@ -281,7 +287,7 @@ optional<f64> scanner::try_scan_num(vector<char>& buf, char first) {
     // code.
     if (first == '0') {
         // possibilities: hex, dec w/ leading 0, symbol w/ leading 0
-        if (eof()) {
+        if (eof() || !(is_sym_char(peek_char()))) {
             return 0;
         }
         ch = get_char();

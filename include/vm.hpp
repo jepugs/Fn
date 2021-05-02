@@ -89,12 +89,16 @@ public:
     // string constants are copied and automatically freed on destruction
     const_id str_const(const string& str);
     const_id str_const(const char* str);
+    const_id str_const(const fn_string& str);
     // create a new cons cell and return its 16-bit i_d
     const_id cons_const(value hd, value tl);
     // equivalent to add_const(symbol(name))
+    const_id sym_const(u32 sym);
     const_id sym_const(const string& name);
 
+
     symbol_table* get_symbols();
+    // FIXME: don't think that this makes sense
     const symbol_table* get_symbols() const;
     value symbol(const string& name);
     optional<value> find_symbol(const string& name) const;

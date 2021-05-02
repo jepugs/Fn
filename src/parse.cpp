@@ -202,6 +202,10 @@ string ast_node::as_string(const symbol_table* symtab) {
     return res;
 }
 
+bool ast_node::is_symbol() {
+    return kind == ak_atom && datum.atom->type == at_symbol;
+}
+
 
 #define parse_error(msg, loc) throw fn_error("fn_parse", msg, loc)
 

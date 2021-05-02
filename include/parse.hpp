@@ -62,9 +62,11 @@ struct ast_node {
     // the vector here is copied
     ast_node(const vector<ast_node*>& list, const source_loc& loc);
 
+    ~ast_node();
+
     string as_string(const symbol_table* symtab);
 
-    ~ast_node();
+    bool is_symbol();
 };
 
 // get the next form by reading tokens one at a time from the scanner. Return a

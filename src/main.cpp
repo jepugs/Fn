@@ -1,6 +1,6 @@
 #include "base.hpp"
 #include "bytes.hpp"
-#include "compile.hpp"
+#include "compile2.hpp"
 #include "init.hpp"
 #include "parse.hpp"
 #include "scan.hpp"
@@ -40,8 +40,8 @@ void compile_string(virtual_machine* vm, const string& str) {
     auto code = vm->get_bytecode();
     std::istringstream in(str);
     fn_scan::scanner sc(&in, "<cmdline>");
-    compiler c(fs::current_path(), code, &sc);
-    c.compile();
+    compiler c(code, &sc, code->get_symbols());
+    c.compile_to_eof();
 }
 
 void parse_string(const string& str) {
@@ -62,16 +62,16 @@ void parse_string(const string& str) {
 // t_od_o: add current path parameter
 // returns -1 on failure
 int compile_file(virtual_machine* vm, const string& filename) {
-    auto code = vm->get_bytecode();
-    std::ifstream in(filename);
-    if (!in.is_open()) {
-        // t_od_o: might be better to make this an fn_error so we can have a single toplevel handler
-        perror(("error opening file " + filename).c_str());
-        return -1;
-    } else {
-        compiler c(fs::current_path(), code);
-        c.compile_file(filename);
-    }
+    // auto code = vm->get_bytecode();
+    // std::ifstream in(filename);
+    // if (!in.is_open()) {
+    //     // t_od_o: might be better to make this an fn_error so we can have a single toplevel handler
+    //     perror(("error opening file " + filename).c_str());
+    //     return -1;
+    // } else {
+    //     compiler c(fs::current_path(), code);
+    //     c.compile_file(filename);
+    // }
 
     return 0;
 }
@@ -125,10 +125,11 @@ int main(int argc, char** argv) {
         inter = true;
     }
 
-    // ignore everything and just do some parsing
+    virtual_machine vm;
+    init(&vm);
     for (auto s : evals) {
         if (s[0] == 's') {
-            parse_string(s.substr(1));
+            compile_string(&vm, s.substr(1));
         } else {
             // if (compile_file(&vm, s.substr(1)) == -1) {
             //     // exit on error; error message should already be printed
@@ -137,32 +138,18 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (dis) {
+        // disassembly mode
+        auto code = vm.get_bytecode();
+        disassemble(*code, std::cout);
+        return 0;
+    }
 
-    // virtual_machine vm;
-    // init(&vm);
-    // for (auto s : evals) {
-    //     if (s[0] == 's') {
-    //         compile_string(&vm, s.substr(1));
-    //     } else {
-    //         if (compile_file(&vm, s.substr(1)) == -1) {
-    //             // exit on error; error message should already be printed
-    //             return -1;
-    //         }
-    //     }
-    // }
+    // time to actually run the vm
+    vm.execute();
 
-    // if (dis) {
-    //     // disassembly mode
-    //     auto code = vm.get_bytecode();
-    //     disassemble(*code, std::cout);
-    //     return 0;
-    // }
-
-    // // time to actually run the vm
-    // vm.execute();
-
-    // // f_ix_me: for now we print out the last value, but we probably really shouldn't
-    // std::cout << v_to_string(vm.last_pop(),vm.get_bytecode()->get_symbols()) << endl;
+    // FIXME: for now we print out the last value, but we probably really shouldn't
+    std::cout << v_to_string(vm.last_pop(),vm.get_bytecode()->get_symbols()) << endl;
 
     // // do the repl if necessary
     // if (inter) {

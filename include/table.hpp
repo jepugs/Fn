@@ -19,6 +19,11 @@ template<> inline u32 hash<string>(const string& s) {
     return res;
 }
 
+// integer hashing
+template<> inline u32 hash<u32>(const u32& id) {
+    return id;
+}
+
 // hash table entry
 template <typename K, typename T> struct entry {
     const K key;

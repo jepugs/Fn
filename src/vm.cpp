@@ -71,6 +71,7 @@ bytecode::bytecode()
     //set_loc(source_loc(std::shared_ptr<string>(new string("")), 0, 0));
     set_loc(source_loc(std::shared_ptr<string>(new string("")), 0, 0));
 }
+
 bytecode::~bytecode() {
     free(data);
 
@@ -218,13 +219,26 @@ u16 bytecode::str_const(const char* name) {
     return add_const(v);
 }
 
+u16 bytecode::str_const(const fn_string& str) {
+    auto v = as_value(new fn_string{str});
+    managed_constants.push_front(v);
+    return add_const(v);
+}
+
+
 u16 bytecode::cons_const(value hd, value tl) {
     auto v = as_value(new cons(hd, tl));
     managed_constants.push_front(v);
     return add_const(v);
 }
 
-u16 bytecode::sym_const(const string& name) {
+const_id bytecode::sym_const(u32 sym) {
+    auto s = symbols[sym];
+    value v{ .raw = (((u64) s.id) << 8) | (u64) TAG_SYM };
+    return add_const(v);
+}
+
+const_id bytecode::sym_const(const string& name) {
     return add_const(symbol(name));
 }
 
