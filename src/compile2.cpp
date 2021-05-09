@@ -156,8 +156,8 @@ void compiler::compile_list(local_table& locals,
             compile_if(locals, list, list[0]->loc);
         // } else if (name == "import") {
         //     compile_import(locals, list, list[0]->loc);
-        // } else if (name == "fn") {
-        //     compile_fn(locals, list, list[0]->loc);
+        } else if (name == "fn") {
+            compile_fn(locals, list, list[0]->loc);
         } else if (name == "let") {
             compile_let(locals, list, list[0]->loc);
         // } else if (name == "letfn") {
@@ -259,6 +259,19 @@ void compiler::compile_do(local_table& locals,
         --locals.sp;
     }
     compile_subexpr(locals, list[i]);
+}
+
+void compiler::compile_fn(local_table& locals,
+                          const vector<ast_node*>& list,
+                          const source_loc& loc) {
+    if (list.size() <= 2) {
+        error("Too few arguments to fn.", loc);
+    }
+
+    auto params = parse_params(*symtab, *list[1]);
+
+    write_byte(OP_NULL);
+    ++locals.sp;
 }
 
 void compiler::compile_if(local_table& locals,

@@ -87,21 +87,21 @@ private:
     void compile_do(local_table& locals,
                     const vector<fn_parse::ast_node*>& list,
                     const source_loc& loc);
-    void compile_dot(local_table& locals,
-                     const vector<fn_parse::ast_node*>& list,
-                     const source_loc& loc);
     void compile_dollar_fn(local_table& locals,
                            const vector<fn_parse::ast_node*>& list,
                            const source_loc& loc);
+    void compile_dot(local_table& locals,
+                     const vector<fn_parse::ast_node*>& list,
+                     const source_loc& loc);
+    void compile_fn(local_table& locals,
+                    const vector<fn_parse::ast_node*>& list,
+                    const source_loc& loc);
     void compile_if(local_table& locals,
                     const vector<fn_parse::ast_node*>& list,
                     const source_loc& loc);
     void compile_import(local_table& locals,
                         const vector<fn_parse::ast_node*>& list,
                         const source_loc& loc);
-    void compile_fn(local_table& locals,
-                    const vector<fn_parse::ast_node*>& list,
-                    const source_loc& loc);
     void compile_let(local_table& locals,
                      const vector<fn_parse::ast_node*>& list,
                      const source_loc& loc);

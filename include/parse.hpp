@@ -37,7 +37,7 @@ struct ast_atom  {
     ast_atom(fn_string&& str);
     ast_atom(const symbol& sym);
 
-    // copy constructor
+    // this will copy the string if necessary
     ast_atom(const ast_atom& at);
     // copy operator
     ast_atom& operator=(const ast_atom& at);
@@ -46,6 +46,7 @@ struct ast_atom  {
     ast_atom(ast_atom&& at);
     ast_atom& operator=(ast_atom&& at);
 
+    // string is automatically freed
     ~ast_atom();
 };
 
@@ -62,11 +63,17 @@ struct ast_node {
     // the vector here is copied
     ast_node(const vector<ast_node*>& list, const source_loc& loc);
 
+    // shallow copy by default
+    ast_node(const ast_node&) = default;
+
     ~ast_node();
 
-    string as_string(const symbol_table* symtab);
+    // make a deep copy. Must be deleted later
+    ast_node* copy() const;
 
-    bool is_symbol();
+    string as_string(const symbol_table* symtab) const;
+
+    bool is_symbol() const;
 };
 
 // get the next form by reading tokens one at a time from the scanner. Return a
@@ -76,6 +83,43 @@ ast_node* parse_node(scanner* sc,
                      symbol_table* symtab,
                      optional<token> t0 = std::nullopt);
 
-}
+struct parameter {
+    symbol_id sym;
+    unique_ptr<ast_node> init_form;
 
+    // a deep copy is made of init if provided
+    parameter(symbol_id sym, const ast_node* init=nullptr)
+        : sym{sym}
+        , init_form{init==nullptr ? nullptr : init->copy()} {
+    }
+
+    parameter(const parameter& src)
+        : sym{src.sym}
+        , init_form{src.init_form==nullptr ? nullptr : src.init_form->copy()} {
+    }
+};
+
+struct param_list {
+    vector<parameter> positional;
+    optional<symbol_id> var_list;
+    optional<symbol_id> var_table;
+
+    param_list() = default;
+    param_list(const vector<parameter>& positional,
+               const optional<symbol_id>& var_list=std::nullopt,
+               const optional<symbol_id>& var_table=std::nullopt)
+        : positional{positional}
+        , var_list{var_list}
+        , var_table{var_table} {
+    }
+
+    ~param_list() = default;
+};
+
+// Parse an ast_node into a param_list. In the process, we check for syntactic
+// validity. This function does not verify whether the parameter names are
+// legal, nor does it check for duplicates. (That is done in the compiler).
+param_list parse_params(symbol_table& symtab, const ast_node& form);
+
+}
 #endif
