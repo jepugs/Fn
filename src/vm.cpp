@@ -12,55 +12,10 @@ namespace fn {
 
 using namespace fn_bytes;
 
-symbol_table::symbol_table()
-    : by_name()
-    , by_id()
-{ }
-
-const symbol* symbol_table::intern(const string& str) {
-    auto v = find(str);
-    if (v.has_value()) {
-        return *v;
-    } else {
-        u32 id = by_id.size();
-        symbol s = { .id=id, .name=str };
-        by_id.push_back(s);
-        by_name.insert(str,s);
-        return &(by_id[by_id.size() - 1]);
-    }
-}
-
-bool symbol_table::is_internal(const string& str) const {
-    return by_name.get(str).has_value();
-}
-
-inline optional<const symbol*> symbol_table::find(const string& str) const {
-    auto v = by_name.get(str);
-    if (v.has_value()) {
-        return *v;
-    }
-    return { };
-}
-
-u8 func_stub::get_upvalue(local_addr slot, bool direct) {
-    for (local_addr i = 0; i < num_upvals; ++i) {
-        auto u = upvals[i];
-        if (u.slot == slot && u.direct == direct) {
-            // found the upvalue
-            return i;
-        }
-    }
-    // add a new upvalue
-    upvals.push_back({ .slot=slot, .direct=direct });
-
-    return num_upvals++;
-}
-
 bytecode::bytecode()
     : locs(nullptr)
     , last_loc(nullptr)
-    , symbols()
-{
+    , symtab() {
     // allocate 256 bytes to start
     cap = 256;
     // use malloc so we can use realloc
@@ -76,8 +31,8 @@ bytecode::~bytecode() {
     free(data);
 
     for (auto v : managed_constants) {
-        if (v.is_str()) {
-            delete v.ustr();
+        if (v.is_string()) {
+            delete v.ustring();
         } else if (v.is_cons()) {
             delete v.ucons();
         }
@@ -180,21 +135,23 @@ u16 bytecode::num_constants() const {
     return constants.size();
 }
 
-u16 bytecode::add_function(local_addr arity, bool vararg, value mod_id) {
-    arity -= vararg ? 1 : 0;
+u16 bytecode::add_function(const vector<symbol_id>& positional,
+                           bool var_list,
+                           bool var_table,
+                           value ns_id) {
     functions.push_back(new func_stub {
-            .positional=arity, 
-            .required=arity,
-            .varargs=vararg,
+            .positional=positional, 
+            .var_list=var_list,
             .num_upvals=0,
             .upvals=vector<upvalue>(),
-            .mod_id=mod_id,
+            .ns_id=ns_id,
             .addr=get_size()});
-    return (u16) functions.size() - 1;
+    return (u16) (functions.size() - 1);
 }
 
+
 func_stub* bytecode::get_function(u16 id) const {
-    // t_od_o: check bounds?
+    // TODO: check bounds?
     return functions[id];
 }
 
@@ -233,8 +190,8 @@ u16 bytecode::cons_const(value hd, value tl) {
 }
 
 const_id bytecode::sym_const(u32 sym) {
-    auto s = symbols[sym];
-    value v{ .raw = (((u64) s.id) << 8) | (u64) TAG_SYM };
+    auto s = symtab[sym];
+    value v{ .raw = (((u64) s.id) << 4) | (u64) TAG_SYM };
     return add_const(v);
 }
 
@@ -242,26 +199,22 @@ const_id bytecode::sym_const(const string& name) {
     return add_const(symbol(name));
 }
 
-symbol_table* bytecode::get_symbols() {
-    return &this->symbols;
+symbol_table* bytecode::get_symbol_table() {
+    return &this->symtab;
 }
 
-const symbol_table* bytecode::get_symbols() const {
-    return &this->symbols;
+const symbol_table* bytecode::get_symbol_table() const {
+    return &this->symtab;
 }
 
-u32 bytecode::symbol_id(const string& name) {
-    auto s = symbols.intern(name);
-    return s->id;
-}
 value bytecode::symbol(const string& name) {
-    auto s = symbols.intern(name);
-    return { .raw = (((u64) s->id) << 8) | (u64) TAG_SYM };
+    auto s = symtab.intern(name);
+    return { .raw = (((u64) s->id) << 4) | (u64) TAG_SYM };
 }
 optional<value> bytecode::find_symbol(const string& name) const {
-    auto s = symbols.find(name);
+    auto s = symtab.find(name);
     if (s.has_value()) {
-        return value{ .raw = (((u64) (*s)->id) << 8) | (u64) TAG_SYM };
+        return value{ .raw = (((u64) (*s)->id) << 4) | (u64) TAG_SYM };
     } else {
         return { };
     }
@@ -276,7 +229,7 @@ call_frame* call_frame::extend_frame(bc_addr ret_addr,
 
 upvalue_slot call_frame::create_upvalue(local_addr pos, value* ptr) {
     if (pos >= sp) {
-        // t_od_o: probably an error
+        // TODO: probably an error
         return nullptr;
     }
 
@@ -286,7 +239,7 @@ upvalue_slot call_frame::create_upvalue(local_addr pos, value* ptr) {
             return u.slot;
         }
     }
-    // t_od_o: ref_count
+    // TODO: ref_count
     auto res = upvalue_slot(ptr);
     open_upvals.push_front(open_upvalue{ .slot=res, .pos=pos });
     return res;
@@ -318,17 +271,16 @@ void call_frame::close_all() {
 
 virtual_machine::virtual_machine()
     : code()
-    , core_mod(nullptr)
+    , core_ns(nullptr)
     , alloc([this] { return generate_roots(); })
     , ip(0)
     , frame(new call_frame(nullptr, 0, 0, nullptr))
-    , lp(V_NULL)
-{
-    ns = v_obj(alloc.add_obj());
-    auto mod_id = alloc.add_cons(code.symbol("core"), V_EMPTY);
-    mod_id = alloc.add_cons(code.symbol("fn"),mod_id);
-    module = init_module(mod_id);
-    core_mod = module;
+    , lp(V_NULL) {
+    ns_root = v_namespace(alloc.add_namespace());
+    auto ns_id = alloc.add_cons(code.symbol("core"), V_EMPTY);
+    ns_id = alloc.add_cons(code.symbol("fn"),ns_id);
+    cur_ns = init_namespace(ns_id);
+    core_ns = cur_ns;
     alloc.enable_gc();
 }
 
@@ -336,7 +288,7 @@ virtual_machine::~virtual_machine() {
     // delete all call frames
     while (frame != nullptr) {
         auto tmp = frame->prev;
-        // t_od_o: ensure reference count for upvalue_slot is decremented
+        // TODO: ensure reference count for upvalue_slot is decremented
         delete frame;
         frame = tmp;
     }
@@ -363,12 +315,12 @@ generator<value> virtual_machine::generate_roots() {
                 return **u[i++].val;
         });
     } while ((f = f->prev) != nullptr);
-    return stack_gen + upval_gen + generate1(as_value(ns)) + generate1(lp);
+    return stack_gen + upval_gen + generate1(as_value(ns_root)) + generate1(lp);
 }
 
-object* virtual_machine::init_module(value mod_id) {
-    if (v_tag(mod_id) != TAG_CONS) {
-        runtime_error("module initialization failed: module id not a list of symbols.");
+fn_namespace* virtual_machine::init_namespace(value ns_id) {
+    if (v_tag(ns_id) != TAG_CONS) {
+        runtime_error("namespace initialization failed: namespace id not a list of symbols.");
     }
 
     // disable the gc if necessary
@@ -378,51 +330,37 @@ object* virtual_machine::init_module(value mod_id) {
         alloc.disable_gc();
     }
 
-    // create the module in the ns hierarchy
-    auto x = mod_id;
+    // create the namespace in the ns hierarchy
+    auto x = ns_id;
     value key;
-    object* res = ns;
-    optional<value*> v;
-    // f_ix_me: it's still possible to overwrite a variable here
+    fn_namespace* res = ns_root;
+    optional<value> v;
+    // FIXME: it's still possible to overwrite a variable here
     while (x != V_EMPTY) {
         key = v_head(x);
         if (v_tag(key) != TAG_SYM) {
-            runtime_error("module initialization failed: module id not a list of symbols.");
+            runtime_error("Namespace init failed on invalid namespace id.");
         }
-        v = res->contents.get(key);
+        auto sym = v_sym_id(key);
+        v = res->get(sym);
         if (!v.has_value()) {
-            auto tmp = v_obj(alloc.add_obj());
-            res->contents.insert(key, as_value(tmp));
+            auto tmp = v_namespace(alloc.add_namespace());
+            res->set(sym, as_value(tmp));
             res = tmp;
-        } else if (v_short_tag(**v) == TAG_OBJ) {
-            res = v_obj(**v);
+        } else if (v_tag(*v) == TAG_NAMESPACE) {
+            res = v_namespace(*v);
         } else {
-            runtime_error("module initialization would clobber existing variable.");
+            runtime_error("Namespace init failed on collision with non-namespace definition.");
         }
         x = v_tail(x);
-        // t_od_o: check tail is a list (and also do it in find_module)
+        // TODO: check tail is a list (and also do it in find_namespace)
     }
 
-    // check if this is already a module
-    if (res->contents.get(code.symbol("_modinfo"))) {
-        runtime_error("module initialization would clobber existing module.");
+    // TODO: this only happens once in the constructor.
+    if (core_ns != nullptr) {
+        res->contents = table{core_ns->contents};
     }
-
-    // t_od_o: this only happens once in the constructor.
-    if (core_mod != nullptr) {
-        res->contents = table(core_mod->contents);
-    }
-    auto cts = &res->contents;
-    cts->insert(code.symbol("ns"), as_value(ns));
-
-    // make a global _modinfo object
-    object* modinfo = v_obj(alloc.add_obj());
-    cts->insert(code.symbol("_modinfo"), as_value(modinfo));
-    // name is the last symbol in the module id
-    modinfo->contents.insert(code.symbol("name"), key);
-    modinfo->contents.insert(code.symbol("id"), mod_id);
-    // the file from which this was loaded. the compiler generates code to set this when importing a file.
-    modinfo->contents.insert(code.symbol("source"), alloc.add_str("<internal>"));
+    res->set(v_sym_id(code.symbol("ns")), as_value(ns_root));
 
     if (reenable_gc) {
         alloc.enable_gc();
@@ -430,36 +368,34 @@ object* virtual_machine::init_module(value mod_id) {
     return res;
 }
 
-// t_od_o: make optional<obj>
-object* virtual_machine::find_module(value mod_id) {
-    if (v_tag(mod_id) != TAG_CONS) {
-        runtime_error("module search failed: module id not a list of symbols.");
+// TODO: make optional<obj>
+fn_namespace* virtual_machine::find_namespace(value ns_id) {
+    if (v_tag(ns_id) != TAG_CONS) {
+        runtime_error("namespace search failed: namespace id not a list of symbols.");
     }
 
-    // create the module in the ns hierarchy
-    auto x = mod_id;
+    // create the namespace in the ns hierarchy
+    auto x = ns_id;
     value key;
-    object* res = ns;
-    optional<value*> v;
+    fn_namespace* res = ns_root;
+    optional<value> v;
     while (x != V_EMPTY) {
-        // t_od_o: check that everything is a package or a module.
+        // TODO: check that everything is a package or a namespace.
         key = v_head(x);
         if (v_tag(key) != TAG_SYM) {
-            runtime_error("module search failed: module id not a list of symbols.");
+            runtime_error("namespace search failed: namespace id not a list of symbols.");
         }
-        v = res->contents.get(key);
+        v = res->get(v_sym_id(key));
         if (!v.has_value()) {
             return nullptr;
-        } else if (v_short_tag(**v) == TAG_OBJ) {
-            res = v_obj(**v);
+        } else if (v_tag(*v) == TAG_NAMESPACE) {
+            res = v_namespace(*v);
+        } else {
+            runtime_error("namespace search failed: namespace id collides with a variable.");
         }
         x = v_tail(x);
     }
 
-    // ensure this is already a module
-    if (res->contents.get(code.symbol("_modinfo")) == nullptr) {
-        runtime_error("module search failed: module id names a variable.");
-    }
     return res;
 }
 
@@ -472,44 +408,53 @@ value virtual_machine::last_pop() const {
 }
 
 void virtual_machine::add_global(value name, value v) {
+    if (!name.is_sym()) {
+        runtime_error("Global name is not a symbol.");
+    }
+    auto sym = v_sym_id(name);
     if (frame != nullptr && frame->caller != nullptr) {
-        auto mod_id = frame->caller->stub->mod_id;
-        auto mod = find_module(mod_id);
+        auto ns_id = frame->caller->stub->ns_id;
+        auto mod = find_namespace(ns_id);
         if (mod == nullptr) {
-            runtime_error("function has nonsensical module i_d. (this is probably a bug).");
+            runtime_error("Function has nonsensical namespace id. (This is probably a bug).");
         } else {
-            mod->contents.insert(name, v);
+            mod->set(sym, v);
         }
     } else {
-        module->contents.insert(name, v);
+        cur_ns->set(sym, v);
     }
 }
 
 value virtual_machine::get_global(value name) {
-    optional<value*> res;
+    if (!name.is_sym()) {
+        runtime_error("Global name is not a symbol.");
+    }
+    auto sym = v_sym_id(name);
+
+    optional<value> res;
     if (frame != nullptr && frame->caller != nullptr) {
-        auto mod_id = frame->caller->stub->mod_id;
-        auto mod = find_module(mod_id);
+        auto ns_id = frame->caller->stub->ns_id;
+        auto mod = find_namespace(ns_id);
         if (mod == nullptr) {
-            runtime_error("function has nonsensical module i_d. (this is probably a bug).");
+            runtime_error("Function has nonsensical namespace id. (This is probably a bug).");
         } else {
-            res = mod->contents.get(name);
+            res = mod->get(sym);
         }
     } else {
-        res = module->contents.get(name);
+        res = cur_ns->get(sym);
     }
 
     if (!res.has_value()) {
-        runtime_error("attempt to access unbound global variable " + v_to_string(name, code.get_symbols()));
+        runtime_error("Attempt to access unbound global variable " + v_to_string(name, code.get_symbol_table()));
     }
-    return **res;
+    return *res;
 }
 
 upvalue_slot virtual_machine::get_upvalue(u8 id) const {
     if (frame->caller == nullptr || frame->caller->stub->num_upvals <= id) {
-        throw fn_error("interpreter", "attempt to access nonexistent upvalue",
+        throw fn_error("interpreter", "Attempt to access nonexistent upvalue",
                       *code.location_of(ip));
-        // t_od_o: error: nonexistent upvalue
+        // TODO: error: nonexistent upvalue
     }
     return frame->caller->upvals[id];
 }
@@ -601,17 +546,21 @@ bc_addr virtual_machine::apply(local_addr num_args) {
         ++vlen;
     }
 
-    // t_od_o: use a maxargs constant
+    // TODO: use a maxargs constant
     if (vlen + num_args - 1 > 255) {
         runtime_error("too many arguments for function call in apply.");
     }
     return call(vlen + num_args - 1);
 }
 
-// t_od_o: switch to use runtime_error
+// TODO: switch to use runtime_error
 bc_addr virtual_machine::call(local_addr num_args) {
     // the function to call should be at the bottom
-    auto v1 = peek(num_args);
+    auto v1 = peek(num_args + 1);
+    auto kw = peek(num_args); // keyword arguments come first
+    if (!kw.is_table()) {
+        runtime_error("VM call operation has malformed keyword table.");
+    }
     value res;
     auto tag = v_tag(v1);
     if (tag == TAG_FUNC) {
@@ -619,35 +568,92 @@ bc_addr virtual_machine::call(local_addr num_args) {
         alloc.disable_gc();
         auto func = v_func(v1);
         auto stub = func->stub;
-        auto mod = find_module(stub->mod_id);
+        auto mod = find_namespace(stub->ns_id);
         if (mod == nullptr) {
-            runtime_error("function has nonexistent module id.");
+            runtime_error("function has nonexistent namespace id.");
         }
-        // t_od_o: switch to the function's module. probably put in the callframe
-        if (num_args < stub->required) {
-            throw fn_error("interpreter",
-                          "too few arguments for function call at ip=" + std::to_string(ip),
-                          *code.location_of(ip));
-        } else if (stub->varargs) {
-            // make a list out of the trailing arguments
-            auto vararg = V_EMPTY;
-            for (auto i = num_args-stub->positional; i > 0; --i) {
-                vararg = alloc.add_cons(pop(), vararg);
+
+        // usually, positional arguments can get left where they are
+
+        // extra positional arguments go to the variadic list parameter
+        value vlist = V_EMPTY;
+        if (stub->positional.size() < num_args) {
+            if (!stub->var_list) {
+                runtime_error("Too many positional arguments to function.");
             }
-            push(vararg);
-            frame = frame->extend_frame(ip+2, stub->positional+1, func);
-        } else if (num_args > stub->positional) {
-            throw fn_error("interpreter",
-                          "too many arguments for function call at ip=" + std::to_string(ip),
-                          *code.location_of(ip));
-        } else {
-            // normal function call
-            frame = frame->extend_frame(ip+2, num_args, func);
+            for (auto i = stub->positional.size(); i < num_args; ++i) {
+                vlist = alloc.add_cons(peek(num_args - i), vlist);
+            }
+            pop_times(num_args - stub->positional.size());
         }
-        // t_od_o: maybe put this in finally?
+        if (stub->var_list) {
+            push(vlist);
+        }
+
+        // iterate over keyword arguments
+
+        // positional arguments after num_args
+        table<symbol_id,value> pos;
+        value vtable = stub->var_table ? alloc.add_table() : V_NULL;
+        auto& cts = kw.utable()->contents;
+        for (auto k : cts.keys()) {
+            auto id = v_sym_id(*k);
+            bool found = false;
+            for (auto x : stub->positional) {
+                if (x == id) {
+                    if (pos.get(id).has_value()) {
+                        runtime_error("Duplicated keyword argument.");
+                    }
+                    found = true;
+                    pos.insert(id,**cts.get(*k));
+                    break;
+                }
+            }
+            if (!found) {
+                if (!stub->var_table) {
+                    runtime_error("Extraneous keyword arguments.");
+                }
+                vtable.table_set(*k, **cts.get(*k));
+            }
+        }
+        if (stub->var_table) {
+            push(vtable);
+        }
+
+        frame = frame->
+            extend_frame(ip+2,
+                         stub->positional.size() + stub->var_list + stub->var_table,
+                         func);
+                         
+
+        // TODO: switch to the function's namespace. probably put in the callframe
+        // if (num_args < stub->required) {
+        //     throw fn_error("interpreter",
+        //                   "too few arguments for function call at ip=" + std::to_string(ip),
+        //                   *code.location_of(ip));
+        // } else if (stub->varargs) {
+        //     // make a list out of the trailing arguments
+        //     auto vararg = V_EMPTY;
+        //     for (auto i = num_args-stub->positional; i > 0; --i) {
+        //         vararg = alloc.add_cons(pop(), vararg);
+        //     }
+        //     push(vararg);
+        //     frame = frame->extend_frame(ip+2, stub->positional+1, func);
+        // } else if (num_args > stub->positional) {
+        //     throw fn_error("interpreter",
+        //                   "too many arguments for function call at ip=" + std::to_string(ip),
+        //                   *code.location_of(ip));
+        // } else {
+        //     // normal function call
+        //     frame = frame->extend_frame(ip+2, num_args, func);
+        // }
+        // TODO: maybe put this in finally?
         alloc.enable_gc();
         return stub->addr;
     } else if (tag == TAG_FOREIGN) {
+        if (kw.utable()->contents.get_size() != 0) {
+            runtime_error("Foreign function was passed keyword arguments.");
+        }
         alloc.disable_gc();
         auto f = v_foreign(v1);
         if (num_args < f->min_args) {
@@ -662,13 +668,13 @@ bc_addr virtual_machine::call(local_addr num_args) {
             // correct arity
             res = f->func((u16)num_args, &stack[frame->bp + frame->sp - num_args], this);
         }
-        // pop args+1 times (to get the function)
+        // pop args+2 times (to get the function and keyword dictionary)
         pop_times(num_args+1);
         push(res);
         alloc.enable_gc();
         return ip + 2;
     } else {
-        // t_od_o: exception: not a function
+        // TODO: exception: not a function
         throw fn_error("interpreter",
                       "attempt to call nonfunction at address " + std::to_string((i32)ip),
                       *code.location_of(ip));
@@ -677,20 +683,20 @@ bc_addr virtual_machine::call(local_addr num_args) {
 }
 
 
-#define push_bool(b) push(b ? v_t_ru_e : v_f_al_se);
+#define push_bool(b) push(b ? V_TRUE : V_FALSE);
 void virtual_machine::step() {
 
     u8 instr = code.read_byte(ip);
 
     // variable for use inside the switch
     value v1, v2, v3;
-    optional<value*> vp;
+    optional<value> vp;
 
     bool skip = false;
     bool jump = false;
     bc_addr addr = 0;
 
-    object* mod;
+    fn_namespace* mod;
 
     local_addr num_args;
 
@@ -730,14 +736,14 @@ void virtual_machine::step() {
 
     case OP_UPVALUE:
         l = code.read_byte(ip+1);
-        // t_od_o: check upvalue exists
+        // TODO: check upvalue exists
         u = frame->caller->upvals[l];
         push(**u.val);
         ++ip;
         break;
     case OP_SET_UPVALUE:
         l = code.read_byte(ip+1);
-        // t_od_o: check upvalue exists
+        // TODO: check upvalue exists
         u = frame->caller->upvals[l];
         **u.val = pop();
         ++ip;
@@ -764,7 +770,7 @@ void virtual_machine::step() {
     case OP_CLOSE:
         num_args = code.read_byte(ip+1);
         frame->close(num_args);
-        // t_od_o: check stack size >= num_args
+        // TODO: check stack size >= num_args
         ++ip;
         break;
 
@@ -809,11 +815,22 @@ void virtual_machine::step() {
         v1 = pop();
         // object
         v2 = pop();
-        if (v_tag(v2) != TAG_OBJ) {
-            runtime_error("obj-get operand not a general object");
+        if (v_tag(v2) == TAG_TABLE) {
+            vp = v2.table_get(v1);
+            push(vp.has_value() ? *vp : V_NULL);
+            break;
+        } else if (v_tag(v2) == TAG_NAMESPACE) {
+            if (v_tag(v1) == TAG_SYM) {
+                vp = v1.namespace_get(v_sym_id(v1));
+                if (!vp.has_value()) {
+                    runtime_error("obj-get undefined key for namespace");
+                }
+                push(*vp);
+                break;
+            }
+            runtime_error("obj-get namespace key must be a symbol");
         }
-        vp = v_obj(v2)->contents.get(v1);
-        push(vp.has_value() ? **vp : V_NULL);
+        runtime_error("obj-get operand not a table or namespace");
         break;
 
     case OP_OBJ_SET:
@@ -823,27 +840,27 @@ void virtual_machine::step() {
         v1 = pop();
         // object
         v2 = pop();
-        if (v_tag(v2) != TAG_OBJ) {
-            runtime_error("obj-set operand not a general object");
+        if (v_tag(v2) != TAG_TABLE) {
+            runtime_error("obj-set operand not a table");
         }
-        v_obj(v2)->contents.insert(v1,v3);
+        v_table(v2)->contents.insert(v1,v3);
         push(v3);
         break;
 
-    case OP_MODULE:
+    case OP_NAMESPACE:
         v1 = pop();
-        // t_od_o: check for _modinfo property
-        if (v_tag(v1) != TAG_OBJ) {
-            runtime_error("module operand not a general object");
+
+        if (v_tag(v1) != TAG_NAMESPACE) {
+            runtime_error("namespace operand not a namespace");
         }
-        module = v_obj(v1);
+        cur_ns = v_namespace(v1);
         break;
 
     case OP_IMPORT:
         v1 = pop();
-        mod = find_module(v1);
+        mod = find_namespace(v1);
         if (mod == nullptr) {
-            mod = init_module(v1);
+            mod = init_namespace(v1);
         }
         push(as_value(mod));
         break;
@@ -892,13 +909,17 @@ void virtual_machine::step() {
         num_args = frame->num_args;
         frame->close_all();
         tmp = frame;
-        // t_od_o: restore stack pointer
+        // TODO: restore stack pointer
         frame = tmp->prev;
         delete tmp;
 
-        // pop the arguments + the caller
-        pop_times(num_args+1);
+        // pop the arguments + the caller + the keyword table
+        pop_times(num_args+2);
         push(v1);
+        break;
+
+    case OP_TABLE:
+        push(alloc.add_table());
         break;
 
     default:

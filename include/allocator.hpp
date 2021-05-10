@@ -64,9 +64,10 @@ public:
     void force_collect();
 
     value add_cons(value hd, value tl);
-    value add_str(const string& s);
-    value add_str(const char* s);
-    value add_obj();
+    value add_string(const string& s);
+    value add_string(const char* s);
+    value add_table();
+    value add_namespace();
     value add_func(func_stub* stub,
                    const std::function<void (upvalue_slot*)>& populate);
     value add_foreign(local_addr min_args,

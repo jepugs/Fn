@@ -34,17 +34,17 @@ cons* value::vcons() const {
     return this->ucons();
 }
 
-fn_string* value::vstr() const {
-    if (!is_str()) {
-        error(TAG_STR);
+fn_string* value::vstring() const {
+    if (!is_string()) {
+        error(TAG_STRING);
     }
-    return this->ustr();
+    return this->ustring();
 }
-object* value::vobj() const {
-    if (!is_object()) {
-        error(TAG_OBJ);
+fn_table* value::vtable() const {
+    if (!is_table()) {
+        error(TAG_TABLE);
     }
-    return this->uobj();
+    return this->utable();
 }
 function* value::vfunc() const {
     if (!is_func()) {
@@ -57,6 +57,12 @@ foreign_func* value::vforeign() const {
         error(TAG_FOREIGN);
     }
     return this->uforeign();
+}
+fn_namespace* value::vnamespace() const {
+    if (!is_namespace()) {
+        error(TAG_NAMESPACE);
+    }
+    return this->unamespace();
 }
 
 value value::operator+(const value& v) const {
@@ -106,55 +112,97 @@ value& value::rtail() const {
 }
 
 // str functions
-u32 value::str_len() const {
-    if (!is_str()) {
-        error(TAG_STR);
+u32 value::string_len() const {
+    if (!is_string()) {
+        error(TAG_STRING);
     }
-    return ustr()->len;
+    return ustring()->len;
 }
 
-// obj functions
-value& value::get(const value& key) const {
-    if (!is_object()) {
-        error(TAG_OBJ);
+// table functions
+value value::table_get(const value& key) const {
+    if (!is_table()) {
+        error(TAG_TABLE);
     }
-    auto v = uobj()->contents.get(key);
+    auto v = utable()->contents.get(key);
     if (v.has_value()) {
         return **v;
     }
-    return uobj()->contents.insert(key, V_NULL);
+    return utable()->contents.insert(key, V_NULL);
 }
-void value::set(const value& key, const value& val) const {
-    if (!is_object()) {
-        error(TAG_OBJ);
+void value::table_set(const value& key, const value& val) const {
+    if (!is_table()) {
+        error(TAG_TABLE);
     }
-    uobj()->contents.insert(key, val);
+    utable()->contents.insert(key, val);
 }
-bool value::has_key(const value& key) const {
-    if (!is_object()) {
-        error(TAG_OBJ);
+bool value::table_has_key(const value& key) const {
+    if (!is_table()) {
+        error(TAG_TABLE);
     }
-    return uobj()->contents.has_key(key);
+    return utable()->contents.has_key(key);
 }
-// t_od_o: add unsafe versions of all these accessors (incl. ones above)
-forward_list<value> value::obj_keys() const {
-    if (!is_object()) {
-        error(TAG_OBJ);
+// TODO: add unsafe versions of all these accessors (incl. ones above)
+forward_list<value> value::table_keys() const {
+    if (!is_table()) {
+        error(TAG_TABLE);
     }
     forward_list<value> res;
-    for (auto p : uobj()->contents.keys()) {
+    for (auto p : utable()->contents.keys()) {
         res.push_front(*p);
     }
     return res;
 }
 
+// namespace functions
+optional<value> value::namespace_get(symbol_id name) const {
+    if (!is_namespace()) {
+        error(TAG_NAMESPACE);
+    }
+    return unamespace()->get(name);
+}
+void value::namespace_set(symbol_id name, const value& val) const {
+    if (!is_namespace()) {
+        error(TAG_NAMESPACE);
+    }
+    return unamespace()->set(name, val);
+}
+bool value::namespace_has_name(symbol_id name) const {
+    if (!is_namespace()) {
+        error(TAG_NAMESPACE);
+    }
+    return unamespace()->contents.has_key(name);
+}
+// TODO: add unsafe versions of all these accessors (incl. ones above)
+forward_list<symbol_id> value::namespace_names() const {
+    if (!is_namespace()) {
+        error(TAG_NAMESPACE);
+    }
+    forward_list<symbol_id> res;
+    for (auto p : unamespace()->contents.keys()) {
+        res.push_front(*p);
+    }
+    return res;
+}
+
+optional<value> value::get(const value& key) const {
+    if(is_namespace()) {
+        if(!key.is_sym()) {
+            error(TAG_SYM);
+        }
+        return namespace_get(v_sym_id(key));
+    } else {
+        return table_get(key);
+    }
+}
+
 optional<obj_header*> value::header() const {
     if (is_cons()) {
         return &ucons()->h;
-    } else if (is_str()) {
-        return &ustr()->h;
-    } else if (is_object()) {
-        return &uobj()->h;
+    } else if (is_string()) {
+        return &ustring()->h;
+    } else if (is_table()) {
+        return &utable()->h;
     } else if (is_func()) {
         return &ufunc()->h;
     } else if (is_foreign()) {
@@ -164,28 +212,28 @@ optional<obj_header*> value::header() const {
 }
 
 obj_header::obj_header(value ptr, bool gc)
-    : ptr(ptr)
-    , gc(gc)
-    , mark(false)
-{ }
+    : ptr{ptr}
+    , gc{gc}
+    , mark{false} {
+}
 
 cons::cons(value head, value tail, bool gc)
-    : h(as_value(this),gc)
-    , head(head)
-    , tail(tail)
-{ }
+    : h{as_value(this),gc}
+    , head{head}
+    , tail{tail} {
+}
 
 fn_string::fn_string(const string& src, bool gc)
-    : h(as_value(this),gc)
-    , len(src.size()) {
+    : h{as_value(this),gc}
+    , len{static_cast<u32>(src.size())} {
     auto v = new char[len+1];
     v[len] = '\0';
     std::memcpy(v, src.c_str(), len);
     data = v;
 }
 fn_string::fn_string(const char* src, bool gc)
-    : h(as_value(this),gc)
-    , len(string(src).size()) {
+    : h{as_value(this),gc}
+    , len{static_cast<u32>(string{src}.size())} {
     string s(src);
     auto v = new char[len+1];
     v[len] = '\0';
@@ -193,8 +241,8 @@ fn_string::fn_string(const char* src, bool gc)
     data = v;
 }
 fn_string::fn_string(const fn_string& src, bool gc)
-    : h(as_value(this),gc)
-    , len(src.len) {
+    : h{as_value(this),gc}
+    , len{src.len} {
     auto v = new char[len+1];
     v[len] = '\0';
     std::memcpy(v, src.data, len);
@@ -205,7 +253,7 @@ fn_string::~fn_string() {
 }
 
 string fn_string::as_string() {
-    return string(data, len);
+    return string{data, len};
 }
 
 bool fn_string::operator==(const fn_string& s) const {
@@ -220,20 +268,64 @@ bool fn_string::operator==(const fn_string& s) const {
     return true;
 }
 
-object::object(bool gc)
-    : h(as_value(this),gc)
-    , contents()
-{ }
+fn_table::fn_table(bool gc)
+    : h{as_value(this),gc}
+    , contents{} {
+}
+symbol_table::symbol_table()
+    : by_name{}
+    , by_id{} {
+}
 
-function::function(func_stub* stub, const std::function<void (upvalue_slot*)>& populate, bool gc)
-    : h(as_value(this),gc)
-    , stub(stub)
-{
+const symbol* symbol_table::intern(const string& str) {
+    auto v = find(str);
+    if (v.has_value()) {
+        return *v;
+    } else {
+        u32 id = by_id.size();
+        symbol s{ .id=id, .name=str };
+        by_id.push_back(s);
+        by_name.insert(str,s);
+        return &(by_id[by_id.size() - 1]);
+    }
+}
+
+bool symbol_table::is_internal(const string& str) const {
+    return by_name.get(str).has_value();
+}
+
+inline optional<const symbol*> symbol_table::find(const string& str) const {
+    auto v = by_name.get(str);
+    if (v.has_value()) {
+        return *v;
+    }
+    return { };
+}
+
+u8 func_stub::get_upvalue(local_addr slot, bool direct) {
+    for (local_addr i = 0; i < num_upvals; ++i) {
+        auto u = upvals[i];
+        if (u.slot == slot && u.direct == direct) {
+            // found the upvalue
+            return i;
+        }
+    }
+    // add a new upvalue
+    upvals.push_back({ .slot=slot, .direct=direct });
+
+    return num_upvals++;
+}
+
+function::function(func_stub* stub,
+                   const std::function<void (upvalue_slot*)>& populate,
+                   bool gc)
+    : h{as_value(this),gc}
+    , stub{stub} {
     upvals = new upvalue_slot[stub->num_upvals];
     populate(upvals);
 }
 
-// t_od_o: use refcount on upvalues
+// TODO: use refcount on upvalues
 function::~function() {
     delete[] upvals;
 }
@@ -242,11 +334,29 @@ foreign_func::foreign_func(local_addr min_args,
                            bool var_args,
                            value (*func)(local_addr, value*, virtual_machine*),
                            bool gc)
-    : h(as_value(this),gc)
-    , min_args(min_args)
-    , var_args(var_args)
-    , func(func)
-{ }
+    : h{as_value(this),gc}
+    , min_args{min_args}
+    , var_args{var_args}
+    , func{func} {
+}
+
+fn_namespace::fn_namespace(bool gc)
+    : h{as_value(this),gc}
+    , contents{} {
+}
+
+optional<value> fn_namespace::get(symbol_id sym) {
+    auto x = contents.get(sym);
+    if (x.has_value()) {
+        return **x;
+    } else {
+        return std::nullopt;
+    }
+}
+
+void fn_namespace::set(symbol_id sym, const value& v) {
+    contents.insert(sym, v);
+}
 
 bool value::operator==(const value& v) const {
     if (v_same(*this,v)) {
@@ -258,17 +368,18 @@ bool value::operator==(const value& v) const {
         return false;
     }
     switch (v_tag(*this)) {
-    case TAG_STR:
-        return *v_str(*this) == *v_str(v);
-    case TAG_OBJ:
-        return v_obj(*this)->contents == v_obj(v)->contents;
+    case TAG_STRING:
+        return *ustring() == *v.vstring();
     case TAG_CONS:
-        // t_od_o: write these
+        return rhead() == v.rhead() && rtail() == v.rtail();
         return false;
+    case TAG_TABLE:
+        return utable()->contents == v.vtable()->contents;
 
-    // default behavior when raw values are inequal is to return false.
-    // note: this default case accounts for numbers, symbols, true, false, null, empty, and
-    // functions (both foreign and native).
+    // default behavior when raw values are inequal is to return false. note:
+    // this default case accounts for numbers, symbols, true, false, null,
+    // empty, functions (both foreign and native), and namespaces (which are
+    // defined to be globally unique).
     default:
         return false;
     }
@@ -279,21 +390,22 @@ bool value::operator!=(const value& v) const {
     return !(*this==v);
 }
 
-// f_ix_me: should probably pick a better hash function
+// FIXME: should probably pick a better hash function
 template<> u32 hash<value>(const value& v) {
     auto tag = v_tag(v);
     switch (tag) {
     case TAG_NUM:
-    case TAG_STR:
+    case TAG_STRING:
     case TAG_NULL:
-    case TAG_BOOL:
+    case TAG_TRUE:
+    case TAG_FALSE:
     case TAG_EMPTY:
         return hash(v_to_string(v, nullptr)) + tag;
     case TAG_SYM:
         return v_sym_id(v) + tag;
-    case TAG_OBJ:
+    case TAG_TABLE:
     case TAG_CONS:
-        // t_od_o: write these
+        // TODO: write these
         return 0;
     case TAG_FUNC:
     case TAG_FOREIGN:
@@ -305,8 +417,8 @@ template<> u32 hash<value>(const value& v) {
 string v_to_string(value v, const symbol_table* symbols) {
     auto tag = v_tag(v);
     string res;
-    object* o;
-    // t_od_o: add escaping to strings/characters
+    fn_table* o;
+    // TODO: add escaping to strings/characters
     switch(tag) {
     case TAG_NUM:
         return std::to_string(v_num(v));
@@ -316,14 +428,15 @@ string v_to_string(value v, const symbol_table* symbols) {
             res += v_to_string(v_head(x),symbols) + " ";
         }
         return res + "]";
-    case TAG_STR:
-        return string(v_str(v)->data);
-    case TAG_OBJ:
-        // t_od_o: recursively track which objects we've descended into
+    case TAG_STRING:
+        return string{v_string(v)->data};
+    case TAG_TABLE:
+        // TODO: recursively track which objects we've descended into
         res = "{ ";
-        o = v_obj(v);
+        o = v_table(v);
         for (auto k : o->contents.keys()) {
-            res += v_to_string(*k,symbols) + " " + v_to_string(**o->contents.get(*k),symbols) + " ";
+            res += v_to_string(*k,symbols) + " "
+                + v_to_string(**o->contents.get(*k),symbols) + " ";
             if (res.size() >= 69) {
                 res += "...";
                 break;
@@ -336,8 +449,10 @@ string v_to_string(value v, const symbol_table* symbols) {
         return "<foreign>";
     case TAG_NULL:
         return "null";
-    case TAG_BOOL:
-        return v_bool(v) ? "true" : "false";
+    case TAG_TRUE:
+        return "true";
+    case TAG_FALSE:
+        return "false";
     case TAG_EMPTY:
         return "[]";
     case TAG_SYM:

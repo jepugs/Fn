@@ -224,6 +224,19 @@ bool ast_node::is_symbol() const {
     return kind == ak_atom && datum.atom->type == at_symbol;
 }
 
+bool ast_node::is_keyword(const symbol_table* symtab) const {
+    if (!is_symbol()) {
+        return false;
+    }
+    auto& x = (*symtab)[datum.atom->datum.sym];
+    return x.name.length() > 0 && x.name[0] == ':';
+}
+
+const symbol& ast_node::get_symbol(const symbol_table* symtab) const {
+    return (*symtab)[datum.atom->datum.sym];
+}
+
+
 
 #define parse_error(msg, loc) throw fn_error("fn_parse", msg, loc)
 

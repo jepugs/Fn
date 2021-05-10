@@ -187,10 +187,61 @@ void compiler::compile_list(local_table& locals,
 void compiler::compile_call(local_table& locals,
                             const vector<ast_node*>& list) {
     auto base_sp = locals.sp;
-    u32 num_args = -1;
-    for (auto x : list) {
-        compile_subexpr(locals, x);
-        ++num_args;
+
+
+    // compile the operator
+    compile_subexpr(locals, list[0]);
+
+    // table for keywords
+    write_byte(OP_TABLE);
+    ++locals.sp;
+
+    u32 num_args = 0;
+    u32 i;
+    vector<symbol_id> kw; // keyword symbol id's we've seen
+    for (i = 1; i < list.size(); ++i) {
+        // TODO: check for keyword
+        if(list[i]->is_symbol()) {
+            auto& s = list[i]->get_symbol(symtab);
+            if(s.name.length() > 0 && s.name[0] == ':') {
+                for (auto x : kw) {
+                    if (x == s.id) {
+                        error("Duplicated keyword argument in call.",
+                              list[i]->loc);
+                    }
+                }
+                kw.push_back(s.id);
+                // keyword
+                if (list.size() <= i + 1) {
+                    error("Keyword is missing its argument.", list[i]->loc);
+                }
+                // FIXME: two colons in a row at the start of a symbol name
+                // should be an error.
+
+                // convert this symbol to a non-keyword one
+                auto key = symtab->intern(s.name.substr(1));
+
+                // add the argument to the keyword table
+                write_byte(OP_LOCAL);
+                write_byte(base_sp + 1);
+                ++locals.sp;
+                write_byte(OP_CONST);
+                write_short(dest->sym_const(key->id));
+                ++locals.sp;
+                compile_subexpr(locals, list[i+1]);
+                write_byte(OP_OBJ_SET);
+                locals.sp -= 3;
+
+                // increment i an additional time
+                ++i;
+            } else {
+                compile_subexpr(locals, list[i]);
+                ++num_args;
+            }
+        } else {
+            compile_subexpr(locals, list[i]);
+            ++num_args;
+        }
     }
     if (num_args > 255) {
         error("Function call with more than 255 arguments.", list.back()->loc);

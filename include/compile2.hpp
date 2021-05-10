@@ -31,6 +31,7 @@ struct local_table {
 
 class compiler {
 private:
+    virtual_machine* vm;
     bytecode* dest;
     fn_scan::scanner* sc;
     symbol_table* symtab;

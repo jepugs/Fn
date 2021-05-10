@@ -13,32 +13,34 @@ namespace fn {
 
 /// value representation
 
-// all values are 64-bits wide. either 3 or 8 bits are used to hold the tag. the reason for the
-// variable tag size is that 3-bit tags can be associated with an 8-byte-aligned pointer (so we only
-// need 61 bits to hold the pointer, since the last 3 bits are 0). this requires that none of the
-// 3-bit tags occur as prefixes to the 8-bit tags.
+// all values are 64-bits wide. The 4 least significant bits are referred to as
+// the tag, and are used to encode the type of the value. All the pointers used
+// for Fn objects are 16-byte aligned (in fact 32-). This allows us to store an
+// entire 64-bit pointer along with the tag, since we know the 4 least
+// significant digits of the pointer address will all be 0.
 
-// 3-bit tags
-constexpr u64 TAG_NUM  = 0;
-constexpr u64 TAG_CONS = 1;
-constexpr u64 TAG_STR  = 2;
-constexpr u64 TAG_OBJ  = 3;
-constexpr u64 TAG_FUNC = 4;
-constexpr u64 TAG_FOREIGN = 5;
-constexpr u64 TAG_EXT  = 7;
+// tags
+constexpr u64 TAG_NUM       = 0;
+constexpr u64 TAG_CONS      = 1;
+constexpr u64 TAG_STRING    = 2;
+constexpr u64 TAG_TABLE     = 3;
+constexpr u64 TAG_FUNC      = 4;
+constexpr u64 TAG_FOREIGN   = 5;
+constexpr u64 TAG_NAMESPACE = 6;
+constexpr u64 TAG_EXT       = 7;
+constexpr u64 TAG_NULL      = 8;
+constexpr u64 TAG_TRUE      = 9;
+constexpr u64 TAG_FALSE     = 10;
+constexpr u64 TAG_EMPTY     = 11;
+constexpr u64 TAG_SYM       = 12;
 
-// 8-bit extended tags
-constexpr u64 TAG_NULL  = 0007;
-constexpr u64 TAG_BOOL  = 0017;
-constexpr u64 TAG_EMPTY = 0027;
-constexpr u64 TAG_SYM   = 0037;
-
-class cons;
-class fn_string;
-class object;
-class function;
-class foreign_func;
 struct symbol;
+struct cons;
+struct fn_string;
+struct fn_table;
+struct function;
+struct foreign_func;
+struct fn_namespace;
 
 struct obj_header;
 
@@ -58,47 +60,50 @@ union value {
 
     // functions to check for a tag
     inline bool is_num() const {
-        return (raw & 0x7) == TAG_NUM;
+        return (raw & 0xf) == TAG_NUM;
     }
     bool is_int() const;
-    inline bool is_cons() const {
-        return (raw & 0x7) == TAG_CONS;
-    }
-    inline bool is_str() const {
-        return (raw & 0x7) == TAG_STR;
-    }
-    inline bool is_bool() const {
-        return (raw & 0xff) == TAG_BOOL;
-    }
-    inline bool is_object() const {
-        return (raw & 0x7) == TAG_OBJ;
-    }
-    inline bool is_func() const {
-        return (raw & 0x7) == TAG_FUNC;
-    }
-    inline bool is_foreign() const {
-        return (raw & 0x7) == TAG_FOREIGN;
-    }
     inline bool is_sym() const {
-        return (raw & 0xff) == TAG_SYM;
+        return (raw & 0xf) == TAG_SYM;
     }
 
     inline bool is_null() const {
         return raw == TAG_NULL;
     }
     inline bool is_true() const {
-        return raw == ((1 << 8) | TAG_BOOL);
+        return raw == TAG_TRUE;
     }
     inline bool is_false() const {
-        return raw == TAG_BOOL;
+        return raw == TAG_FALSE;
     }
     inline bool is_empty() const {
         return raw == TAG_EMPTY;
     }
+    inline bool is_bool() const {
+        return raw == TAG_TRUE || raw == TAG_FALSE;
+    }
+    inline bool is_string() const {
+        return (raw & 0xf) == TAG_STRING;
+    }
+    inline bool is_cons() const {
+        return (raw & 0xf) == TAG_CONS;
+    }
+    inline bool is_table() const {
+        return (raw & 0xf) == TAG_TABLE;
+    }
+    inline bool is_func() const {
+        return (raw & 0xf) == TAG_FUNC;
+    }
+    inline bool is_foreign() const {
+        return (raw & 0xf) == TAG_FOREIGN;
+    }
+    inline bool is_namespace() const {
+        return (raw & 0xf) == TAG_NAMESPACE;
+    }
 
     // unsafe generic pointer accessor
     inline void* get_pointer() const {
-        return reinterpret_cast<void*>(raw & (~7));
+        return reinterpret_cast<void*>(raw & (~0xf));
     }
 
     // unsafe accessors are prefixed with u. they don't check type tags or throw value errors.
@@ -106,32 +111,36 @@ union value {
         return num_val;
     }
     inline cons* ucons() const {
-        return reinterpret_cast<cons*>(raw & (~7));
+        return reinterpret_cast<cons*>(raw & (~0xf));
     }
-    inline fn_string* ustr() const {
-        return reinterpret_cast<fn_string*>(raw & (~7));
+    inline fn_string* ustring() const {
+        return reinterpret_cast<fn_string*>(raw & (~0xf));
     }
-    inline object* uobj() const {
-        return reinterpret_cast<object*>(raw & (~7));
+    inline fn_table* utable() const {
+        return reinterpret_cast<fn_table*>(raw & (~0xf));
     }
     inline function* ufunc() const {
-        return reinterpret_cast<function*>(raw & (~7));
+        return reinterpret_cast<function*>(raw & (~0xf));
     }
     inline foreign_func* uforeign() const {
-        return reinterpret_cast<foreign_func*>(raw & (~7));
+        return reinterpret_cast<foreign_func*>(raw & (~0xf));
+    }
+    inline fn_namespace* unamespace() const {
+        return reinterpret_cast<fn_namespace*>(raw & (~0xf));
     }
 
     // safe accessors will check tags and throw value errors when appropriate
     f64 vnum() const;
     cons* vcons() const;
-    fn_string* vstr() const;
-    object* vobj() const;
+    fn_string* vstring() const;
+    fn_table* vtable() const;
     function* vfunc() const;
     foreign_func* vforeign() const;
+    fn_namespace* vnamespace() const;
 
-    // all functions below are safe. foreign functions can call them without first checking the
-    // types of the arguments provided, and an appropriate value error will be generated and handled
-    // by the v_m.
+    // all functions below are safe. foreign functions can call them without
+    // first checking the types of the arguments provided, and an appropriate
+    // value error will be generated and handled by the VM
 
     // num functions
     // arithmetic operators are only work on numbers
@@ -152,13 +161,23 @@ union value {
     value tail() const;
 
     // str functions
-    u32 str_len() const;
+    u32 string_len() const;
 
-    // obj functions
-    value& get(const value& key) const;
-    void set(const value& key, const value& val) const;
-    bool has_key(const value& key) const;
-    forward_list<value> obj_keys() const;
+    // table functions
+    value table_get(const value& key) const;
+    void table_set(const value& key, const value& val) const;
+    bool table_has_key(const value& key) const;
+    forward_list<value> table_keys() const;
+
+    // namespace functions
+    optional<value> namespace_get(symbol_id key) const;
+    void namespace_set(symbol_id key, const value& val) const;
+    bool namespace_has_name(symbol_id key) const;
+    forward_list<symbol_id> namespace_names() const;
+
+    // generic get which works on namespaces and tables. If this value is not a
+    // constant, this results in a value error.
+    optional<value> get(const value& key) const;
 
     // used to get object header
     optional<obj_header*> header() const;
@@ -168,13 +187,13 @@ union value {
 
 // constant values
 constexpr value V_NULL  = { .raw = TAG_NULL };
-constexpr value V_FALSE = { .raw = TAG_BOOL };
-constexpr value V_TRUE  = { .raw = (1 << 8) | TAG_BOOL };
+constexpr value V_FALSE = { .raw = TAG_FALSE };
+constexpr value V_TRUE  = { .raw = TAG_TRUE };
 constexpr value V_EMPTY = { .raw = TAG_EMPTY };
 
 inline void* get_pointer(value v) {
     // mask out the three l_sb with 0's
-    return (void*)(v.raw & (~7));
+    return (void*)(v.raw & (~0xf));
 };
 
 // this error is generated when a value is expected to have a certain tag and has a different one.
@@ -228,11 +247,11 @@ struct alignas(32) fn_string {
     bool operator==(const fn_string& s) const;
 };
 
-struct alignas(32) object {
+struct alignas(32) fn_table {
     obj_header h;
     table<value,value> contents;
 
-    object(bool gc=false);
+    fn_table(bool gc=false);
 };
 
 // upvalue
@@ -243,17 +262,18 @@ struct upvalue {
 
 // a stub describing a function. these go in the bytecode object
 struct func_stub {
-    // arity information
-    local_addr positional;   // number of positional arguments, including optional & keyword arguments
-    local_addr required;     // number of required positional arguments (minimum arity)
-    bool varargs;          // whether this function has a variadic argument
+    // list of parameter names in the order in which they occur
+    vector<symbol_id> positional;
+    // whether this function accepts a variadic list (resp. table) argument
+    bool var_list;
+    bool var_table;
 
     // upvalues
     local_addr num_upvals;
     vector<upvalue> upvals;
 
-    // module i_d as a list
-    value mod_id;
+    // namespace id as a list
+    value ns_id;
 
     // bytecode address
     bc_addr addr;              // bytecode address of the function
@@ -262,21 +282,23 @@ struct func_stub {
     local_addr get_upvalue(local_addr id, bool direct);
 };
 
-// we will use pointers to upvalue_slots to create two levels of indirection. in this way,
-// upvalue_slot objects can be shared between function objects. meanwhile, upvalue_slot contains a
-// pointer to a value, which is initially on the stack and migrates to the heap if the upvalue
-// outlives its lexical scope.
+// we use pointers to upvalue_slots to create two levels of indirection. in this
+// way, upvalue_slot objects can be shared between function objects. meanwhile,
+// upvalue_slot contains a pointer to a value, which is initially on the stack
+// and migrates to the heap if the upvalue outlives its lexical scope.
 
-// upvalue_slots are shared objects which track the location of an upvalue (i.e. a value cell
-// containing a local_addr variable which was captured by a function). 
+// upvalue_slots are shared objects which track the location of an upvalue (i.e.
+// a value cell containing a local_addr variable which was captured by a
+// function).
 
-// concretely, an upvalue_slot is a reference-counted pointer to a cell containing a value.
-// upvalue_slots are initially expected to point to a location on the interpreter stack;
-// corresponding upvalues are said to be "open". "closing" an upvalue means copying its value to the
-// stack so that functions may access it even after the stack local_addr environment expires.
-// upvalue_slots implement this behavior via the field open and the method close(). once closed, the
-// upvalue_slot takes ownership of its own value cell, and it will be deleted when the reference count
-// drops to 0.
+// concretely, an upvalue_slot is a reference-counted pointer to a cell
+// containing a value. upvalue_slots are initially expected to point to a
+// location on the interpreter stack; corresponding upvalues are said to be
+// "open". "closing" an upvalue means copying its value to the stack so that
+// functions may access it even after the stack local_addr environment expires.
+// upvalue_slots implement this behavior via the field open and the method
+// close(). once closed, the upvalue_slot takes ownership of its own value cell,
+// and it will be deleted when the reference count drops to 0.
 struct upvalue_slot {
     // if true, val is a location on the interpreter stack
     bool* open;
@@ -286,13 +308,12 @@ struct upvalue_slot {
     upvalue_slot()
         : open(nullptr)
         , val(nullptr)
-        , ref_count(nullptr)
-    { }
+        , ref_count(nullptr) {
+    }
     upvalue_slot(value* place)
         : open(new bool)
         , val(new value*)
-        , ref_count(new u32)
-    {
+        , ref_count(new u32) {
         *open = true;
         *val = place;
         *ref_count = 1;
@@ -300,8 +321,7 @@ struct upvalue_slot {
     upvalue_slot(const upvalue_slot& u)
         : open(u.open)
         , val(u.val)
-        , ref_count(u.ref_count)
-    {
+        , ref_count(u.ref_count) {
         ++*ref_count;
     }
     ~upvalue_slot() {
@@ -346,7 +366,7 @@ struct alignas(32) function {
 
     // warning: you must manually set up the upvalues
     function(func_stub* stub, const std::function<void (upvalue_slot*)>& populate, bool gc=false);
-    // t_od_o: use refcount on upvalues
+    // TODO: use refcount on upvalues
     ~function();
 };
 
@@ -362,7 +382,7 @@ struct alignas(32) foreign_func {
     foreign_func(local_addr min_args, bool var_args, value (*func)(local_addr, value*, virtual_machine*), bool gc=false);
 };
 
-// symbols in fn are represented by a 32-bit unsigned i_d
+// symbols in fn are represented by a 32-bit unsigned ids
 struct symbol {
     symbol_id id;
     string name;
@@ -388,43 +408,56 @@ public:
     }
 };
 
+// key-value stores used to hold global variables and imports
+struct alignas(32) fn_namespace {
+    obj_header h;
+    table<symbol_id,value> contents;
+
+    fn_namespace(bool gc=false);
+
+    optional<value> get(symbol_id name);
+    void set(symbol_id name, const value& v);
+};
+
 /// as_value functions to create values
 inline value as_value(f64 num) {
     value res = { .num_val=num };
-    // make the first three bits 0
-    res.raw &= (~7);
+    // make the first four bits 0
+    res.raw &= (~0xf);
     res.raw |= TAG_NUM;
     return res;
 }
 inline value as_value(bool b) {
-    return { .raw=(b << 8) | TAG_BOOL};
+    return b ? V_TRUE : V_FALSE;
 }
 inline value as_value(int num) {
     value res = { .num_val=(f64)num };
-    // make the first three bits 0
-    res.raw &= (~7);
+    // make the first four bits 0
+    res.raw &= (~0xf);
     res.raw |= TAG_NUM;
     return res;
 }
 inline value as_value(i64 num) {
     value res = { .num_val=(f64)num };
-    // make the first three bits 0
-    res.raw &= (~7);
+    // make the first four bits 0
+    res.raw &= (~0xf);
     res.raw |= TAG_NUM;
     return res;
 }
-// f_ix_me: we probably shouldn't have this function allocate memory for the string; rather, once the
-// g_c is up and running, we should pass in a pointer which we already know is 8-byte aligned
+inline value as_value(symbol s) {
+    return { .raw = (s.id << 4) | TAG_SYM };
+}
 inline value as_value(const fn_string* str) {
     u64 raw = reinterpret_cast<u64>(str);
-    return { .raw = raw | TAG_STR };
+    return { .raw = raw | TAG_STRING };
 }
-// n_ot_e: not sure whether it's a good idea to have this one
-// inline value as_value(bool b) {
-//     return { .raw =  static_cast<u64>(b) | TAG_b_oo_l };
-// }
-inline value as_value(symbol s) {
-    return { .raw = (s.id << 8) | TAG_SYM };
+inline value as_value(cons* ptr) {
+    u64 raw = reinterpret_cast<u64>(ptr);
+    return { .raw = raw | TAG_CONS };
+}
+inline value as_value(fn_table* ptr) {
+    u64 raw = reinterpret_cast<u64>(ptr);
+    return { .raw = raw | TAG_TABLE };
 }
 inline value as_value(function* ptr) {
     u64 raw = reinterpret_cast<u64>(ptr);
@@ -434,14 +467,14 @@ inline value as_value(foreign_func* ptr) {
     u64 raw = reinterpret_cast<u64>(ptr);
     return { .raw = raw | TAG_FOREIGN };
 }
-inline value as_value(cons* ptr) {
+inline value as_value(fn_namespace* ptr) {
     u64 raw = reinterpret_cast<u64>(ptr);
-    return { .raw = raw | TAG_CONS };
+    return { .raw = raw | TAG_NAMESPACE };
 }
-inline value as_value(object* ptr) {
-    u64 raw = reinterpret_cast<u64>(ptr);
-    return { .raw = raw | TAG_OBJ };
+inline value as_sym_value(symbol_id sym) {
+    return { .raw = (sym << 4) | TAG_SYM };
 }
+
 
 
 /// utility functions
@@ -459,37 +492,43 @@ string v_to_string(value v, const symbol_table* symbols);
 // these value(type) functions go from c++ values to fn values
 
 
-// naming convention: function names prefixed with a lowercase v are used to test/access properties
-// of values.
+// naming convention: function names prefixed with a lowercase v are used to
+// test/access properties of values.
 
-// get the first 3 bits of the value
-inline u64 v_short_tag(value v) {
-    return v.raw & 7;
-}
-// get the entire tag of a value. the return value of this expression is intended to be used in a
-// switch statement for handling different types of value.
+// get the tag of a value
 inline u64 v_tag(value v) {
-    auto t = v_short_tag(v);
-    if (t != TAG_EXT) {
-        return t;
-    }
-    return v.raw & 255;
+    return v.raw & 0xf;
 }
 
-// these functions make the opposite conversion, going from fn values to c++ values. none of them
-// are safe (i.e. you should check the tags before doing any of these operations)
+// these functions make the opposite conversion, going from fn values to c++
+// values. none of them are safe (i.e. you should check the tags before doing
+// any of these operations)
 
 // all values corresponding to pointers are structured the same way
 inline void* v_pointer(value v) {
-    // mask out the three l_sb with 0's
-    return (void*)(v.raw & (~7));
+    // mask out the three lsb with 0's
+    return (void*)(v.raw & (~0xf));
 }
 
 inline f64 v_num(value v) {
     return v.unum();
 }
-inline fn_string* v_str(value v) {
+inline bool v_bool(value v) {
+    return v == V_TRUE;
+}
+// getting the entire symbol object requires a symbol table, so just get the
+// associated symbol_id
+inline u32 v_sym_id(value v) {
+    return (u32) (v.raw >> 4);
+}
+inline fn_string* v_string(value v) {
     return (fn_string*) v_pointer(v);
+}
+inline cons* v_cons(value v) {
+    return (cons*) v_pointer(v);
+}
+inline fn_table* v_table(value v) {
+    return (fn_table*) v_pointer(v);
 }
 inline function* v_func(value v) {
     return (function*) v_pointer(v);
@@ -497,24 +536,12 @@ inline function* v_func(value v) {
 inline foreign_func* v_foreign(value v) {
     return (foreign_func*) v_pointer(v);
 }
-inline cons* v_cons(value v) {
-    return (cons*) v_pointer(v);
-}
-inline object* v_obj(value v) {
-    return (object*) v_pointer(v);
-}
-inline bool v_bool(value v) {
-    return static_cast<bool>(v.raw >> 8);
+inline fn_namespace* v_namespace(value v) {
+    return (fn_namespace*) v_pointer(v);
 }
 
-
-// since getting the entire symbol object requires access to the symbol table, we provide v_sym_id to
-// access the symbol's id directly (rather than v_sym, which would require a symbol_table argument).
-inline u32 v_sym_id(value v) {
-    return (u32) (v.raw >> 8);
-}
-
-// check the 'truthiness' of a value. this returns true for all values but V_NULL and V_FALSE.
+// check the 'truthiness' of a value. this returns true for all values but
+// V_NULL and V_FALSE.
 inline bool v_truthy(value v) {
     return !v_same(v,V_FALSE) && !v_same(v,V_NULL);
 }

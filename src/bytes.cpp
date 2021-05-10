@@ -61,8 +61,8 @@ void disassemble_instr(const bytecode& code, bc_addr ip, std::ostream& out) {
     case OP_OBJ_SET:
         out << "obj-set";
         break;
-    case OP_MODULE:
-        out << "module";
+    case OP_NAMESPACE:
+        out << "namespace";
         break;
     case OP_IMPORT:
         out << "import";
@@ -81,6 +81,9 @@ void disassemble_instr(const bytecode& code, bc_addr ip, std::ostream& out) {
         break;
     case OP_RETURN:
         out << "return";
+        break;
+    case OP_TABLE:
+        out << "table";
         break;
 
     default:
@@ -102,7 +105,7 @@ void disassemble(const bytecode& code, std::ostream& out) {
         if (instr == OP_CONST) {
             // write constant value
             out << " ; "
-                << v_to_string(code.get_constant(code.read_short(ip+1)), code.get_symbols());
+                << v_to_string(code.get_constant(code.read_short(ip+1)), code.get_symbol_table());
         } else if (instr == OP_CLOSURE) {
             out << " ; addr = " << code.get_function(code.read_short(ip+1))->addr;
         }

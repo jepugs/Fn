@@ -32,7 +32,7 @@ struct bytecode_loc {
 // (i.e. by doing the necessary symbol translation + combining the constant tables), however we
 // still need a way to adjust the addresses of functions (i.e. a table of function stubs). we'll
 // cross that bridge much farther down the line, since we'll also certainly need to add other things
-// to the bytecode object, like debugging and module information.
+// to the bytecode object, like debugging and namespace information.
 class bytecode {
 private:
     // instruction array
@@ -46,7 +46,7 @@ private:
 
     // constants and symbols
     vector<value> constants;
-    symbol_table symbols;
+    symbol_table symtab;
     // constants which need to be freed in the destructor
     std::list<value> managed_constants;
     // function stubs
@@ -79,7 +79,10 @@ public:
     u16 num_constants() const;
 
     // add a function and set it to start at the current ip
-    u16 add_function(local_addr arity, bool vararg, value mod_id);
+    u16 add_function(const vector<symbol_id>& positional,
+                     bool var_list,
+                     bool var_table,
+                     value ns_id);
     func_stub* get_function(u16 id) const;
 
     // directly add values to the constants array and return their i_d
@@ -97,12 +100,11 @@ public:
     const_id sym_const(const string& name);
 
 
-    symbol_table* get_symbols();
-    // FIXME: don't think that this makes sense
-    const symbol_table* get_symbols() const;
+    symbol_table* get_symbol_table();
+    const symbol_table* get_symbol_table() const;
     value symbol(const string& name);
     optional<value> find_symbol(const string& name) const;
-    u32 symbol_id(const string& name);
+    //u32 symbol_id(const string& name);
 
     inline u8& operator[](bc_addr addr) {
         return data[addr];
@@ -115,7 +117,7 @@ public:
 };
 
 
-// v_m stack size limit (per call frame)
+// virtual_machine stack size limit (per call frame)
 constexpr stack_addr STACK_SIZE = 255;
 
 struct open_upvalue {
@@ -125,7 +127,7 @@ struct open_upvalue {
 
 struct call_frame {
     // call frame above this one
-    call_frame *prev;
+    call_frame* prev;
     // return address
     bc_addr ret_addr;
     // base pointer (i.e. offset from the true bottom of the stack)
@@ -147,11 +149,11 @@ struct call_frame {
         , caller(caller)
         , num_args(num_args)
         , sp(num_args)
-        , open_upvals()
-    { }
+        , open_upvals() {
+    }
 
-    // allocate a new call frame as an extension of this one. assumes the last num_args values on the
-    // stack are arguments for the newly called function.
+    // allocate a new call frame as an extension of this one. assumes the last
+    // num_args values on the stack are arguments for the newly called function.
     call_frame* extend_frame(bc_addr ret_addr, local_addr num_args, function* caller);
 
     // create a new upvalue. ptr should point to the stack at pos.
@@ -162,14 +164,18 @@ struct call_frame {
     void close_all();
 };
 
-// the v_m object contains all global state for a single instance of the interpreter.
+// the virtual_machine object contains all global state for a single instance of
+// the interpreter.
 class virtual_machine {
 private:
     bytecode code;
-    object* module;
-    // the namespace hierarchy contains the module hierarchy
-    object* ns;
-    object* core_mod;
+
+    fn_namespace* cur_ns;
+    // root of the namespace hierarchy
+    fn_namespace* ns_root;
+    // specially designated core namespace
+    fn_namespace* core_ns;
+
 
     allocator alloc;
 
@@ -187,12 +193,12 @@ private:
     // last pop; used to access the result of the last expression
     value lp;
 
-    // create and initialize a new module in the ns hierarchy. (this includes setting up the
-    // _modinfo and ns variables).
-    object* init_module(value module_id);
-    // search for a module in the ns object. returns nullptr on failure
-    object* find_module(value module_id);
-    //object* find_module(value module_id);
+    // create and initialize a new namespace in the ns hierarchy. (this includes
+    // setting up the _modinfo and ns variables).
+    fn_namespace* init_namespace(value namespace_id);
+    // search for a namespace in the ns object. returns nullptr on failure
+    fn_namespace* find_namespace(value namespace_id);
+    //fn_namespace* find_namespace(value namespace_id);
 
     // stack operations
     value pop();

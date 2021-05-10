@@ -20,20 +20,20 @@ constexpr u8 OP_NOP = 0x00;
 
 // pop; pop one element off the top of the stack
 constexpr u8 OP_POP = 0x01;
-// local b_yt_e; access the b_yt_eth element of the stack, indexed from the bottom
+// local BYTE; access the BYTEth element of the stack, indexed from the bottom
 constexpr u8 OP_LOCAL = 0x02;
-// set-local b_yt_e; set the b_yt_eth element of the stack to the current top of the stack
+// set-local BYTE; set the BYTEth element of the stack to the current top of the stack
 constexpr u8 OP_SET_LOCAL = 0x03;
-// copy b_yt_e; works like OP_LOCAL but its indices count down from the top of the stack
+// copy BYTE; works like OP_LOCAL but its indices count down from the top of the stack
 constexpr u8 OP_COPY = 0x04;
 
-// upvalue b_yt_e; get the b_yt_eth upvalue
+// upvalue BYTE; get the BYTEth upvalue
 constexpr u8 OP_UPVALUE = 0x05;
-// set-upvalue b_yt_e; set the b_yt_eth upvalue to the value on top of the stack
+// set-upvalue BYTE; set the BYTEth upvalue to the value on top of the stack
 constexpr u8 OP_SET_UPVALUE = 0x06;
-// closure s_ho_rt; instantiate a closure using s_ho_rt as the function i_d
+// closure SHORT; instantiate a closure using SHORT as the function id
 constexpr u8 OP_CLOSURE = 0x07;
-// close b_yt_e; pop the stack b_yt_e times, closing any open upvalues in the process
+// close BYTE; pop the stack BYTE times, closing any open upvalues in the process
 constexpr u8 OP_CLOSE = 0x08;
 
 // global; get a global variable based on a string on top of the stack
@@ -42,7 +42,7 @@ constexpr u8 OP_GLOBAL = 0x10;
 // note: leaves the symbol on the stack
 constexpr u8 OP_SET_GLOBAL = 0x11;
 
-// const s_ho_rt; load a constant via its 16-bit i_d
+// const SHORT; load a constant via its 16-bit id
 constexpr u8 OP_CONST = 0x12;
 // null; push a null value on top of the stack
 constexpr u8 OP_NULL  = 0x13;
@@ -57,11 +57,11 @@ constexpr u8 OP_OBJ_GET = 0x16;
 // obj-set; add or update the value of a property. stack arguments ->[new-value] key obj ...
 constexpr u8 OP_OBJ_SET = 0x17;
 
-// t_od_o: 
-// t_od_o: i_mp_le_me_nt t_he_se c_ha_ng_es i_n v_m
-// t_od_o: 
+// TODO: 
+// TODO: implement these changes in vm
+// TODO: 
 // module; change the current module. stack arguments ->[module-object] ...
-constexpr u8 OP_MODULE = 0x18;
+constexpr u8 OP_NAMESPACE = 0x18;
 // import; given a module id list, put the corresponding module object on top of
 // the stack. if no such module exists, a new one will be created. stack
 // arguments ->[module-id-list] ...
@@ -70,15 +70,18 @@ constexpr u8 OP_IMPORT = 0x19;
 
 // control flow & function calls
 
-// jump SHORT; add signed s_ho_rt to ip
+// jump SHORT; add signed SHORT to ip
 constexpr u8 OP_JUMP = 0x30;
 // cjump SHORT; if top of the stack is falsey, add signed SHORT to ip
 constexpr u8 OP_CJUMP = 0x31;
-// call BYTE; perform a function call
+// call BYTE; perform a function call. Uses BYTE+2 elements on the stack,
+// one for the function, one for each positional argument, and one for the
+// keyword table
 constexpr u8 OP_CALL = 0x32;
 // return; return from the current function
 constexpr u8 OP_RETURN = 0x33;
 
+// FIXME: this one doesn't work lol
 // apply BYTE; like call, but the last argument is actually a list to be expanded as individual
 // arugments
 constexpr u8 OP_APPLY = 0x34;
@@ -95,6 +98,12 @@ constexpr u8 OP_APPLY = 0x34;
 // // long-jump a_dd_r; jump to the given 32-bit address
 // constexpr u8 OP_l_on_g_JUMP = 0x35;
 
+// value manipulation
+// table ; create a new empty table
+constexpr u8 OP_TABLE = 0x40;
+// constexpr u8 OP_EMPTY = 0x41;
+// constexpr u8 OP_CONS  = 0x42;
+
 
 // gives the width of an instruction + its operands in bytes
 inline u8 instr_width(u8 instr) {
@@ -109,8 +118,9 @@ inline u8 instr_width(u8 instr) {
     case OP_RETURN:
     case OP_OBJ_GET:
     case OP_OBJ_SET:
-    case OP_MODULE:
+    case OP_NAMESPACE:
     case OP_IMPORT:
+    case OP_TABLE:
         return 1;
     case OP_LOCAL:
     case OP_SET_LOCAL:
@@ -127,7 +137,7 @@ inline u8 instr_width(u8 instr) {
     case OP_CLOSURE:
         return 3;
     default:
-        // t_od_o: shouldn't get here. maybe raise a warning?
+        // TODO: shouldn't get here. maybe raise a warning?
         return 1;
     }
 }

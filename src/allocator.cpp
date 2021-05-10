@@ -14,8 +14,8 @@ allocator::allocator()
     , mem_usage(0)
     , collect_threshold(COLLECT_TH)
     , count(0)
-    , get_roots([] { return generator<value>(); })
-{ }
+    , get_roots([] { return generator<value>(); }) {
+}
 
 allocator::allocator(std::function<generator<value>()> get_roots)
     : objects()
@@ -24,8 +24,8 @@ allocator::allocator(std::function<generator<value>()> get_roots)
     , mem_usage(0)
     , collect_threshold(COLLECT_TH)
     , count(0)
-    , get_roots(get_roots)
-{ }
+    , get_roots(get_roots) {
+}
 
 allocator::allocator(generator<value> (*get_roots)())
     : objects()
@@ -34,8 +34,8 @@ allocator::allocator(generator<value> (*get_roots)())
     , mem_usage(0)
     , collect_threshold(COLLECT_TH)
     , count(0)
-    , get_roots([get_roots] { return get_roots(); })
-{ }
+    , get_roots([get_roots] { return get_roots(); }) {
+}
 
 allocator::~allocator() {
     for (auto o : objects) {
@@ -47,20 +47,23 @@ void allocator::dealloc(value v) {
     if (v.is_cons()) {
         mem_usage -= sizeof(cons);
         delete v.ucons();
-    } else if (v.is_str()) {
-        auto s = v.ustr();
+    } else if (v.is_string()) {
+        auto s = v.ustring();
         mem_usage -= s->len;
         mem_usage -= sizeof(fn_string);
         delete s;
-    } else if (v.is_object()) {
-        mem_usage -= sizeof(object);
-        delete v.uobj();
+    } else if (v.is_table()) {
+        mem_usage -= sizeof(fn_table);
+        delete v.utable();
     } else if (v.is_func()) {
         mem_usage -= sizeof(function);
         delete v.ufunc();
     } else if (v.is_foreign()) {
         mem_usage -= sizeof(foreign_func);
         delete v.uforeign();
+    } else if (v.is_namespace()) {
+        mem_usage -= sizeof(fn_namespace);
+        delete v.unamespace();
     }
     --count;
 }
@@ -68,11 +71,11 @@ void allocator::dealloc(value v) {
 generator<value> allocator::accessible(value v) {
     if (v.is_cons()) {
         return generate1(v.rhead()) + generate1(v.rtail());
-    } else if (v.is_object()) {
+    } else if (v.is_table()) {
         generator<value> res;
-        for (auto k : v.obj_keys()) {
+        for (auto k : v.table_keys()) {
             res += generate1(k);
-            res += generate1(v.get(k));
+            res += generate1(v.table_get(k));
         }
         return res;
     } else if (v.is_func()) {
@@ -85,6 +88,11 @@ generator<value> allocator::accessible(value v) {
             res += generate1(**f->upvals[i].val);
         }
         return res;
+    } else if (v.is_namespace()) {
+        generator<value> res;
+        for (auto sym : v.namespace_names()) {
+            res += generate1(*(v.namespace_get(sym)));
+        }
     }
 
     return generator<value>();
@@ -113,7 +121,7 @@ void allocator::mark() {
 }
 
 void allocator::sweep() {
-#ifdef g_c_d_eb_ug
+#ifdef GC_DEBUG
     auto orig_ct = count;
     auto orig_sz = mem_usage;
 #endif
@@ -131,7 +139,7 @@ void allocator::sweep() {
     for (auto h : objects) {
         h->mark = false;
     }
-#ifdef g_c_d_eb_ug
+#ifdef GC_DEBUG
     auto ct = orig_ct - count;
     auto sz = orig_sz - mem_usage;
     std::cout << "swept " << ct << " objects ( " << sz << " bytes)\n";
@@ -154,7 +162,7 @@ void allocator::disable_gc() {
 }
 
 void allocator::collect() {
-#ifdef g_c_d_eb_ug
+#ifdef GC_DEBUG
     if (gc_enabled) {
         force_collect();
     } else {
@@ -179,7 +187,7 @@ void allocator::collect() {
 
 void allocator::force_collect() {
     // note: assume that objects begin unmarked
-#ifdef g_c_d_eb_ug
+#ifdef GC_DEBUG
     std::cout << "garbage collection beginning (mem_usage = "
               << mem_usage
               << ", num_objects() = "
@@ -197,53 +205,66 @@ value allocator::add_cons(value hd, value tl) {
     mem_usage += sizeof(cons);
     ++count;
 
-    auto v = new cons(hd,tl,true);
+    auto v = new cons{hd,tl,true};
     objects.push_front(&v->h);
     return as_value(v);
 }
 
-value allocator::add_str(const string& s) {
+value allocator::add_string(const string& s) {
     collect();
     mem_usage += sizeof(fn_string);
     // also add size of the string's payload
     mem_usage += s.size();
     ++count;
 
-    auto v = new fn_string(s, true);
+    auto v = new fn_string{s, true};
     objects.push_front(&v->h);
     return as_value(v);
 }
 
-value allocator::add_str(const char* s) {
-    return add_str(string(s));
+value allocator::add_string(const char* s) {
+    return add_string(string{s});
 }
 
-value allocator::add_obj() {
+value allocator::add_table() {
     collect();
-    mem_usage += sizeof(object);
+    mem_usage += sizeof(fn_table);
     ++count;
 
-    auto v = new object(true);
+    auto v = new fn_table{true};
     objects.push_front(&v->h);
     return as_value(v);
 }
 
-value allocator::add_func(func_stub* stub, const std::function<void (upvalue_slot*)>& populate) {
+value allocator::add_func(func_stub* stub,
+                          const std::function<void (upvalue_slot*)>& populate) {
     collect();
     mem_usage += sizeof(function);
     ++count;
 
-    auto v = new function(stub, populate, true);
+    auto v = new function{stub, populate, true};
     objects.push_front(&v->h);
     return as_value(v);
 }
 
-value allocator::add_foreign(local_addr min_args, bool var_args, value (*func)(local_addr, value*, virtual_machine*)) {
+value allocator::add_foreign(local_addr min_args,
+                             bool var_args,
+                             value (*func)(local_addr, value*, virtual_machine*)) {
     collect();
     mem_usage += sizeof(foreign_func);
     ++count;
 
-    auto v = new foreign_func(min_args, var_args, func, true);
+    auto v = new foreign_func{min_args, var_args, func, true};
+    objects.push_front(&v->h);
+    return as_value(v);
+}
+
+value allocator::add_namespace() {
+    collect();
+    mem_usage += sizeof(fn_namespace);
+    ++count;
+
+    auto v = new fn_namespace{true};
     objects.push_front(&v->h);
     return as_value(v);
 }

@@ -40,7 +40,7 @@ void compile_string(virtual_machine* vm, const string& str) {
     auto code = vm->get_bytecode();
     std::istringstream in(str);
     fn_scan::scanner sc(&in, "<cmdline>");
-    compiler c(code, &sc, code->get_symbols());
+    compiler c(code, &sc, code->get_symbol_table());
     c.compile_to_eof();
 }
 
@@ -149,7 +149,7 @@ int main(int argc, char** argv) {
     vm.execute();
 
     // FIXME: for now we print out the last value, but we probably really shouldn't
-    std::cout << v_to_string(vm.last_pop(),vm.get_bytecode()->get_symbols()) << endl;
+    std::cout << v_to_string(vm.last_pop(),vm.get_bytecode()->get_symbol_table()) << endl;
 
     // // do the repl if necessary
     // if (inter) {
@@ -160,7 +160,7 @@ int main(int argc, char** argv) {
     //         compile_string(&vm, line);
     //         vm.execute();
     //         // print value
-    //         std::cout << v_to_string(vm.last_pop(),vm.get_bytecode()->get_symbols()) << endl;
+    //         std::cout << v_to_string(vm.last_pop(),vm.get_bytecode()->get_symbol_table()) << endl;
     //     }
     // }
 

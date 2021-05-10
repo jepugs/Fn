@@ -31,7 +31,7 @@ FN_FUN(fn_bool) {
 }
 
 FN_FUN(fn_bool_q) {
-    return as_value(v_tag(args[0]) == TAG_BOOL);
+    return as_value(args[0].is_bool());
 }
 
 FN_FUN(fn_not) {
@@ -61,11 +61,11 @@ FN_FUN(fn_not) {
 // }
 
 FN_FUN(fn_num_q) {
-    return as_value(v_short_tag(args[0]) == TAG_NUM);
+    return as_value(v_tag(args[0]) == TAG_NUM);
 }
 
 FN_FUN(fn_int_q) {
-    return as_value(v_short_tag(args[0]) == TAG_NUM
+    return as_value(v_tag(args[0]) == TAG_NUM
                  && v_num(args[0]) == (u64)v_num(args[0]));
 }
 
@@ -185,20 +185,19 @@ FN_FUN(fn_le) {
     return V_TRUE;
 }
 
-FN_FUN(fn_object) {
+FN_FUN(fn_table) {
     if (num_args % 2 != 0) {
-        vm->runtime_error("object must have an even number of arguments.");
+        vm->runtime_error("Table must have an even number of arguments.");
     }
-    // t_od_o: use allocator
-    auto res = vm->get_alloc()->add_obj();
+    auto res = vm->get_alloc()->add_table();
     for (local_addr i = 0; i < num_args; i += 2) {
-        v_obj(res)->contents.insert(args[i],args[i+1]);
+        v_table(res)->contents.insert(args[i],args[i+1]);
     }
     return res;
 }
 
-FN_FUN(fn_object_q) {
-    return as_value(v_short_tag(args[0])==TAG_OBJ);
+FN_FUN(fn_table_q) {
+    return as_value(args[0].is_table());
 }
 
 FN_FUN(fn_list) {
@@ -214,24 +213,31 @@ FN_FUN(fn_list_q) {
 }
 
 FN_FUN(fn_has_key) {
-    return as_value(args[0].has_key(args[1]));
+    return as_value(args[0].table_has_key(args[1]));
 }
 
 FN_FUN(fn_get) {
     auto res = args[0].get(args[1]);
     for (local_addr i = 2; i < num_args; ++i) {
-        res = res.get(args[i]);
+        if (res.has_value()) {
+            res = res->get(args[i]);
+        } else {
+            vm->runtime_error("get failed");
+        }
     }
-    return res;
+    if (!res.has_value()) {
+        vm->runtime_error("get failed");
+    }
+    return *res;
 }
 
 static value fn_print(local_addr num_args, value* args, virtual_machine* vm) {
-    std::cout << v_to_string(args[0], vm->get_bytecode()->get_symbols());
+    std::cout << v_to_string(args[0], vm->get_bytecode()->get_symbol_table());
     return V_NULL;
 }
 
 static value fn_println(local_addr num_args, value* args, virtual_machine* vm) {
-    std::cout << v_to_string(args[0], vm->get_bytecode()->get_symbols()) << "\n";
+    std::cout << v_to_string(args[0], vm->get_bytecode()->get_symbol_table()) << "\n";
     return V_NULL;
 }
 
@@ -257,8 +263,8 @@ void init(virtual_machine* vm) {
     vm->add_foreign("<", fn_lt, 2, true);
     vm->add_foreign(">=", fn_ge, 2, true);
     vm->add_foreign("<=", fn_le, 2, true);
-    vm->add_foreign("object", fn_object, 0, true);
-    vm->add_foreign("object?", fn_object_q, 1, false);
+    vm->add_foreign("Table", fn_table, 0, true);
+    vm->add_foreign("table?", fn_table_q, 1, false);
     vm->add_foreign("has-key", fn_has_key, 2, false);
     vm->add_foreign("get", fn_get, 2, true);
     //vm->add_foreign("get-keys", fn_get_keys, 1, false);
