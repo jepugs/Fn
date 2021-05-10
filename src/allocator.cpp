@@ -81,12 +81,17 @@ generator<value> allocator::accessible(value v) {
     } else if (v.is_func()) {
         generator<value> res;
         auto f = v.ufunc();
-        // just need to add the upvalues
+        // add the upvalues
         auto m = f->stub->num_upvals;
         for (local_addr i = 0; i < m; ++i) {
             if (f->upvals[i].ref_count == nullptr) continue;
             res += generate1(**f->upvals[i].val);
         }
+        auto num_opt = f->stub->positional.size() - f->stub->optional_index;
+        for (u32 i = 0; i < num_opt; ++i) {
+            res += generate1(f->init_vals[i]);
+        }
+
         return res;
     } else if (v.is_namespace()) {
         generator<value> res;
@@ -237,7 +242,7 @@ value allocator::add_table() {
 }
 
 value allocator::add_func(func_stub* stub,
-                          const std::function<void (upvalue_slot*)>& populate) {
+                          const std::function<void (upvalue_slot*,value*)>& populate) {
     collect();
     mem_usage += sizeof(function);
     ++count;

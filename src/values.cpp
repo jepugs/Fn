@@ -317,17 +317,25 @@ u8 func_stub::get_upvalue(local_addr slot, bool direct) {
 }
 
 function::function(func_stub* stub,
-                   const std::function<void (upvalue_slot*)>& populate,
+                   const std::function<void (upvalue_slot*,value*)>& populate,
                    bool gc)
     : h{as_value(this),gc}
     , stub{stub} {
     upvals = new upvalue_slot[stub->num_upvals];
-    populate(upvals);
+    if (stub->optional_index < stub->positional.size()) {
+        init_vals = new value[stub->positional.size() - stub->optional_index];
+    } else {
+        init_vals = nullptr;
+    }
+    populate(upvals, init_vals);
 }
 
 // TODO: use refcount on upvalues
 function::~function() {
     delete[] upvals;
+    if (stub->optional_index < stub->positional.size()) {
+        delete[] init_vals;
+    }
 }
 
 foreign_func::foreign_func(local_addr min_args,

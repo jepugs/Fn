@@ -328,15 +328,25 @@ void compiler::compile_fn(local_table& locals,
     // parse parameters and set up the function stub
     auto params = parse_params(get_symtab(), *list[1]);
 
-    vector<symbol_id> vars;
-    for (auto x : params.positional) {
-        vars.push_back(x.sym);
+    // positional arguments
+    vector<symbol_id> args;
+
+    // find optional index
+    local_addr opt_ind;
+    for (opt_ind = 0; opt_ind < params.positional.size(); ++opt_ind) {
+        if(params.positional[opt_ind].init_form != nullptr) {
+            break;
+        }
+        args.push_back(params.positional[opt_ind].sym);
+    }
+    for (auto i = opt_ind; i < params.positional.size(); ++i) {
+        args.push_back(params.positional[i].sym);
     }
 
     bool vl = params.var_list.has_value();
     bool vt = params.var_table.has_value();
     auto func_id = get_bytecode()
-        .add_function(vars, vl, vt, vm->current_namespace());
+        .add_function(args, opt_ind, vl, vt, vm->current_namespace());
 
     // create the new local environment
     local_table fn_locals{&locals, get_bytecode().get_function(func_id)};
@@ -363,8 +373,15 @@ void compiler::compile_fn(local_table& locals,
     compile_subexpr(fn_locals, list[i]);
     write_byte(OP_RETURN);
 
+    // jump here from beginning
+    patch_short(patch_addr, get_bytecode().get_size()-patch_addr-2);
+
+    // compile initial values
+    for(auto i = opt_ind; i < params.positional.size(); ++i) {
+        compile_subexpr(locals, params.positional[i].init_form);
+    }
+
     // create the function object
-    patch_short(patch_addr, get_bytecode().get_size() - patch_addr - 2);
     write_byte(OP_CLOSURE);
     write_short(func_id);
     ++locals.sp;

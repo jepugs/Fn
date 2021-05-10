@@ -85,7 +85,7 @@ ast_node::ast_node(const source_loc& loc)
 ast_node::ast_node(const ast_atom& at, const source_loc& loc)
     : loc{loc}
     , kind{ak_atom}
-    , datum{.atom = new ast_atom(at)} {
+    , datum{.atom = new ast_atom{at}} {
 }
 
 ast_node::ast_node(const vector<ast_node*>& list, const source_loc& loc)
@@ -113,7 +113,7 @@ ast_node::~ast_node() {
 ast_node* ast_node::copy() const {
     switch (kind) {
     case ak_atom:
-        return new ast_node{*datum.atom, loc};
+        return new ast_node{ast_atom{*datum.atom}, loc};
     case ak_error:
         return new ast_node{loc};
     case ak_list:

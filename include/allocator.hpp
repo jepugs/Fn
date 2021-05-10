@@ -69,7 +69,7 @@ public:
     value add_table();
     value add_namespace();
     value add_func(func_stub* stub,
-                   const std::function<void (upvalue_slot*)>& populate);
+                   const std::function<void (upvalue_slot*,value*)>& populate);
     value add_foreign(local_addr min_args,
                       bool var_args,
                       value (*func)(local_addr, value*, virtual_machine*));

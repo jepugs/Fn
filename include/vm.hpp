@@ -80,6 +80,7 @@ public:
 
     // add a function to the current ns, set to start at the current ip
     u16 add_function(const vector<symbol_id>& positional,
+                     local_addr optional_index,
                      bool var_list,
                      bool var_table,
                      fn_namespace* ns);

@@ -270,7 +270,7 @@ void init(virtual_machine* vm) {
     //vm->add_foreign("get-keys", fn_get_keys, 1, false);
     //vm->add_foreign("get-props", fn_get_props, 1, false);
     //vm->add_foreign("extend", fn_div, 1, true);
-    vm->add_foreign("list", fn_list, 0, true);
+    vm->add_foreign("List", fn_list, 0, true);
     vm->add_foreign("list?", fn_list_q, 1, false);
     //vm->add_foreign("empty?", fn_empty_q, 0, false);
     //vm->add_foreign("as-list", fn_lasist, 1, false);

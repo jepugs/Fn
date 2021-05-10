@@ -264,6 +264,11 @@ struct upvalue {
 struct func_stub {
     // list of parameter names in the order in which they occur
     vector<symbol_id> positional;
+    // Index (from 0) of the first optional parameter. Also determines the size
+    // of the init_vals array in the function struct. Equals postional.size() if
+    // there are no such parameters.
+    local_addr optional_index;
+
     // whether this function accepts a variadic list (resp. table) argument
     bool var_list;
     bool var_table;
@@ -363,9 +368,12 @@ struct alignas(32) function {
     obj_header h;
     func_stub* stub;
     upvalue_slot* upvals;
+    value* init_vals;
 
     // warning: you must manually set up the upvalues
-    function(func_stub* stub, const std::function<void (upvalue_slot*)>& populate, bool gc=false);
+    function(func_stub* stub,
+             const std::function<void (upvalue_slot*,value*)>& populate,
+             bool gc=false);
     // TODO: use refcount on upvalues
     ~function();
 };

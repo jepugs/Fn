@@ -136,12 +136,15 @@ u16 bytecode::num_constants() const {
 }
 
 u16 bytecode::add_function(const vector<symbol_id>& positional,
+                           local_addr optional_index,
                            bool var_list,
                            bool var_table,
                            fn_namespace* ns) {
     functions.push_back(new func_stub {
-            .positional=positional, 
+            .positional=positional,
+            .optional_index=optional_index,
             .var_list=var_list,
+            .var_table=var_table,
             .num_upvals=0,
             .upvals=vector<upvalue>(),
             .ns=ns,
@@ -553,17 +556,17 @@ bc_addr virtual_machine::apply(local_addr num_args) {
 // TODO: switch to use runtime_error
 bc_addr virtual_machine::call(local_addr num_args) {
     // the function to call should be at the bottom
-    auto v1 = peek(num_args + 1);
+    auto callee = peek(num_args + 1);
     auto kw = peek(num_args); // keyword arguments come first
     if (!kw.is_table()) {
         runtime_error("VM call operation has malformed keyword table.");
     }
     value res;
-    auto tag = v_tag(v1);
+    auto tag = v_tag(callee);
     if (tag == TAG_FUNC) {
         // pause the garbage collector to allow stack manipulation
         alloc.disable_gc();
-        auto func = v_func(v1);
+        auto func = v_func(callee);
         auto stub = func->stub;
 
         // usually, positional arguments can get left where they are
@@ -577,13 +580,9 @@ bc_addr virtual_machine::call(local_addr num_args) {
             for (auto i = stub->positional.size(); i < num_args; ++i) {
                 vlist = alloc.add_cons(peek(num_args - i), vlist);
             }
+            // clear variadic arguments from the stack
             pop_times(num_args - stub->positional.size());
         }
-        if (stub->var_list) {
-            push(vlist);
-        }
-
-        // iterate over keyword arguments
 
         // positional arguments after num_args
         table<symbol_id,value> pos;
@@ -592,9 +591,9 @@ bc_addr virtual_machine::call(local_addr num_args) {
         for (auto k : cts.keys()) {
             auto id = v_sym_id(*k);
             bool found = false;
-            for (auto x : stub->positional) {
-                if (x == id) {
-                    if (pos.get(id).has_value()) {
+            for (u32 i = 0; i < stub->positional.size(); ++i) {
+                if (stub->positional[i] == id) {
+                    if (pos.get(id).has_value() || i < num_args) {
                         runtime_error("Duplicated keyword argument.");
                     }
                     found = true;
@@ -609,10 +608,28 @@ bc_addr virtual_machine::call(local_addr num_args) {
                 vtable.table_set(*k, **cts.get(*k));
             }
         }
+
+        // finish placing positional parameters on the stack
+        for (u32 i = num_args; i < stub->positional.size(); ++i) {
+            auto v = pos.get(stub->positional[i]);
+            if (v.has_value()) {
+                push(**v);
+            } else if (i >= stub->optional_index) {
+                push(callee.ufunc()->init_vals[i-stub->optional_index]);
+            } else {
+                runtime_error("Missing parameter with no default.");
+            }
+        }
+
+        // push variadic list and table parameters 
+        if (stub->var_list) {
+            push(vlist);
+        }
         if (stub->var_table) {
             push(vtable);
         }
 
+        // extend the call frame and move on
         frame = frame->
             extend_frame(ip+2,
                          stub->positional.size() + stub->var_list + stub->var_table,
@@ -624,7 +641,7 @@ bc_addr virtual_machine::call(local_addr num_args) {
             runtime_error("Foreign function was passed keyword arguments.");
         }
         alloc.disable_gc();
-        auto f = v_foreign(v1);
+        auto f = v_foreign(callee);
         if (num_args < f->min_args) {
             throw fn_error("interpreter",
                           "too few arguments for foreign function call at ip=" + std::to_string(ip),
@@ -721,18 +738,25 @@ void virtual_machine::step() {
     case OP_CLOSURE:
         id = code.read_short(ip+1);
         stub = code.get_function(code.read_short(ip+1));
-        push(alloc.add_func(stub,
-                            [this, stub](auto upvals) {
-                                for (u32 i = 0; i < stub->num_upvals; ++i) {
-                                    auto u = stub->upvals[i];
-                                    if (u.direct) {
-                                        upvals[i] = frame->create_upvalue(u.slot, &stack[frame->bp + u.slot]);
-                                    } else {
-                                        upvals[i] = get_upvalue(u.slot);
-                                    }
-                                }
-                                
-                            }));
+        push(alloc
+             .add_func(stub,
+                       [this, stub](auto upvals, auto init_vals) {
+                           for (u32 i = 0; i < stub->num_upvals; ++i) {
+                               auto u = stub->upvals[i];
+                               if (u.direct) {
+                                   upvals[i] = frame
+                                       ->create_upvalue(u.slot,
+                                                        &stack[frame->bp+u.slot]);
+                               } else {
+                                   upvals[i] = get_upvalue(u.slot);
+                               }
+                           }
+                           auto num_opt = stub->positional.size()
+                               - stub->optional_index;
+                           for (i32 i = num_opt-1; i >= 0; --i) {
+                               init_vals[i] = pop();
+                           }
+                       }));
         ip += 2;
         break;
 
@@ -813,7 +837,6 @@ void virtual_machine::step() {
             runtime_error("obj-set operand not a table");
         }
         v_table(v2)->contents.insert(v1,v3);
-        push(v3);
         break;
 
     case OP_NAMESPACE:

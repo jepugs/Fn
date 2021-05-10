@@ -87,12 +87,15 @@ ast_node* parse_node(scanner& sc,
 
 struct parameter {
     symbol_id sym;
-    unique_ptr<ast_node> init_form;
+    ast_node* init_form;
 
     // a deep copy is made of init if provided
     parameter(symbol_id sym, const ast_node* init=nullptr)
         : sym{sym}
-        , init_form{init==nullptr ? nullptr : init->copy()} {
+        , init_form{nullptr} {
+        if (init) {
+            init_form = init->copy();
+        }
     }
 
     parameter(const parameter& src)

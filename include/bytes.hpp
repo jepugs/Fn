@@ -31,7 +31,9 @@ constexpr u8 OP_COPY = 0x04;
 constexpr u8 OP_UPVALUE = 0x05;
 // set-upvalue BYTE; set the BYTEth upvalue to the value on top of the stack
 constexpr u8 OP_SET_UPVALUE = 0x06;
-// closure SHORT; instantiate a closure using SHORT as the function id
+// closure SHORT; instantiate a closure using SHORT as the function id. Also
+// takes the function's init values as arguments on the stack. Init vals are
+// ordered with the last one in the parameter list on the top of the stack.
 constexpr u8 OP_CLOSURE = 0x07;
 // close BYTE; pop the stack BYTE times, closing any open upvalues in the process
 constexpr u8 OP_CLOSE = 0x08;
