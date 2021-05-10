@@ -71,18 +71,18 @@ struct ast_node {
     // make a deep copy. Must be deleted later
     ast_node* copy() const;
 
-    string as_string(const symbol_table* symtab) const;
+    string as_string(const symbol_table& symtab) const;
 
     bool is_symbol() const;
-    bool is_keyword(const symbol_table* symtab) const;
-    const symbol& get_symbol(const symbol_table* symtab) const;
+    bool is_keyword(const symbol_table& symtab) const;
+    const symbol& get_symbol(const symbol_table& symtab) const;
 };
 
 // get the next form by reading tokens one at a time from the scanner. Return a
 // null pointer on EOF. It is the responsibility of the caller to delete the
 // returned object.
-ast_node* parse_node(scanner* sc,
-                     symbol_table* symtab,
+ast_node* parse_node(scanner& sc,
+                     symbol_table& symtab,
                      optional<token> t0 = std::nullopt);
 
 struct parameter {

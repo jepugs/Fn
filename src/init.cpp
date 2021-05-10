@@ -189,7 +189,7 @@ FN_FUN(fn_table) {
     if (num_args % 2 != 0) {
         vm->runtime_error("Table must have an even number of arguments.");
     }
-    auto res = vm->get_alloc()->add_table();
+    auto res = vm->get_alloc().add_table();
     for (local_addr i = 0; i < num_args; i += 2) {
         v_table(res)->contents.insert(args[i],args[i+1]);
     }
@@ -203,7 +203,7 @@ FN_FUN(fn_table_q) {
 FN_FUN(fn_list) {
     auto res = V_EMPTY;
     for (local_addr i = num_args; i > 0; --i) {
-        res = vm->get_alloc()->add_cons(args[i-1], res);
+        res = vm->get_alloc().add_cons(args[i-1], res);
     }
     return res;
 }
@@ -232,12 +232,12 @@ FN_FUN(fn_get) {
 }
 
 static value fn_print(local_addr num_args, value* args, virtual_machine* vm) {
-    std::cout << v_to_string(args[0], vm->get_bytecode()->get_symbol_table());
+    std::cout << v_to_string(args[0], vm->get_bytecode().get_symbol_table());
     return V_NULL;
 }
 
 static value fn_println(local_addr num_args, value* args, virtual_machine* vm) {
-    std::cout << v_to_string(args[0], vm->get_bytecode()->get_symbol_table()) << "\n";
+    std::cout << v_to_string(args[0], vm->get_bytecode().get_symbol_table()) << "\n";
     return V_NULL;
 }
 

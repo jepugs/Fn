@@ -46,23 +46,25 @@ void compiler::compile_subexpr(local_table& locals, const ast_node* expr) {
 optional<local_addr> compiler::find_local(local_table& locals,
                                           bool* is_upval,
                                           symbol_id name) {
-    auto& l = locals;
+    local_table* l = &locals;
     optional<u8*> res;
     u32 levels = 0;
     // keep track of how many enclosing functions we need to go into
     while (true) {
-        res = l.vars.get(name);
+        res = l->vars.get(name);
         if (res.has_value()) {
             break;
         }
 
+
         // here we're about to ascend to an enclosing function, so we need an upvalue
-        if (l.cur_func != nullptr) {
+        if (l->cur_func != nullptr) {
             levels += 1;
         }
-        if (l.parent == nullptr) {
+        if (l->parent == nullptr) {
             break;
         }
+        l = l->parent;
     }
 
     if (levels > 0 && res.has_value()) {
@@ -83,18 +85,18 @@ void compiler::compile_atom(local_table& locals,
     const symbol* s;
     switch (atom.type) {
     case at_number:
-        id = dest->num_const(atom.datum.num);
+        id = get_bytecode().num_const(atom.datum.num);
         constant(id);
         ++locals.sp;
         break;
     case at_string:
-        id = dest->str_const(*atom.datum.str);
+        id = get_bytecode().str_const(*atom.datum.str);
         constant(id);
         ++locals.sp;
         break;
     case at_symbol:
         // TODO: check for special symbols
-        s = &(*symtab)[atom.datum.sym];
+        s = &(get_symtab()[atom.datum.sym]);
         if (s->name == "null") {
             write_byte(OP_NULL);
         } else if(s->name == "true") {
@@ -117,7 +119,7 @@ void compiler::compile_var(local_table& locals,
         write_byte(up ? OP_UPVALUE : OP_LOCAL);
         write_byte(*l);
     } else {
-        auto id = dest->sym_const(sym);
+        auto id = get_bytecode().sym_const(sym);
         write_byte(OP_CONST);
         write_short(id);
         write_byte(OP_GLOBAL);
@@ -135,7 +137,7 @@ void compiler::compile_list(local_table& locals,
     if (list[0]->kind == ak_atom
         && list[0]->datum.atom->type == at_symbol) {
         auto sym = list[0]->datum.atom->datum.sym;
-        const string& name = (*symtab)[sym].name;
+        const string& name = (get_symtab())[sym].name;
         if (name == "and") {
             compile_and(locals, list, list[0]->loc);
         // } else if (name == "cond") {
@@ -202,7 +204,7 @@ void compiler::compile_call(local_table& locals,
     for (i = 1; i < list.size(); ++i) {
         // TODO: check for keyword
         if(list[i]->is_symbol()) {
-            auto& s = list[i]->get_symbol(symtab);
+            auto& s = list[i]->get_symbol(get_symtab());
             if(s.name.length() > 0 && s.name[0] == ':') {
                 for (auto x : kw) {
                     if (x == s.id) {
@@ -219,14 +221,14 @@ void compiler::compile_call(local_table& locals,
                 // should be an error.
 
                 // convert this symbol to a non-keyword one
-                auto key = symtab->intern(s.name.substr(1));
+                auto key = get_symtab().intern(s.name.substr(1));
 
                 // add the argument to the keyword table
                 write_byte(OP_LOCAL);
                 write_byte(base_sp + 1);
                 ++locals.sp;
                 write_byte(OP_CONST);
-                write_short(dest->sym_const(key->id));
+                write_short(get_bytecode().sym_const(key->id));
                 ++locals.sp;
                 compile_subexpr(locals, list[i+1]);
                 write_byte(OP_OBJ_SET);
@@ -287,11 +289,10 @@ void compiler::compile_def(local_table& locals,
 
     auto sym = list[1]->datum.atom->datum.sym;
     // TODO: check for illegal symbol names
-    constant(dest->sym_const(sym));
+    constant(get_bytecode().sym_const(sym));
     ++locals.sp;
     compile_subexpr(locals, list[2]);
     write_byte(OP_SET_GLOBAL);
-    write_byte(OP_NULL);
 }
 
 void compiler::compile_do(local_table& locals,
@@ -319,9 +320,53 @@ void compiler::compile_fn(local_table& locals,
         error("Too few arguments to fn.", loc);
     }
 
-    auto params = parse_params(*symtab, *list[1]);
+    // jump past the function body to the closure opcode
+    write_byte(OP_JUMP);
+    auto patch_addr = get_bytecode().get_size();
+    write_short(0);
 
-    write_byte(OP_NULL);
+    // parse parameters and set up the function stub
+    auto params = parse_params(get_symtab(), *list[1]);
+
+    vector<symbol_id> vars;
+    for (auto x : params.positional) {
+        vars.push_back(x.sym);
+    }
+
+    bool vl = params.var_list.has_value();
+    bool vt = params.var_table.has_value();
+    auto func_id = get_bytecode()
+        .add_function(vars, vl, vt, vm->current_namespace());
+
+    // create the new local environment
+    local_table fn_locals{&locals, get_bytecode().get_function(func_id)};
+    fn_locals.sp = 0;
+    for (auto x : params.positional) {
+        fn_locals.vars.insert(x.sym, fn_locals.sp);
+        ++fn_locals.sp;
+    }
+    if (vl) {
+        fn_locals.vars.insert(*params.var_list, fn_locals.sp);
+        ++fn_locals.sp;
+    }
+    if (vt) {
+        fn_locals.vars.insert(*params.var_table, fn_locals.sp);
+        ++fn_locals.sp;
+    }
+
+    // compile the function body
+    u32 i;
+    for (i = 2; i < list.size()-1; ++i) {
+        compile_subexpr(fn_locals, list[i]);
+        write_byte(OP_POP);
+    }
+    compile_subexpr(fn_locals, list[i]);
+    write_byte(OP_RETURN);
+
+    // create the function object
+    patch_short(patch_addr, get_bytecode().get_size() - patch_addr - 2);
+    write_byte(OP_CLOSURE);
+    write_short(func_id);
     ++locals.sp;
 }
 
@@ -410,7 +455,7 @@ void compiler::compile_or(local_table& locals,
 
 void compiler::compile_expr() {
     local_table l;
-    auto expr = parse_node(sc, symtab);
+    auto expr = parse_node(*sc, get_symtab());
     compile_subexpr(l, expr);
     delete expr;
     write_byte(OP_POP);

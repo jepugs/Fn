@@ -138,13 +138,13 @@ u16 bytecode::num_constants() const {
 u16 bytecode::add_function(const vector<symbol_id>& positional,
                            bool var_list,
                            bool var_table,
-                           value ns_id) {
+                           fn_namespace* ns) {
     functions.push_back(new func_stub {
             .positional=positional, 
             .var_list=var_list,
             .num_upvals=0,
             .upvals=vector<upvalue>(),
-            .ns_id=ns_id,
+            .ns=ns,
             .addr=get_size()});
     return (u16) (functions.size() - 1);
 }
@@ -413,13 +413,8 @@ void virtual_machine::add_global(value name, value v) {
     }
     auto sym = v_sym_id(name);
     if (frame != nullptr && frame->caller != nullptr) {
-        auto ns_id = frame->caller->stub->ns_id;
-        auto mod = find_namespace(ns_id);
-        if (mod == nullptr) {
-            runtime_error("Function has nonsensical namespace id. (This is probably a bug).");
-        } else {
-            mod->set(sym, v);
-        }
+        auto ns = frame->caller->stub->ns;
+        ns->set(sym, v);
     } else {
         cur_ns->set(sym, v);
     }
@@ -433,13 +428,8 @@ value virtual_machine::get_global(value name) {
 
     optional<value> res;
     if (frame != nullptr && frame->caller != nullptr) {
-        auto ns_id = frame->caller->stub->ns_id;
-        auto mod = find_namespace(ns_id);
-        if (mod == nullptr) {
-            runtime_error("Function has nonsensical namespace id. (This is probably a bug).");
-        } else {
-            res = mod->get(sym);
-        }
+        auto ns = frame->caller->stub->ns;
+        res = ns->get(sym);
     } else {
         res = cur_ns->get(sym);
     }
@@ -469,11 +459,18 @@ void virtual_machine::add_foreign(string name,
     foreign_funcs.push_back(v);
 }
 
-bytecode* virtual_machine::get_bytecode() {
-    return &code;
+bytecode& virtual_machine::get_bytecode() {
+    return code;
 }
-allocator* virtual_machine::get_alloc() {
-    return &alloc;
+allocator& virtual_machine::get_alloc() {
+    return alloc;
+}
+symbol_table& virtual_machine::get_symtab() {
+    return *code.get_symbol_table();
+}
+
+fn_namespace* virtual_machine::current_namespace() {
+    return cur_ns;
 }
 
 void virtual_machine::runtime_error(const string& msg) const {
@@ -568,10 +565,6 @@ bc_addr virtual_machine::call(local_addr num_args) {
         alloc.disable_gc();
         auto func = v_func(v1);
         auto stub = func->stub;
-        auto mod = find_namespace(stub->ns_id);
-        if (mod == nullptr) {
-            runtime_error("function has nonexistent namespace id.");
-        }
 
         // usually, positional arguments can get left where they are
 
@@ -624,30 +617,6 @@ bc_addr virtual_machine::call(local_addr num_args) {
             extend_frame(ip+2,
                          stub->positional.size() + stub->var_list + stub->var_table,
                          func);
-                         
-
-        // TODO: switch to the function's namespace. probably put in the callframe
-        // if (num_args < stub->required) {
-        //     throw fn_error("interpreter",
-        //                   "too few arguments for function call at ip=" + std::to_string(ip),
-        //                   *code.location_of(ip));
-        // } else if (stub->varargs) {
-        //     // make a list out of the trailing arguments
-        //     auto vararg = V_EMPTY;
-        //     for (auto i = num_args-stub->positional; i > 0; --i) {
-        //         vararg = alloc.add_cons(pop(), vararg);
-        //     }
-        //     push(vararg);
-        //     frame = frame->extend_frame(ip+2, stub->positional+1, func);
-        // } else if (num_args > stub->positional) {
-        //     throw fn_error("interpreter",
-        //                   "too many arguments for function call at ip=" + std::to_string(ip),
-        //                   *code.location_of(ip));
-        // } else {
-        //     // normal function call
-        //     frame = frame->extend_frame(ip+2, num_args, func);
-        // }
-        // TODO: maybe put this in finally?
         alloc.enable_gc();
         return stub->addr;
     } else if (tag == TAG_FOREIGN) {
@@ -669,7 +638,7 @@ bc_addr virtual_machine::call(local_addr num_args) {
             res = f->func((u16)num_args, &stack[frame->bp + frame->sp - num_args], this);
         }
         // pop args+2 times (to get the function and keyword dictionary)
-        pop_times(num_args+1);
+        pop_times(num_args+2);
         push(res);
         alloc.enable_gc();
         return ip + 2;

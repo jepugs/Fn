@@ -78,11 +78,11 @@ public:
     value get_constant(u16 id) const;
     u16 num_constants() const;
 
-    // add a function and set it to start at the current ip
+    // add a function to the current ns, set to start at the current ip
     u16 add_function(const vector<symbol_id>& positional,
                      bool var_list,
                      bool var_table,
-                     value ns_id);
+                     fn_namespace* ns);
     func_stub* get_function(u16 id) const;
 
     // directly add values to the constants array and return their i_d
@@ -245,9 +245,13 @@ public:
 
     upvalue_slot get_upvalue(local_addr id) const;
 
-    // get a pointer to the bytecode object so the compiler can write its output there
-    bytecode* get_bytecode();
-    allocator* get_alloc();
+    // access the bytecode, allocator, and symbol table
+    bytecode& get_bytecode();
+    allocator& get_alloc();
+    symbol_table& get_symtab();
+
+    // current namespace of the VM
+    fn_namespace* current_namespace();
 
     // raise an exception of type fn_error containing the provided message
     void runtime_error(const string& msg) const;

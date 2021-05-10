@@ -35,23 +35,21 @@ void show_usage() {
         ;
 }
 
-// t_od_o: add current path parameter
 void compile_string(virtual_machine* vm, const string& str) {
-    auto code = vm->get_bytecode();
-    std::istringstream in(str);
-    fn_scan::scanner sc(&in, "<cmdline>");
-    compiler c(code, &sc, code->get_symbol_table());
+    std::istringstream in{str};
+    fn_scan::scanner sc{&in, "<cmdline>"};
+    compiler c{vm, &sc};
     c.compile_to_eof();
 }
 
 void parse_string(const string& str) {
-    std::istringstream in(str);
-    fn_scan::scanner sc(&in, "<cmdline>");
+    std::istringstream in{str};
+    fn_scan::scanner sc{&in, "<cmdline>"};
     symbol_table symtab;
     fn_parse::ast_node* ast;
     try {
-        ast = fn_parse::parse_node(&sc, &symtab);
-        std::cout << ast->as_string(&symtab) << "\n";
+        ast = fn_parse::parse_node(sc, symtab);
+        std::cout << ast->as_string(symtab) << "\n";
     } catch(const fn_error& e) {
         std::cerr << e.what() << "\n";
         return;
@@ -140,8 +138,7 @@ int main(int argc, char** argv) {
 
     if (dis) {
         // disassembly mode
-        auto code = vm.get_bytecode();
-        disassemble(*code, std::cout);
+        disassemble(vm.get_bytecode(), std::cout);
         return 0;
     }
 
@@ -149,7 +146,7 @@ int main(int argc, char** argv) {
     vm.execute();
 
     // FIXME: for now we print out the last value, but we probably really shouldn't
-    std::cout << v_to_string(vm.last_pop(),vm.get_bytecode()->get_symbol_table()) << endl;
+    std::cout << v_to_string(vm.last_pop(),vm.get_bytecode().get_symbol_table()) << endl;
 
     // // do the repl if necessary
     // if (inter) {

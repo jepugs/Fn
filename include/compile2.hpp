@@ -32,9 +32,7 @@ struct local_table {
 class compiler {
 private:
     virtual_machine* vm;
-    bytecode* dest;
     fn_scan::scanner* sc;
-    symbol_table* symtab;
 
     void compile_subexpr(local_table& locals, const fn_parse::ast_node* expr);
 
@@ -44,21 +42,28 @@ private:
     optional<u8> find_local(local_table& locals, bool* is_upval, symbol_id name);
 
     void constant(const_id id) {
-        dest->write_byte(fn_bytes::OP_CONST);
-        dest->write_short(id);
+        vm->get_bytecode().write_byte(fn_bytes::OP_CONST);
+        vm->get_bytecode().write_short(id);
     }
 
     void write_byte(u8 byte) {
-        dest->write_byte(byte);
+        vm->get_bytecode().write_byte(byte);
     }
     void write_short(u16 u) {
-        dest->write_short(u);
+        vm->get_bytecode().write_short(u);
     }
     void patch_short(bc_addr where, u16 u) {
-        dest->patch_short(where, u);
+        vm->get_bytecode().patch_short(where, u);
     }
     bc_addr cur_addr() {
-        return dest->get_size();
+        return vm->get_bytecode().get_size();
+    }
+
+    inline bytecode& get_bytecode() {
+        return vm->get_bytecode();
+    }
+    inline symbol_table& get_symtab() {
+        return vm->get_symtab();
     }
 
     void compile_atom(local_table& locals,
@@ -131,11 +136,12 @@ private:
                       const vector<fn_parse::ast_node*>& list,
                       const source_loc& loc);
 public:
-    compiler(bytecode* dest, fn_scan::scanner* sc, symbol_table* symtab)
-        : dest(dest)
-        , sc(sc)
-        , symtab(symtab) {
+
+    compiler(virtual_machine* vm, fn_scan::scanner* sc)
+        : vm{vm}
+        , sc{sc} {
     }
+
     ~compiler() {
     }
 

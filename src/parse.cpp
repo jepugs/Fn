@@ -128,7 +128,7 @@ ast_node* ast_node::copy() const {
     return new ast_node{list, loc};
 }
 
-static string print_grouped(const symbol_table* symtab,
+static string print_grouped(const symbol_table& symtab,
                             char open,
                             char close,
                             const vector<ast_node*>& list) {
@@ -190,7 +190,7 @@ string with_str_escapes(const string& src) {
     return string{buf.data(), buf.size()};
 }
 
-string ast_node::as_string(const symbol_table* symtab) const {
+string ast_node::as_string(const symbol_table& symtab) const {
     string res = "";
     switch (kind) {
     case ak_atom:
@@ -204,7 +204,7 @@ string ast_node::as_string(const symbol_table* symtab) const {
                 + "\"";
             break;
         case at_symbol:
-            return with_escapes((*symtab)[datum.atom->datum.sym].name);
+            return with_escapes(symtab[datum.atom->datum.sym].name);
             break;
         }
         break;
@@ -224,49 +224,49 @@ bool ast_node::is_symbol() const {
     return kind == ak_atom && datum.atom->type == at_symbol;
 }
 
-bool ast_node::is_keyword(const symbol_table* symtab) const {
+bool ast_node::is_keyword(const symbol_table& symtab) const {
     if (!is_symbol()) {
         return false;
     }
-    auto& x = (*symtab)[datum.atom->datum.sym];
+    auto& x = symtab[datum.atom->datum.sym];
     return x.name.length() > 0 && x.name[0] == ':';
 }
 
-const symbol& ast_node::get_symbol(const symbol_table* symtab) const {
-    return (*symtab)[datum.atom->datum.sym];
+const symbol& ast_node::get_symbol(const symbol_table& symtab) const {
+    return symtab[datum.atom->datum.sym];
 }
 
 
 
 #define parse_error(msg, loc) throw fn_error("fn_parse", msg, loc)
 
-void parse_to_delimiter(scanner* sc,
-                        symbol_table* symtab,
+void parse_to_delimiter(scanner& sc,
+                        symbol_table& symtab,
                         vector<ast_node*>& buf,
                         token_kind end) {
-    auto tok = sc->next_token();
+    auto tok = sc.next_token();
     while (tok.tk != end) {
         if (tok.tk == tk_eof) {
             parse_error("Unexpected EOF searching for delimiter.", tok.loc);
         }
         buf.push_back(parse_node(sc, symtab, std::make_optional(tok)));
-        tok = sc->next_token();
+        tok = sc.next_token();
     }
 }
 
-void parse_prefix(scanner* sc,
-                  symbol_table* symtab,
+void parse_prefix(scanner& sc,
+                  symbol_table& symtab,
                   vector<ast_node*>& buf,
                   const string& op,
                   const source_loc& loc,
                   optional<token> t0 = std::nullopt) {
-    buf.push_back(new ast_node{ast_atom{*(symtab->intern(op))},
+    buf.push_back(new ast_node{ast_atom{*(symtab.intern(op))},
                                loc});
     buf.push_back(parse_node(sc, symtab, t0));
 }
 
-ast_node* parse_node(scanner* sc, symbol_table* symtab, optional<token> t0) {
-    auto tok = t0.has_value() ? *t0 : sc->next_token();
+ast_node* parse_node(scanner& sc, symbol_table& symtab, optional<token> t0) {
+    auto tok = t0.has_value() ? *t0 : sc.next_token();
     ast_node* res = nullptr;
     string* str = tok.datum.str;
     vector<ast_node*> buf;
@@ -286,7 +286,7 @@ ast_node* parse_node(scanner* sc, symbol_table* symtab, optional<token> t0) {
         res = new ast_node{ast_atom{fn_string{*str}}, tok.loc};
         break;
     case tk_symbol:
-        res = new ast_node{ast_atom{*(*symtab).intern(*str)}, tok.loc};
+        res = new ast_node{ast_atom{*symtab.intern(*str)}, tok.loc};
         break;
 
     case tk_lparen:
@@ -297,7 +297,7 @@ ast_node* parse_node(scanner* sc, symbol_table* symtab, optional<token> t0) {
         parse_error("Unmatched delimiter ')'.", tok.loc);
         break;
     case tk_lbrace:
-        buf.push_back(new ast_node{ast_atom{*(*symtab).intern("Table")}, tok.loc});
+        buf.push_back(new ast_node{ast_atom{*symtab.intern("Table")}, tok.loc});
         parse_to_delimiter(sc, symtab, buf, tk_rbrace);
         res = new ast_node{buf, tok.loc};
         break;
@@ -305,7 +305,7 @@ ast_node* parse_node(scanner* sc, symbol_table* symtab, optional<token> t0) {
         parse_error("Unmatched delimiter '}'.", tok.loc);
         break;
     case tk_lbracket:
-        buf.push_back(new ast_node{ast_atom{*(*symtab).intern("List")}, tok.loc});
+        buf.push_back(new ast_node{ast_atom{*symtab.intern("List")}, tok.loc});
         parse_to_delimiter(sc, symtab, buf, tk_rbracket);
         res = new ast_node{buf, tok.loc};
         break;
@@ -314,9 +314,9 @@ ast_node* parse_node(scanner* sc, symbol_table* symtab, optional<token> t0) {
         break;
 
     case tk_dot:
-        buf.push_back(new ast_node{ast_atom{*(*symtab).intern("dot")}, tok.loc});
+        buf.push_back(new ast_node{ast_atom{*symtab.intern("dot")}, tok.loc});
         for (auto s : *tok.datum.ids) {
-            buf.push_back(new ast_node{ast_atom{*(*symtab).intern(s)}, tok.loc});
+            buf.push_back(new ast_node{ast_atom{*symtab.intern(s)}, tok.loc});
         }
         res = new ast_node{buf, tok.loc};
         break;

@@ -272,8 +272,8 @@ struct func_stub {
     local_addr num_upvals;
     vector<upvalue> upvals;
 
-    // namespace id as a list
-    value ns_id;
+    // the namespace in which this function was defined
+    fn_namespace* ns;
 
     // bytecode address
     bc_addr addr;              // bytecode address of the function
