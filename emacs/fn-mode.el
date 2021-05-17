@@ -1,16 +1,5 @@
 (provide 'fn-mode)
 
-(define-derived-mode fn-mode prog-mode "Fn"
-  "Major mode for editing Fn code.
-
-\\{fn-mode-map}"
-  :abbrev-table nil
-  (setq-local comment-start ";")
-  (setq-local comment-padding 1)
-  (setq-local comment-end "")
-  (setq-local indent-line-function 'fn-mode-indent-line)
-  (setq-local font-lock-defaults (list fn-font-lock-keywords)))
-
 (defvar fn-mode-map (make-sparse-keymap))
 
 (defcustom fn-mode-hook '()
@@ -19,6 +8,7 @@
   :options nil)
 
 (add-to-list 'auto-mode-alist '("\\.fn\\'" . fn-mode))
+(add-to-list 'auto-mode-alist '("\\.Fn\\'" . fn-mode))
 
 ;;; Indentation Code
 
@@ -182,28 +172,52 @@ given context."
     s))
 
 (let ((fn-symbol-regexp "[[:word:]*&^%$#@!~:_=+<>\\-]"))
-  (defvar fn-font-lock-keywords
-    `((,(concat "([[:space:]]*\\_<\\(def\\|let\\)\\_>[[:space:]]+"
+  (defvar fn-mode-font-lock-defaults
+    `(;; quoted symbols
+      (,(concat "'\\(\\.\\|"
+                fn-symbol-regexp
+                "\\)+\\_>")
+       0 font-lock-constant-face)
+      ;; symbols in a dot expression
+      (,(concat "\\.\\("
+                fn-symbol-regexp
+                "+\\)+")
+       1 font-lock-constant-face)
+      ;; type names
+      (,(concat "\\_<[[:upper:]]" fn-symbol-regexp "+\\_>")
+       0 font-lock-type-face)
+      ;; keywords and &
+      (,(concat "\\_<:" fn-symbol-regexp "+\\_>")
+       0 font-lock-builtin-face)
+      ("\\_<&\\_>" . font-lock-builtin-face)
+      ;; variable and function names
+      (,(concat "([[:space:]]*\\_<\\(def\\|let\\)\\_>[[:space:]]+"
                 "\\(\\_<" fn-symbol-regexp "+\\_>\\)")
        2 font-lock-variable-name-face)
       (,(concat "([[:space:]]*\\_<\\(defn\\|letmacro\\|letfn\\)\\_>[[:space:]]+"
                 "\\(\\_<" fn-symbol-regexp "+\\_>\\)")
        (2 font-lock-function-name-face))
+      ;; special operators
       (,(concat "([[:space:]]*\\_<\\(and\\|cond\\|def\\|defmacro\\|defn\\|do\\|"
                 "dot\\|dollar-fn\\|if\\|import\\|fn\\|let\\|letfn\\|or\\|"
                 "quasiquote\\|quote\\|unquote\\|unquote-splicing\\|"
                 "set!\\|with\\)\\_>")
        1 font-lock-keyword-face)
-      (,(concat "\\_<[[:upper:]]" fn-symbol-regexp "+\\_>")
-       0 font-lock-type-face)
       ("\\_<\\(true\\|false\\|null\\)\\_>" 1 font-lock-constant-face)
-      ;; quoted symbols
-      (,(concat "'\\(\\.\\|"
-                fn-symbol-regexp
-                "\\)+\\_>")
-       0 font-lock-constant-face)
-      ;; keywords
-      (,(concat "\\_<:" fn-symbol-regexp "+\\_>")
-       0 font-lock-builtin-face)
-      ("\\_<&\\_>" . font-lock-builtin-face))))
+      ;; dollar syntax
+      ("\\([$]\\)[([{`]" 1 font-lock-keyword-face)
+      )))
+
+
+(define-derived-mode fn-mode prog-mode "Fn"
+  "Major mode for editing Fn code.
+
+\\{fn-mode-map}"
+  :abbrev-table nil
+  (setq-local comment-start ";")
+  (setq-local comment-padding 1)
+  (setq-local comment-end "")
+  (setq-local indent-line-function 'fn-mode-indent-line)
+  (setq-local font-lock-defaults (list fn-mode-font-lock-defaults)))
+
 
