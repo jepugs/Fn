@@ -149,17 +149,17 @@ int main(int argc, char** argv) {
     std::cout << v_to_string(vm.last_pop(),vm.get_bytecode().get_symbol_table()) << endl;
 
     // // do the repl if necessary
-    // if (inter) {
-    //     string line;
-    //     while (!std::cin.eof()) {
-    //         std::cout << "fn> ";
-    //         std::getline(std::cin, line);
-    //         compile_string(&vm, line);
-    //         vm.execute();
-    //         // print value
-    //         std::cout << v_to_string(vm.last_pop(),vm.get_bytecode()->get_symbol_table()) << endl;
-    //     }
-    // }
+    if (inter) {
+        string line;
+        while (!std::cin.eof()) {
+            std::cout << "fn> ";
+            std::getline(std::cin, line);
+            compile_string(&vm, line);
+            vm.execute();
+            // print value
+            std::cout << v_to_string(vm.last_pop(),vm.get_bytecode().get_symbol_table()) << endl;
+        }
+    }
 
     // vm.get_alloc()->print_status();
     //std::cout << "ip = " << vm.get_ip() << endl;
