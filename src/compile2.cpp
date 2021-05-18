@@ -171,8 +171,8 @@ void compiler::compile_list(local_table& locals,
         const string& name = (get_symtab())[sym].name;
         if (name == "and") {
             compile_and(locals, list, list[0]->loc);
-        // } else if (name == "cond") {
-        //     compile_cond(locals, list, list[0]->loc);
+        } else if (name == "cond") {
+            compile_cond(locals, list, list[0]->loc);
         } else if (name == "def") {
             compile_def(locals, list, list[0]->loc);
         // } else if (name == "defmacro") {
@@ -401,6 +401,39 @@ void compiler::compile_and(local_table& locals,
     }
     write_byte(OP_FALSE);
     ++locals.sp;
+}
+
+void compiler::compile_cond(local_table& locals,
+                           const vector<fn_parse::ast_node*>& list,
+                           const source_loc& loc) {
+    if (list.size() % 2 != 1) {
+        error("Odd number of arguments to cond", loc);
+    }
+    bc_addr patch_loc;
+    forward_list<bc_addr> patch_to_end;
+    for (u32 i = 1; i < list.size(); i += 2) {
+        compile_subexpr(locals, list[i]);
+        write_byte(OP_CJUMP);
+        --locals.sp;
+        write_short(0);
+        patch_loc = cur_addr();
+
+        compile_subexpr(locals, list[i+1]);
+        write_byte(OP_JUMP);
+        write_short(0);
+        patch_to_end.push_front(cur_addr());
+        --locals.sp;
+
+        // this is for the CJUMP to the next branch
+        patch_short(patch_loc - 2, (u16) (cur_addr() - patch_loc));
+    }
+    write_byte(OP_NULL);
+    ++locals.sp;
+
+    auto end = cur_addr();
+    for (auto a : patch_to_end) {
+        patch_short(a - 2, end - a);
+    }
 }
 
 void compiler::compile_def(local_table& locals,
