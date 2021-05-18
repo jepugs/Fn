@@ -5,6 +5,7 @@
 
 #include "allocator.hpp"
 #include "base.hpp"
+#include "parse.hpp"
 #include "table.hpp"
 #include "values.hpp"
 
@@ -99,7 +100,6 @@ public:
     // equivalent to add_const(symbol(name))
     const_id sym_const(u32 sym);
     const_id sym_const(const string& name);
-
 
     symbol_table* get_symbol_table();
     const symbol_table* get_symbol_table() const;
@@ -221,7 +221,7 @@ private:
     generator<value> generate_roots();
 
 public:
-    // initialize the v_m with a blank image
+    // initialize the vm with a blank image
     virtual_machine();
     ~virtual_machine();
 

@@ -146,8 +146,8 @@ void compiler::compile_list(local_table& locals,
             compile_def(locals, list, list[0]->loc);
         // } else if (name == "defmacro") {
         //     compile_defmacro(locals, list, list[0]->loc);
-        // } else if (name == "defn") {
-        //     compile_defn(locals, list, list[0]->loc);
+        } else if (name == "defn") {
+            compile_defn(locals, list, list[0]->loc);
         } else if (name == "do") {
             compile_do(locals, list, list[0]->loc);
         // } else if (name == "dot") {
@@ -162,8 +162,8 @@ void compiler::compile_list(local_table& locals,
             compile_fn(locals, list, list[0]->loc);
         } else if (name == "let") {
             compile_let(locals, list, list[0]->loc);
-        // } else if (name == "letfn") {
-        //     compile_letfn(locals, list, list[0]->loc);
+        } else if (name == "letfn") {
+            compile_letfn(locals, list, list[0]->loc);
         } else if (name == "or") {
             compile_or(locals, list, list[0]->loc);
         // } else if (name == "quasiquote") {
@@ -206,36 +206,7 @@ void compiler::compile_call(local_table& locals,
         if(list[i]->is_symbol()) {
             auto& s = list[i]->get_symbol(get_symtab());
             if(s.name.length() > 0 && s.name[0] == ':') {
-                for (auto x : kw) {
-                    if (x == s.id) {
-                        error("Duplicated keyword argument in call.",
-                              list[i]->loc);
-                    }
-                }
-                kw.push_back(s.id);
-                // keyword
-                if (list.size() <= i + 1) {
-                    error("Keyword is missing its argument.", list[i]->loc);
-                }
-                // FIXME: two colons in a row at the start of a symbol name
-                // should be an error.
-
-                // convert this symbol to a non-keyword one
-                auto key = get_symtab().intern(s.name.substr(1));
-
-                // add the argument to the keyword table
-                write_byte(OP_LOCAL);
-                write_byte(base_sp + 1);
-                ++locals.sp;
-                write_byte(OP_CONST);
-                write_short(get_bytecode().sym_const(key->id));
-                ++locals.sp;
-                compile_subexpr(locals, list[i+1]);
-                write_byte(OP_OBJ_SET);
-                locals.sp -= 3;
-
-                // increment i an additional time
-                ++i;
+                break;
             } else {
                 compile_subexpr(locals, list[i]);
                 ++num_args;
@@ -245,12 +216,117 @@ void compiler::compile_call(local_table& locals,
             ++num_args;
         }
     }
+
+    for (; i < list.size(); i += 2) {
+        auto& s = list[i]->get_symbol(get_symtab());
+        if(s.name.length() == 0 || s.name[0] != ':') {
+            error("Non-keyword argument following keyword argument.",
+                  list[i]->loc);
+        }
+        // if we' here, we're should be looking at a keyword argument
+        for (auto x : kw) {
+            if (x == s.id) {
+                error("Duplicated keyword argument in call.",
+                      list[i]->loc);
+            }
+        }
+        kw.push_back(s.id);
+        // keyword
+        if (list.size() <= i + 1) {
+            error("Keyword is missing its argument.", list[i]->loc);
+        }
+        // FIXME: two colons in a row at the start of a symbol name
+        // should be an error.
+
+        // convert this symbol to a non-keyword one
+        auto key = get_symtab().intern(s.name.substr(1));
+
+        // add the argument to the keyword table
+        write_byte(OP_LOCAL);
+        write_byte(base_sp + 1);
+        ++locals.sp;
+        write_byte(OP_CONST);
+        write_short(get_bytecode().sym_const(key->id));
+        ++locals.sp;
+        compile_subexpr(locals, list[i+1]);
+        write_byte(OP_OBJ_SET);
+        locals.sp -= 3;
+    }
+                
     if (num_args > 255) {
         error("Function call with more than 255 arguments.", list.back()->loc);
     }
     write_byte(OP_CALL);
     write_byte((u8)num_args);
     locals.sp = base_sp + 1;
+}
+
+void compiler::compile_function(local_table& locals,
+                                const param_list& params,
+                                const vector<ast_node*>& body_vec,
+                                u32 body_start) {
+    // jump past the function body to the closure opcode
+    write_byte(OP_JUMP);
+    auto patch_addr = get_bytecode().get_size();
+    write_short(0);
+
+    // positional arguments
+    vector<symbol_id> args;
+
+    // find optional index
+    local_addr opt_ind;
+    for (opt_ind = 0; opt_ind < params.positional.size(); ++opt_ind) {
+        if(params.positional[opt_ind].init_form != nullptr) {
+            break;
+        }
+        args.push_back(params.positional[opt_ind].sym);
+    }
+    for (auto i = opt_ind; i < params.positional.size(); ++i) {
+        args.push_back(params.positional[i].sym);
+    }
+
+    bool vl = params.var_list.has_value();
+    bool vt = params.var_table.has_value();
+    auto func_id = get_bytecode()
+        .add_function(args, opt_ind, vl, vt, vm->current_namespace());
+
+    // create the new local environment
+    local_table fn_locals{&locals, get_bytecode().get_function(func_id)};
+    fn_locals.sp = 0;
+    for (auto x : params.positional) {
+        fn_locals.vars.insert(x.sym, fn_locals.sp);
+        ++fn_locals.sp;
+    }
+    if (vl) {
+        fn_locals.vars.insert(*params.var_list, fn_locals.sp);
+        ++fn_locals.sp;
+    }
+    if (vt) {
+        fn_locals.vars.insert(*params.var_table, fn_locals.sp);
+        ++fn_locals.sp;
+    }
+
+    // compile the function body
+    u32 i;
+    for (i = body_start; i < body_vec.size()-1; ++i) {
+        compile_subexpr(fn_locals, body_vec[i]);
+        write_byte(OP_POP);
+    }
+    compile_subexpr(fn_locals, body_vec[i]);
+    write_byte(OP_RETURN);
+
+    // jump here from beginning
+    patch_short(patch_addr, get_bytecode().get_size()-patch_addr-2);
+
+    // compile initial values
+    for(auto i = opt_ind; i < params.positional.size(); ++i) {
+        compile_subexpr(locals, params.positional[i].init_form);
+    }
+
+    // create the function object
+    write_byte(OP_CLOSURE);
+    write_short(func_id);
+    ++locals.sp;
 }
 
 void compiler::compile_and(local_table& locals,
@@ -295,6 +371,28 @@ void compiler::compile_def(local_table& locals,
     write_byte(OP_SET_GLOBAL);
 }
 
+void compiler::compile_defn(local_table& locals,
+                            const vector<ast_node*>& list,
+                            const source_loc& loc) {
+    if (list.size() < 4) {
+        error("Too few arguments to defn.", loc);
+    }
+
+    if (!list[1]->is_symbol()) {
+        error("First argument to defn must be a symbol.", loc);
+    }
+
+    auto sym = list[1]->datum.atom->datum.sym;
+    // TODO: check for illegal symbol names
+    constant(get_bytecode().sym_const(sym));
+    ++locals.sp;
+
+    auto params = parse_params(get_symtab(), *list[2]);
+    compile_function(locals, params, list, 3);
+
+    write_byte(OP_SET_GLOBAL);
+}
+
 void compiler::compile_do(local_table& locals,
                           const vector<ast_node*>& list,
                           const source_loc& loc) {
@@ -305,12 +403,13 @@ void compiler::compile_do(local_table& locals,
     }
 
     u32 i;
+    local_table new_locals{&locals};
     for (i = 1; i < list.size()-1; ++i) {
-        compile_subexpr(locals, list[i]);
+        compile_subexpr(new_locals, list[i]);
         write_byte(OP_POP);
         --locals.sp;
     }
-    compile_subexpr(locals, list[i]);
+    compile_subexpr(new_locals, list[i]); 
 }
 
 void compiler::compile_fn(local_table& locals,
@@ -320,72 +419,11 @@ void compiler::compile_fn(local_table& locals,
         error("Too few arguments to fn.", loc);
     }
 
-    // jump past the function body to the closure opcode
-    write_byte(OP_JUMP);
-    auto patch_addr = get_bytecode().get_size();
-    write_short(0);
-
     // parse parameters and set up the function stub
     auto params = parse_params(get_symtab(), *list[1]);
-
-    // positional arguments
-    vector<symbol_id> args;
-
-    // find optional index
-    local_addr opt_ind;
-    for (opt_ind = 0; opt_ind < params.positional.size(); ++opt_ind) {
-        if(params.positional[opt_ind].init_form != nullptr) {
-            break;
-        }
-        args.push_back(params.positional[opt_ind].sym);
-    }
-    for (auto i = opt_ind; i < params.positional.size(); ++i) {
-        args.push_back(params.positional[i].sym);
-    }
-
-    bool vl = params.var_list.has_value();
-    bool vt = params.var_table.has_value();
-    auto func_id = get_bytecode()
-        .add_function(args, opt_ind, vl, vt, vm->current_namespace());
-
-    // create the new local environment
-    local_table fn_locals{&locals, get_bytecode().get_function(func_id)};
-    fn_locals.sp = 0;
-    for (auto x : params.positional) {
-        fn_locals.vars.insert(x.sym, fn_locals.sp);
-        ++fn_locals.sp;
-    }
-    if (vl) {
-        fn_locals.vars.insert(*params.var_list, fn_locals.sp);
-        ++fn_locals.sp;
-    }
-    if (vt) {
-        fn_locals.vars.insert(*params.var_table, fn_locals.sp);
-        ++fn_locals.sp;
-    }
-
-    // compile the function body
-    u32 i;
-    for (i = 2; i < list.size()-1; ++i) {
-        compile_subexpr(fn_locals, list[i]);
-        write_byte(OP_POP);
-    }
-    compile_subexpr(fn_locals, list[i]);
-    write_byte(OP_RETURN);
-
-    // jump here from beginning
-    patch_short(patch_addr, get_bytecode().get_size()-patch_addr-2);
-
-    // compile initial values
-    for(auto i = opt_ind; i < params.positional.size(); ++i) {
-        compile_subexpr(locals, params.positional[i].init_form);
-    }
-
-    // create the function object
-    write_byte(OP_CLOSURE);
-    write_short(func_id);
-    ++locals.sp;
+    compile_function(locals, params, list, 2);
 }
+
 
 void compiler::compile_if(local_table& locals,
                           const vector<ast_node*>& list,
@@ -434,15 +472,47 @@ void compiler::compile_let(local_table& locals,
         }
 
         auto sym = list[i]->datum.atom->datum.sym;
-        auto loc = locals.sp++;
+        auto pos = locals.sp++;
         // initial value null (in case of recursive reads)
         write_byte(OP_NULL);
-        locals.vars.insert(sym, loc);
+        locals.vars.insert(sym, pos);
         compile_subexpr(locals, list[i+1]);
         write_byte(OP_SET_LOCAL);
-        write_byte(loc);
+        write_byte(pos);
         write_byte(OP_NULL);
     }
+}
+
+void compiler::compile_letfn(local_table& locals,
+                           const vector<ast_node*>& list,
+                           const source_loc& loc) {
+    // TODO: fix something about this
+    // if (locals.parent == nullptr) {
+    //     error("Let cannot occur at the top level.", loc);
+    // }
+
+
+    // check we have an even number of arguments
+    if (list.size() < 4) {
+        error("Too few arguments to letfn.", loc);
+    }
+
+    if (!list[1]->is_symbol()) {
+        error("Name in letfn must be a symbol.", list[1]->loc);
+    }
+
+    auto sym = list[1]->datum.atom->datum.sym;
+    auto pos = locals.sp++;
+    // initial value null (in case of recursive reads)
+    write_byte(OP_NULL);
+    locals.vars.insert(sym, pos);
+
+    auto params = parse_params(get_symtab(), *list[2]);
+    compile_function(locals, params, list, 3);
+
+    write_byte(OP_SET_LOCAL);
+    write_byte(pos);
+    write_byte(OP_NULL);
 }
 
 void compiler::compile_or(local_table& locals,

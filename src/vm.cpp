@@ -586,6 +586,8 @@ bc_addr virtual_machine::call(local_addr num_args) {
 
         // positional arguments after num_args
         table<symbol_id,value> pos;
+        // things we put in vtable
+        table<symbol_id,bool> extra;
         value vtable = stub->var_table ? alloc.add_table() : V_NULL;
         auto& cts = kw.utable()->contents;
         for (auto k : cts.keys()) {
@@ -594,10 +596,15 @@ bc_addr virtual_machine::call(local_addr num_args) {
             for (u32 i = 0; i < stub->positional.size(); ++i) {
                 if (stub->positional[i] == id) {
                     if (pos.get(id).has_value() || i < num_args) {
-                        runtime_error("Duplicated keyword argument.");
+                        if (!stub->var_table) {
+                            runtime_error("Extra keyword argument.");
+                        } else {
+                            extra.insert(id, true);
+                        }
+                    } else {
+                        found = true;
+                        pos.insert(id,**cts.get(*k));
                     }
-                    found = true;
-                    pos.insert(id,**cts.get(*k));
                     break;
                 }
             }

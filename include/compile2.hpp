@@ -74,6 +74,10 @@ private:
                       const vector<fn_parse::ast_node*>& list,
                       const source_loc& loc);
     void compile_call(local_table& locals, const vector<fn_parse::ast_node*>& list);
+    void compile_function(local_table& locals,
+                          const fn_parse::param_list& params,
+                          const vector<fn_parse::ast_node*>& body_vec,
+                          u32 body_start);
 
     void compile_and(local_table& locals,
                      const vector<fn_parse::ast_node*>& list,
@@ -151,7 +155,7 @@ public:
     void compile_to_eof();
 
     inline void error(const char* msg, const source_loc& loc) {
-        throw fn_error("parser", msg, loc);
+        throw fn_error("compiler", msg, loc);
     }};
 }
 
