@@ -1,5 +1,0 @@
-* fn Coding Style
-
-fn is written in a modern C++ style using C++20 as the standard.
-
-
