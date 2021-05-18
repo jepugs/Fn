@@ -11,7 +11,7 @@
 (add-to-list 'auto-mode-alist '("\\.Fn\\'" . fn-mode))
 
 (setq completion-ignored-extensions
-      (delete ".fn" completion-ignored-extensions))
+      (remove ".fn" completion-ignored-extensions))
 
 ;;; Indentation Code
 
