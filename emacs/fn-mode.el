@@ -10,6 +10,9 @@
 (add-to-list 'auto-mode-alist '("\\.fn\\'" . fn-mode))
 (add-to-list 'auto-mode-alist '("\\.Fn\\'" . fn-mode))
 
+(setq completion-ignored-extensions
+      (delete ".fn" completion-ignored-extensions))
+
 ;;; Indentation Code
 
 ;; Command names that might trigger repeated indentation
