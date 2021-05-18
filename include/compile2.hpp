@@ -70,10 +70,18 @@ private:
                       const fn_parse::ast_atom& atom,
                       const source_loc& loc);
     void compile_var(local_table& locals, symbol_id id, const source_loc& loc);
+    // compile the object of a dot expression up to the last all_but keys
+    void compile_dot_obj(local_table& locals,
+                         const vector<fn_parse::ast_node*>& dot_expr,
+                         u8 all_but,
+                         const source_loc& loc);
     void compile_list(local_table& locals,
                       const vector<fn_parse::ast_node*>& list,
                       const source_loc& loc);
     void compile_call(local_table& locals, const vector<fn_parse::ast_node*>& list);
+    void compile_body(local_table& locals,
+                      const vector<fn_parse::ast_node*>& list,
+                      u32 body_start);
     void compile_function(local_table& locals,
                           const fn_parse::param_list& params,
                           const vector<fn_parse::ast_node*>& body_vec,

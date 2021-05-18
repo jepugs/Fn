@@ -99,10 +99,13 @@ void compiler::compile_atom(local_table& locals,
         s = &(get_symtab()[atom.datum.sym]);
         if (s->name == "null") {
             write_byte(OP_NULL);
+            ++locals.sp;
         } else if(s->name == "true") {
             write_byte(OP_TRUE);
+            ++locals.sp;
         } else if (s->name == "false") {
             write_byte(OP_FALSE);
+            ++locals.sp;
         } else {
             compile_var(locals, atom.datum.sym, loc);
         }
@@ -125,6 +128,34 @@ void compiler::compile_var(local_table& locals,
         write_byte(OP_GLOBAL);
     }
     ++locals.sp;
+}
+
+void compiler::compile_dot_obj(local_table& locals,
+                               const vector<ast_node*>& dot_expr,
+                               u8 all_but,
+                               const source_loc& loc) {
+    if (dot_expr.size() < 3) {
+        error("Too few arguments to dot.", loc);
+    }
+    if (!dot_expr[1]->is_symbol()) {
+        error("Arguments to dot must be symbols.", dot_expr[1]->loc);
+    }
+    compile_var(locals,
+                dot_expr[1]->get_symbol(get_symtab()).id,
+                dot_expr[1]->loc);
+
+    // apply all but the last keys
+    auto end = dot_expr.size() - all_but;
+    for (u32 i = 2; i < end; ++i) {
+        if (!dot_expr[i]->is_symbol()) {
+            error("Arguments to dot must be symbols.", dot_expr[i]->loc);
+        }
+        auto id = get_bytecode()
+            .sym_const(dot_expr[i]->get_symbol(get_symtab()).id);
+        write_byte(OP_CONST);
+        write_short(id);
+        write_byte(OP_OBJ_GET);
+    }
 }
 
 void compiler::compile_list(local_table& locals,
@@ -150,8 +181,8 @@ void compiler::compile_list(local_table& locals,
             compile_defn(locals, list, list[0]->loc);
         } else if (name == "do") {
             compile_do(locals, list, list[0]->loc);
-        // } else if (name == "dot") {
-        //     compile_dot(locals, list, list[0]->loc);
+        } else if (name == "dot") {
+            compile_dot(locals, list, list[0]->loc);
         // } else if (name == "dollar-fn") {
         //     compile_dollar_fn(locals, list, list[0]->loc);
         } else if (name == "if") {
@@ -174,10 +205,10 @@ void compiler::compile_list(local_table& locals,
         //     compile_unquote(locals, list, list[0]->loc);
         // } else if (name == "unquote-splicing") {
         //     compile_unquote_splicing(locals, list, list[0]->loc);
-        // } else if (name == "set!") {
-        //     compile_set(locals, list, list[0]->loc);
-        // } else if (name == "with") {
-        //     compile_with(locals, list, list[0]->loc);
+        } else if (name == "set!") {
+            compile_set(locals, list, list[0]->loc);
+        } else if (name == "with") {
+            compile_with(locals, list, list[0]->loc);
         } else {
             compile_call(locals, list);
         }
@@ -261,6 +292,31 @@ void compiler::compile_call(local_table& locals,
     locals.sp = base_sp + 1;
 }
 
+void compiler::compile_body(local_table& locals,
+                            const vector<fn_parse::ast_node*>& list,
+                            u32 body_start) {
+    auto start = locals.sp;
+    write_byte(OP_NULL);
+    ++locals.sp;
+
+    u32 i;
+    for (i = body_start; i < list.size()-1; ++i) {
+        compile_subexpr(locals, list[i]);
+        write_byte(OP_POP);
+        --locals.sp;
+    }
+    // the if is to account for an empty body
+    if (body_start < list.size()) {
+        compile_subexpr(locals, list[i]); 
+        write_byte(OP_SET_LOCAL);
+        write_byte(start);
+        --locals.sp;
+        write_byte(OP_CLOSE);
+        write_byte(locals.sp - start - 1);
+        locals.sp = start + 1;
+    }
+}
+
 void compiler::compile_function(local_table& locals,
                                 const param_list& params,
                                 const vector<ast_node*>& body_vec,
@@ -307,12 +363,7 @@ void compiler::compile_function(local_table& locals,
     }
 
     // compile the function body
-    u32 i;
-    for (i = body_start; i < body_vec.size()-1; ++i) {
-        compile_subexpr(fn_locals, body_vec[i]);
-        write_byte(OP_POP);
-    }
-    compile_subexpr(fn_locals, body_vec[i]);
+    compile_body(fn_locals, body_vec, body_start);
     write_byte(OP_RETURN);
 
     // jump here from beginning
@@ -391,6 +442,7 @@ void compiler::compile_defn(local_table& locals,
     compile_function(locals, params, list, 3);
 
     write_byte(OP_SET_GLOBAL);
+    --locals.sp;
 }
 
 void compiler::compile_do(local_table& locals,
@@ -402,15 +454,16 @@ void compiler::compile_do(local_table& locals,
         return;
     }
 
-    u32 i;
     local_table new_locals{&locals};
-    for (i = 1; i < list.size()-1; ++i) {
-        compile_subexpr(new_locals, list[i]);
-        write_byte(OP_POP);
-        --locals.sp;
-    }
-    compile_subexpr(new_locals, list[i]); 
+    compile_body(new_locals, list, 1);
 }
+
+void compiler::compile_dot(local_table& locals,
+                           const vector<ast_node*>& list,
+                           const source_loc& loc) {
+    compile_dot_obj(locals, list, 0, loc);
+}
+
 
 void compiler::compile_fn(local_table& locals,
                           const vector<ast_node*>& list,
@@ -455,41 +508,51 @@ void compiler::compile_if(local_table& locals,
 void compiler::compile_let(local_table& locals,
                            const vector<ast_node*>& list,
                            const source_loc& loc) {
-    // TODO: fix something about this
-    // if (locals.parent == nullptr) {
-    //     error("Let cannot occur at the top level.", loc);
-    // }
-
+    if (locals.parent == nullptr) {
+        error("let cannot occur at the top level.", loc);
+    }
 
     // check we have an even number of arguments
     if ((list.size() & 1) != 1) {
         error("Wrong number of arguments to let.", loc);
     }
 
+    // collect symbol names first (in order to allow recursive definitions)
+    vector<symbol_id> names;
     for (u32 i = 1; i < list.size(); i += 2) {
         if (!list[i]->is_symbol()) {
-            error("Names in let must be symbols.", list[i]->loc);
+            error("Local variable name not a symbol.", list[i]->loc);
         }
-
-        auto sym = list[i]->datum.atom->datum.sym;
-        auto pos = locals.sp++;
-        // initial value null (in case of recursive reads)
+        auto sym = list[i]->get_symbol(get_symtab()).id;
+        if (locals.vars.get(sym).has_value()) {
+            error("Local variable already exists.", list[i]->loc);
+        }
+        locals.vars.insert(sym, locals.sp);
+        names.push_back(sym);
         write_byte(OP_NULL);
-        locals.vars.insert(sym, pos);
+        ++locals.sp;
+    }
+
+    // bind symbols
+    for (u32 i = 1; i < list.size(); i += 2) {
+        auto sym = names[(i-1)/2];
         compile_subexpr(locals, list[i+1]);
         write_byte(OP_SET_LOCAL);
-        write_byte(pos);
-        write_byte(OP_NULL);
+        write_byte(**locals.vars.get(sym));
+        --locals.sp;
     }
+
+    // return null
+    write_byte(OP_NULL);
+    ++locals.sp;
 }
 
 void compiler::compile_letfn(local_table& locals,
                            const vector<ast_node*>& list,
                            const source_loc& loc) {
-    // TODO: fix something about this
-    // if (locals.parent == nullptr) {
-    //     error("Let cannot occur at the top level.", loc);
-    // }
+    if (locals.parent == nullptr) {
+        error("Let cannot occur at the top level.", loc);
+    }
 
 
     // check we have an even number of arguments
@@ -538,6 +601,117 @@ void compiler::compile_or(local_table& locals,
     }
     write_byte(OP_TRUE);
     ++locals.sp;
+}
+
+void compiler::compile_set(local_table& locals,
+                           const vector<fn_parse::ast_node*>& list,
+                           const source_loc& loc)  {
+    // check we have an even number of arguments
+    if (list.size() != 3) {
+        error("Wrong number of arguments to set!", loc);
+    }
+    if (list[1]->is_symbol()) {
+        bool up;
+        auto sym = list[1]->datum.atom->datum.sym;
+        auto l = find_local(locals, &up, sym);
+        if (l.has_value()) {
+            compile_subexpr(locals, list[2]);
+            write_byte(up ? OP_SET_UPVALUE : OP_SET_LOCAL);
+            write_byte(*l);
+        } else {
+            auto id = get_bytecode().sym_const(sym);
+            write_byte(OP_CONST);
+            write_short(id);
+            ++locals.sp;
+            compile_subexpr(locals, list[2]);
+            write_byte(OP_SET_GLOBAL);
+            write_byte(OP_POP);
+            --locals.sp;
+        }
+        write_byte(OP_NULL);
+    } else if (list[1]->kind == ak_list) {
+        // check if it's a dot
+        auto op = (*list[1]->datum.list)[0];
+        if (op->is_symbol()) {
+           auto& sym = op->get_symbol(get_symtab());
+           if (sym.name != "dot") {
+               error("Illegal place in set! operation.", list[1]->loc);
+           }
+
+           // compile the dot expression up to the last key
+           compile_dot_obj(locals, *list[1]->datum.list, 1, list[1]->loc);
+           auto last = list[1]->datum.list->back();
+           if (!last->is_symbol()) {
+               error("Arguments to dot must be symbols.", last->loc);
+           }
+
+           // last key for the set operation
+           auto id = get_bytecode().sym_const(last->get_symbol(get_symtab()).id);
+           write_byte(OP_CONST);
+           write_short(id);
+           ++locals.sp;
+
+           // compute the value
+           compile_subexpr(locals, list[2]);
+           write_byte(OP_OBJ_SET);
+
+           // return null
+           write_byte(OP_NULL);
+           locals.sp -= 2;
+        } else {
+            error("Illegal place in set! operation.", list[1]->loc);
+        }
+    } else {
+        error("Illegal place in set! operation.", list[1]->loc);
+    }
+}
+
+void compiler::compile_with(local_table& locals,
+                            const vector<fn_parse::ast_node*>& list,
+                            const source_loc& loc)  {
+    if (list[1]->kind != ak_list) {
+        error("Malformed with binding form.", list[1]->loc);
+    }
+
+    // a place for the result
+    write_byte(OP_NULL);
+    ++locals.sp;
+
+    // create the local environment
+    local_table new_locals{locals};
+    auto& bindings = *list[1]->datum.list;
+    vector<symbol_id> names;
+    for (u32 i = 0; i < bindings.size(); i += 2) {
+        if (bindings.size() <= i+1) {
+            error("Odd number of arguments in with binding form.", loc);
+        }
+        if (!bindings[i]->is_symbol()) {
+            error("with binding name not a symbol.", bindings[i]->loc);
+        }
+        auto sym = bindings[i]->get_symbol(get_symtab()).id;
+        new_locals.vars.insert(sym, new_locals.sp);
+        names.push_back(sym);
+        write_byte(OP_NULL);
+        ++new_locals.sp;
+    }
+
+    // variable values
+    for (u32 i = 0; i < bindings.size(); i += 2) {
+        compile_subexpr(new_locals, bindings[i+1]);
+        write_byte(OP_SET_LOCAL);
+        write_byte(**new_locals.vars.get(names[i/2]));
+        --new_locals.sp;
+    }
+
+    // body
+    compile_body(new_locals, list, 2);
+
+    // put the result where it belongs
+    write_byte(OP_SET_LOCAL);
+    write_byte(locals.sp - 1);
+    --new_locals.sp;
+    write_byte(OP_CLOSE);
+    write_byte(new_locals.sp - locals.sp);
 }
 
 void compiler::compile_expr() {
