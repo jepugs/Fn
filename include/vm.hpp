@@ -46,6 +46,8 @@ private:
     bytecode_loc* last_loc;
 
     // constants and symbols
+    const_id next_const = 0;
+    table<value,const_id> const_lookup;
     vector<value> constants;
     symbol_table symtab;
     // constants which need to be freed in the destructor
@@ -89,17 +91,6 @@ public:
 
     // directly add values to the constants array and return their i_d
     const_id add_const(value v);
-    // create a numerical constant
-    const_id num_const(f64 num);
-    // string constants are copied and automatically freed on destruction
-    const_id str_const(const string& str);
-    const_id str_const(const char* str);
-    const_id str_const(const fn_string& str);
-    // create a new cons cell and return its 16-bit i_d
-    const_id cons_const(value hd, value tl);
-    // equivalent to add_const(symbol(name))
-    const_id sym_const(u32 sym);
-    const_id sym_const(const string& name);
 
     symbol_table* get_symbol_table();
     const symbol_table* get_symbol_table() const;

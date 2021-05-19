@@ -41,6 +41,9 @@ allocator::~allocator() {
     for (auto o : objects) {
         dealloc(o->ptr);
     }
+    for (auto o : constants) {
+        dealloc(o->ptr);
+    }
 }
 
 void allocator::dealloc(value v) {
@@ -272,6 +275,34 @@ value allocator::add_namespace() {
     auto v = new fn_namespace{true};
     objects.push_front(&v->h);
     return as_value(v);
+}
+
+value allocator::const_cons(value hd, value tl) {
+    mem_usage += sizeof(cons);
+    ++count;
+
+    auto v = new cons{hd,tl,false};
+    constants.push_front(&v->h);
+    return as_value(v);
+}
+
+value allocator::const_string(const string& s) {
+    mem_usage += sizeof(fn_string);
+    // also add size of the string's payload
+    mem_usage += s.size();
+    ++count;
+
+    auto v = new fn_string{s, false};
+    constants.push_front(&v->h);
+    return as_value(v);
+}
+
+value allocator::const_string(const char* s) {
+    return const_string(string{s});
+}
+
+value allocator::const_string(const fn_string& s) {
+    return const_string(s.data);
 }
 
 void allocator::print_status() {

@@ -20,6 +20,8 @@ private:
     // note: we guarantee that every pointer in this array is actually memory managed by this
     // garbage collector
     std::list<obj_header*> objects;
+    // separate list of constant objects
+    std::forward_list<obj_header*> constants;
     // flag used to determine garbage collector behavior. starts out false to allow initialization
     bool gc_enabled;
     // if true, garbage collection will automatically run when next enabled
@@ -67,12 +69,19 @@ public:
     value add_string(const string& s);
     value add_string(const char* s);
     value add_table();
-    value add_namespace();
     value add_func(func_stub* stub,
                    const std::function<void (upvalue_slot*,value*)>& populate);
     value add_foreign(local_addr min_args,
                       bool var_args,
                       value (*func)(local_addr, value*, virtual_machine*));
+    value add_namespace();
+
+    // Note: values passed to const_cons must be constant or they will be
+    // deallocated prematurely (bad)
+    value const_cons(value hd, value tl);
+    value const_string(const char* s);
+    value const_string(const string& s);
+    value const_string(const fn_string& s);
 
     void print_status();
 };

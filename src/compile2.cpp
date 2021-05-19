@@ -82,15 +82,17 @@ void compiler::compile_atom(local_table& locals,
                             const ast_atom& atom,
                             const source_loc& loc) {
     const_id id;
+    value v;
     const symbol* s;
     switch (atom.type) {
     case at_number:
-        id = get_bytecode().num_const(atom.datum.num);
+        id = get_bytecode().add_const(as_value(atom.datum.num));
         constant(id);
         ++locals.sp;
         break;
     case at_string:
-        id = get_bytecode().str_const(*atom.datum.str);
+        v = vm->get_alloc().const_string(*atom.datum.str);
+        id = get_bytecode().add_const(v);
         constant(id);
         ++locals.sp;
         break;
@@ -122,7 +124,7 @@ void compiler::compile_var(local_table& locals,
         write_byte(up ? OP_UPVALUE : OP_LOCAL);
         write_byte(*l);
     } else {
-        auto id = get_bytecode().sym_const(sym);
+        auto id = get_bytecode().add_const(as_sym_value(sym));
         write_byte(OP_CONST);
         write_short(id);
         write_byte(OP_GLOBAL);
@@ -151,7 +153,8 @@ void compiler::compile_dot_obj(local_table& locals,
             error("Arguments to dot must be symbols.", dot_expr[i]->loc);
         }
         auto id = get_bytecode()
-            .sym_const(dot_expr[i]->get_symbol(get_symtab()).id);
+            .add_const(as_sym_value(dot_expr[i]
+                                    ->get_symbol(get_symtab()).id));
         write_byte(OP_CONST);
         write_short(id);
         write_byte(OP_OBJ_GET);
@@ -277,7 +280,7 @@ void compiler::compile_call(local_table& locals,
         write_byte(base_sp + 1);
         ++locals.sp;
         write_byte(OP_CONST);
-        write_short(get_bytecode().sym_const(key->id));
+        write_short(get_bytecode().add_const(as_sym_value(key->id)));
         ++locals.sp;
         compile_subexpr(locals, list[i+1]);
         write_byte(OP_OBJ_SET);
@@ -449,7 +452,7 @@ void compiler::compile_def(local_table& locals,
 
     auto sym = list[1]->datum.atom->datum.sym;
     // TODO: check for illegal symbol names
-    constant(get_bytecode().sym_const(sym));
+    constant(get_bytecode().add_const(as_sym_value(sym)));
     ++locals.sp;
     compile_subexpr(locals, list[2]);
     write_byte(OP_SET_GLOBAL);
@@ -468,7 +471,7 @@ void compiler::compile_defn(local_table& locals,
 
     auto sym = list[1]->datum.atom->datum.sym;
     // TODO: check for illegal symbol names
-    constant(get_bytecode().sym_const(sym));
+    constant(get_bytecode().add_const(as_sym_value(sym)));
     ++locals.sp;
 
     auto params = parse_params(get_symtab(), *list[2]);
@@ -652,7 +655,7 @@ void compiler::compile_set(local_table& locals,
             write_byte(up ? OP_SET_UPVALUE : OP_SET_LOCAL);
             write_byte(*l);
         } else {
-            auto id = get_bytecode().sym_const(sym);
+            auto id = get_bytecode().add_const(as_sym_value(sym));
             write_byte(OP_CONST);
             write_short(id);
             ++locals.sp;
@@ -679,7 +682,8 @@ void compiler::compile_set(local_table& locals,
            }
 
            // last key for the set operation
-           auto id = get_bytecode().sym_const(last->get_symbol(get_symtab()).id);
+           auto id = get_bytecode()
+               .add_const(as_sym_value(last->get_symbol(get_symtab()).id));
            write_byte(OP_CONST);
            write_short(id);
            ++locals.sp;

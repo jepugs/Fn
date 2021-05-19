@@ -437,7 +437,7 @@ string v_to_string(value v, const symbol_table* symbols) {
         }
         return res + "]";
     case TAG_STRING:
-        return string{v_string(v)->data};
+        return "\"" + string{v_string(v)->data} + "\"";
     case TAG_TABLE:
         // TODO: recursively track which objects we've descended into
         res = "{ ";

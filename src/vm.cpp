@@ -159,47 +159,13 @@ func_stub* bytecode::get_function(u16 id) const {
 }
 
 u16 bytecode::add_const(value v) {
+    auto x = const_lookup.get(v);
+    if (x.has_value()) {
+        return **x;
+    }
     constants.push_back(v);
+    const_lookup.insert(v, constants.size()-1);
     return constants.size() - 1;
-}
-
-u16 bytecode::num_const(f64 num) {
-    return add_const(as_value(num));
-}
-
-u16 bytecode::str_const(const string& name) {
-    auto v = as_value(new fn_string(name));
-    managed_constants.push_front(v);
-    return add_const(v);
-}
-
-u16 bytecode::str_const(const char* name) {
-    auto v = as_value(new fn_string(name));
-    managed_constants.push_front(v);
-    return add_const(v);
-}
-
-u16 bytecode::str_const(const fn_string& str) {
-    auto v = as_value(new fn_string{str});
-    managed_constants.push_front(v);
-    return add_const(v);
-}
-
-
-u16 bytecode::cons_const(value hd, value tl) {
-    auto v = as_value(new cons(hd, tl));
-    managed_constants.push_front(v);
-    return add_const(v);
-}
-
-const_id bytecode::sym_const(u32 sym) {
-    auto s = symtab[sym];
-    value v{ .raw = (((u64) s.id) << 4) | (u64) TAG_SYM };
-    return add_const(v);
-}
-
-const_id bytecode::sym_const(const string& name) {
-    return add_const(symbol(name));
 }
 
 symbol_table* bytecode::get_symbol_table() {
