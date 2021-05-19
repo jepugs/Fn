@@ -50,8 +50,6 @@ private:
     table<value,const_id> const_lookup;
     vector<value> constants;
     symbol_table symtab;
-    // constants which need to be freed in the destructor
-    std::list<value> managed_constants;
     // function stubs
     vector<func_stub*> functions;
 

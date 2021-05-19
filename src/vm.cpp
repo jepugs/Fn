@@ -30,14 +30,6 @@ bytecode::bytecode()
 bytecode::~bytecode() {
     free(data);
 
-    for (auto v : managed_constants) {
-        if (v.is_string()) {
-            delete v.ustring();
-        } else if (v.is_cons()) {
-            delete v.ucons();
-        }
-    }
-
     for (auto f : functions) {
         delete f;
     }
