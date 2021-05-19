@@ -624,6 +624,20 @@ bc_addr virtual_machine::call(local_addr num_args) {
         push(res);
         alloc.enable_gc();
         return ip + 2;
+    } else if (tag == TAG_TABLE) {
+        auto s = get_symtab().intern("__on-call__");
+        auto v = callee.table_get(as_value(*s));
+
+        // make space to insert the table on the stack
+        push(V_NULL);
+        auto sp = frame->bp + frame->sp;
+        for (u32 i = 0; i < num_args; ++i) {
+            stack[sp - i - 1] = stack[sp - i];
+        }
+        stack[sp - num_args - 1] = callee;
+        stack[sp - num_args - 3] = v;
+        return call(num_args + 1);
+        
     } else {
         // TODO: exception: not a function
         throw fn_error("interpreter",
