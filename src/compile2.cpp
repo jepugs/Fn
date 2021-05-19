@@ -202,8 +202,8 @@ void compiler::compile_list(local_table& locals,
             compile_or(locals, list, list[0]->loc);
         // } else if (name == "quasiquote") {
         //     compile_quasiquote(locals, list, list[0]->loc);
-        // } else if (name == "quote") {
-        //     compile_quote(locals, list, list[0]->loc);
+        } else if (name == "quote") {
+            compile_quote(locals, list, list[0]->loc);
         // } else if (name == "unquote") {
         //     compile_unquote(locals, list, list[0]->loc);
         // } else if (name == "unquote-splicing") {
@@ -636,6 +636,19 @@ void compiler::compile_or(local_table& locals,
         patch_short(u - 2, end_addr - u);
     }
     write_byte(OP_TRUE);
+    ++locals.sp;
+}
+
+void compiler::compile_quote(local_table& locals,
+                             const vector<fn_parse::ast_node*>& list,
+                             const source_loc& loc) {
+    if (list.size() != 2) {
+        error("Wrong number of arguments to quote", loc);
+    }
+    auto v = vm->get_alloc().const_quote(list[1]);
+    auto id = vm->get_bytecode().add_const(v);
+    write_byte(OP_CONST);
+    write_short(id);
     ++locals.sp;
 }
 

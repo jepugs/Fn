@@ -41,8 +41,9 @@ allocator::~allocator() {
     for (auto o : objects) {
         dealloc(o->ptr);
     }
-    for (auto o : constants) {
-        dealloc(o->ptr);
+    auto keys = const_table.keys();
+    for (auto k : keys) {
+        dealloc(**const_table.get(*k));
     }
 }
 
@@ -281,9 +282,15 @@ value allocator::const_cons(value hd, value tl) {
     mem_usage += sizeof(cons);
     ++count;
 
-    auto v = new cons{hd,tl,false};
-    constants.push_front(&v->h);
-    return as_value(v);
+    auto v = as_value(new cons{hd,tl,false});
+    auto x = const_table.get(v);
+    if (x.has_value()) {
+        dealloc(v);
+        return **x;
+    } else {
+        const_table.insert(v, v);
+        return v;
+    }
 }
 
 value allocator::const_string(const string& s) {
@@ -292,9 +299,15 @@ value allocator::const_string(const string& s) {
     mem_usage += s.size();
     ++count;
 
-    auto v = new fn_string{s, false};
-    constants.push_front(&v->h);
-    return as_value(v);
+    auto v = as_value(new fn_string{s, false});
+    auto x = const_table.get(v);
+    if (x.has_value()) {
+        dealloc(v);
+        return **x;
+    } else {
+        const_table.insert(v, v);
+        return v;
+    }
 }
 
 value allocator::const_string(const char* s) {
@@ -304,6 +317,34 @@ value allocator::const_string(const char* s) {
 value allocator::const_string(const fn_string& s) {
     return const_string(s.data);
 }
+
+value allocator::const_quote(const fn_parse::ast_node* node) {
+    if (node->kind == fn_parse::ak_atom) {
+        auto& atom = *node->datum.atom;
+        switch (atom.type) {
+        case fn_parse::at_number:
+            return as_value(atom.datum.num);
+        case fn_parse::at_symbol:
+            return as_sym_value(atom.datum.sym);
+        case fn_parse::at_string:
+            return const_string(*atom.datum.str);
+        default:
+            // FIXME: maybe should raise an exception?
+            return V_NULL;
+        }
+    } else if (node->kind == fn_parse::ak_list) {
+        auto tl = V_NULL;
+        for (i32 i = node->datum.list->size() - 1; i >= 0; --i) {
+            auto hd = const_quote(node->datum.list->at(i));
+            tl = const_cons(hd, tl);
+        }
+        return tl;
+    } else {
+        // FIXME: probably should be an error
+        return V_NULL;
+    }
+}
+
 
 void allocator::print_status() {
     std::cout << "allocator information\n";

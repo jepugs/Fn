@@ -7,6 +7,7 @@
 
 #include "base.hpp"
 #include "generator.hpp"
+#include "parse.hpp"
 #include "values.hpp"
 
 #include <functional>
@@ -21,7 +22,7 @@ private:
     // garbage collector
     std::list<obj_header*> objects;
     // separate list of constant objects
-    std::forward_list<obj_header*> constants;
+    table<value,value> const_table;
     // flag used to determine garbage collector behavior. starts out false to allow initialization
     bool gc_enabled;
     // if true, garbage collection will automatically run when next enabled
@@ -82,6 +83,9 @@ public:
     value const_string(const char* s);
     value const_string(const string& s);
     value const_string(const fn_string& s);
+
+    // convert an ast_node object to a quoted form
+    value const_quote(const fn_parse::ast_node* node);
 
     void print_status();
 };
