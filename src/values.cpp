@@ -205,6 +205,8 @@ optional<obj_header*> value::header() const {
         return &utable()->h;
     } else if (is_func()) {
         return &ufunc()->h;
+    } else if (is_namespace()) {
+        return &unamespace()->h;
     } else if (is_foreign()) {
         return &uforeign()->h;
     }

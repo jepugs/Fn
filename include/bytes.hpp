@@ -144,14 +144,6 @@ inline u8 instr_width(u8 instr) {
     }
 }
 
-
-// disassembly a single instruction, writing output to out
-void disassemble_instr(const bytecode& code, bc_addr ip, std::ostream& out);
-
-
-void disassemble(const bytecode& code, std::ostream& out);
-
-
 }
 
 

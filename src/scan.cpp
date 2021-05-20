@@ -580,6 +580,13 @@ bool scanner::eof() {
     return input->peek() == EOF;
 }
 
+bool scanner::eof_skip_ws() {
+    while (is_ws(input->peek())) {
+        get_char();
+    }
+    return eof();
+}
+
 char scanner::get_char() {
     if (eof()) {
         error("Unexpected EOF while scanning.");

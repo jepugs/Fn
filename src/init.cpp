@@ -283,7 +283,7 @@ void init(virtual_machine* vm) {
     //vm->add_foreign("hash", fn_hash, 1, false);
     vm->add_foreign("print", fn_print, 1, false);
     vm->add_foreign("println", fn_println, 1, false);
-    //vm->add_foreign("apply", fn_div, 2, true);
+    vm->add_foreign("apply", fn_div, 2, true);
 }
 
 }

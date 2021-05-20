@@ -47,8 +47,8 @@ private:
 
         // initialize a new array
         cap *= 2;
-        threshold = (u32)(REHASH_THRESHOLD * this->cap);
-        array = new entry<K,T>*[this->cap];
+        threshold = (u32)(REHASH_THRESHOLD * cap);
+        array = new entry<K,T>*[cap];
         for (u32 i =0; i < cap; ++i) {
             array[i] = nullptr;
         }
@@ -65,9 +65,9 @@ private:
 
 public:
     table(u32 init_cap=32)
-        : cap(init_cap)
-    {
-        threshold = (u32)(REHASH_THRESHOLD * init_cap);
+        : cap{init_cap} {
+        float th = REHASH_THRESHOLD * (float) init_cap;
+        threshold = (u32)th;
         size = 0;
         array = new entry<K,T>*[init_cap];
         for (u32 i =0; i < init_cap; ++i) {
@@ -125,7 +125,7 @@ public:
     }
 
     // insert/overwrite a new entry
-    T& insert(const K& k, T v) {
+    __attribute__((noinline)) T& insert(const K& k, T v) {
         if (size >= threshold) {
             increase_cap();
         }
@@ -153,17 +153,22 @@ public:
     optional<T*> get(const K& k) const {
         u32 h = hash(k);
         u32 i = h % this->cap;
+        // this count is so that we don't wrap around a full array
+        u64 ct = 0;
         // do linear probing
-        while(true) {
+        while(ct < cap) {
+            auto x = array[i] == nullptr ? 0 : array[i]->key == k;
             if (array[i] == nullptr) {
                 // no entry for this key
-                return { };
-            } else if (array[i]->key == k) {
+                return std::nullopt;
+            } else if (array[i]->key == k && x) {
                 // found the key
-                return optional(&array[i]->val);
+                return std::make_optional(&array[i]->val);
             }
             i = (i+1) % cap;
+            ++ct;
         }
+        return std::nullopt;
     }
 
     bool has_key(const K& k) const {

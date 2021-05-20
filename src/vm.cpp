@@ -4,6 +4,7 @@
 #include "values.hpp"
 
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <numeric>
 
@@ -170,7 +171,7 @@ const symbol_table* bytecode::get_symbol_table() const {
 
 value bytecode::symbol(const string& name) {
     auto s = symtab.intern(name);
-    return { .raw = (((u64) s->id) << 4) | (u64) TAG_SYM };
+    return as_sym_value(s->id);
 }
 optional<value> bytecode::find_symbol(const string& name) const {
     auto s = symtab.find(name);
@@ -231,12 +232,31 @@ void call_frame::close_all() {
 
 
 virtual_machine::virtual_machine()
-    : code()
-    , core_ns(nullptr)
-    , alloc([this] { return generate_roots(); })
-    , ip(0)
-    , frame(new call_frame(nullptr, 0, 0, nullptr))
+    : code{}
+    , core_ns{nullptr}
+    , alloc{[this] { return generate_roots(); }}
+    , wd{fs::current_path().string()}
+    , ip{0}
+    , frame{new call_frame(nullptr, 0, 0, nullptr)}
     , lp(V_NULL) {
+    alloc.disable_gc();
+    ns_root = v_namespace(alloc.add_namespace());
+    auto ns_id = alloc.add_cons(code.symbol("core"), V_EMPTY);
+    ns_id = alloc.add_cons(code.symbol("fn"),ns_id);
+    cur_ns = init_namespace(ns_id);
+    core_ns = cur_ns;
+    alloc.enable_gc();
+}
+
+virtual_machine::virtual_machine(const string& wd)
+    : code{}
+    , core_ns{nullptr}
+    , alloc{[this] { return generate_roots(); }}
+    , wd{wd}
+    , ip{0}
+    , frame{new call_frame(nullptr, 0, 0, nullptr)}
+    , lp(V_NULL) {
+    alloc.disable_gc();
     ns_root = v_namespace(alloc.add_namespace());
     auto ns_id = alloc.add_cons(code.symbol("core"), V_EMPTY);
     ns_id = alloc.add_cons(code.symbol("fn"),ns_id);
@@ -254,6 +274,56 @@ virtual_machine::~virtual_machine() {
         frame = tmp;
     }
 }
+
+void virtual_machine::set_wd(const string& new_wd) {
+    wd = new_wd;
+}
+
+string virtual_machine::get_wd() {
+    return wd;
+}
+
+void virtual_machine::compile_string(const string& src,
+                                       const string& origin) {
+    std::istringstream in{src};
+    fn_scan::scanner sc{&in, origin};
+    compiler c{this, &sc};
+    c.compile_to_eof();
+}
+
+void virtual_machine::compile_file(const string& filename) {
+    std::ifstream in{filename};
+    if (!in.is_open()) {
+        runtime_error("Could not open file: '" + filename + "'");
+    }
+    fn_scan::scanner sc{&in};
+    compiler c{this, &sc};
+    c.compile_to_eof();
+}
+
+void virtual_machine::interpret_string(const string& src,
+                                       const string& origin) {
+    std::istringstream in{src};
+    fn_scan::scanner sc{&in, origin};
+    compiler c{this, &sc};
+    c.compile_to_eof();
+    execute();
+}
+
+void virtual_machine::interpret_file(const string& filename) {
+    std::ifstream in{filename};
+    if (!in.is_open()) {
+        runtime_error("Could not open file: '" + filename + "'");
+    }
+    fn_scan::scanner sc{&in};
+    compiler c{this, &sc};
+
+    while (!sc.eof_skip_ws()) {
+        c.compile_expr();
+        execute();
+    }
+}
+
 
 generator<value> virtual_machine::generate_roots() {
     generator<value> stack_gen([i=0,this]() mutable -> optional<value> {
@@ -276,7 +346,17 @@ generator<value> virtual_machine::generate_roots() {
                 return **u[i++].val;
         });
     } while ((f = f->prev) != nullptr);
-    return stack_gen + upval_gen + generate1(as_value(ns_root)) + generate1(lp);
+    // return stack_gen + upval_gen
+    //     + generator<value>([i=0,this]() mutable -> optional<value> {
+    //             if (i == 0) {
+    //                 ++i;
+    //                 return as_value(ns_root);
+    //             }
+    //             return { };
+    //         });
+    return stack_gen + upval_gen + generate1(as_value(ns_root))
+        + generate1(lp) + generate1(as_value(cur_ns))
+        + generate1(as_value(core_ns));
 }
 
 fn_namespace* virtual_machine::init_namespace(value ns_id) {
@@ -637,7 +717,6 @@ bc_addr virtual_machine::call(local_addr num_args) {
         stack[sp - num_args - 1] = callee;
         stack[sp - num_args - 3] = v;
         return call(num_args + 1);
-        
     } else {
         // TODO: exception: not a function
         throw fn_error("interpreter",
@@ -793,7 +872,7 @@ void virtual_machine::step() {
             break;
         } else if (v_tag(v2) == TAG_NAMESPACE) {
             if (v_tag(v1) == TAG_SYM) {
-                vp = v1.namespace_get(v_sym_id(v1));
+                vp = v2.namespace_get(v_sym_id(v1));
                 if (!vp.has_value()) {
                     runtime_error("obj-get undefined key for namespace");
                 }
@@ -838,14 +917,14 @@ void virtual_machine::step() {
 
     case OP_JUMP:
         jump = true;
-        addr = ip + 3 + static_cast<i8>(code.read_byte(ip+1));
+        addr = ip + 3 + static_cast<i16>(code.read_short(ip+1));
         break;
 
     case OP_CJUMP:
         // jump on false
         if (!v_truthy(pop())) {
             jump = true;
-            addr = ip + 3 + static_cast<i8>(code.read_byte(ip+1));
+            addr = ip + 3 + static_cast<i16>(code.read_short(ip+1));
         } else {
             ip += 2;
         }
@@ -916,6 +995,114 @@ void virtual_machine::execute() {
     }
 }
 
+// disassemble a single instruction, writing output to out
+void disassemble_instr(const bytecode& code, bc_addr ip, std::ostream& out) {
+    u8 instr = code[ip];
+    switch (instr) {
+    case OP_NOP:
+        out << "nop";
+        break;
+    case OP_POP:
+        out << "pop";
+        break;
+    case OP_LOCAL:
+        out << "local " << (i32)code[ip+1];
+        break;
+    case OP_SET_LOCAL:
+        out << "set-local " << (i32)code[ip+1];
+        break;
+    case OP_COPY:
+        out << "copy " << (i32)code[ip+1];
+        break;
+    case OP_UPVALUE:
+        out << "upvalue " << (i32)code[ip+1];
+        break;
+    case OP_SET_UPVALUE:
+        out << "set-upvalue " << (i32)code[ip+1];
+        break;
+    case OP_CLOSURE:
+        out << "closure " << code.read_short(ip+1);
+        break;
+    case OP_CLOSE:
+        out << "close " << (i32)((code.read_byte(ip+1)));;
+        break;
+    case OP_GLOBAL:
+        out << "global";
+        break;
+    case OP_SET_GLOBAL:
+        out << "set-global";
+        break;
+    case OP_CONST:
+        out << "const " << code.read_short(ip+1);
+        break;
+    case OP_NULL:
+        out << "null";
+        break;
+    case OP_FALSE:
+        out << "false";
+        break;
+    case OP_TRUE:
+        out << "true";
+        break;
+    case OP_OBJ_GET:
+        out << "obj-get";
+        break;
+    case OP_OBJ_SET:
+        out << "obj-set";
+        break;
+    case OP_NAMESPACE:
+        out << "namespace";
+        break;
+    case OP_IMPORT:
+        out << "import";
+        break;
+    case OP_JUMP:
+        out << "jump " << (i32)(static_cast<i16>(code.read_short(ip+1)));
+        break;
+    case OP_CJUMP:
+        out << "cjump " << (i32)(static_cast<i16>(code.read_short(ip+1)));
+        break;
+    case OP_CALL:
+        out << "call " << (i32)((code.read_byte(ip+1)));;
+        break;
+    case OP_APPLY:
+        out << "apply " << (i32)((code.read_byte(ip+1)));;
+        break;
+    case OP_RETURN:
+        out << "return";
+        break;
+    case OP_TABLE:
+        out << "table";
+        break;
+
+    default:
+        out << "<unrecognized opcode: " << (i32)instr << ">";
+        break;
+    }
+}
+
+void disassemble(const bytecode& code, std::ostream& out) {
+    u32 ip = 0;
+    // TODO: annotate with line number
+    while (ip < code.get_size()) {
+        u8 instr = code[ip];
+        // write line
+        out << std::setw(6) << ip << "  ";
+        disassemble_instr(code, ip, out);
+
+        // additional information
+        if (instr == OP_CONST) {
+            // write constant value
+            out << " ; "
+                << v_to_string(code.get_constant(code.read_short(ip+1)), code.get_symbol_table());
+        } else if (instr == OP_CLOSURE) {
+            out << " ; addr = " << code.get_function(code.read_short(ip+1))->addr;
+        }
+
+        out << "\n";
+        ip += instr_width(instr);
+    }
+}
 
 }
 

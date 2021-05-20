@@ -78,6 +78,31 @@ optional<local_addr> compiler::find_local(local_table& locals,
     return std::nullopt;
 }
 
+void compiler::constant(const_id id) {
+    vm->get_bytecode().write_byte(fn_bytes::OP_CONST);
+    vm->get_bytecode().write_short(id);
+}
+
+void compiler::write_byte(u8 byte) {
+    vm->get_bytecode().write_byte(byte);
+}
+void compiler::write_short(u16 u) {
+    vm->get_bytecode().write_short(u);
+}
+void compiler::patch_short(bc_addr where, u16 u) {
+    vm->get_bytecode().patch_short(where, u);
+}
+bc_addr compiler::cur_addr() {
+    return vm->get_bytecode().get_size();
+}
+
+bytecode& compiler::get_bytecode() {
+    return vm->get_bytecode();
+}
+symbol_table& compiler::get_symtab() {
+    return vm->get_symtab();
+}
+
 void compiler::compile_atom(local_table& locals,
                             const ast_atom& atom,
                             const source_loc& loc) {
@@ -773,7 +798,7 @@ void compiler::compile_expr() {
 }
 
 void compiler::compile_to_eof() {
-    while (!sc->eof()) {
+    while (!sc->eof_skip_ws()) {
         compile_expr();
     }
 }

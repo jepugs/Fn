@@ -200,7 +200,8 @@ public:
     token next_token();
     // tell if EOF has been reached
     bool eof();
-
+    // check for eof after skipping whitespace
+    bool eof_skip_ws();
 
 private:
     std::istream *input;

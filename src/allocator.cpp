@@ -99,18 +99,22 @@ generator<value> allocator::accessible(value v) {
         return res;
     } else if (v.is_namespace()) {
         generator<value> res;
+        int ct = 0;
         for (auto sym : v.namespace_names()) {
             res += generate1(*(v.namespace_get(sym)));
+            ++ct;
         }
+        return res;
     }
 
     return generator<value>();
 }
 
 void allocator::mark_descend(obj_header* o) {
-    if (o->mark || !o->gc)
+    if (o->mark || !o->gc) {
         // already been here or not managed
         return;
+    }
     o->mark = true;
     for (auto q : accessible(o->ptr)) {
         auto h = q.header();

@@ -1,8 +1,8 @@
 #ifndef __FN_ALLOCATOR_HPP
 #define __FN_ALLOCATOR_HPP
 
-// defining this variable (which should be done via c_make) causes the garbage collector to run
-// frequently and often emit output:
+// Defining this variable (which should be done via CMAKE) causes the garbage
+// collector to run frequently and often emit output.
 // #define GC_DEBUG
 
 #include "base.hpp"

@@ -5,6 +5,7 @@
 
 #include "allocator.hpp"
 #include "base.hpp"
+#include "compile2.hpp"
 #include "parse.hpp"
 #include "table.hpp"
 #include "values.hpp"
@@ -173,7 +174,7 @@ private:
     vector<value> foreign_funcs;
 
     // working directory
-    fs::path wd;
+    string wd;
 
     // instruction pointer and stack
     stack_addr ip;
@@ -212,7 +213,24 @@ private:
 public:
     // initialize the vm with a blank image
     virtual_machine();
+    virtual_machine(const string& wd);
     ~virtual_machine();
+
+    void set_wd(const string& new_wd);
+    string get_wd();
+
+    // compile_ methods just compile, don't execute
+    void compile_string(const string& src, const string& origin="<cmdline>");
+    void compile_file(const string& filename);
+
+    // interpret_ methods compile and execute 1 expression at a time
+    void interpret_string(const string& src, const string& origin="<cmdline>");
+    void interpret_file(const string& filename);
+
+    // Interprets the given file in a fresh namespace. The resulting global
+    // namespace is inserted into the ns hierarchy and returned. id is a
+    // symbol or a list of symbols determining where it is inserted.
+    value load_namespace(value id, const string& filename);
 
     // step a single instruction
     void step();
@@ -249,6 +267,10 @@ public:
 };
 
 
+// disassemble a single instruction, writing output to out
+void disassemble_instr(const bytecode& code, bc_addr ip, std::ostream& out);
+
+void disassemble(const bytecode& code, std::ostream& out);
 
 
 }

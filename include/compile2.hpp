@@ -29,6 +29,10 @@ struct local_table {
     u8 add_upvalue(u32 levels, u8 pos);
 };
 
+// need this forward declaration :(
+struct virtual_machine;
+struct bytecode;
+
 class compiler {
 private:
     virtual_machine* vm;
@@ -41,30 +45,14 @@ private:
     // (indirect reference), false otherwise.
     optional<u8> find_local(local_table& locals, bool* is_upval, symbol_id name);
 
-    void constant(const_id id) {
-        vm->get_bytecode().write_byte(fn_bytes::OP_CONST);
-        vm->get_bytecode().write_short(id);
-    }
+    void constant(const_id id);
+    void write_byte(u8 byte);
+    void write_short(u16 u);
+    void patch_short(bc_addr where, u16 u);
+    bc_addr cur_addr();
 
-    void write_byte(u8 byte) {
-        vm->get_bytecode().write_byte(byte);
-    }
-    void write_short(u16 u) {
-        vm->get_bytecode().write_short(u);
-    }
-    void patch_short(bc_addr where, u16 u) {
-        vm->get_bytecode().patch_short(where, u);
-    }
-    bc_addr cur_addr() {
-        return vm->get_bytecode().get_size();
-    }
-
-    inline bytecode& get_bytecode() {
-        return vm->get_bytecode();
-    }
-    inline symbol_table& get_symtab() {
-        return vm->get_symtab();
-    }
+    bytecode& get_bytecode();
+    symbol_table& get_symtab();
 
     void compile_atom(local_table& locals,
                       const fn_parse::ast_atom& atom,
@@ -161,6 +149,10 @@ public:
     void compile_expr();
     // compile until eof is reached
     void compile_to_eof();
+
+    // interpret a file, i.e. compile it one expression at a time and run the
+    // code as we go.
+    void interpret(const string& filename);
 
     inline void error(const char* msg, const source_loc& loc) {
         throw fn_error("compiler", msg, loc);
