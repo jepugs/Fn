@@ -233,17 +233,20 @@ In addition, every namespace automatically inherits every variable from
 Note: this depends on a UNIX-like enivornment and directory structure. Support
 for Windows will require some additional work.
 
-The search path takes its value from the environment variable ~FN_SEARCH_PATH~
-if set. Otherwise, it defaults to
-~.:${HOME}/.local/lib/Fn/ns:${PREFIX}/lib/Fn/ns~. Here ~${HOME}~ is the user's
-home directory (environment variable) and ~${PREFIX}~ is a directory determined
-at build time, but probably ~/usr~.
+The last path in the search path is always ~${PREFIX}/lib/Fn/ns~, the system
+namespace directory. Here ~${PREFIX}~ is a location determined at compile time,
+probably ~/usr~ or ~/usr/local~. By default, the interpreter working directory
+is searched first, then ~${HOME}/.local/lib/Fn/ns~, however this can be
+controlled using the ~--no-wd~ and ~--no-home~ interpreter flags to suppress
+these locations respectively.
 
-Syntax here is like for the ~PATH~ environment variable. Backslash can be used
-as an escape character if one of the paths includes a colon.
+When evaluating a file, the interpreter changes its working directory to the
+directory containing that file. The repl working directory is the one from which
+the program was launched.
 
-Note that ~.~ is the first directory in the path, so it is recommended that .fn
-files go in dedicated project directories in order to prevent name collisions.
+It is recommended that single file scripts use the flag ~--no-wd~ and that
+system scripts use ~--sys-only~, which is equivalent to using both ~--no-wd~ and
+~--no-home~.
 
 ** [Future Addition] Dynamically-scoped variables
 
