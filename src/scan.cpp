@@ -113,7 +113,11 @@ token scanner::next_token() {
         }
         switch (c) {
         case ';': // comment
-            while (get_char() != '\n');
+            while (!eof()) {
+                if(get_char() == '\n') {
+                    break;
+                }
+            }
             break;
 
         // paired delimiters
@@ -313,7 +317,7 @@ optional<f64> scanner::try_scan_num(vector<char>& buf, char first) {
         return try_scan_digits(buf, first, sign, 10);
     }
 
-    return std::nullopt;
+        return std::nullopt;
 }
 
 // apply scientific notation exponent to num
@@ -580,9 +584,23 @@ bool scanner::eof() {
     return input->peek() == EOF;
 }
 
+
+// FIXME: this should skip comments too
 bool scanner::eof_skip_ws() {
-    while (is_ws(input->peek())) {
-        get_char();
+    while (!eof()) {
+        auto ch = peek_char();
+        // skip comments
+        if (ch == ';') {
+            while (!eof()) {
+                if(get_char() == '\n') {
+                    break;
+                }
+            }
+        } else if (!is_ws(ch)) {
+            break;
+        } else {
+            get_char();
+        }
     }
     return eof();
 }

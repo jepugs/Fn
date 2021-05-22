@@ -240,9 +240,11 @@ is searched first, then ~${HOME}/.local/lib/Fn/ns~, however this can be
 controlled using the ~--no-wd~ and ~--no-home~ interpreter flags to suppress
 these locations respectively.
 
-When evaluating a file, the interpreter changes its working directory to the
-directory containing that file. The repl working directory is the one from which
-the program was launched.
+Files passed as command line arguments are evaluated with the working directory
+set to their parent directory. Calls to import do not change the working
+directory.
+
+The repl working directory is the one from which the program was launched.
 
 It is recommended that single file scripts use the flag ~--no-wd~ and that
 system scripts use ~--sys-only~, which is equivalent to using both ~--no-wd~ and

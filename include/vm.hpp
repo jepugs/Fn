@@ -187,8 +187,6 @@ private:
     // create and initialize a new namespace in the ns hierarchy. (this includes
     // setting up the _modinfo and ns variables).
     fn_namespace* init_namespace(value namespace_id);
-    // search for a namespace in the ns object. returns nullptr on failure
-    fn_namespace* find_namespace(value namespace_id);
     //fn_namespace* find_namespace(value namespace_id);
 
     // stack operations
@@ -227,10 +225,38 @@ public:
     void interpret_string(const string& src, const string& origin="<cmdline>");
     void interpret_file(const string& filename);
 
+    value get_symbol(const string& name) {
+        return as_sym_value(get_symtab().intern(name)->id);
+    }
+
+    // Search for a namespace in the ns_root. Returns nullptr on failure
+    fn_namespace* find_ns(value id);
+    // Given a namespace id, find a file containing it. This does not validate
+    // id, so there will be a memory error if it is not a list of symbols.
+    optional<string> find_ns_file(value id);
+
+    // Create a new namespace and return it as a value. id is a list of symbols
+    // identifying the namespace. Invalid id will cause a runtime error. No
+    // variables are set.
+    fn_namespace* create_empty_ns(value id);
+    // Create and initialize new namespace. (At the moment, this just creates an
+    // ns variable).
+    fn_namespace* create_ns(value id);
+    // Like create_namespace(value), but copies the contents of the template
+    // namespace into the new one. New copies of objects are not created.
+    fn_namespace* create_ns(value id, fn_namespace* templ);
+                                   
+
     // Interprets the given file in a fresh namespace. The resulting global
     // namespace is inserted into the ns hierarchy and returned. id is a
     // symbol or a list of symbols determining where it is inserted.
-    value load_namespace(value id, const string& filename);
+    fn_namespace* load_ns(value id, const string& filename);
+    fn_namespace* import_ns(value id);
+
+    // switch to another namespace
+    void use_ns(fn_namespace* ns);
+    // current namespace of the VM
+    fn_namespace* current_ns();
 
     // step a single instruction
     void step();
@@ -258,8 +284,6 @@ public:
     allocator& get_alloc();
     symbol_table& get_symtab();
 
-    // current namespace of the VM
-    fn_namespace* current_namespace();
 
     // raise an exception of type fn_error containing the provided message
     void runtime_error(const string& msg) const;

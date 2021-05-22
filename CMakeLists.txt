@@ -7,6 +7,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 set(CMAKE_CXX_FLAGS "-O0 -Wall")
 
+set(PREFIX "/usr" CACHE PATH "Installation prefix")
+
+configure_file("config.h.in" "config.h")
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
 add_subdirectory(src)
 
 # this if also prevents tests from building when this project is included

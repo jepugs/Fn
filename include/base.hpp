@@ -66,25 +66,25 @@ struct source_loc {
     const int line;
     const int col;
 
-    source_loc(string* filename, int line=1, int col=1)
-        : filename(new string(*filename))
-        , line(line)
-        , col(col) {
+    source_loc(const string& filename, int line=1, int col=1)
+        : filename{new string{filename}}
+        , line{line}
+        , col{col} {
     }
     source_loc(const char* filename, int line=1, int col=1)
-        : filename(new string(filename))
-        , line(line)
-        , col(col) {
+        : filename{new string(filename)}
+        , line{line}
+        , col{col} {
     }
     source_loc(const std::shared_ptr<string>& filename, int line, int col)
-        : filename(filename)
-        , line(line)
-        , col(col) {
+        : filename{filename}
+        , line{line}
+        , col{col} {
     }
     source_loc(const source_loc& loc)
-        : filename(loc.filename)
-        , line(loc.line)
-        , col(loc.col) {
+        : filename{loc.filename}
+        , line{loc.line}
+        , col{loc.col} {
     }
 };
 

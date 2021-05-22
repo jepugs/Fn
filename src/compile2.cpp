@@ -215,8 +215,8 @@ void compiler::compile_list(local_table& locals,
         //     compile_dollar_fn(locals, list, list[0]->loc);
         } else if (name == "if") {
             compile_if(locals, list, list[0]->loc);
-        // } else if (name == "import") {
-        //     compile_import(locals, list, list[0]->loc);
+        } else if (name == "import") {
+            compile_import(locals, list, list[0]->loc);
         } else if (name == "fn") {
             compile_fn(locals, list, list[0]->loc);
         } else if (name == "let") {
@@ -298,14 +298,14 @@ void compiler::compile_call(local_table& locals,
         // should be an error.
 
         // convert this symbol to a non-keyword one
-        auto key = get_symtab().intern(s.name.substr(1));
+        auto key = vm->get_symbol(s.name.substr(1));
 
         // add the argument to the keyword table
         write_byte(OP_LOCAL);
         write_byte(base_sp + 1);
         ++locals.sp;
         write_byte(OP_CONST);
-        write_short(get_bytecode().add_const(as_sym_value(key->id)));
+        write_short(get_bytecode().add_const(key));
         ++locals.sp;
         compile_subexpr(locals, list[i+1]);
         write_byte(OP_OBJ_SET);
@@ -372,7 +372,7 @@ void compiler::compile_function(local_table& locals,
     bool vl = params.var_list.has_value();
     bool vt = params.var_table.has_value();
     auto func_id = get_bytecode()
-        .add_function(args, opt_ind, vl, vt, vm->current_namespace());
+        .add_function(args, opt_ind, vl, vt, vm->current_ns());
 
     // create the new local environment
     local_table fn_locals{&locals, get_bytecode().get_function(func_id)};
@@ -564,6 +564,64 @@ void compiler::compile_if(local_table& locals,
     auto end_addr = cur_addr();
     patch_short(then_addr - 2, else_addr - then_addr);
     patch_short(else_addr - 2, end_addr - else_addr);
+}
+
+void compiler::compile_import(local_table& locals,
+                              const vector<ast_node*>& list,
+                              const source_loc& loc) {
+    if (list.size() != 2) {
+        error("Wrong number of arguments to import.", loc);
+    }
+    if (list[1]->kind == ak_list) {
+        auto& l = *list[1]->datum.list;
+        if (!l[0]->is_symbol()
+            || l[0]->get_symbol(get_symtab()).name != "dot") {
+            error("Argument to import not a symbol or dot form.", list[1]->loc);
+        }
+        auto x = list[1]->copy();
+        x->datum.list->erase(x->datum.list->begin());
+
+        // name for the set-global
+        // TODO: check for :as argument
+        auto name_form = (*x->datum.list)[x->datum.list->size() - 1];
+        if (!name_form->is_symbol()) {
+            error("Malformed namespace id in import.", list[1]->loc);
+        }
+        auto v = as_value(name_form->get_symbol(get_symtab()));
+        auto id = vm->get_bytecode().add_const(v);
+        write_byte(OP_CONST);
+        write_short(id);
+
+        // ns id for import
+        v = vm->get_alloc().const_quote(x);
+        id = vm->get_bytecode().add_const(v);
+        write_byte(OP_CONST);
+        write_short(id);
+
+        // done with this
+        delete x;
+
+        write_byte(OP_IMPORT);
+        write_byte(OP_SET_GLOBAL);
+    } else if (list[1]->is_symbol()) {
+        // name for set-global
+        auto sym = list[1]->get_symbol(get_symtab());
+        auto v = as_value(sym);
+        auto id = vm->get_bytecode().add_const(v);
+        write_byte(OP_CONST);
+        write_short(id);
+
+        // ns id for import
+        v = vm->get_alloc().const_cons(as_value(sym), V_EMPTY);
+        id = vm->get_bytecode().add_const(v);
+        write_byte(OP_CONST);
+        write_short(id);
+
+        write_byte(OP_IMPORT);
+        write_byte(OP_SET_GLOBAL);
+    } else {
+        error("Argument to import not a symbol or dot form.", list[1]->loc);
+    }
 }
 
 void compiler::compile_let(local_table& locals,

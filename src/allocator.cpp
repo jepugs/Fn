@@ -337,7 +337,7 @@ value allocator::const_quote(const fn_parse::ast_node* node) {
             return V_NULL;
         }
     } else if (node->kind == fn_parse::ak_list) {
-        auto tl = V_NULL;
+        auto tl = V_EMPTY;
         for (i32 i = node->datum.list->size() - 1; i >= 0; --i) {
             auto hd = const_quote(node->datum.list->at(i));
             tl = const_cons(hd, tl);

@@ -427,7 +427,8 @@ template<> u32 hash<value>(const value& v) {
 string v_to_string(value v, const symbol_table* symbols) {
     auto tag = v_tag(v);
     string res;
-    fn_table* o;
+    fn_table* t;
+    fn_namespace* ns;
     // TODO: add escaping to strings/characters
     switch(tag) {
     case TAG_NUM:
@@ -443,10 +444,10 @@ string v_to_string(value v, const symbol_table* symbols) {
     case TAG_TABLE:
         // TODO: recursively track which objects we've descended into
         res = "{ ";
-        o = v_table(v);
-        for (auto k : o->contents.keys()) {
+        t = v_table(v);
+        for (auto k : t->contents.keys()) {
             res += v_to_string(*k,symbols) + " "
-                + v_to_string(**o->contents.get(*k),symbols) + " ";
+                + v_to_string(**t->contents.get(*k),symbols) + " ";
             if (res.size() >= 69) {
                 res += "...";
                 break;
@@ -467,6 +468,19 @@ string v_to_string(value v, const symbol_table* symbols) {
         return "[]";
     case TAG_SYM:
         return "'" + (*symbols)[v_sym_id(v)].name;
+    case TAG_NAMESPACE:
+                // TODO: recursively track which objects we've descended into
+        res = "<namespace: ";
+        ns = v_namespace(v);
+        for (auto k : ns->contents.keys()) {
+            res += v_to_string(as_sym_value(*k),symbols) + " "
+                + v_to_string(**ns->contents.get(*k),symbols) + " ";
+            if (res.size() >= 69) {
+                res += "...";
+                break;
+            }
+        }
+        return res + ">";
     }
     return "<unprintable-object>";
 }

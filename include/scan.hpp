@@ -201,6 +201,7 @@ public:
     // tell if EOF has been reached
     bool eof();
     // check for eof after skipping whitespace
+    // FIXME: this should skip comments too
     bool eof_skip_ws();
 
 private:

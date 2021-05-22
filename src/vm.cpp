@@ -1,5 +1,7 @@
 #include "vm.hpp"
 
+#include "config.h"
+
 #include "bytes.hpp"
 #include "values.hpp"
 
@@ -238,13 +240,18 @@ virtual_machine::virtual_machine()
     , wd{fs::current_path().string()}
     , ip{0}
     , frame{new call_frame(nullptr, 0, 0, nullptr)}
-    , lp(V_NULL) {
+    , lp{V_NULL} {
+
     alloc.disable_gc();
+
     ns_root = v_namespace(alloc.add_namespace());
-    auto ns_id = alloc.add_cons(code.symbol("core"), V_EMPTY);
-    ns_id = alloc.add_cons(code.symbol("fn"),ns_id);
-    cur_ns = init_namespace(ns_id);
-    core_ns = cur_ns;
+
+    auto ns_id = alloc.add_cons(get_symbol("core"), V_EMPTY);
+    ns_id = alloc.add_cons(get_symbol("fn"), ns_id);
+    core_ns = create_ns(ns_id);
+
+    cur_ns = core_ns;
+
     alloc.enable_gc();
 }
 
@@ -255,13 +262,18 @@ virtual_machine::virtual_machine(const string& wd)
     , wd{wd}
     , ip{0}
     , frame{new call_frame(nullptr, 0, 0, nullptr)}
-    , lp(V_NULL) {
+    , lp{V_NULL} {
+
     alloc.disable_gc();
+
     ns_root = v_namespace(alloc.add_namespace());
-    auto ns_id = alloc.add_cons(code.symbol("core"), V_EMPTY);
-    ns_id = alloc.add_cons(code.symbol("fn"),ns_id);
-    cur_ns = init_namespace(ns_id);
-    core_ns = cur_ns;
+
+    auto ns_id = alloc.add_cons(get_symbol("core"), V_EMPTY);
+    ns_id = alloc.add_cons(get_symbol("fn"), ns_id);
+    core_ns = create_ns(ns_id);
+
+    cur_ns = core_ns;
+
     alloc.enable_gc();
 }
 
@@ -318,12 +330,171 @@ void virtual_machine::interpret_file(const string& filename) {
     fn_scan::scanner sc{&in};
     compiler c{this, &sc};
 
+    auto tmp_ip = ip;
+    ip = code.get_size();
+    auto i = 0;
     while (!sc.eof_skip_ws()) {
+        ++i;
         c.compile_expr();
         execute();
     }
+    ip = tmp_ip;
 }
 
+fn_namespace* virtual_machine::find_ns(value id) {
+    // FIXME: should check for cons
+    auto hd = id.rhead();
+    auto tl = id.rtail();
+    auto ns = ns_root;
+    while (true) {
+        auto x = ns->get(v_sym_id(hd));
+        if (x.has_value()) {
+            if (!x->is_namespace()) {
+                runtime_error("Error: namespace id overlaps with non-namespace definition.");
+            }
+            ns = x->unamespace();
+        } else {
+            return nullptr;
+        }
+
+        if(!tl.is_cons()) {
+            break;
+        }
+
+        hd = tl.rhead();
+        tl = tl.rtail();
+    }
+
+    return ns;
+}
+
+optional<string> virtual_machine::find_ns_file(value id) {
+    fs::path rel_path{};
+    // FIXME: should check that these are all symbols
+    auto hd = id.rhead();
+    auto tl = id.rtail();
+    while (tl.is_cons()) {
+        rel_path /= get_symtab()[v_sym_id(hd)].name;
+        hd = tl.rhead();
+        tl = tl.rtail();
+    }
+    rel_path /= get_symtab()[v_sym_id(hd)].name + ".fn";
+    
+    fs::path p{wd / rel_path};
+    if (fs::exists(p)) {
+        return p.string();
+    }
+
+    // TODO: set these properly
+
+    // s = "${HOME}" + "/.local/lib/fn/ns/" + rel_path;
+    // if (fs::exists(s)) {
+    //     return s;
+    // }
+
+    // add the prefix
+    p = fs::path{PREFIX} / "lib" / "fn" / "ns" / rel_path;
+    if (fs::exists(p)) {
+        return p.string();
+    }
+
+    return std::nullopt;
+}
+
+fn_namespace* virtual_machine::create_empty_ns(value id) {
+    if (!id.is_cons()) {
+        runtime_error("(Internal). Namespace id not a list of symbols.");
+    }
+    auto hd = id.rhead();
+    auto tl = id.rtail();
+    auto ns = ns_root;
+    while (true) {
+        if (!tl.is_cons() && !tl.is_empty()) {
+            runtime_error("(Internal). Namespace id not a list of symbols.");
+            break;
+        }
+        if (!hd.is_sym()) {
+            runtime_error("Namespace id must be a list of symbols.");
+            break;
+        }
+
+        auto x = ns->get(v_sym_id(hd));
+        if (x.has_value()) {
+            if (!x->is_namespace()) {
+                runtime_error("Error: namespace id overlaps with non-namespace definition.");
+            }
+            ns = x->unamespace();
+        } else {
+            auto next = alloc.add_namespace().unamespace();
+            ns->set(v_sym_id(hd), as_value(next));
+            ns = next;
+        }
+
+        if(tl.is_empty()) {
+            break;
+        }
+
+        hd = tl.rhead();
+        tl = tl.rtail();
+    }
+    return ns;
+}
+
+fn_namespace* virtual_machine::create_ns(value id) {
+    auto res = create_empty_ns(id);
+
+    auto sym = as_sym_value(get_symtab().intern("ns")->id);
+    res->set(v_sym_id(sym), as_value(ns_root));
+
+    return res;
+}
+
+fn_namespace* virtual_machine::create_ns(value id,
+                                                fn_namespace* templ) {
+    auto res = create_empty_ns(id);
+
+    res->contents = table{templ->contents};
+
+    auto sym = as_sym_value(get_symtab().intern("ns")->id);
+    res->set(v_sym_id(sym), as_value(ns_root));
+
+    return res;
+}
+
+fn_namespace* virtual_machine::load_ns(value id, const string& filename) {
+    auto tmp_ns = cur_ns;
+    cur_ns = create_ns(id, core_ns);
+
+    value tmp_stack[STACK_SIZE];
+    memcpy(tmp_stack, stack, STACK_SIZE*sizeof(value));
+
+    auto tmp_frame = frame;
+    frame = new call_frame(nullptr, 0, 0, nullptr);
+
+    interpret_file(filename);
+
+    auto res = cur_ns;
+
+    memcpy(stack, tmp_stack, STACK_SIZE*sizeof(value));
+    cur_ns = tmp_ns;
+    frame = tmp_frame;
+
+    return res;
+}
+
+fn_namespace* virtual_machine::import_ns(value id) {
+    auto ns = find_ns(id);
+    if (ns == nullptr) {
+        auto path = find_ns_file(id);
+        if (!path.has_value()) {
+            runtime_error("Import failed. Could not find file.");
+        }
+        auto res = load_ns(id, *path);
+        return res;
+    } else {
+        return ns;
+    }
+}
 
 generator<value> virtual_machine::generate_roots() {
     generator<value> stack_gen([i=0,this]() mutable -> optional<value> {
@@ -333,6 +504,7 @@ generator<value> virtual_machine::generate_roots() {
         }
         return stack[i++];
     });
+
     generator<value> upval_gen;
     auto f = frame;
     do {
@@ -346,98 +518,9 @@ generator<value> virtual_machine::generate_roots() {
                 return **u[i++].val;
         });
     } while ((f = f->prev) != nullptr);
-    // return stack_gen + upval_gen
-    //     + generator<value>([i=0,this]() mutable -> optional<value> {
-    //             if (i == 0) {
-    //                 ++i;
-    //                 return as_value(ns_root);
-    //             }
-    //             return { };
-    //         });
+
     return stack_gen + upval_gen + generate1(as_value(ns_root))
-        + generate1(lp) + generate1(as_value(cur_ns))
-        + generate1(as_value(core_ns));
-}
-
-fn_namespace* virtual_machine::init_namespace(value ns_id) {
-    if (v_tag(ns_id) != TAG_CONS) {
-        runtime_error("namespace initialization failed: namespace id not a list of symbols.");
-    }
-
-    // disable the gc if necessary
-    auto reenable_gc = false;
-    if (alloc.gc_is_enabled()) {
-        reenable_gc = true;
-        alloc.disable_gc();
-    }
-
-    // create the namespace in the ns hierarchy
-    auto x = ns_id;
-    value key;
-    fn_namespace* res = ns_root;
-    optional<value> v;
-    // FIXME: it's still possible to overwrite a variable here
-    while (x != V_EMPTY) {
-        key = v_head(x);
-        if (v_tag(key) != TAG_SYM) {
-            runtime_error("Namespace init failed on invalid namespace id.");
-        }
-        auto sym = v_sym_id(key);
-        v = res->get(sym);
-        if (!v.has_value()) {
-            auto tmp = v_namespace(alloc.add_namespace());
-            res->set(sym, as_value(tmp));
-            res = tmp;
-        } else if (v_tag(*v) == TAG_NAMESPACE) {
-            res = v_namespace(*v);
-        } else {
-            runtime_error("Namespace init failed on collision with non-namespace definition.");
-        }
-        x = v_tail(x);
-        // TODO: check tail is a list (and also do it in find_namespace)
-    }
-
-    // TODO: this only happens once in the constructor.
-    if (core_ns != nullptr) {
-        res->contents = table{core_ns->contents};
-    }
-    res->set(v_sym_id(code.symbol("ns")), as_value(ns_root));
-
-    if (reenable_gc) {
-        alloc.enable_gc();
-    }
-    return res;
-}
-
-// TODO: make optional<obj>
-fn_namespace* virtual_machine::find_namespace(value ns_id) {
-    if (v_tag(ns_id) != TAG_CONS) {
-        runtime_error("namespace search failed: namespace id not a list of symbols.");
-    }
-
-    // create the namespace in the ns hierarchy
-    auto x = ns_id;
-    value key;
-    fn_namespace* res = ns_root;
-    optional<value> v;
-    while (x != V_EMPTY) {
-        // TODO: check that everything is a package or a namespace.
-        key = v_head(x);
-        if (v_tag(key) != TAG_SYM) {
-            runtime_error("namespace search failed: namespace id not a list of symbols.");
-        }
-        v = res->get(v_sym_id(key));
-        if (!v.has_value()) {
-            return nullptr;
-        } else if (v_tag(*v) == TAG_NAMESPACE) {
-            res = v_namespace(*v);
-        } else {
-            runtime_error("namespace search failed: namespace id collides with a variable.");
-        }
-        x = v_tail(x);
-    }
-
-    return res;
+        + generate1(lp);
 }
 
 u32 virtual_machine::get_ip() const {
@@ -496,8 +579,11 @@ void virtual_machine::add_foreign(string name,
                                   local_addr min_args,
                                   bool var_args) {
     auto v = alloc.add_foreign(min_args, var_args, func);
+    auto tmp = cur_ns;
+    cur_ns = core_ns;
     add_global(code.symbol(name), v);
     foreign_funcs.push_back(v);
+    cur_ns = tmp;
 }
 
 bytecode& virtual_machine::get_bytecode() {
@@ -510,12 +596,18 @@ symbol_table& virtual_machine::get_symtab() {
     return *code.get_symbol_table();
 }
 
-fn_namespace* virtual_machine::current_namespace() {
+fn_namespace* virtual_machine::current_ns() {
     return cur_ns;
 }
 
 void virtual_machine::runtime_error(const string& msg) const {
-    throw fn_error("runtime", "(ip = " + std::to_string(ip) + ") " + msg, *code.location_of(ip));
+    auto p = code.location_of(ip);
+    if (p == nullptr) {
+        throw fn_error("runtime",
+                       "(ip = " + std::to_string(ip) + ") " + msg,
+                       source_loc{"<bytecode top>"});
+    }
+    throw fn_error("runtime", "(ip = " + std::to_string(ip) + ") " + msg, *p);
 }
 
 void virtual_machine::push(value v) {
@@ -740,7 +832,7 @@ void virtual_machine::step() {
     bool jump = false;
     bc_addr addr = 0;
 
-    fn_namespace* mod;
+    fn_namespace* ns;
 
     local_addr num_args;
 
@@ -908,11 +1000,8 @@ void virtual_machine::step() {
 
     case OP_IMPORT:
         v1 = pop();
-        mod = find_namespace(v1);
-        if (mod == nullptr) {
-            mod = init_namespace(v1);
-        }
-        push(as_value(mod));
+        ns = import_ns(v1);
+        push(as_value(ns));
         break;
 
     case OP_JUMP:
