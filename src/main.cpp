@@ -1,6 +1,6 @@
 #include "base.hpp"
 #include "bytes.hpp"
-#include "compile2.hpp"
+#include "compile.hpp"
 #include "init.hpp"
 #include "parse.hpp"
 #include "scan.hpp"

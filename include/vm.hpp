@@ -5,7 +5,7 @@
 
 #include "allocator.hpp"
 #include "base.hpp"
-#include "compile2.hpp"
+#include "compile.hpp"
 #include "parse.hpp"
 #include "table.hpp"
 #include "values.hpp"

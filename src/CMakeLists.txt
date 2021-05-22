@@ -1,7 +1,7 @@
 add_library(fn_lib OBJECT
             allocator.cpp
             bytes.cpp
-            compile2.cpp
+            compile.cpp
             init.cpp
             parse.cpp
             scan.cpp

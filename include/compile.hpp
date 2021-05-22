@@ -1,126 +1,162 @@
 #ifndef __FN_COMPILE_HPP
 #define __FN_COMPILE_HPP
 
-#include <filesystem>
-
 #include "base.hpp"
 #include "bytes.hpp"
 #include "scan.hpp"
+#include "parse.hpp"
 #include "table.hpp"
 #include "values.hpp"
 #include "vm.hpp"
 
 namespace fn {
 
-using namespace fn_scan;
-
-namespace fs = std::filesystem;
-
-// locals object tracks all state
-struct locals {
+struct local_table {
     // table of local variable locations
-    table<string,local_addr> vars;
+    table<symbol_id,u8> vars;
     // parent environment
-    locals* parent;
+    local_table* parent;
 
     // the function we're currently compiling. this is needed to keep track of upvalues
     func_stub* cur_func;
 
-    locals(locals* parent=nullptr, func_stub* cur_func=nullptr);
+    // stack pointer
+    u8 sp;
+
+    local_table(local_table* parent=nullptr, func_stub* cur_func=nullptr);
     // add an upvalue which has the specified number of levels of indirection (each level corresponds
     // to one more enclosing function before)
     u8 add_upvalue(u32 levels, u8 pos);
 };
 
+// need this forward declaration :(
+struct virtual_machine;
+struct bytecode;
+
 class compiler {
 private:
-    bytecode* dest;
-    scanner* sc;
-    // compiler's internally-tracked stack pointer
-    u8 sp;
+    virtual_machine* vm;
+    fn_scan::scanner* sc;
 
-    // compiler working directory. this is used as an import path.
-    fs::path dir;
-    // table of imported modules. associates a sequence of strings (i.e. the symbols in a dot
-    // expression) to a constant containing that module's i_d.
-    table<vector<string>,u16> modules;
-    // constant holding the current module's i_d
-    u16 cur_mod_id;
+    void compile_subexpr(local_table& locals, const fn_parse::ast_node* expr);
 
-    // search for the path to a module given a vector denoting the (dot-separated) components of its
-    // name.
-    fs::path module_path(const vector<string>& id);
+    // Find a local variable. An upvalue is created in the enclosing locals
+    // structure if necessary. *is_upval is set to true if this is an upvalue
+    // (indirect reference), false otherwise.
+    optional<u8> find_local(local_table& locals, bool* is_upval, symbol_id name);
 
-    // compile a single expression, consuming tokens. t0 is an optional first token. running will
-    // leave the expression on top of the stack.
-    void compile_expr(locals* l, token* t0=nullptr);
+    void constant(const_id id);
+    void write_byte(u8 byte);
+    void write_short(u16 u);
+    void patch_short(bc_addr where, u16 u);
+    bc_addr cur_addr();
 
-    // compile a sequence of expressions terminated by ')', creating a new lexical scope
-    void compile_block(locals* l);
+    bytecode& get_bytecode();
+    symbol_table& get_symtab();
 
-    // special forms
-    void compile_and(locals* l);
-    void compile_apply(locals* l);
-    void compile_cond(locals* l);
-    void compile_def(locals* l);
-    void compile_do(locals* l);
-    void compile_dot_expr(locals* l);
-    void compile_dot_token(locals* l, token& tok);
-    void compile_fn(locals* l);
-    void compile_if(locals* l);
-    void compile_import(locals* l); // t_od_o
-    void compile_let(locals* l);
-    void compile_or(locals* l);
-    void compile_quote(locals* l, bool prefix);
-    void compile_set(locals* l);
+    void compile_atom(local_table& locals,
+                      const fn_parse::ast_atom& atom,
+                      const source_loc& loc);
+    void compile_var(local_table& locals, symbol_id id, const source_loc& loc);
+    // compile the object of a dot expression up to the last all_but keys
+    void compile_dot_obj(local_table& locals,
+                         const vector<fn_parse::ast_node*>& dot_expr,
+                         u8 all_but,
+                         const source_loc& loc);
+    void compile_list(local_table& locals,
+                      const vector<fn_parse::ast_node*>& list,
+                      const source_loc& loc);
+    void compile_call(local_table& locals, const vector<fn_parse::ast_node*>& list);
+    void compile_body(local_table& locals,
+                      const vector<fn_parse::ast_node*>& list,
+                      u32 body_start);
+    void compile_function(local_table& locals,
+                          const fn_parse::param_list& params,
+                          const vector<fn_parse::ast_node*>& body_vec,
+                          u32 body_start);
 
-    // braces and brackets
-    void compile_braces(locals* l);
-    void compile_brackets(locals* l);
-
-    // parentheses
-    void compile_call(locals* l, token* t0);
-
-    // variables
-
-    // find a local variable by its name. returns std::nullopt when no global variable is found,
-    // otherwise the corresponding local value (i.e. stack position or upvalue i_d). the value
-    // pointed to by levels will be set to the number of layers of enclosing functions that need to
-    // be visited to access the variable, thus a value of 0 indicates a local variable on the stack
-    // while a value greater than 0 indicates an upvalue.
-    optional<local_addr> find_local(locals* l, const string& name, u32* levels);
-    // compile a variable reference
-    void compile_var(locals* l, const string& name);
-
-    // helpers functions
-
-    // note: this doesn't update the stack pointer
-    inline void constant(u16 id) {
-        dest->write_byte(fn_bytes::OP_CONST);
-        dest->write_short(id);
-    }
-    // attempt to parse a name, i.e. a symbol, a dot form, or a dot token. returns a vector
-    // consisting of the names of its constitutent symbols.
-    vector<string> tokenize_name(optional<token> t0={ });
-
+    void compile_and(local_table& locals,
+                     const vector<fn_parse::ast_node*>& list,
+                     const source_loc& loc);
+    void compile_cond(local_table& locals,
+                      const vector<fn_parse::ast_node*>& list,
+                      const source_loc& loc);
+    void compile_def(local_table& locals,
+                     const vector<fn_parse::ast_node*>& list,
+                     const source_loc& loc);
+    void compile_defmacro(local_table& locals,
+                          const vector<fn_parse::ast_node*>& list,
+                          const source_loc& loc);
+    void compile_defn(local_table& locals,
+                      const vector<fn_parse::ast_node*>& list,
+                      const source_loc& loc);
+    void compile_do(local_table& locals,
+                    const vector<fn_parse::ast_node*>& list,
+                    const source_loc& loc);
+    void compile_dollar_fn(local_table& locals,
+                           const vector<fn_parse::ast_node*>& list,
+                           const source_loc& loc);
+    void compile_dot(local_table& locals,
+                     const vector<fn_parse::ast_node*>& list,
+                     const source_loc& loc);
+    void compile_fn(local_table& locals,
+                    const vector<fn_parse::ast_node*>& list,
+                    const source_loc& loc);
+    void compile_if(local_table& locals,
+                    const vector<fn_parse::ast_node*>& list,
+                    const source_loc& loc);
+    void compile_import(local_table& locals,
+                        const vector<fn_parse::ast_node*>& list,
+                        const source_loc& loc);
+    void compile_let(local_table& locals,
+                     const vector<fn_parse::ast_node*>& list,
+                     const source_loc& loc);
+    void compile_letfn(local_table& locals,
+                       const vector<fn_parse::ast_node*>& list,
+                       const source_loc& loc);
+    void compile_or(local_table& locals,
+                    const vector<fn_parse::ast_node*>& list,
+                    const source_loc& loc);
+    void compile_quasiquote(local_table& locals,
+                            const vector<fn_parse::ast_node*>& list,
+                            const source_loc& loc);
+    void compile_quote(local_table& locals,
+                       const vector<fn_parse::ast_node*>& list,
+                       const source_loc& loc);
+    void compile_unquote(local_table& locals,
+                         const vector<fn_parse::ast_node*>& list,
+                         const source_loc& loc);
+    void compile_unquote_splicing(local_table& locals,
+                                  const vector<fn_parse::ast_node*>& list,
+                                  const source_loc& loc);
+    void compile_set(local_table& locals,
+                     const vector<fn_parse::ast_node*>& list,
+                     const source_loc& loc);
+    void compile_with(local_table& locals,
+                      const vector<fn_parse::ast_node*>& list,
+                      const source_loc& loc);
 public:
-    compiler(const fs::path& dir, bytecode* dest, scanner* sc=nullptr);
-    ~compiler();
-    // compile all scanner input until e_of. running the generated code should leave the interpreter
-    // stack empty, with last_pop() returning the result of the final toplevel expression
-    void compile();
-    // compile the contents of the specified file (in place). this doesn't affect the current
-    // module, so if this file corresponds to a new module, that must be set up ahead of time.
-    void compile_file(const fs::path& filename);
-    void compile_file(const string& filename);
 
-    // set a new scanner
-    void setscanner(scanner* sc);
-};
+    compiler(virtual_machine* vm, fn_scan::scanner* sc)
+        : vm{vm}
+        , sc{sc} {
+    }
 
-// hash function used by the compiler for module i_ds
-template<> u32 hash<vector<string>>(const vector<string>& v);
+    ~compiler() {
+    }
 
+    // compile a single expression
+    void compile_expr();
+    // compile until eof is reached
+    void compile_to_eof();
+
+    // interpret a file, i.e. compile it one expression at a time and run the
+    // code as we go.
+    void interpret(const string& filename);
+
+    inline void error(const char* msg, const source_loc& loc) {
+        throw fn_error("compiler", msg, loc);
+    }};
 }
 
 #endif
