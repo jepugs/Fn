@@ -330,15 +330,12 @@ void virtual_machine::interpret_file(const string& filename) {
     fn_scan::scanner sc{&in};
     compiler c{this, &sc};
 
-    auto tmp_ip = ip;
-    ip = code.get_size();
     auto i = 0;
     while (!sc.eof_skip_ws()) {
         ++i;
         c.compile_expr();
         execute();
     }
-    ip = tmp_ip;
 }
 
 fn_namespace* virtual_machine::find_ns(value id) {
@@ -462,22 +459,38 @@ fn_namespace* virtual_machine::create_ns(value id,
 }
 
 fn_namespace* virtual_machine::load_ns(value id, const string& filename) {
+    // save vm parameters
     auto tmp_ns = cur_ns;
-    cur_ns = create_ns(id, core_ns);
-
+    auto tmp_ip = ip;
     value tmp_stack[STACK_SIZE];
     memcpy(tmp_stack, stack, STACK_SIZE*sizeof(value));
-
     auto tmp_frame = frame;
+
+    // set up a fresh environment
+    cur_ns = create_ns(id, core_ns);
+    ip = code.get_size();
     frame = new call_frame(nullptr, 0, 0, nullptr);
 
+    // FIXME: we should probably add a long jump operator for this sort of
+    // thing.
+
+    // write some code to jump over the intepreted file
+    code.write_byte(OP_JUMP);
+    code.write_short(0);
+    auto patch_loc = code.get_size();
+
+    // interpret the dang thing
     interpret_file(filename);
+
+    // now that we know how long that file was, we know how far to jump
+    code.patch_short(patch_loc-2, ip - patch_loc);
 
     auto res = cur_ns;
 
     memcpy(stack, tmp_stack, STACK_SIZE*sizeof(value));
     cur_ns = tmp_ns;
     frame = tmp_frame;
+    ip = tmp_ip;
 
     return res;
 }
