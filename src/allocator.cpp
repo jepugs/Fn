@@ -8,33 +8,33 @@ namespace fn {
 static constexpr u32 COLLECT_TH = 4096;
 
 allocator::allocator()
-    : objects()
-    , gc_enabled(false)
-    , to_collect(false)
-    , mem_usage(0)
-    , collect_threshold(COLLECT_TH)
-    , count(0)
-    , get_roots([] { return generator<value>(); }) {
+    : objects{}
+    , gc_enabled{false}
+    , to_collect{false}
+    , mem_usage{0}
+    , collect_threshold{COLLECT_TH}
+    , count{0}
+    , get_roots{} {
 }
 
-allocator::allocator(std::function<generator<value>()> get_roots)
-    : objects()
-    , gc_enabled(false)
-    , to_collect(false)
-    , mem_usage(0)
-    , collect_threshold(COLLECT_TH)
-    , count(0)
-    , get_roots(get_roots) {
+allocator::allocator(std::function<vector<value>()> get_roots)
+    : objects{}
+    , gc_enabled{false}
+    , to_collect{false}
+    , mem_usage{0}
+    , collect_threshold{COLLECT_TH}
+    , count{0}
+    , get_roots{get_roots} {
 }
 
-allocator::allocator(generator<value> (*get_roots)())
-    : objects()
-    , gc_enabled(false)
-    , to_collect(false)
-    , mem_usage(0)
-    , collect_threshold(COLLECT_TH)
-    , count(0)
-    , get_roots([get_roots] { return get_roots(); }) {
+allocator::allocator(vector<value> (*get_roots)())
+    : objects{}
+    , gc_enabled{false}
+    , to_collect{false}
+    , mem_usage{0}
+    , collect_threshold{COLLECT_TH}
+    , count{0}
+    , get_roots{get_roots} {
 }
 
 allocator::~allocator() {
@@ -72,42 +72,36 @@ void allocator::dealloc(value v) {
     --count;
 }
 
-generator<value> allocator::accessible(value v) {
+vector<value> allocator::accessible(value v) {
+    vector<value> res;
     if (v.is_cons()) {
-        return generate1(v.rhead()) + generate1(v.rtail());
+        res.push_back(v.rhead());
+        res.push_back(v.rtail());
     } else if (v.is_table()) {
-        generator<value> res;
         for (auto k : v.table_keys()) {
-            res += generate1(k);
-            res += generate1(v.table_get(k));
+            res.push_back(k);
+            res.push_back(v.table_get(k));
         }
         return res;
     } else if (v.is_func()) {
-        generator<value> res;
         auto f = v.ufunc();
         // add the upvalues
         auto m = f->stub->num_upvals;
         for (local_addr i = 0; i < m; ++i) {
             if (f->upvals[i].ref_count == nullptr) continue;
-            res += generate1(**f->upvals[i].val);
+            res.push_back(**f->upvals[i].val);
         }
         auto num_opt = f->stub->positional.size() - f->stub->optional_index;
         for (u32 i = 0; i < num_opt; ++i) {
-            res += generate1(f->init_vals[i]);
+            res.push_back(f->init_vals[i]);
         }
-
-        return res;
     } else if (v.is_namespace()) {
-        generator<value> res;
-        int ct = 0;
         for (auto sym : v.namespace_names()) {
-            res += generate1(*(v.namespace_get(sym)));
-            ++ct;
+            res.push_back(*(v.namespace_get(sym)));
         }
-        return res;
     }
 
-    return generator<value>();
+    return res;
 }
 
 void allocator::mark_descend(obj_header* o) {

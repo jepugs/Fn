@@ -236,7 +236,7 @@ void call_frame::close_all() {
 virtual_machine::virtual_machine()
     : code{}
     , core_ns{nullptr}
-    , alloc{[this] { return generate_roots(); }}
+    , alloc{[this] { return get_roots(); }}
     , wd{fs::current_path().string()}
     , ip{0}
     , frame{new call_frame(nullptr, 0, 0, nullptr)}
@@ -258,7 +258,7 @@ virtual_machine::virtual_machine()
 virtual_machine::virtual_machine(const string& wd)
     : code{}
     , core_ns{nullptr}
-    , alloc{[this] { return generate_roots(); }}
+    , alloc{[this] { return get_roots(); }}
     , wd{wd}
     , ip{0}
     , frame{new call_frame(nullptr, 0, 0, nullptr)}
@@ -509,31 +509,33 @@ fn_namespace* virtual_machine::import_ns(value id) {
     }
 }
 
-generator<value> virtual_machine::generate_roots() {
-    generator<value> stack_gen([i=0,this]() mutable -> optional<value> {
-        auto m = frame->sp + frame->bp;
-        if (i >= m) {
-            return {};
-        }
-        return stack[i++];
-    });
+vector<value> virtual_machine::get_roots() {
+    vector<value> res;
 
-    generator<value> upval_gen;
-    auto f = frame;
-    do {
-        if (f->caller == nullptr) continue;
+    // stack
+    u32 m = frame->sp + frame->bp;
+    for (u32 i = 0; i < m; ++i) {
+        res.push_back(stack[i]);
+    }
+    
+    // upvalues for the current call frame
+    for (auto f = frame; f != nullptr; f = f->prev) {
         auto n = f->caller->stub->num_upvals;
-        auto u = f->caller->upvals;
-        upval_gen += generator<value>([n,u,i=0]() mutable -> optional<value> {
-                if (i >= n) {
-                    return { };
-                }
-                return **u[i++].val;
-        });
-    } while ((f = f->prev) != nullptr);
+        for (u32 i = 0; i < n; ++i) {
+            auto u = f->caller->upvals;
+            res.push_back(**u[i++].val);
+        }
+    }
 
-    return stack_gen + upval_gen + generate1(as_value(ns_root))
-        + generate1(lp);
+    // this will handle all the global variables
+    res.push_back(as_value(ns_root));
+
+    // While unlikely, it is possible that garbage collection happens after a
+    // pop but before the last pop value is used. This ensures it won't be freed
+    // prematurely.
+    res.push_back(lp);
+
+    return res;
 }
 
 u32 virtual_machine::get_ip() const {

@@ -205,8 +205,8 @@ private:
     bc_addr call(local_addr num_args);
     bc_addr apply(local_addr num_args);
 
-    // get a generator which returns the root objects for the gc
-    generator<value> generate_roots();
+    // get a vector which returns the root objects for the gc
+    vector<value> get_roots();
 
 public:
     // initialize the vm with a blank image

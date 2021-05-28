@@ -6,7 +6,6 @@
 // #define GC_DEBUG
 
 #include "base.hpp"
-#include "generator.hpp"
 #include "parse.hpp"
 #include "values.hpp"
 
@@ -34,13 +33,13 @@ private:
     // number of objects
     u32 count;
 
-    std::function<generator<value>()> get_roots;
+    std::function<vector<value>()> get_roots;
 
     void dealloc(value v);
 
     // get a list of objects accessible from the given value
     //forward_list<obj_header*> accessible(value v);
-    generator<value> accessible(value v);
+    vector<value> accessible(value v);
 
     void mark_descend(obj_header* o);
 
@@ -49,8 +48,8 @@ private:
 
 public:
     allocator();
-    allocator(std::function<generator<value>()> get_roots);
-    allocator(generator<value> (*get_roots)());
+    allocator(std::function<vector<value>()> get_roots);
+    allocator(vector<value> (*get_roots)());
     ~allocator();
 
     // TODO: implement in allocator.cpp
