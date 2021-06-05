@@ -7,6 +7,7 @@ add_library(fn_lib OBJECT
             scan.cpp
             values.cpp
             vm.cpp
+            vm_handle.cpp
             )
 
 target_include_directories(fn_lib PUBLIC

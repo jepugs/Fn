@@ -244,7 +244,7 @@ virtual_machine::virtual_machine()
 
     alloc.disable_gc();
 
-    ns_root = v_namespace(alloc.add_namespace());
+    ns_root = alloc.add_namespace().unamespace();
 
     auto ns_id = alloc.add_cons(get_symbol("core"), V_EMPTY);
     ns_id = alloc.add_cons(get_symbol("fn"), ns_id);
@@ -266,7 +266,7 @@ virtual_machine::virtual_machine(const string& wd)
 
     alloc.disable_gc();
 
-    ns_root = v_namespace(alloc.add_namespace());
+    ns_root = alloc.add_namespace().unamespace();
 
     auto ns_id = alloc.add_cons(get_symbol("core"), V_EMPTY);
     ns_id = alloc.add_cons(get_symbol("fn"), ns_id);
@@ -340,16 +340,16 @@ void virtual_machine::interpret_file(const string& filename) {
 
 fn_namespace* virtual_machine::find_ns(value id) {
     // FIXME: should check for cons
-    auto hd = id.rhead();
-    auto tl = id.rtail();
+    auto hd = v_head(this, id);
+    auto tl = v_tail(this, id);
     auto ns = ns_root;
     while (true) {
-        auto x = ns->get(v_sym_id(hd));
+        auto x = ns->contents.get(v_sym_id(this,hd));
         if (x.has_value()) {
-            if (!x->is_namespace()) {
+            if (!(**x).is_namespace()) {
                 runtime_error("Error: namespace id overlaps with non-namespace definition.");
             }
-            ns = x->unamespace();
+            ns = (**x).unamespace();
         } else {
             return nullptr;
         }
@@ -358,8 +358,8 @@ fn_namespace* virtual_machine::find_ns(value id) {
             break;
         }
 
-        hd = tl.rhead();
-        tl = tl.rtail();
+        hd = v_uhead(tl);
+        tl = v_utail(tl);
     }
 
     return ns;
@@ -368,14 +368,14 @@ fn_namespace* virtual_machine::find_ns(value id) {
 optional<string> virtual_machine::find_ns_file(value id) {
     fs::path rel_path{};
     // FIXME: should check that these are all symbols
-    auto hd = id.rhead();
-    auto tl = id.rtail();
+    auto hd = v_head(this, id);
+    auto tl = v_tail(this, id);
     while (tl.is_cons()) {
-        rel_path /= get_symtab()[v_sym_id(hd)].name;
-        hd = tl.rhead();
-        tl = tl.rtail();
+        rel_path /= get_symtab()[v_usym_id(hd)].name;
+        hd = v_uhead(tl);
+        tl = v_utail(tl);
     }
-    rel_path /= get_symtab()[v_sym_id(hd)].name + ".fn";
+    rel_path /= get_symtab()[v_usym_id(hd)].name + ".fn";
     
     fs::path p{wd / rel_path};
     if (fs::exists(p)) {
@@ -402,28 +402,28 @@ fn_namespace* virtual_machine::create_empty_ns(value id) {
     if (!id.is_cons()) {
         runtime_error("(Internal). Namespace id not a list of symbols.");
     }
-    auto hd = id.rhead();
-    auto tl = id.rtail();
+    auto hd = v_uhead(id);
+    auto tl = v_utail(id);
     auto ns = ns_root;
     while (true) {
         if (!tl.is_cons() && !tl.is_empty()) {
             runtime_error("(Internal). Namespace id not a list of symbols.");
             break;
         }
-        if (!hd.is_sym()) {
+        if (!hd.is_symbol()) {
             runtime_error("Namespace id must be a list of symbols.");
             break;
         }
 
-        auto x = ns->get(v_sym_id(hd));
+        auto x = ns->contents.get(v_usym_id(hd));
         if (x.has_value()) {
-            if (!x->is_namespace()) {
+            if (!(**x).is_namespace()) {
                 runtime_error("Error: namespace id overlaps with non-namespace definition.");
             }
-            ns = x->unamespace();
+            ns = (**x).unamespace();
         } else {
             auto next = alloc.add_namespace().unamespace();
-            ns->set(v_sym_id(hd), as_value(next));
+            v_set(this, as_value(ns), hd, as_value(next));
             ns = next;
         }
 
@@ -431,8 +431,8 @@ fn_namespace* virtual_machine::create_empty_ns(value id) {
             break;
         }
 
-        hd = tl.rhead();
-        tl = tl.rtail();
+        hd = v_head(this, tl);
+        tl = v_tail(this, tl);
     }
     return ns;
 }
@@ -441,7 +441,7 @@ fn_namespace* virtual_machine::create_ns(value id) {
     auto res = create_empty_ns(id);
 
     auto sym = as_sym_value(get_symtab().intern("ns")->id);
-    res->set(v_sym_id(sym), as_value(ns_root));
+    v_set(this, as_value(res), sym, as_value(ns_root));
 
     return res;
 }
@@ -453,7 +453,7 @@ fn_namespace* virtual_machine::create_ns(value id,
     res->contents = table{templ->contents};
 
     auto sym = as_sym_value(get_symtab().intern("ns")->id);
-    res->set(v_sym_id(sym), as_value(ns_root));
+    v_uns_set(as_value(res), sym, as_value(ns_root));
 
     return res;
 }
@@ -547,10 +547,10 @@ value virtual_machine::last_pop() const {
 }
 
 void virtual_machine::add_global(value name, value v) {
-    if (!name.is_sym()) {
+    if (!name.is_symbol()) {
         runtime_error("Global name is not a symbol.");
     }
-    auto sym = v_sym_id(name);
+    auto sym = v_usym_id(name);
     if (frame != nullptr && frame->caller != nullptr) {
         auto ns = frame->caller->stub->ns;
         ns->set(sym, v);
@@ -560,10 +560,10 @@ void virtual_machine::add_global(value name, value v) {
 }
 
 value virtual_machine::get_global(value name) {
-    if (!name.is_sym()) {
+    if (!name.is_symbol()) {
         runtime_error("Global name is not a symbol.");
     }
-    auto sym = v_sym_id(name);
+    auto sym = v_usym_id(name);
 
     optional<value> res;
     if (frame != nullptr && frame->caller != nullptr) {
@@ -686,8 +686,8 @@ bc_addr virtual_machine::apply(local_addr num_args) {
 
     auto vlen = 0;
     while (v_tag(v) != TAG_EMPTY) {
-        push(v_cons(v)->head);
-        v = v_cons(v)->tail;
+        push(v_head(this, v));
+        v = v_utail(v);
         ++vlen;
     }
 
@@ -711,7 +711,7 @@ bc_addr virtual_machine::call(local_addr num_args) {
     if (tag == TAG_FUNC) {
         // pause the garbage collector to allow stack manipulation
         alloc.disable_gc();
-        auto func = v_func(callee);
+        auto func = callee.ufunction();
         auto stub = func->stub;
 
         // usually, positional arguments can get left where they are
@@ -736,7 +736,7 @@ bc_addr virtual_machine::call(local_addr num_args) {
         value vtable = stub->var_table ? alloc.add_table() : V_NULL;
         auto& cts = kw.utable()->contents;
         for (auto k : cts.keys()) {
-            auto id = v_sym_id(*k);
+            auto id = v_usym_id(*k);
             bool found = false;
             for (u32 i = 0; i < stub->positional.size(); ++i) {
                 if (stub->positional[i] == id) {
@@ -757,7 +757,7 @@ bc_addr virtual_machine::call(local_addr num_args) {
                 if (!stub->var_table) {
                     runtime_error("Extraneous keyword arguments.");
                 }
-                vtable.table_set(*k, **cts.get(*k));
+                v_utab_set(vtable, *k, **cts.get(*k));
             }
         }
 
@@ -767,7 +767,7 @@ bc_addr virtual_machine::call(local_addr num_args) {
             if (v.has_value()) {
                 push(**v);
             } else if (i >= stub->optional_index) {
-                push(callee.ufunc()->init_vals[i-stub->optional_index]);
+                push(callee.ufunction()->init_vals[i-stub->optional_index]);
             } else {
                 runtime_error("Missing parameter with no default.");
             }
@@ -793,7 +793,7 @@ bc_addr virtual_machine::call(local_addr num_args) {
             runtime_error("Foreign function was passed keyword arguments.");
         }
         alloc.disable_gc();
-        auto f = v_foreign(callee);
+        auto f = callee.uforeign();
         if (num_args < f->min_args) {
             throw fn_error("interpreter",
                           "too few arguments for foreign function call at ip=" + std::to_string(ip),
@@ -813,7 +813,7 @@ bc_addr virtual_machine::call(local_addr num_args) {
         return ip + 2;
     } else if (tag == TAG_TABLE) {
         auto s = get_symtab().intern("__on-call__");
-        auto v = callee.table_get(as_value(*s));
+        auto v = v_utab_get(callee, as_value(*s));
 
         // make space to insert the table on the stack
         push(V_NULL);
@@ -841,7 +841,7 @@ void virtual_machine::step() {
 
     // variable for use inside the switch
     value v1, v2, v3;
-    optional<value> vp;
+    optional<value*> vp;
 
     bool skip = false;
     bool jump = false;
@@ -974,16 +974,15 @@ void virtual_machine::step() {
         // object
         v2 = pop();
         if (v_tag(v2) == TAG_TABLE) {
-            vp = v2.table_get(v1);
-            push(vp.has_value() ? *vp : V_NULL);
+            push(v_utab_get(v2, v1));
             break;
         } else if (v_tag(v2) == TAG_NAMESPACE) {
             if (v_tag(v1) == TAG_SYM) {
-                vp = v2.namespace_get(v_sym_id(v1));
+                vp = v2.unamespace()->contents.get(v_usym_id(v1));
                 if (!vp.has_value()) {
                     runtime_error("obj-get undefined key for namespace");
                 }
-                push(*vp);
+                push(**vp);
                 break;
             }
             runtime_error("obj-get namespace key must be a symbol");
@@ -1001,7 +1000,7 @@ void virtual_machine::step() {
         if (v_tag(v2) != TAG_TABLE) {
             runtime_error("obj-set operand not a table");
         }
-        v_table(v2)->contents.insert(v1,v3);
+        v2.utable()->contents.insert(v1,v3);
         break;
 
     case OP_NAMESPACE:
@@ -1010,7 +1009,7 @@ void virtual_machine::step() {
         if (v_tag(v1) != TAG_NAMESPACE) {
             runtime_error("namespace operand not a namespace");
         }
-        cur_ns = v_namespace(v1);
+        cur_ns = v1.unamespace();
         break;
 
     case OP_IMPORT:

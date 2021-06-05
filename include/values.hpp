@@ -5,6 +5,7 @@
 
 #include "base.hpp"
 #include "table.hpp"
+#include "vm_handle.hpp"
 
 #include <functional>
 #include <cstring>
@@ -44,8 +45,15 @@ struct fn_namespace;
 
 struct obj_header;
 
-// rather than providing a constructor for value, use the (lowercase 'v') value() functions defined
-// below
+// Design notes for value:
+// - we opt to make value a union with methods rather than a struct
+// - union methods are used for accessing pointers and checking tags only. The
+//   sole exception to this rule are some unsafe arithmetic operations.
+// - values are created using as_value (or as_sym_value)
+// - values 
+
+// rather than providing a constructor for value, use the (lowercase 'v')
+// value() functions defined below
 union value {
     u64 raw;
     void* ptr;
@@ -55,35 +63,28 @@ union value {
     bool operator==(const value& v) const;
     bool operator!=(const value& v) const;
 
-    // assignment operators
-    value& operator+=(const value& v);
-
     // functions to check for a tag
+    inline u64 tag() const {
+        return raw & 0xf;
+    }
     inline bool is_num() const {
         return (raw & 0xf) == TAG_NUM;
     }
     bool is_int() const;
-    inline bool is_sym() const {
+    inline bool is_symbol() const {
         return (raw & 0xf) == TAG_SYM;
     }
-
+    inline bool is_string() const {
+        return (raw & 0xf) == TAG_STRING;
+    }
     inline bool is_null() const {
         return raw == TAG_NULL;
-    }
-    inline bool is_true() const {
-        return raw == TAG_TRUE;
-    }
-    inline bool is_false() const {
-        return raw == TAG_FALSE;
-    }
-    inline bool is_empty() const {
-        return raw == TAG_EMPTY;
     }
     inline bool is_bool() const {
         return raw == TAG_TRUE || raw == TAG_FALSE;
     }
-    inline bool is_string() const {
-        return (raw & 0xf) == TAG_STRING;
+    inline bool is_empty() const {
+        return raw == TAG_EMPTY;
     }
     inline bool is_cons() const {
         return (raw & 0xf) == TAG_CONS;
@@ -91,7 +92,7 @@ union value {
     inline bool is_table() const {
         return (raw & 0xf) == TAG_TABLE;
     }
-    inline bool is_func() const {
+    inline bool is_function() const {
         return (raw & 0xf) == TAG_FUNC;
     }
     inline bool is_foreign() const {
@@ -110,16 +111,22 @@ union value {
     inline f64 unum() const {
         return num_val;
     }
-    inline cons* ucons() const {
-        return reinterpret_cast<cons*>(raw & (~0xf));
+    inline symbol_id usym_id() const {
+        return static_cast<symbol_id>((raw & (~0xf)) >> 4);
     }
     inline fn_string* ustring() const {
         return reinterpret_cast<fn_string*>(raw & (~0xf));
     }
+    inline bool ubool() const {
+        return this->tag() == TAG_TRUE;
+    }
+    inline cons* ucons() const {
+        return reinterpret_cast<cons*>(raw & (~0xf));
+    }
     inline fn_table* utable() const {
         return reinterpret_cast<fn_table*>(raw & (~0xf));
     }
-    inline function* ufunc() const {
+    inline function* ufunction() const {
         return reinterpret_cast<function*>(raw & (~0xf));
     }
     inline foreign_func* uforeign() const {
@@ -129,60 +136,26 @@ union value {
         return reinterpret_cast<fn_namespace*>(raw & (~0xf));
     }
 
-    // safe accessors will check tags and throw value errors when appropriate
-    f64 vnum() const;
-    cons* vcons() const;
-    fn_string* vstring() const;
-    fn_table* vtable() const;
-    function* vfunc() const;
-    foreign_func* vforeign() const;
-    fn_namespace* vnamespace() const;
-
     // all functions below are safe. foreign functions can call them without
     // first checking the types of the arguments provided, and an appropriate
     // value error will be generated and handled by the VM
 
-    // num functions
-    // arithmetic operators are only work on numbers
+    // (Unsafe) arithmetic functions.
+    // These are entirely unsafe.
     value operator+(const value& v) const;
     value operator-(const value& v) const;
     value operator*(const value& v) const;
     value operator/(const value& v) const;
+    value operator%(const value& v) const;
+    bool operator<(const value& v) const;
+    bool operator>(const value& v) const;
+    bool operator<=(const value& v) const;
+    bool operator>=(const value& v) const;
 
     value pow(const value& expt) const;
 
-    // cons functions
-    // these only work on cons, not empty
-    value& rhead() const;
-    value& rtail() const;
-
-    // list functions. work on cons and empty
-    value head() const;
-    value tail() const;
-
-    // str functions
-    u32 string_len() const;
-
-    // table functions
-    value table_get(const value& key) const;
-    void table_set(const value& key, const value& val) const;
-    bool table_has_key(const value& key) const;
-    forward_list<value> table_keys() const;
-
-    // namespace functions
-    optional<value> namespace_get(symbol_id key) const;
-    void namespace_set(symbol_id key, const value& val) const;
-    bool namespace_has_name(symbol_id key) const;
-    forward_list<symbol_id> namespace_names() const;
-
-    // generic get which works on namespaces and tables. If this value is not a
-    // constant, this results in a value error.
-    optional<value> get(const value& key) const;
-
     // used to get object header
     optional<obj_header*> header() const;
-
-    void error(u64 expected) const;
 };
 
 // constant values
@@ -196,15 +169,151 @@ inline void* get_pointer(value v) {
     return (void*)(v.raw & (~0xf));
 };
 
-// this error is generated when a value is expected to have a certain tag and has a different one.
-class value_error : public std::exception {
-public:
-    // expected tag
-    u64 expected;
-    value actual;
+// value type/tag checking
 
-    value_error(u64 expected, value actual) : expected(expected), actual(actual) { }
-};
+inline u64 v_tag(value v) {
+    return v.raw & 0xf;
+}
+
+// bool v_is_num(value v);
+// bool v_is_int(value v);
+// bool v_is_sym(value v);
+// bool v_is_string(value v);
+// bool v_is_bool(value v);
+// bool v_is_null(value v);
+// bool v_is_empty(value v);
+// bool v_is_cons(value v);
+// bool v_is_list(value v);
+// bool v_is_table(value v);
+// bool v_is_namespace(value v);
+// bool v_is_function(value v);
+
+// Safe value accessors. These check tags and generate errors if necessary.
+f64 v_num(vm_handle vm, value v);
+bool v_bool(vm_handle vm, value v);
+fn_string* v_string(vm_handle vm, value v);
+cons* v_cons(vm_handle vm, value v);
+fn_table* v_table(vm_handle vm, value v);
+function* v_function(vm_handle vm, value v);
+foreign_func* v_foreign(vm_handle vm, value v);
+fn_namespace* v_namespace(vm_handle vm, value v);
+
+// functions to create memory managed objects
+value alloc_string(vm_handle vm, const string& str);
+value alloc_string(vm_handle vm, const char* str);
+value alloc_cons(vm_handle vm, value head, value tail);
+value alloc_table(vm_handle vm);
+
+// generate a symbol with a unique ID
+value v_gensym(vm_handle vm);
+
+// equality
+inline bool v_same(value a, value b) {
+    return a.raw == b.raw;
+}
+inline bool v_equal(value a, value b) {
+    return a == b;
+}
+
+// truthiness (everything but null and false are truthy)
+inline bool v_truthy(value a) {
+    return !(v_same(a, V_FALSE) || v_same(a, V_NULL));
+}
+
+// safe arithmetic operations
+value v_plus(vm_handle vm, value a, value b);
+value v_minus(vm_handle vm, value a, value b);
+value v_times(vm_handle vm, value a, value b);
+value v_div(vm_handle vm, value a, value b);
+value v_pow(vm_handle vm, value a, value b);
+// note: the modulus is floor(b) if b is not an integer
+value v_mod(vm_handle vm, value a, value b);
+
+// these overloads allow us to operate on values with f64's
+value v_plus(vm_handle vm, value a, f64 b);
+value v_minus(vm_handle vm, value a, f64 b);
+value v_times(vm_handle vm, value a, f64 b);
+value v_div(vm_handle vm, value a, f64 b);
+value v_pow(vm_handle vm, value a, f64 b);
+value v_mod(vm_handle vm, value a, f64 b);
+
+// absolute value
+value v_uabs(value a);
+value v_abs(vm_handle vm, value a);
+
+// natural log
+value v_ulog(value a);
+value v_log(vm_handle vm, value a);
+
+// floor and ceiling functions
+value v_ufloor(value a);
+value v_uceil(value a);
+
+value v_floor(vm_handle vm, value a);
+value v_ceil(vm_handle vm, value a);
+
+// ordering
+bool v_ult(value a, value b);
+bool v_ugt(value a, value b);
+bool v_ule(value a, value b);
+bool v_uge(value a, value b);
+
+bool v_lt(vm_handle vm, value a, value b);
+bool v_gt(vm_handle vm, value a, value b);
+bool v_le(vm_handle vm, value a, value b);
+bool v_ge(vm_handle vm, value a, value b);
+
+// string functions
+value v_ustrlen(value str);
+value v_strlen(vm_handle vm, value str);
+
+// symbol functions
+const symbol* v_lookup_symbol(vm_handle vm, value sym);
+value v_intern(vm_handle vm, value name);
+value v_intern(vm_handle vm, const string& name);
+value v_intern(vm_handle vm, const char* name);
+
+string v_usym_name(vm_handle vm, value sym);
+symbol_id v_usym_id(value sym);
+
+string v_sym_name(vm_handle vm, value sym);
+symbol_id v_sym_id(vm_handle vm, value sym);
+
+// list functions
+
+// these only work on conses, not on empty
+value v_uhead(value x);
+value v_utail(value x);
+
+// generates error on cons
+value v_head(vm_handle vm, value x);
+// this works on empty
+value v_tail(vm_handle vm, value x);
+
+// table/namespace functions
+forward_list<value> v_utab_get_keys(value obj);
+forward_list<value> v_uns_get_keys(value obj);
+forward_list<value> v_tab_get_keys(vm_handle vm, value obj);
+forward_list<value> v_ns_get_keys(vm_handle vm, value obj);
+
+bool v_utab_has_key(value obj, value key);
+bool v_uns_has_key(value obj, value key);
+bool v_tab_has_key(vm_handle vm, value obj, value key);
+bool v_ns_has_key(vm_handle vm, value obj, value key);
+
+value v_utab_get(value obj, value key);
+void v_utab_set(value obj, value key, value v);
+value v_uns_get(value obj, value key);
+void v_uns_set(value obj, value key, value v);
+
+value v_tab_get(vm_handle vm, value obj, value key);
+void v_tab_set(vm_handle vm, value obj, value key, value v);
+value v_ns_get(vm_handle vm, value obj, value key);
+void v_ns_set(vm_handle vm, value obj, value key, value v);
+
+forward_list<value> v_get_keys(vm_handle vm, value obj);
+value v_get(vm_handle vm, value obj, value key);
+void v_set(vm_handle vm, value obj, value key, value v);
 
 
 /// value structures
@@ -483,85 +592,7 @@ inline value as_sym_value(symbol_id sym) {
     return { .raw = (sym << 4) | TAG_SYM };
 }
 
-
-
-/// utility functions
-
-// check if two values are the same in memory
-inline bool v_same(const value& v1, const value& v2) {
-    return v1.raw == v2.raw;
-}
-// hash an arbitrary value. v_equal(v1,v2) implies the hashes are also equal.
-template<> u32 hash<value>(const value& v);
-// convert a value to a string. symbols can be nullptr here only if we're really careful to know
-// that there are no symbols contained in v.
 string v_to_string(value v, const symbol_table* symbols);
-
-// these value(type) functions go from c++ values to fn values
-
-
-// naming convention: function names prefixed with a lowercase v are used to
-// test/access properties of values.
-
-// get the tag of a value
-inline u64 v_tag(value v) {
-    return v.raw & 0xf;
-}
-
-// these functions make the opposite conversion, going from fn values to c++
-// values. none of them are safe (i.e. you should check the tags before doing
-// any of these operations)
-
-// all values corresponding to pointers are structured the same way
-inline void* v_pointer(value v) {
-    // mask out the three lsb with 0's
-    return (void*)(v.raw & (~0xf));
-}
-
-inline f64 v_num(value v) {
-    return v.unum();
-}
-inline bool v_bool(value v) {
-    return v == V_TRUE;
-}
-// getting the entire symbol object requires a symbol table, so just get the
-// associated symbol_id
-inline u32 v_sym_id(value v) {
-    return (u32) (v.raw >> 4);
-}
-inline fn_string* v_string(value v) {
-    return (fn_string*) v_pointer(v);
-}
-inline cons* v_cons(value v) {
-    return (cons*) v_pointer(v);
-}
-inline fn_table* v_table(value v) {
-    return (fn_table*) v_pointer(v);
-}
-inline function* v_func(value v) {
-    return (function*) v_pointer(v);
-}
-inline foreign_func* v_foreign(value v) {
-    return (foreign_func*) v_pointer(v);
-}
-inline fn_namespace* v_namespace(value v) {
-    return (fn_namespace*) v_pointer(v);
-}
-
-// check the 'truthiness' of a value. this returns true for all values but
-// V_NULL and V_FALSE.
-inline bool v_truthy(value v) {
-    return !v_same(v,V_FALSE) && !v_same(v,V_NULL);
-}
-
-// list accessors
-inline value v_head(value v) {
-    return v_cons(v)->head;
-}
-inline value v_tail(value v) {
-    return v_cons(v)->tail;
-}
-
 }
 
 #endif

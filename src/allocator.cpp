@@ -59,9 +59,9 @@ void allocator::dealloc(value v) {
     } else if (v.is_table()) {
         mem_usage -= sizeof(fn_table);
         delete v.utable();
-    } else if (v.is_func()) {
+    } else if (v.is_function()) {
         mem_usage -= sizeof(function);
-        delete v.ufunc();
+        delete v.ufunction();
     } else if (v.is_foreign()) {
         mem_usage -= sizeof(foreign_func);
         delete v.uforeign();
@@ -75,16 +75,16 @@ void allocator::dealloc(value v) {
 vector<value> allocator::accessible(value v) {
     vector<value> res;
     if (v.is_cons()) {
-        res.push_back(v.rhead());
-        res.push_back(v.rtail());
+        res.push_back(v_uhead(v));
+        res.push_back(v_utail(v));
     } else if (v.is_table()) {
-        for (auto k : v.table_keys()) {
+        for (auto k : v_utab_get_keys(v)) {
             res.push_back(k);
-            res.push_back(v.table_get(k));
+            res.push_back(v_utab_get(v, k));
         }
         return res;
-    } else if (v.is_func()) {
-        auto f = v.ufunc();
+    } else if (v.is_function()) {
+        auto f = v.ufunction();
         // add the upvalues
         auto m = f->stub->num_upvals;
         for (local_addr i = 0; i < m; ++i) {
@@ -96,8 +96,8 @@ vector<value> allocator::accessible(value v) {
             res.push_back(f->init_vals[i]);
         }
     } else if (v.is_namespace()) {
-        for (auto sym : v.namespace_names()) {
-            res.push_back(*(v.namespace_get(sym)));
+        for (auto sym : v_uns_get_keys(v)) {
+            res.push_back(v_uns_get(v, sym));
         }
     }
 

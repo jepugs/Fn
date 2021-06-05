@@ -9,9 +9,9 @@
 
 namespace fn {
 
-#define FN_FUN(name) static value name(local_addr num_args, value* args, virtual_machine* vm)
+#define FN_FUN(name) static value name(local_addr num_args, value* args, vm_handle vm)
 
-static value fn_eq(local_addr num_args, value* args, virtual_machine* vm) {
+static value fn_eq(local_addr num_args, value* args, vm_handle vm) {
     if (num_args == 0) return V_TRUE;
 
     auto v1 = args[0];
@@ -66,50 +66,50 @@ FN_FUN(fn_num_q) {
 
 FN_FUN(fn_int_q) {
     return as_value(v_tag(args[0]) == TAG_NUM
-                 && v_num(args[0]) == (u64)v_num(args[0]));
+                    && args[0].unum() == (u64)args[0].unum());
 }
 
 static value fn_add(local_addr num_args, value* args, virtual_machine* vm) {
-    f64 res = 0;
+    value res = as_value(0);
     for (local_addr i = 0; i < num_args; ++i) {
-        res += args[i].vnum();
+        res = v_plus(vm, res, args[i]);
     }
-    return as_value(res);
+    return res;
 }
 
 static value fn_sub(local_addr num_args, value* args, virtual_machine* vm) {
     if (num_args == 0)
         return as_value(0);
-    f64 res = args[0].vnum();
+    value res = args[0];
     if (num_args == 1) {
-        return as_value(-res);
+        return v_times(vm, res, -1.0);
     }
     for (local_addr i = 1; i < num_args; ++i) {
-        res -= args[i].vnum();
+        res = v_minus(vm, res, args[i]);
     }
-    return as_value(res);
+    return res;
 }
 
 static value fn_mul(local_addr num_args, value* args, virtual_machine* vm) {
-    f64 res = 1.0;
+    value res = as_value(1.0);
     for (local_addr i = 0; i < num_args; ++i) {
-        res *= args[i].vnum();
+        res = v_times(vm, res, args[i]);
     }
-    return as_value(res);
+    return res;
 }
 
 static value fn_div(local_addr num_args, value* args, virtual_machine* vm) {
     if (num_args == 0)
         return as_value(1.0);
 
-    f64 res = args[0].vnum();
+    value res = args[0];
     if (num_args == 1) {
-        return as_value(1/res);
+        return as_value(1/res.unum());
     }
     for (local_addr i = 1; i < num_args; ++i) {
-        res /= args[i].vnum();
+        res = v_div(vm, res, args[i]);
     }
-    return as_value(res);
+    return res;
 }
 
 FN_FUN(fn_pow) {
@@ -120,23 +120,23 @@ FN_FUN(fn_mod) {
     if (!args[0].is_int() || !args[1].is_int()) {
         vm->runtime_error("mod arguments must be integers");
     }
-    i64 u = (i64)args[0].vnum();
-    i64 v = (i64)args[1].vnum();
+    i64 u = (i64)args[0].unum();
+    i64 v = (i64)args[1].unum();
     return as_value(u % v);
 }
 
 FN_FUN(fn_floor) {
-    return as_value(std::floor(args[0].vnum()));
+    return as_value(std::floor(args[0].unum()));
 }
 
 FN_FUN(fn_ceil) {
-    return as_value(std::ceil(args[0].vnum()));
+    return as_value(std::ceil(args[0].unum()));
 }
 
 FN_FUN(fn_gt) {
-    auto v = args[0].vnum();
+    auto v = args[0].unum();
     for (local_addr i = 1; i < num_args; ++i) {
-        auto u = args[i].vnum();
+        auto u = args[i].unum();
         if (v > u) {
             v = u;
             continue;
@@ -147,9 +147,9 @@ FN_FUN(fn_gt) {
 }
 
 FN_FUN(fn_lt) {
-    auto v = args[0].vnum();
+    auto v = args[0].unum();
     for (local_addr i = 1; i < num_args; ++i) {
-        auto u = args[i].vnum();
+        auto u = args[i].unum();
         if (v < u) {
             v = u;
             continue;
@@ -160,9 +160,9 @@ FN_FUN(fn_lt) {
 }
 
 FN_FUN(fn_ge) {
-    auto v = args[0].vnum();
+    auto v = args[0].unum();
     for (local_addr i = 1; i < num_args; ++i) {
-        auto u = args[i].vnum();
+        auto u = args[i].unum();
         if (v >= u) {
             v = u;
             continue;
@@ -173,9 +173,9 @@ FN_FUN(fn_ge) {
 }
 
 FN_FUN(fn_le) {
-    auto v = args[0].vnum();
+    auto v = args[0].unum();
     for (local_addr i = 1; i < num_args; ++i) {
-        auto u = args[i].vnum();
+        auto u = args[i].unum();
         if (v <= u) {
             v = u;
             continue;
@@ -191,7 +191,7 @@ FN_FUN(fn_table) {
     }
     auto res = vm->get_alloc().add_table();
     for (local_addr i = 0; i < num_args; i += 2) {
-        v_table(res)->contents.insert(args[i],args[i+1]);
+        v_table(vm, res)->contents.insert(args[i],args[i+1]);
     }
     return res;
 }
@@ -213,22 +213,15 @@ FN_FUN(fn_list_q) {
 }
 
 FN_FUN(fn_has_key) {
-    return as_value(args[0].table_has_key(args[1]));
+    return as_value(v_tab_has_key(vm, args[0], args[1]));
 }
 
 FN_FUN(fn_get) {
-    auto res = args[0].get(args[1]);
+    auto res = v_get(vm, args[0], args[1]);
     for (local_addr i = 2; i < num_args; ++i) {
-        if (res.has_value()) {
-            res = res->get(args[i]);
-        } else {
-            vm->runtime_error("get failed");
-        }
+        res = v_get(vm, res, args[i]);
     }
-    if (!res.has_value()) {
-        vm->runtime_error("get failed");
-    }
-    return *res;
+    return res;
 }
 
 static value fn_print(local_addr num_args, value* args, virtual_machine* vm) {

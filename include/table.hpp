@@ -78,8 +78,7 @@ public:
         : cap(src.cap)
         , threshold(src.threshold)
         , size(src.size)
-        , array(new entry<K,T>*[cap])
-    {
+        , array(new entry<K,T>*[cap]) {
         for (u32 i = 0; i < cap; ++i) {
             if (src.array[i] != nullptr) {
                 array[i] = new entry(src.array[i]->key, src.array[i]->val);
