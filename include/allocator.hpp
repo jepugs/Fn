@@ -15,25 +15,27 @@
 namespace fn {
 
 
-class allocator {
+struct allocator {
+    using root_function = std::function<vector<value>()>;
 private:
-    // note: we guarantee that every pointer in this array is actually memory managed by this
-    // garbage collector
+    // note: we guarantee that every pointer in this array is actually memory
+    // managed by this garbage collector
     std::list<obj_header*> objects;
     // separate list of constant objects
     table<value,value> const_table;
-    // flag used to determine garbage collector behavior. starts out false to allow initialization
+    // flag used to determine garbage collector behavior. starts out false to
+    // allow initialization
     bool gc_enabled;
     // if true, garbage collection will automatically run when next enabled
     bool to_collect;
     u64 mem_usage;
-    // gc is invoked when mem_usage > collect_threshold. collect_threshold is increased if mem_usage >
-    // 0.5*collect_threshold after a collection.
+    // gc is invoked when mem_usage > collect_threshold. collect_threshold is
+    // increased if mem_usage > 0.5*collect_threshold after a collection.
     u64 collect_threshold;
     // number of objects
     u32 count;
 
-    std::function<vector<value>()> get_roots;
+    vector<root_function> root_generators;
 
     void dealloc(value v);
 
@@ -48,9 +50,11 @@ private:
 
 public:
     allocator();
-    allocator(std::function<vector<value>()> get_roots);
-    allocator(vector<value> (*get_roots)());
     ~allocator();
+
+    // FIXME: probably should replace this with a more robust root_object
+    // structure.
+    void add_root_generator(root_function get_roots);
 
     // TODO: implement in allocator.cpp
     u64 memory_used() const;
@@ -69,11 +73,11 @@ public:
     value add_string(const string& s);
     value add_string(const char* s);
     value add_table();
-    value add_func(func_stub* stub,
-                   const std::function<void (upvalue_slot*,value*)>& populate);
+    value add_function(func_stub* stub,
+                       const std::function<void (upvalue_slot*,value*)>& populate);
     value add_foreign(local_addr min_args,
                       bool var_args,
-                      value (*func)(local_addr, value*, virtual_machine*));
+                      optional<value> (*func)(local_addr, value*, virtual_machine*));
     value add_namespace();
 
     // Note: values passed to const_cons must be constant or they will be

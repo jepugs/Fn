@@ -60,13 +60,15 @@ typedef u16 const_id;
 // used to identify symbols
 typedef u32 symbol_id;
 
-// debugging information
+// Used to track debugging information. An empty string for the filename
+// indicates that the bytecode was either internally generated or came from a
+// REPL.
 struct source_loc {
     const std::shared_ptr<string> filename;
     const int line;
     const int col;
 
-    source_loc(const string& filename, int line=1, int col=1)
+    source_loc(const string& filename="", int line=1, int col=1)
         : filename{new string{filename}}
         , line{line}
         , col{col} {

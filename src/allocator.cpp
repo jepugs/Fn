@@ -14,27 +14,7 @@ allocator::allocator()
     , mem_usage{0}
     , collect_threshold{COLLECT_TH}
     , count{0}
-    , get_roots{} {
-}
-
-allocator::allocator(std::function<vector<value>()> get_roots)
-    : objects{}
-    , gc_enabled{false}
-    , to_collect{false}
-    , mem_usage{0}
-    , collect_threshold{COLLECT_TH}
-    , count{0}
-    , get_roots{get_roots} {
-}
-
-allocator::allocator(vector<value> (*get_roots)())
-    : objects{}
-    , gc_enabled{false}
-    , to_collect{false}
-    , mem_usage{0}
-    , collect_threshold{COLLECT_TH}
-    , count{0}
-    , get_roots{get_roots} {
+    , root_generators{} {
 }
 
 allocator::~allocator() {
@@ -45,6 +25,10 @@ allocator::~allocator() {
     for (auto k : keys) {
         dealloc(**const_table.get(*k));
     }
+}
+
+void allocator::add_root_generator(allocator::root_function get_roots) {
+    root_generators.push_back(get_roots);
 }
 
 void allocator::dealloc(value v) {
@@ -119,10 +103,12 @@ void allocator::mark_descend(obj_header* o) {
 }
 
 void allocator::mark() {
-    for (auto v : get_roots()) {
-        auto h = v.header();
-        if (h.has_value()) {
-            mark_descend(*h);
+    for (auto f : root_generators) {
+        for (auto v : f()) {
+            auto h = v.header();
+            if (h.has_value()) {
+                mark_descend(*h);
+            }
         }
     }
 }
@@ -243,8 +229,8 @@ value allocator::add_table() {
     return as_value(v);
 }
 
-value allocator::add_func(func_stub* stub,
-                          const std::function<void (upvalue_slot*,value*)>& populate) {
+value allocator::add_function(func_stub* stub,
+                              const std::function<void (upvalue_slot*,value*)>& populate) {
     collect();
     mem_usage += sizeof(function);
     ++count;
@@ -256,7 +242,7 @@ value allocator::add_func(func_stub* stub,
 
 value allocator::add_foreign(local_addr min_args,
                              bool var_args,
-                             value (*func)(local_addr, value*, virtual_machine*)) {
+                             optional<value> (*func)(local_addr, value*, virtual_machine*)) {
     collect();
     mem_usage += sizeof(foreign_func);
     ++count;
