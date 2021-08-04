@@ -133,8 +133,7 @@ u16 bytecode::num_constants() const {
 u16 bytecode::add_function(const vector<symbol_id>& positional,
                            local_addr optional_index,
                            bool var_list,
-                           bool var_table,
-                           fn_namespace* ns) {
+                           bool var_table) {
     functions.push_back(new func_stub {
             .positional=positional,
             .optional_index=optional_index,
@@ -142,11 +141,34 @@ u16 bytecode::add_function(const vector<symbol_id>& positional,
             .var_table=var_table,
             .num_upvals=0,
             .upvals=vector<upvalue>(),
-            .ns=ns,
             .addr=get_size()});
     return (u16) (functions.size() - 1);
 }
 
+void bytecode::define_bytecode_function(const string& name,
+                                        const vector<symbol_id>& positional,
+                                        local_addr optional_index,
+                                        bool var_list,
+                                        bool var_table,
+                                        fn_namespace* ns,
+                                        vector<u8>& bytes) {
+    write_byte(OP_CONST);
+    write_short(add_const(as_value(symtab.intern(name))));
+
+    // TODO: wrap in appropriate code to bind to a variable
+    auto func_id = add_function(positional,
+                                optional_index,
+                                var_list,
+                                var_table,
+                                ns);
+    for (auto x : bytes) {
+        write_byte(x);
+    }
+    write_byte(OP_CLOSURE);
+    write_short(func_id);
+
+    write_byte(OP_SET_GLOBAL);
+}
 
 func_stub* bytecode::get_function(u16 id) const {
     // TODO: check bounds?
@@ -163,6 +185,11 @@ u16 bytecode::add_const(value v) {
     return constants.size() - 1;
 }
 
+const_id bytecode::add_sym_const(symbol_id s) {
+    return add_const(as_sym_value(s));
+}
+
+
 symbol_table* bytecode::get_symbol_table() {
     return &this->symtab;
 }
@@ -171,19 +198,12 @@ const symbol_table* bytecode::get_symbol_table() const {
     return &this->symtab;
 }
 
-value bytecode::symbol(const string& name) {
-    auto s = symtab.intern(name);
-    return as_sym_value(s->id);
+value bytecode::get_symbol(const string& name) {
+    return as_sym_value(get_symbol_id(name));
 }
-optional<value> bytecode::find_symbol(const string& name) const {
-    auto s = symtab.find(name);
-    if (s.has_value()) {
-        return value{ .raw = (((u64) (*s)->id) << 4) | (u64) TAG_SYM };
-    } else {
-        return { };
-    }
+symbol_id bytecode::get_symbol_id(const string& name) {
+    return symtab.intern(name)->id;
 }
-
 
 call_frame* call_frame::extend_frame(bc_addr ret_addr,
                                      local_addr num_args,
@@ -233,18 +253,22 @@ void call_frame::close_all() {
 }
 
 
-virtual_machine::virtual_machine()
-    : code{}
+virtual_machine::virtual_machine(allocator* use_alloc, code_chunk* init_chunk)
+    : code{init_chunk}
     , core_ns{nullptr}
-    , alloc{[this] { return get_roots(); }}
+    , alloc{use_alloc}
     , wd{fs::current_path().string()}
     , ip{0}
     , frame{new call_frame(nullptr, 0, 0, nullptr)}
     , lp{V_NULL} {
 
-    alloc.disable_gc();
+    alloc->disable_gc();
+    alloc->add_root_generator([this] { return get_roots(); });
 
     ns_root = alloc.add_namespace().unamespace();
+
+    // TODO: create chunk namespace in namespace hierarchy and use as
+    // current/core namespace
 
     auto ns_id = alloc.add_cons(get_symbol("core"), V_EMPTY);
     ns_id = alloc.add_cons(get_symbol("fn"), ns_id);
@@ -255,27 +279,27 @@ virtual_machine::virtual_machine()
     alloc.enable_gc();
 }
 
-virtual_machine::virtual_machine(const string& wd)
-    : code{}
-    , core_ns{nullptr}
-    , alloc{[this] { return get_roots(); }}
-    , wd{wd}
-    , ip{0}
-    , frame{new call_frame(nullptr, 0, 0, nullptr)}
-    , lp{V_NULL} {
+// virtual_machine::virtual_machine(const string& wd)
+//     : code{}
+//     , core_ns{nullptr}
+//     , alloc{[this] { return get_roots(); }}
+//     , wd{wd}
+//     , ip{0}
+//     , frame{new call_frame(nullptr, 0, 0, nullptr)}
+//     , lp{V_NULL} {
 
-    alloc.disable_gc();
+//     alloc.disable_gc();
 
-    ns_root = alloc.add_namespace().unamespace();
+//     ns_root = alloc.add_namespace().unamespace();
 
-    auto ns_id = alloc.add_cons(get_symbol("core"), V_EMPTY);
-    ns_id = alloc.add_cons(get_symbol("fn"), ns_id);
-    core_ns = create_ns(ns_id);
+//     auto ns_id = alloc.add_cons(get_symbol("core"), V_EMPTY);
+//     ns_id = alloc.add_cons(get_symbol("fn"), ns_id);
+//     core_ns = create_ns(ns_id);
 
-    cur_ns = core_ns;
+//     cur_ns = core_ns;
 
-    alloc.enable_gc();
-}
+//     alloc.enable_gc();
+// }
 
 virtual_machine::~virtual_machine() {
     // delete all call frames
@@ -287,6 +311,10 @@ virtual_machine::~virtual_machine() {
     }
 }
 
+void virtual_machine::do_apply(local_addr num_args) {
+    ip = apply(num_args);
+}
+
 void virtual_machine::set_wd(const string& new_wd) {
     wd = new_wd;
 }
@@ -296,7 +324,7 @@ string virtual_machine::get_wd() {
 }
 
 void virtual_machine::compile_string(const string& src,
-                                       const string& origin) {
+                                     const string& origin) {
     std::istringstream in{src};
     fn_scan::scanner sc{&in, origin};
     compiler c{this, &sc};
@@ -552,7 +580,8 @@ void virtual_machine::add_global(value name, value v) {
     }
     auto sym = v_usym_id(name);
     if (frame != nullptr && frame->caller != nullptr) {
-        auto ns = frame->caller->stub->ns;
+        // TODO: get namespace from chunk
+        auto ns = cur_ns;
         ns->set(sym, v);
     } else {
         cur_ns->set(sym, v);
@@ -567,7 +596,9 @@ value virtual_machine::get_global(value name) {
 
     optional<value> res;
     if (frame != nullptr && frame->caller != nullptr) {
-        auto ns = frame->caller->stub->ns;
+        // TODO: get namespace from chunk
+        auto ns = cur_ns;
+        //auto ns = frame->caller->stub->ns;
         res = ns->get(sym);
     } else {
         res = cur_ns->get(sym);
@@ -590,13 +621,13 @@ upvalue_slot virtual_machine::get_upvalue(u8 id) const {
 
 
 void virtual_machine::add_foreign(string name,
-                                  value (*func)(local_addr, value*, virtual_machine*),
+                                  optional<value> (*func)(local_addr, value*, virtual_machine*),
                                   local_addr min_args,
                                   bool var_args) {
     auto v = alloc.add_foreign(min_args, var_args, func);
     auto tmp = cur_ns;
     cur_ns = core_ns;
-    add_global(code.symbol(name), v);
+    add_global(as_sym_value(code.get_symbol_id(name)), v);
     foreign_funcs.push_back(v);
     cur_ns = tmp;
 }
@@ -677,28 +708,48 @@ void virtual_machine::set_local(local_addr i, value v) {
 }
 
 bc_addr virtual_machine::apply(local_addr num_args) {
-    // argument to expand
-    auto v = pop();
-    auto tag = v_tag(v);
+    // last argument is table, second to last is list
+    auto arg_tab = pop();
+    auto arg_list = pop();
+
+    auto tag = v_tag(arg_list);
     if (tag != TAG_EMPTY && tag != TAG_CONS) {
-        runtime_error("last argument to apply not a list.");
+        runtime_error("2nd-to-last argument to apply must be a list.");
+    }
+    tag = v_tag(arg_tab);
+    if (tag != TAG_TABLE) {
+        runtime_error("Last argument to apply must be a table.");
     }
 
-    auto vlen = 0;
-    while (v_tag(v) != TAG_EMPTY) {
-        push(v_head(this, v));
-        v = v_utail(v);
+    forward_list<value> stack_vals;
+    for (u32 i = 0; i < num_args; ++i) {
+        stack_vals.push_front(pop());
+    }
+
+    // now the function is at the top of the stack
+
+    // push arguments
+    push(arg_tab);
+    for (auto v : stack_vals) {
+        push(v);
+    }
+    // count variadic arguments
+    u32 vlen = 0;
+    auto tl = arg_list;
+    while (tl.is_cons()) {
+        push(v_uhead(tl));
+        tl = v_utail(tl);
         ++vlen;
     }
-
+ 
     // TODO: use a maxargs constant
-    if (vlen + num_args - 1 > 255) {
-        runtime_error("too many arguments for function call in apply.");
+    if (vlen + num_args > 255) {
+        runtime_error("Too many arguments for function call in apply.");
     }
-    return call(vlen + num_args - 1);
+
+    return call(static_cast<local_addr>(vlen + num_args));
 }
 
-// TODO: switch to use runtime_error
 bc_addr virtual_machine::call(local_addr num_args) {
     // the function to call should be at the bottom
     auto callee = peek(num_args + 1);
@@ -795,16 +846,23 @@ bc_addr virtual_machine::call(local_addr num_args) {
         alloc.disable_gc();
         auto f = callee.uforeign();
         if (num_args < f->min_args) {
-            throw fn_error("interpreter",
-                          "too few arguments for foreign function call at ip=" + std::to_string(ip),
-                          *code.location_of(ip));
+            runtime_error("Too few arguments for foreign function call at ip="
+                          + std::to_string(ip));
         } else if (!f->var_args && num_args > f->min_args) {
-            throw fn_error("interpreter",
-                          "too many arguments for foreign function call at ip=" + std::to_string(ip),
-                          *code.location_of(ip));
+            runtime_error("Too many arguments for foreign function call at ip="
+                          + std::to_string(ip));
         } else {
             // correct arity
-            res = f->func((u16)num_args, &stack[frame->bp + frame->sp - num_args], this);
+            auto x = f->func((u16)num_args,
+                             &stack[frame->bp+frame->sp-num_args],
+                             this);
+            // if there's no return value, it means the foreign function handed
+            // control off to another function, so we don't manipulate the stack.
+            if (x.has_value()) {
+                res = *x;
+            } else {
+                return ip;
+            }
         }
         // pop args+2 times (to get the function and keyword dictionary)
         pop_times(num_args+2);
@@ -825,10 +883,7 @@ bc_addr virtual_machine::call(local_addr num_args) {
         stack[sp - num_args - 3] = v;
         return call(num_args + 1);
     } else {
-        // TODO: exception: not a function
-        throw fn_error("interpreter",
-                      "attempt to call nonfunction at address " + std::to_string((i32)ip),
-                      *code.location_of(ip));
+        runtime_error("attempt to call nonfunction at address " + std::to_string((i32)ip));
         return ip + 2;
     }
 }
@@ -903,25 +958,25 @@ void virtual_machine::step() {
     case OP_CLOSURE:
         id = code.read_short(ip+1);
         stub = code.get_function(code.read_short(ip+1));
-        push(alloc
-             .add_func(stub,
-                       [this, stub](auto upvals, auto init_vals) {
-                           for (u32 i = 0; i < stub->num_upvals; ++i) {
-                               auto u = stub->upvals[i];
-                               if (u.direct) {
-                                   upvals[i] = frame
-                                       ->create_upvalue(u.slot,
-                                                        &stack[frame->bp+u.slot]);
-                               } else {
-                                   upvals[i] = get_upvalue(u.slot);
-                               }
-                           }
-                           auto num_opt = stub->positional.size()
-                               - stub->optional_index;
-                           for (i32 i = num_opt-1; i >= 0; --i) {
-                               init_vals[i] = pop();
-                           }
-                       }));
+        push(alloc.add_function
+             (stub,
+              [this, stub](auto upvals, auto init_vals) {
+                  for (u32 i = 0; i < stub->num_upvals; ++i) {
+                      auto u = stub->upvals[i];
+                      if (u.direct) {
+                          upvals[i] = frame
+                              ->create_upvalue(u.slot,
+                                               &stack[frame->bp+u.slot]);
+                      } else {
+                          upvals[i] = get_upvalue(u.slot);
+                      }
+                  }
+                  auto num_opt = stub->positional.size()
+                      - stub->optional_index;
+                  for (i32 i = num_opt-1; i >= 0; --i) {
+                      init_vals[i] = pop();
+                  }
+              }));
         ip += 2;
         break;
 
