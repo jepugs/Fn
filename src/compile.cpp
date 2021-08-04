@@ -79,46 +79,42 @@ optional<local_addr> compiler::find_local(local_table& locals,
 }
 
 void compiler::constant(const_id id) {
-    vm->get_bytecode().write_byte(fn_bytes::OP_CONST);
-    vm->get_bytecode().write_short(id);
+    dest->write_byte(fn_bytes::OP_CONST);
+    dest->write_short(id);
+}
+
+void compiler::compile_const(value k) {
+    // TODO: add table of constants (to compiler) to avoid duplication
+    auto id = dest->add_const(k);
+    write_byte(OP_CONST);
+    write_short(id);
 }
 
 void compiler::write_byte(u8 byte) {
-    vm->get_bytecode().write_byte(byte);
+    dest->write_byte(byte);
 }
 void compiler::write_short(u16 u) {
-    vm->get_bytecode().write_short(u);
+    dest->write_short(u);
 }
 void compiler::patch_short(bc_addr where, u16 u) {
-    vm->get_bytecode().patch_short(where, u);
-}
-bc_addr compiler::cur_addr() {
-    return vm->get_bytecode().get_size();
+    dest->write_short(where, u);
 }
 
-bytecode& compiler::get_bytecode() {
-    return vm->get_bytecode();
-}
 symbol_table& compiler::get_symtab() {
-    return vm->get_symtab();
+    return *dest->st;
 }
 
 void compiler::compile_atom(local_table& locals,
                             const ast_atom& atom,
                             const source_loc& loc) {
-    const_id id;
-    value v;
     const symbol* s;
     switch (atom.type) {
     case at_number:
-        id = get_bytecode().add_const(as_value(atom.datum.num));
-        constant(id);
+        compile_const(as_value(atom.datum.num));
         ++locals.sp;
         break;
     case at_string:
-        v = vm->get_alloc().const_string(*atom.datum.str);
-        id = get_bytecode().add_const(v);
-        constant(id);
+        compile_const(alloc->const_string(*atom.datum.str));
         ++locals.sp;
         break;
     case at_symbol:
@@ -149,9 +145,7 @@ void compiler::compile_var(local_table& locals,
         write_byte(up ? OP_UPVALUE : OP_LOCAL);
         write_byte(*l);
     } else {
-        auto id = get_bytecode().add_const(as_sym_value(sym));
-        write_byte(OP_CONST);
-        write_short(id);
+        compile_const(as_sym_value(sym));
         write_byte(OP_GLOBAL);
     }
     ++locals.sp;
@@ -161,6 +155,7 @@ void compiler::compile_dot_obj(local_table& locals,
                                const vector<ast_node*>& dot_expr,
                                u8 all_but,
                                const source_loc& loc) {
+    auto& st = get_symtab();
     if (dot_expr.size() < 3) {
         error("Too few arguments to dot.", loc);
     }
@@ -168,7 +163,7 @@ void compiler::compile_dot_obj(local_table& locals,
         error("Arguments to dot must be symbols.", dot_expr[1]->loc);
     }
     compile_var(locals,
-                dot_expr[1]->get_symbol(get_symtab()).id,
+                dot_expr[1]->get_symbol_id(st),
                 dot_expr[1]->loc);
 
     // apply all but the last keys
@@ -177,11 +172,7 @@ void compiler::compile_dot_obj(local_table& locals,
         if (!dot_expr[i]->is_symbol()) {
             error("Arguments to dot must be symbols.", dot_expr[i]->loc);
         }
-        auto id = get_bytecode()
-            .add_const(as_sym_value(dot_expr[i]
-                                    ->get_symbol(get_symtab()).id));
-        write_byte(OP_CONST);
-        write_short(id);
+        compile_const(as_sym_value(dot_expr[i]->get_symbol_id(st)));
         write_byte(OP_OBJ_GET);
     }
 }
@@ -193,10 +184,11 @@ void compiler::compile_list(local_table& locals,
         error("Encountered empty list.", loc);
         return;
     }
+    auto& st = get_symtab();
     if (list[0]->kind == ak_atom
         && list[0]->datum.atom->type == at_symbol) {
         auto sym = list[0]->datum.atom->datum.sym;
-        const string& name = (get_symtab())[sym].name;
+        const string& name = st[sym].name;
         if (name == "and") {
             compile_and(locals, list, list[0]->loc);
         } else if (name == "cond") {
@@ -298,20 +290,18 @@ void compiler::compile_call(local_table& locals,
         // should be an error.
 
         // convert this symbol to a non-keyword one
-        auto key = vm->get_symbol(s.name.substr(1));
+        auto key = as_sym_value(get_symtab().intern(s.name.substr(1))->id);
 
         // add the argument to the keyword table
         write_byte(OP_LOCAL);
         write_byte(base_sp + 1);
         ++locals.sp;
-        write_byte(OP_CONST);
-        write_short(get_bytecode().add_const(key));
+        compile_const(key);
         ++locals.sp;
         compile_subexpr(locals, list[i+1]);
         write_byte(OP_OBJ_SET);
         locals.sp -= 3;
     }
-                
     if (num_args > 255) {
         error("Function call with more than 255 arguments.", list.back()->loc);
     }
@@ -351,7 +341,7 @@ void compiler::compile_function(local_table& locals,
                                 u32 body_start) {
     // jump past the function body to the closure opcode
     write_byte(OP_JUMP);
-    auto patch_addr = get_bytecode().get_size();
+    auto patch_addr = dest->size();
     write_short(0);
 
     // positional arguments
@@ -371,11 +361,10 @@ void compiler::compile_function(local_table& locals,
 
     bool vl = params.var_list.has_value();
     bool vt = params.var_table.has_value();
-    auto func_id = get_bytecode()
-        .add_function(args, opt_ind, vl, vt, vm->current_ns());
+    auto func_id = dest->add_function(args, opt_ind, vl, vt);
 
     // create the new local environment
-    local_table fn_locals{&locals, get_bytecode().get_function(func_id)};
+    local_table fn_locals{&locals, dest->get_function(func_id)};
     fn_locals.sp = 0;
     for (auto x : params.positional) {
         fn_locals.vars.insert(x.sym, fn_locals.sp);
@@ -395,7 +384,7 @@ void compiler::compile_function(local_table& locals,
     write_byte(OP_RETURN);
 
     // jump here from beginning
-    patch_short(patch_addr, get_bytecode().get_size()-patch_addr-2);
+    patch_short(patch_addr, dest->size()-patch_addr-2);
 
     // compile initial values
     for(auto i = opt_ind; i < params.positional.size(); ++i) {
@@ -418,12 +407,12 @@ void compiler::compile_and(local_table& locals,
         write_byte(OP_CJUMP);
         write_short(0);
         --locals.sp;
-        patch_locs.push_front(cur_addr());
+        patch_locs.push_front(dest->size());
     }
     write_byte(OP_TRUE);
     write_byte(OP_JUMP);
     write_short(1);
-    auto end_addr = cur_addr();
+    auto end_addr = dest->size();
     for (auto u : patch_locs) {
         patch_short(u - 2, end_addr - u);
     }
@@ -444,21 +433,21 @@ void compiler::compile_cond(local_table& locals,
         write_byte(OP_CJUMP);
         --locals.sp;
         write_short(0);
-        patch_loc = cur_addr();
+        patch_loc = dest->size();
 
         compile_subexpr(locals, list[i+1]);
         write_byte(OP_JUMP);
         write_short(0);
-        patch_to_end.push_front(cur_addr());
+        patch_to_end.push_front(dest->size());
         --locals.sp;
 
         // this is for the CJUMP to the next branch
-        patch_short(patch_loc - 2, (u16) (cur_addr() - patch_loc));
+        patch_short(patch_loc - 2, (u16) (dest->size() - patch_loc));
     }
     write_byte(OP_NULL);
     ++locals.sp;
 
-    auto end = cur_addr();
+    auto end = dest->size();
     for (auto a : patch_to_end) {
         patch_short(a - 2, end - a);
     }
@@ -477,7 +466,8 @@ void compiler::compile_def(local_table& locals,
 
     auto sym = list[1]->datum.atom->datum.sym;
     // TODO: check for illegal symbol names
-    constant(get_bytecode().add_const(as_sym_value(sym)));
+    compile_const(as_sym_value(sym));
+    //constant(get_bytecode().add_const(as_sym_value(sym)));
     ++locals.sp;
     compile_subexpr(locals, list[2]);
     write_byte(OP_SET_GLOBAL);
@@ -496,7 +486,7 @@ void compiler::compile_defn(local_table& locals,
 
     auto sym = list[1]->datum.atom->datum.sym;
     // TODO: check for illegal symbol names
-    constant(get_bytecode().add_const(as_sym_value(sym)));
+    compile_const(as_sym_value(sym));
     ++locals.sp;
 
     auto params = parse_params(get_symtab(), *list[2]);
@@ -551,17 +541,17 @@ void compiler::compile_if(local_table& locals,
     write_short(0);
     --locals.sp;
 
-    auto then_addr = cur_addr();
+    auto then_addr = dest->size();
     compile_subexpr(locals, list[2]);
     write_byte(OP_JUMP);
     write_short(0);
 
     // put the stack pointer back since only one expression will be evaluated
     --locals.sp;
-    auto else_addr = cur_addr();
+    auto else_addr = dest->size();
     compile_subexpr(locals, list[3]);
 
-    auto end_addr = cur_addr();
+    auto end_addr = dest->size();
     patch_short(then_addr - 2, else_addr - then_addr);
     patch_short(else_addr - 2, end_addr - else_addr);
 }
@@ -588,15 +578,11 @@ void compiler::compile_import(local_table& locals,
             error("Malformed namespace id in import.", list[1]->loc);
         }
         auto v = as_value(name_form->get_symbol(get_symtab()));
-        auto id = vm->get_bytecode().add_const(v);
-        write_byte(OP_CONST);
-        write_short(id);
+        compile_const(v);
 
         // ns id for import
-        v = vm->get_alloc().const_quote(x);
-        id = vm->get_bytecode().add_const(v);
-        write_byte(OP_CONST);
-        write_short(id);
+        v = alloc->const_quote(x);
+        compile_const(v);
 
         // done with this
         delete x;
@@ -606,16 +592,10 @@ void compiler::compile_import(local_table& locals,
     } else if (list[1]->is_symbol()) {
         // name for set-global
         auto sym = list[1]->get_symbol(get_symtab());
-        auto v = as_value(sym);
-        auto id = vm->get_bytecode().add_const(v);
-        write_byte(OP_CONST);
-        write_short(id);
+        compile_const(as_value(sym));
 
         // ns id for import
-        v = vm->get_alloc().const_cons(as_value(sym), V_EMPTY);
-        id = vm->get_bytecode().add_const(v);
-        write_byte(OP_CONST);
-        write_short(id);
+        compile_const(alloc->const_cons(as_value(sym), V_EMPTY));
 
         write_byte(OP_IMPORT);
         write_byte(OP_SET_GLOBAL);
@@ -709,12 +689,12 @@ void compiler::compile_or(local_table& locals,
         --locals.sp;
         write_byte(OP_JUMP);
         write_short(0);
-        patch_locs.push_front(cur_addr());
+        patch_locs.push_front(dest->size());
     }
     write_byte(OP_FALSE);
     write_byte(OP_JUMP);
     write_short(1);
-    auto end_addr = cur_addr();
+    auto end_addr = dest->size();
     for (auto u : patch_locs) {
         patch_short(u - 2, end_addr - u);
     }
@@ -728,10 +708,8 @@ void compiler::compile_quote(local_table& locals,
     if (list.size() != 2) {
         error("Wrong number of arguments to quote", loc);
     }
-    auto v = vm->get_alloc().const_quote(list[1]);
-    auto id = vm->get_bytecode().add_const(v);
-    write_byte(OP_CONST);
-    write_short(id);
+    auto v = alloc->const_quote(list[1]);
+    compile_const(v);
     ++locals.sp;
 }
 
@@ -751,9 +729,7 @@ void compiler::compile_set(local_table& locals,
             write_byte(up ? OP_SET_UPVALUE : OP_SET_LOCAL);
             write_byte(*l);
         } else {
-            auto id = get_bytecode().add_const(as_sym_value(sym));
-            write_byte(OP_CONST);
-            write_short(id);
+            compile_const(as_sym_value(sym));
             ++locals.sp;
             compile_subexpr(locals, list[2]);
             write_byte(OP_SET_GLOBAL);
@@ -778,10 +754,7 @@ void compiler::compile_set(local_table& locals,
            }
 
            // last key for the set operation
-           auto id = get_bytecode()
-               .add_const(as_sym_value(last->get_symbol(get_symtab()).id));
-           write_byte(OP_CONST);
-           write_short(id);
+           compile_const(as_sym_value(last->get_symbol(get_symtab()).id));
            ++locals.sp;
 
            // compute the value
@@ -847,19 +820,10 @@ void compiler::compile_with(local_table& locals,
     write_byte(new_locals.sp - locals.sp);
 }
 
-void compiler::compile_expr() {
+void compiler::compile_expr(ast_node* expr) {
     local_table l;
-    auto expr = parse_node(*sc, get_symtab());
     compile_subexpr(l, expr);
-    delete expr;
     write_byte(OP_POP);
 }
-
-void compiler::compile_to_eof() {
-    while (!sc->eof_skip_ws()) {
-        compile_expr();
-    }
-}
-
 
 }

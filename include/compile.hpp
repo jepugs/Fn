@@ -1,16 +1,19 @@
 #ifndef __FN_COMPILE_HPP
 #define __FN_COMPILE_HPP
 
+#include "allocator.hpp"
 #include "base.hpp"
 #include "bytes.hpp"
 #include "scan.hpp"
 #include "parse.hpp"
 #include "table.hpp"
 #include "values.hpp"
-#include "vm.hpp"
 
 namespace fn {
 
+using namespace fn_bytes;
+
+// TODO: rename (to locals_table unless I think of a better name)
 struct local_table {
     // table of local variable locations
     table<symbol_id,u8> vars;
@@ -29,14 +32,10 @@ struct local_table {
     u8 add_upvalue(u32 levels, u8 pos);
 };
 
-// need this forward declaration :(
-struct virtual_machine;
-struct bytecode;
-
-class compiler {
+struct compiler {
 private:
-    virtual_machine* vm;
-    fn_scan::scanner* sc;
+    allocator* alloc;
+    code_chunk* dest;
 
     void compile_subexpr(local_table& locals, const fn_parse::ast_node* expr);
 
@@ -46,12 +45,14 @@ private:
     optional<u8> find_local(local_table& locals, bool* is_upval, symbol_id name);
 
     void constant(const_id id);
+    // Compile a constant value to the chunk. Unlike other compile_* functions,
+    // this does not adjust the stack pointer.
+    void compile_const(value k);
     void write_byte(u8 byte);
     void write_short(u16 u);
     void patch_short(bc_addr where, u16 u);
-    bc_addr cur_addr();
 
-    bytecode& get_bytecode();
+    // FIXME: should probably replace this
     symbol_table& get_symtab();
 
     void compile_atom(local_table& locals,
@@ -74,6 +75,15 @@ private:
                           const fn_parse::param_list& params,
                           const vector<fn_parse::ast_node*>& body_vec,
                           u32 body_start);
+
+    // Define a global function by directly specifying its bytecode. The
+    // bytecode is responsible for calling return or making a tail call.
+    void define_bytecode_function(const string& name,
+                                  const vector<symbol_id>& positional,
+                                  local_addr optional_index,
+                                  bool var_list,
+                                  bool var_table,
+                                  vector<u8>& bytes);
 
     void compile_and(local_table& locals,
                      const vector<fn_parse::ast_node*>& list,
@@ -137,18 +147,16 @@ private:
                       const source_loc& loc);
 public:
 
-    compiler(virtual_machine* vm, fn_scan::scanner* sc)
-        : vm{vm}
-        , sc{sc} {
+    compiler(allocator* use_alloc, code_chunk* dest)
+        : alloc{use_alloc}
+        , dest{dest} {
     }
 
     ~compiler() {
     }
 
     // compile a single expression
-    void compile_expr();
-    // compile until eof is reached
-    void compile_to_eof();
+    void compile_expr(fn_parse::ast_node* expr);
 
     // interpret a file, i.e. compile it one expression at a time and run the
     // code as we go.

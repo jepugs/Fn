@@ -188,6 +188,19 @@ inline u64 v_tag(value v) {
 // bool v_is_namespace(value v);
 // bool v_is_function(value v);
 
+// equality
+inline bool v_same(value a, value b) {
+    return a.raw == b.raw;
+}
+inline bool v_equal(value a, value b) {
+    return a == b;
+}
+
+// truthiness (everything but null and false are truthy)
+inline bool v_truthy(value a) {
+    return !(v_same(a, V_FALSE) || v_same(a, V_NULL));
+}
+
 // Safe value accessors. These check tags and generate errors if necessary.
 f64 v_num(vm_handle vm, value v);
 bool v_bool(vm_handle vm, value v);
@@ -206,19 +219,6 @@ value alloc_table(vm_handle vm);
 
 // generate a symbol with a unique ID
 value v_gensym(vm_handle vm);
-
-// equality
-inline bool v_same(value a, value b) {
-    return a.raw == b.raw;
-}
-inline bool v_equal(value a, value b) {
-    return a == b;
-}
-
-// truthiness (everything but null and false are truthy)
-inline bool v_truthy(value a) {
-    return !(v_same(a, V_FALSE) || v_same(a, V_NULL));
-}
 
 // safe arithmetic operations
 value v_plus(vm_handle vm, value a, value b);
@@ -386,9 +386,6 @@ struct func_stub {
     local_addr num_upvals;
     vector<upvalue> upvals;
 
-    // the namespace in which this function was defined
-    fn_namespace* ns;
-
     // bytecode address
     bc_addr addr;              // bytecode address of the function
 
@@ -489,14 +486,27 @@ struct alignas(32) function {
 
 struct virtual_machine;
 
+
+// FIXME: Foreign functions need to be refactored. Right now the associated
+// function pointer returns an optional value. Returning nothing activates
+// special behavior that avoids all the usual safety measures. This is mainly
+// for apply, which needs to be able to affect control flow.
+//
+// The right thing to do here is to offload the functionality provided by these
+// functions into VM instructions. I will change the initialization code so that
+// functions can be defined directly in terms of bytecode, and allowing all VM
+// operations to be easily exposed to functions.
+
 // foreign functions
 struct alignas(32) foreign_func {
     obj_header h;
     local_addr min_args;
     bool var_args;
-    value (*func)(local_addr, value*, virtual_machine*);
+    optional<value> (*func)(local_addr, value*, virtual_machine*);
 
-    foreign_func(local_addr min_args, bool var_args, value (*func)(local_addr, value*, virtual_machine*), bool gc=false);
+    foreign_func(local_addr min_args,
+                 bool var_args,
+                 optional<value> (*func)(local_addr, value*, virtual_machine*), bool gc=false);
 };
 
 // symbols in fn are represented by a 32-bit unsigned ids

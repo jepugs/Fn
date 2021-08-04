@@ -617,7 +617,7 @@ function::~function() {
 
 foreign_func::foreign_func(local_addr min_args,
                            bool var_args,
-                           value (*func)(local_addr, value*, virtual_machine*),
+                           optional<value> (*func)(local_addr, value*, virtual_machine*),
                            bool gc)
     : h{as_value(this),gc}
     , min_args{min_args}
