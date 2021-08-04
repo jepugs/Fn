@@ -174,18 +174,13 @@ given context."
     (modify-syntax-entry ?\} "){" s)
     s))
 
-(let ((fn-symbol-regexp "[[:word:]*&^%$#@!~:_=+<>\\-]"))
+(let ((fn-symbol-regexp "[[:word:]?*&^%$#@!~:_=+<>\\-]"))
   (defvar fn-mode-font-lock-defaults
     `(;; quoted symbols
       (,(concat "'\\(\\.\\|"
                 fn-symbol-regexp
                 "\\)+\\_>")
        0 font-lock-constant-face)
-      ;; symbols in a dot expression
-      (,(concat "\\.\\("
-                fn-symbol-regexp
-                "+\\)+")
-       1 font-lock-constant-face)
       ;; type names
       (,(concat "\\_<[[:upper:]]" fn-symbol-regexp "+\\_>")
        0 font-lock-type-face)
@@ -207,6 +202,7 @@ given context."
                 "set!\\|with\\)\\_>")
        1 font-lock-keyword-face)
       ("\\_<\\(true\\|false\\|null\\)\\_>" 1 font-lock-constant-face)
+      ("\\_<\\(this\\)\\(\\.\\|\\_>\\)" 1 font-lock-constant-face)
       ;; dollar syntax
       ("\\([$]\\)[([{`]" 1 font-lock-keyword-face)
       )))
