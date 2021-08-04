@@ -4,14 +4,20 @@
 #include "bytes.hpp"
 #include "table.hpp"
 #include "values.hpp"
+#include "vm_handle.hpp"
 
 #include <cmath>
 
 namespace fn {
 
-#define FN_FUN(name) static value name(local_addr num_args, value* args, vm_handle vm)
+#define FN_FUN(name) static optional<value> name(local_addr num_args, value* args, vm_handle vm)
 
-static value fn_eq(local_addr num_args, value* args, vm_handle vm) {
+FN_FUN(fn_apply) {
+    vm->do_apply(num_args - 3);
+    return std::nullopt;
+}
+
+FN_FUN(fn_eq) {
     if (num_args == 0) return V_TRUE;
 
     auto v1 = args[0];
@@ -24,10 +30,6 @@ static value fn_eq(local_addr num_args, value* args, vm_handle vm) {
 
 FN_FUN(fn_null_q) {
     return as_value(args[0] == V_NULL);
-}
-
-FN_FUN(fn_bool) {
-    return as_value(v_truthy(args[0]));
 }
 
 FN_FUN(fn_bool_q) {
@@ -60,7 +62,7 @@ FN_FUN(fn_not) {
 //     }
 // }
 
-FN_FUN(fn_num_q) {
+FN_FUN(fn_number_q) {
     return as_value(v_tag(args[0]) == TAG_NUM);
 }
 
@@ -69,7 +71,7 @@ FN_FUN(fn_int_q) {
                     && args[0].unum() == (u64)args[0].unum());
 }
 
-static value fn_add(local_addr num_args, value* args, virtual_machine* vm) {
+FN_FUN(fn_add) {
     value res = as_value(0);
     for (local_addr i = 0; i < num_args; ++i) {
         res = v_plus(vm, res, args[i]);
@@ -77,7 +79,7 @@ static value fn_add(local_addr num_args, value* args, virtual_machine* vm) {
     return res;
 }
 
-static value fn_sub(local_addr num_args, value* args, virtual_machine* vm) {
+FN_FUN(fn_sub) {
     if (num_args == 0)
         return as_value(0);
     value res = args[0];
@@ -90,7 +92,7 @@ static value fn_sub(local_addr num_args, value* args, virtual_machine* vm) {
     return res;
 }
 
-static value fn_mul(local_addr num_args, value* args, virtual_machine* vm) {
+FN_FUN(fn_mul) {
     value res = as_value(1.0);
     for (local_addr i = 0; i < num_args; ++i) {
         res = v_times(vm, res, args[i]);
@@ -98,7 +100,7 @@ static value fn_mul(local_addr num_args, value* args, virtual_machine* vm) {
     return res;
 }
 
-static value fn_div(local_addr num_args, value* args, virtual_machine* vm) {
+FN_FUN(fn_div) {
     if (num_args == 0)
         return as_value(1.0);
 
@@ -212,7 +214,7 @@ FN_FUN(fn_list_q) {
     return as_value(args[0].is_empty() || args[0].is_cons());
 }
 
-FN_FUN(fn_has_key) {
+FN_FUN(fn_has_key_q) {
     return as_value(v_tab_has_key(vm, args[0], args[1]));
 }
 
@@ -224,31 +226,65 @@ FN_FUN(fn_get) {
     return res;
 }
 
-static value fn_print(local_addr num_args, value* args, virtual_machine* vm) {
+FN_FUN(fn_print) {
     std::cout << v_to_string(args[0], vm->get_bytecode().get_symbol_table());
     return V_NULL;
 }
 
-static value fn_println(local_addr num_args, value* args, virtual_machine* vm) {
+FN_FUN(fn_println) {
     std::cout << v_to_string(args[0], vm->get_bytecode().get_symbol_table()) << "\n";
     return V_NULL;
 }
 
 
 void init(virtual_machine* vm) {
+    // insert bytecode functions
+    // todo: define apply
+    // auto& bc = vm.get_bytecode();
+    // bc.define_bytecode_function
+    //     ("apply",
+    //      {},
+    //      3,
+
+    // create all the primitive functions
+    // vm->add_foreign("apply", fn_apply, 3, true);
+    // vm->add_foreign("gensym", fn_gensym, 0, false);
+    // vm->add_foreign("symbol-name", fn_symbol_name, 1, false);
+    // vm->add_foreign("length", fn_length, 1, false);
+    // vm->add_foreign("concat", fn_concat, 1, true);
+    // vm->add_foreign("nth", fn_nth, 2, false);
     vm->add_foreign("=", fn_eq, 0, true);
-    vm->add_foreign("null?", fn_null_q, 1, false);
-    vm->add_foreign("bool", fn_bool, 1, false);
-    vm->add_foreign("bool?", fn_bool_q, 1, false);
+    // vm->add_foreign("same?", fn_same_q, 0, true);
     vm->add_foreign("not", fn_not, 1, false);
-    //vm->add_foreign("num", fn_num, 1, false);
-    vm->add_foreign("num?", fn_num_q, 1, false);
+
+    vm->add_foreign("bool?", fn_bool_q, 1, false);
+    vm->add_foreign("list?", fn_list_q, 1, false);
+    // vm->add_foreign("function?", fn_function_q, 1, false);
     vm->add_foreign("int?", fn_int_q, 1, false);
+    // vm->add_foreign("list?", fn_list_q, 1, false);
+    // vm->add_foreign("namespace?", fn_namespace_q, 1, false);
+    vm->add_foreign("number?", fn_number_q, 1, false);
+    vm->add_foreign("null?", fn_null_q, 1, false);
+    // vm->add_foreign("string?", fn_string_q, 1, false);
+    // vm->add_foreign("symbol?", fn_symbol_q, 1, false);
+    vm->add_foreign("table?", fn_table_q, 1, false);
+
+    vm->add_foreign("List", fn_list, 0, true);
+    // vm->add_foreign("empty?", fn_empty_q, 1, false);
+    // vm->add_foreign("cons", fn_cons, 2, false);
+    // vm->add_foreign("head", fn_head, 1, false);
+    // vm->add_foreign("tail", fn_tail, 1, false);
+
+    vm->add_foreign("Table", fn_table, 0, true);
+    vm->add_foreign("has-key?", fn_has_key_q, 2, false);
+    vm->add_foreign("get", fn_get, 2, true);
+    // vm->add_foreign("get-keys", fn_get_keys, 1, false);
+
     vm->add_foreign("+", fn_add, 0, true);
     vm->add_foreign("-", fn_sub, 0, true);
     vm->add_foreign("*", fn_mul, 0, true);
     vm->add_foreign("/", fn_div, 0, true);
-    vm->add_foreign("^", fn_pow, 2, false);
+    vm->add_foreign("**", fn_pow, 2, false);
     vm->add_foreign("mod", fn_mod, 2, false);
     vm->add_foreign("floor", fn_floor, 1, false);
     vm->add_foreign("ceil", fn_ceil, 1, false);
@@ -256,27 +292,11 @@ void init(virtual_machine* vm) {
     vm->add_foreign("<", fn_lt, 2, true);
     vm->add_foreign(">=", fn_ge, 2, true);
     vm->add_foreign("<=", fn_le, 2, true);
-    vm->add_foreign("Table", fn_table, 0, true);
-    vm->add_foreign("table?", fn_table_q, 1, false);
-    vm->add_foreign("has-key", fn_has_key, 2, false);
-    vm->add_foreign("get", fn_get, 2, true);
-    //vm->add_foreign("get-keys", fn_get_keys, 1, false);
-    //vm->add_foreign("get-props", fn_get_props, 1, false);
-    //vm->add_foreign("extend", fn_div, 1, true);
-    vm->add_foreign("List", fn_list, 0, true);
-    vm->add_foreign("list?", fn_list_q, 1, false);
-    //vm->add_foreign("empty?", fn_empty_q, 0, false);
-    //vm->add_foreign("as-list", fn_lasist, 1, false);
-    //vm->add_foreign("cons", fn_div, 0, true);
-    //vm->add_foreign("append", fn_div, 0, true);
-    //vm->add_foreign("reverse", fn_div, 0, true);
-    //vm->add_foreign("string", fn_string, 0, true);
-    //vm->add_foreign("string?", fn_string_q, 0, false);
-    //vm->add_foreign("substring", fn_substring, 3, false);
-    //vm->add_foreign("hash", fn_hash, 1, false);
+
+    // vm->add_foreign("substring", fn_substring, 3, false);
+
     vm->add_foreign("print", fn_print, 1, false);
     vm->add_foreign("println", fn_println, 1, false);
-    vm->add_foreign("apply", fn_div, 2, true);
 }
 
 }

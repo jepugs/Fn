@@ -76,6 +76,7 @@ struct ast_node {
     bool is_symbol() const;
     bool is_keyword(const symbol_table& symtab) const;
     const symbol& get_symbol(const symbol_table& symtab) const;
+    symbol_id get_symbol_id(const symbol_table& symtab) const;
 };
 
 // get the next form by reading tokens one at a time from the scanner. Return a

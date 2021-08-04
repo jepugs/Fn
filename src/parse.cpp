@@ -236,6 +236,10 @@ const symbol& ast_node::get_symbol(const symbol_table& symtab) const {
     return symtab[datum.atom->datum.sym];
 }
 
+symbol_id ast_node::get_symbol_id(const symbol_table& symtab) const {
+    return symtab[datum.atom->datum.sym].id;
+}
+
 
 
 #define parse_error(msg, loc) throw fn_error("fn_parse", msg, loc)

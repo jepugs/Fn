@@ -8,6 +8,9 @@ namespace fn {
 class virtual_machine;
 typedef virtual_machine* vm_handle;
 
+class fn_namespace;
+typedef fn_namespace* ns_handle;
+
 enum error_code {
     // Undefined operation, e.g. attempt to divide by 0
     err_undef_op = 1,
@@ -26,8 +29,9 @@ enum error_code {
 void runtime_error(vm_handle vm, error_code code, const string& message);
 void runtime_error(vm_handle vm, error_code code, const char* message);
 
-void evaluate_string(vm_handle vm, const string& str);
-void evaluate_string(vm_handle vm, const char* str);
+// these might be a challenge to implement...
+// value evaluate_string(vm_handle vm, const string& str);
+// value evaluate_string(vm_handle vm, const char* str);
 
 }
 
