@@ -18,112 +18,6 @@ namespace fn {
 
 namespace fs = std::filesystem;
 
-// a linked list structure which associates source code locations to bytecode.
-struct bytecode_loc {
-    // maximum 
-    u32 max_addr;
-    source_loc loc;
-    bytecode_loc *next;
-};
-
-//// NOTE: bytecode object is being replaced
-
-// a bytecode object consists of a symbol table, a constant table, and an array
-// of bytes which holds the actual instructions. the idea is that bytecode
-// instances for fn are roughly analogous to object files for c.
-
-// in principle this is almost enough information to link two or more bytecode
-// objects together (i.e. by doing the necessary symbol translation + combining
-// the constant tables), however we still need a way to adjust the addresses of
-// functions (i.e. a table of function stubs). we'll cross that bridge much
-// farther down the line, since we'll also certainly need to add other things to
-// the bytecode object, like debugging and namespace information.
-class bytecode {
-private:
-    // instruction array
-    u32 cap;
-    bc_addr size;
-    u8* data;
-    // source code locations list
-    bytecode_loc* locs;
-    // pointer to the end of the list
-    bytecode_loc* last_loc;
-
-    // constants and symbols
-    const_id next_const = 0;
-    table<value,const_id> const_lookup;
-    vector<value> constants;
-    symbol_table symtab;
-    // symbol locations
-    
-    // function stubs
-    vector<func_stub*> functions;
-
-    void ensure_capacity(u32 new_cap);
-
-public:
-    bytecode();
-    ~bytecode();
-
-    bc_addr get_size() const;
-
-    // set the location for writing bytes
-    void set_loc(source_loc l);
-    // get the source code location corresponding to the bytes at addr
-    source_loc* location_of(bc_addr addr) const;
-
-    // write 1 or two bytes
-    void write_byte(u8 b);
-    void write_short(u16 s);
-    void write_bytes(const u8* bytes, bc_addr len);
-
-    // write code which defines a global variable set to a function containing
-    // the provided bytecode. (The bytecode must end in a return or a tail
-    // call or else something bad could happen).
-    void define_bytecode_function(const string& name,
-                                  const vector<symbol_id>& positional,
-                                  local_addr optional_index,
-                                  bool var_list,
-                                  bool var_table,
-                                  fn_namespace* ns,
-                                  vector<u8>& bytes);
-
-    // these don't do bounds checking
-    u8 read_byte(bc_addr addr) const;
-    u16 read_short(bc_addr addr) const;
-    void patch_short(bc_addr addr, u16 s);
-
-    value get_constant(u16 id) const;
-    u16 num_constants() const;
-
-    // add a function to the current ns, set to start at the current ip
-    u16 add_function(const vector<symbol_id>& positional,
-                     local_addr optional_index,
-                     bool var_list,
-                     bool var_table,
-                     fn_namespace* ns);
-    func_stub* get_function(u16 id) const;
-
-    // directly add values to the constants array and return their ID
-    const_id add_const(value v);
-    const_id add_sym_const(symbol_id s);
-
-    symbol_table* get_symbol_table();
-    const symbol_table* get_symbol_table() const;
-    value get_symbol(const string& name);
-    symbol_id get_symbol_id(const string& name);
-
-    inline u8& operator[](bc_addr addr) {
-        return data[addr];
-    }
-
-    inline const u8& operator[](bc_addr addr) const {
-        return data[addr];
-    }
-
-};
-
-
 // virtual_machine stack size limit (per call frame)
 constexpr stack_addr STACK_SIZE = 255;
 
@@ -176,8 +70,8 @@ struct call_frame {
 struct virtual_machine {
 private:
     // these are pointers to objects maintained by the interpreter
-    code_chunk* code;
     allocator* alloc;
+    code_chunk* code;
 
     // current namespace
     fn_namespace* cur_ns;
@@ -190,9 +84,6 @@ private:
     // a pointer to an instance which is actually owned by the interpreter. The
     // problem is that the compiler also wants the allocator for when it makes
     // quoted forms and strings.
-
-    // foreign functions table
-    vector<value> foreign_funcs;
 
     // working directory
     string wd;
@@ -254,6 +145,7 @@ public:
     void interpret_string(const string& src, const string& origin="<cmdline>");
     void interpret_file(const string& filename);
 
+    // internalize a symbol from its name
     value get_symbol(const string& name) {
         return as_sym_value(get_symtab().intern(name)->id);
     }
@@ -307,9 +199,8 @@ public:
 
     upvalue_slot get_upvalue(local_addr id) const;
 
-    // access the bytecode, allocator, and symbol table
-    bytecode& get_bytecode();
-    allocator& get_alloc();
+    code_chunk* get_chunk();
+    allocator* get_alloc();
     symbol_table& get_symtab();
 
 
@@ -320,9 +211,9 @@ public:
 
 
 // disassemble a single instruction, writing output to out
-void disassemble_instr(const bytecode& code, bc_addr ip, std::ostream& out);
+void disassemble_instr(const code_chunk& code, bc_addr ip, std::ostream& out);
 
-void disassemble(const bytecode& code, std::ostream& out);
+void disassemble(const code_chunk& code, std::ostream& out);
 
 
 }

@@ -15,195 +15,18 @@ namespace fn {
 
 using namespace fn_bytes;
 
-bytecode::bytecode()
-    : locs(nullptr)
-    , last_loc(nullptr)
-    , symtab() {
-    // allocate 256 bytes to start
-    cap = 256;
-    // use malloc so we can use realloc
-    data = (u8*)malloc(256);
+// source_loc* bytecode::location_of(bc_addr addr) const {
+//     if(locs == nullptr)
+//         return nullptr;
 
-    size = 0;
-
-    //set_loc(source_loc(std::shared_ptr<string>(new string("")), 0, 0));
-    set_loc(source_loc(std::shared_ptr<string>(new string("")), 0, 0));
-}
-
-bytecode::~bytecode() {
-    free(data);
-
-    for (auto f : functions) {
-        delete f;
-    }
-
-    auto tmp = locs;
-    while (tmp != nullptr) {
-        locs = tmp->next;
-        delete tmp;
-        tmp = locs;
-    }
-}
-
-void bytecode::ensure_capacity(u32 new_cap) {
-    if (new_cap <= cap) {
-        return;
-    }
-    while (cap < new_cap) {
-        cap *= 2;
-    }
-    data = (u8*)realloc(data, cap);
-}
-
-u32 bytecode::get_size() const {
-    return size;
-}
-
-void bytecode::set_loc(source_loc l) {
-    auto prev = last_loc;
-    last_loc = new bytecode_loc{ .max_addr=0, .loc=l, .next=nullptr };
-    if (prev == nullptr) {
-        locs = last_loc;
-    } else {
-        prev->max_addr = size;
-        prev->next = last_loc;
-    }
-}
-
-source_loc* bytecode::location_of(bc_addr addr) const {
-    if(locs == nullptr)
-        return nullptr;
-
-    auto l = locs;
-    // note: max_addr of 0 indicates that this was the last location set and so it doesn't have an
-    // upper limit yet.
-    while (l->max_addr <= addr && l->max_addr != 0) {
-        l = l->next;
-    }
-    return &l->loc;
-}
-
-void bytecode::write_byte(u8 b) {
-    ensure_capacity(size + 1);
-    data[size] = b;
-    ++size;
-}
-
-void bytecode::write_bytes(const u8* bytes, bc_addr len) {
-    ensure_capacity(size + len);
-    for (u32 i = 0; i < len; ++i) {
-        data[size+i] = bytes[i];
-    }
-    size += len;
-}
-
-void bytecode::write_short(u16 s) {
-    u8 bot = (u8) (s & 0x00ff);
-    u8 top = (u8) (s >> 8);
-    // write in little-endian order
-    write_byte(bot);
-    write_byte(top);
-}
-
-u8 bytecode::read_byte(bc_addr addr) const {
-    return data[addr];
-}
-
-u16 bytecode::read_short(bc_addr addr) const {
-    u16 bot = (u16) read_byte(addr);
-    u16 top = (u16) read_byte(addr + 1);
-    return (top << 8) | bot;
-}
-
-void bytecode::patch_short(bc_addr addr, u16 s) {
-    u8 bot = (u8) (s & 0x00ff);
-    u8 top = (u8) (s >> 8);
-    data[addr] = bot;
-    data[addr+1] = top;
-}
-
-value bytecode::get_constant(u16 id) const {
-    return constants[id];
-}
-
-u16 bytecode::num_constants() const {
-    return constants.size();
-}
-
-u16 bytecode::add_function(const vector<symbol_id>& positional,
-                           local_addr optional_index,
-                           bool var_list,
-                           bool var_table) {
-    functions.push_back(new func_stub {
-            .positional=positional,
-            .optional_index=optional_index,
-            .var_list=var_list,
-            .var_table=var_table,
-            .num_upvals=0,
-            .upvals=vector<upvalue>(),
-            .addr=get_size()});
-    return (u16) (functions.size() - 1);
-}
-
-void bytecode::define_bytecode_function(const string& name,
-                                        const vector<symbol_id>& positional,
-                                        local_addr optional_index,
-                                        bool var_list,
-                                        bool var_table,
-                                        fn_namespace* ns,
-                                        vector<u8>& bytes) {
-    write_byte(OP_CONST);
-    write_short(add_const(as_value(symtab.intern(name))));
-
-    // TODO: wrap in appropriate code to bind to a variable
-    auto func_id = add_function(positional,
-                                optional_index,
-                                var_list,
-                                var_table,
-                                ns);
-    for (auto x : bytes) {
-        write_byte(x);
-    }
-    write_byte(OP_CLOSURE);
-    write_short(func_id);
-
-    write_byte(OP_SET_GLOBAL);
-}
-
-func_stub* bytecode::get_function(u16 id) const {
-    // TODO: check bounds?
-    return functions[id];
-}
-
-u16 bytecode::add_const(value v) {
-    auto x = const_lookup.get(v);
-    if (x.has_value()) {
-        return **x;
-    }
-    constants.push_back(v);
-    const_lookup.insert(v, constants.size()-1);
-    return constants.size() - 1;
-}
-
-const_id bytecode::add_sym_const(symbol_id s) {
-    return add_const(as_sym_value(s));
-}
-
-
-symbol_table* bytecode::get_symbol_table() {
-    return &this->symtab;
-}
-
-const symbol_table* bytecode::get_symbol_table() const {
-    return &this->symtab;
-}
-
-value bytecode::get_symbol(const string& name) {
-    return as_sym_value(get_symbol_id(name));
-}
-symbol_id bytecode::get_symbol_id(const string& name) {
-    return symtab.intern(name)->id;
-}
+//     auto l = locs;
+//     // note: max_addr of 0 indicates that this was the last location set and so it doesn't have an
+//     // upper limit yet.
+//     while (l->max_addr <= addr && l->max_addr != 0) {
+//         l = l->next;
+//     }
+//     return &l->loc;
+// }
 
 call_frame* call_frame::extend_frame(bc_addr ret_addr,
                                      local_addr num_args,
@@ -254,9 +77,9 @@ void call_frame::close_all() {
 
 
 virtual_machine::virtual_machine(allocator* use_alloc, code_chunk* init_chunk)
-    : code{init_chunk}
+    : alloc{use_alloc}
+    , code{init_chunk}
     , core_ns{nullptr}
-    , alloc{use_alloc}
     , wd{fs::current_path().string()}
     , ip{0}
     , frame{new call_frame(nullptr, 0, 0, nullptr)}
@@ -265,18 +88,18 @@ virtual_machine::virtual_machine(allocator* use_alloc, code_chunk* init_chunk)
     alloc->disable_gc();
     alloc->add_root_generator([this] { return get_roots(); });
 
-    ns_root = alloc.add_namespace().unamespace();
+    ns_root = alloc->add_namespace().unamespace();
 
     // TODO: create chunk namespace in namespace hierarchy and use as
     // current/core namespace
 
-    auto ns_id = alloc.add_cons(get_symbol("core"), V_EMPTY);
-    ns_id = alloc.add_cons(get_symbol("fn"), ns_id);
+    auto ns_id = alloc->add_cons(get_symbol("core"), V_EMPTY);
+    ns_id = alloc->add_cons(get_symbol("fn"), ns_id);
     core_ns = create_ns(ns_id);
 
     cur_ns = core_ns;
 
-    alloc.enable_gc();
+    alloc->enable_gc();
 }
 
 // virtual_machine::virtual_machine(const string& wd)
@@ -288,17 +111,17 @@ virtual_machine::virtual_machine(allocator* use_alloc, code_chunk* init_chunk)
 //     , frame{new call_frame(nullptr, 0, 0, nullptr)}
 //     , lp{V_NULL} {
 
-//     alloc.disable_gc();
+//     alloc->disable_gc();
 
-//     ns_root = alloc.add_namespace().unamespace();
+//     ns_root = alloc->add_namespace().unamespace();
 
-//     auto ns_id = alloc.add_cons(get_symbol("core"), V_EMPTY);
-//     ns_id = alloc.add_cons(get_symbol("fn"), ns_id);
+//     auto ns_id = alloc->add_cons(get_symbol("core"), V_EMPTY);
+//     ns_id = alloc->add_cons(get_symbol("fn"), ns_id);
 //     core_ns = create_ns(ns_id);
 
 //     cur_ns = core_ns;
 
-//     alloc.enable_gc();
+//     alloc->enable_gc();
 // }
 
 virtual_machine::~virtual_machine() {
@@ -321,49 +144,6 @@ void virtual_machine::set_wd(const string& new_wd) {
 
 string virtual_machine::get_wd() {
     return wd;
-}
-
-void virtual_machine::compile_string(const string& src,
-                                     const string& origin) {
-    std::istringstream in{src};
-    fn_scan::scanner sc{&in, origin};
-    compiler c{this, &sc};
-    c.compile_to_eof();
-}
-
-void virtual_machine::compile_file(const string& filename) {
-    std::ifstream in{filename};
-    if (!in.is_open()) {
-        runtime_error("Could not open file: '" + filename + "'");
-    }
-    fn_scan::scanner sc{&in};
-    compiler c{this, &sc};
-    c.compile_to_eof();
-}
-
-void virtual_machine::interpret_string(const string& src,
-                                       const string& origin) {
-    std::istringstream in{src};
-    fn_scan::scanner sc{&in, origin};
-    compiler c{this, &sc};
-    c.compile_to_eof();
-    execute();
-}
-
-void virtual_machine::interpret_file(const string& filename) {
-    std::ifstream in{filename};
-    if (!in.is_open()) {
-        runtime_error("Could not open file: '" + filename + "'");
-    }
-    fn_scan::scanner sc{&in};
-    compiler c{this, &sc};
-
-    auto i = 0;
-    while (!sc.eof_skip_ws()) {
-        ++i;
-        c.compile_expr();
-        execute();
-    }
 }
 
 fn_namespace* virtual_machine::find_ns(value id) {
@@ -450,7 +230,7 @@ fn_namespace* virtual_machine::create_empty_ns(value id) {
             }
             ns = (**x).unamespace();
         } else {
-            auto next = alloc.add_namespace().unamespace();
+            auto next = alloc->add_namespace().unamespace();
             v_set(this, as_value(ns), hd, as_value(next));
             ns = next;
         }
@@ -468,7 +248,7 @@ fn_namespace* virtual_machine::create_empty_ns(value id) {
 fn_namespace* virtual_machine::create_ns(value id) {
     auto res = create_empty_ns(id);
 
-    auto sym = as_sym_value(get_symtab().intern("ns")->id);
+    auto sym = get_symbol("ns");
     v_set(this, as_value(res), sym, as_value(ns_root));
 
     return res;
@@ -480,12 +260,13 @@ fn_namespace* virtual_machine::create_ns(value id,
 
     res->contents = table{templ->contents};
 
-    auto sym = as_sym_value(get_symtab().intern("ns")->id);
+    auto sym = get_symbol("ns");
     v_uns_set(as_value(res), sym, as_value(ns_root));
 
     return res;
 }
 
+// FIXME: this shouldn't be here.
 fn_namespace* virtual_machine::load_ns(value id, const string& filename) {
     // save vm parameters
     auto tmp_ns = cur_ns;
@@ -496,22 +277,23 @@ fn_namespace* virtual_machine::load_ns(value id, const string& filename) {
 
     // set up a fresh environment
     cur_ns = create_ns(id, core_ns);
-    ip = code.get_size();
+    ip = code->size();
     frame = new call_frame(nullptr, 0, 0, nullptr);
 
+    
     // FIXME: we should probably add a long jump operator for this sort of
     // thing.
 
     // write some code to jump over the intepreted file
-    code.write_byte(OP_JUMP);
-    code.write_short(0);
-    auto patch_loc = code.get_size();
+    code->write_byte(OP_JUMP);
+    code->write_short(0);
+    auto patch_loc = code->size();
 
     // interpret the dang thing
     interpret_file(filename);
 
     // now that we know how long that file was, we know how far to jump
-    code.patch_short(patch_loc-2, ip - patch_loc);
+    code->write_short(patch_loc-2, ip - patch_loc);
 
     auto res = cur_ns;
 
@@ -605,7 +387,8 @@ value virtual_machine::get_global(value name) {
     }
 
     if (!res.has_value()) {
-        runtime_error("Attempt to access unbound global variable " + v_to_string(name, code.get_symbol_table()));
+        runtime_error("Attempt to access unbound global variable "
+                      + v_to_string(name, &get_symtab()));
     }
     return *res;
 }
@@ -613,7 +396,7 @@ value virtual_machine::get_global(value name) {
 upvalue_slot virtual_machine::get_upvalue(u8 id) const {
     if (frame->caller == nullptr || frame->caller->stub->num_upvals <= id) {
         throw fn_error("interpreter", "Attempt to access nonexistent upvalue",
-                      *code.location_of(ip));
+                      *code->location_of(ip));
         // TODO: error: nonexistent upvalue
     }
     return frame->caller->upvals[id];
@@ -624,22 +407,21 @@ void virtual_machine::add_foreign(string name,
                                   optional<value> (*func)(local_addr, value*, virtual_machine*),
                                   local_addr min_args,
                                   bool var_args) {
-    auto v = alloc.add_foreign(min_args, var_args, func);
+    auto v = alloc->add_foreign(min_args, var_args, func);
     auto tmp = cur_ns;
     cur_ns = core_ns;
-    add_global(as_sym_value(code.get_symbol_id(name)), v);
-    foreign_funcs.push_back(v);
+    add_global(get_symbol(name), v);
     cur_ns = tmp;
 }
 
-bytecode& virtual_machine::get_bytecode() {
+code_chunk* virtual_machine::get_chunk() {
     return code;
 }
-allocator& virtual_machine::get_alloc() {
+allocator* virtual_machine::get_alloc() {
     return alloc;
 }
 symbol_table& virtual_machine::get_symtab() {
-    return *code.get_symbol_table();
+    return *code->st;
 }
 
 fn_namespace* virtual_machine::current_ns() {
@@ -647,7 +429,7 @@ fn_namespace* virtual_machine::current_ns() {
 }
 
 void virtual_machine::runtime_error(const string& msg) const {
-    auto p = code.location_of(ip);
+    auto p = code->location_of(ip);
     if (p == nullptr) {
         throw fn_error("runtime",
                        "(ip = " + std::to_string(ip) + ") " + msg,
@@ -658,7 +440,7 @@ void virtual_machine::runtime_error(const string& msg) const {
 
 void virtual_machine::push(value v) {
     if (frame->sp + frame->bp >= STACK_SIZE - 1) {
-        throw fn_error("runtime", "stack exhausted.", *code.location_of(ip));
+        throw fn_error("runtime", "stack exhausted.", *code->location_of(ip));
     }
     stack[frame->bp + frame->sp++] = v;
 }
@@ -667,7 +449,7 @@ value virtual_machine::pop() {
     if (frame->sp == 0) {
         throw fn_error("runtime",
                       "pop on empty call frame at address " + std::to_string((i32)ip),
-                      *code.location_of(ip));
+                      *code->location_of(ip));
     }
     return stack[frame->bp + --frame->sp];
 }
@@ -676,7 +458,7 @@ value virtual_machine::pop_times(stack_addr n) {
     if (frame->sp < n) {
         throw fn_error("runtime",
                       "pop on empty call frame at address " + std::to_string((i32)ip),
-                      *code.location_of(ip));
+                      *code->location_of(ip));
     }
     frame->sp -= n;
     return stack[frame->bp + frame->sp];
@@ -686,7 +468,7 @@ value virtual_machine::peek(stack_addr i) const {
     if (frame->sp <= i) {
         throw fn_error("runtime",
                       "peek out of stack bounds at address " + std::to_string((i32)ip),
-                      *code.location_of(ip));
+                      *code->location_of(ip));
     }
     return stack[frame->bp + frame->sp - i - 1];
 }
@@ -694,7 +476,7 @@ value virtual_machine::peek(stack_addr i) const {
 value virtual_machine::local(local_addr i) const {
     stack_addr pos = i + frame->bp;
     if (frame->sp <= i) {
-        throw fn_error("runtime", "out of stack bounds on local.", *code.location_of(ip));
+        throw fn_error("runtime", "out of stack bounds on local.", *code->location_of(ip));
     }
     return stack[pos];
 }
@@ -761,7 +543,7 @@ bc_addr virtual_machine::call(local_addr num_args) {
     auto tag = v_tag(callee);
     if (tag == TAG_FUNC) {
         // pause the garbage collector to allow stack manipulation
-        alloc.disable_gc();
+        alloc->disable_gc();
         auto func = callee.ufunction();
         auto stub = func->stub;
 
@@ -774,7 +556,7 @@ bc_addr virtual_machine::call(local_addr num_args) {
                 runtime_error("Too many positional arguments to function.");
             }
             for (auto i = stub->positional.size(); i < num_args; ++i) {
-                vlist = alloc.add_cons(peek(num_args - i), vlist);
+                vlist = alloc->add_cons(peek(num_args - i), vlist);
             }
             // clear variadic arguments from the stack
             pop_times(num_args - stub->positional.size());
@@ -784,7 +566,7 @@ bc_addr virtual_machine::call(local_addr num_args) {
         table<symbol_id,value> pos;
         // things we put in vtable
         table<symbol_id,bool> extra;
-        value vtable = stub->var_table ? alloc.add_table() : V_NULL;
+        value vtable = stub->var_table ? alloc->add_table() : V_NULL;
         auto& cts = kw.utable()->contents;
         for (auto k : cts.keys()) {
             auto id = v_usym_id(*k);
@@ -837,13 +619,13 @@ bc_addr virtual_machine::call(local_addr num_args) {
             extend_frame(ip+2,
                          stub->positional.size() + stub->var_list + stub->var_table,
                          func);
-        alloc.enable_gc();
+        alloc->enable_gc();
         return stub->addr;
     } else if (tag == TAG_FOREIGN) {
         if (kw.utable()->contents.get_size() != 0) {
             runtime_error("Foreign function was passed keyword arguments.");
         }
-        alloc.disable_gc();
+        alloc->disable_gc();
         auto f = callee.uforeign();
         if (num_args < f->min_args) {
             runtime_error("Too few arguments for foreign function call at ip="
@@ -867,11 +649,10 @@ bc_addr virtual_machine::call(local_addr num_args) {
         // pop args+2 times (to get the function and keyword dictionary)
         pop_times(num_args+2);
         push(res);
-        alloc.enable_gc();
+        alloc->enable_gc();
         return ip + 2;
     } else if (tag == TAG_TABLE) {
-        auto s = get_symtab().intern("__on-call__");
-        auto v = v_utab_get(callee, as_value(*s));
+        auto v = v_utab_get(callee, get_symbol("__on-call"));
 
         // make space to insert the table on the stack
         push(V_NULL);
@@ -892,7 +673,7 @@ bc_addr virtual_machine::call(local_addr num_args) {
 #define push_bool(b) push(b ? V_TRUE : V_FALSE);
 void virtual_machine::step() {
 
-    u8 instr = code.read_byte(ip);
+    u8 instr = code->read_byte(ip);
 
     // variable for use inside the switch
     value v1, v2, v3;
@@ -925,30 +706,30 @@ void virtual_machine::step() {
         lp = pop();
         break;
     case OP_COPY:
-        v1 = peek(code.read_byte(ip+1));
+        v1 = peek(code->read_byte(ip+1));
         push(v1);
         ++ip;
         break;
     case OP_LOCAL:
-        v1 = local(code.read_byte(ip+1));
+        v1 = local(code->read_byte(ip+1));
         push(v1);
         ++ip;
         break;
     case OP_SET_LOCAL:
         v1 = pop();
-        set_local(code.read_byte(ip+1), v1);
+        set_local(code->read_byte(ip+1), v1);
         ++ip;
         break;
 
     case OP_UPVALUE:
-        l = code.read_byte(ip+1);
+        l = code->read_byte(ip+1);
         // TODO: check upvalue exists
         u = frame->caller->upvals[l];
         push(**u.val);
         ++ip;
         break;
     case OP_SET_UPVALUE:
-        l = code.read_byte(ip+1);
+        l = code->read_byte(ip+1);
         // TODO: check upvalue exists
         u = frame->caller->upvals[l];
         **u.val = pop();
@@ -956,9 +737,9 @@ void virtual_machine::step() {
         break;
 
     case OP_CLOSURE:
-        id = code.read_short(ip+1);
-        stub = code.get_function(code.read_short(ip+1));
-        push(alloc.add_function
+        id = code->read_short(ip+1);
+        stub = code->get_function(code->read_short(ip+1));
+        push(alloc->add_function
              (stub,
               [this, stub](auto upvals, auto init_vals) {
                   for (u32 i = 0; i < stub->num_upvals; ++i) {
@@ -981,7 +762,7 @@ void virtual_machine::step() {
         break;
 
     case OP_CLOSE:
-        num_args = code.read_byte(ip+1);
+        num_args = code->read_byte(ip+1);
         frame->close(num_args);
         // TODO: check stack size >= num_args
         ++ip;
@@ -1004,12 +785,12 @@ void virtual_machine::step() {
         break;
 
     case OP_CONST:
-        id = code.read_short(ip+1);
-        if (id >= code.num_constants()) {
+        id = code->read_short(ip+1);
+        if (id >= code->consts.size()) {
             throw fn_error("runtime", "attempt to access nonexistent constant.",
-                          *code.location_of(ip));
+                          *code->location_of(ip));
         }
-        push(code.get_constant(id));
+        push(code->get_const(id));
         ip += 2;
         break;
 
@@ -1075,27 +856,27 @@ void virtual_machine::step() {
 
     case OP_JUMP:
         jump = true;
-        addr = ip + 3 + static_cast<i16>(code.read_short(ip+1));
+        addr = ip + 3 + static_cast<i16>(code->read_short(ip+1));
         break;
 
     case OP_CJUMP:
         // jump on false
         if (!v_truthy(pop())) {
             jump = true;
-            addr = ip + 3 + static_cast<i16>(code.read_short(ip+1));
+            addr = ip + 3 + static_cast<i16>(code->read_short(ip+1));
         } else {
             ip += 2;
         }
         break;
 
     case OP_CALL:
-        num_args = code.read_byte(ip+1);
+        num_args = code->read_byte(ip+1);
         jump = true;
         addr = call(num_args);
         break;
 
     case OP_APPLY:
-        num_args = code.read_byte(ip+1);
+        num_args = code->read_byte(ip+1);
         jump = true;
         addr = apply(num_args);
         break;
@@ -1105,7 +886,7 @@ void virtual_machine::step() {
         if (frame->caller == nullptr) {
             throw fn_error("interpreter",
                           "return instruction at top level. ip = " + std::to_string((i32)ip),
-                          *code.location_of(ip));
+                          *code->location_of(ip));
         }
         // get return value
         v1 = pop();
@@ -1127,20 +908,20 @@ void virtual_machine::step() {
         break;
 
     case OP_TABLE:
-        push(alloc.add_table());
+        push(alloc->add_table());
         break;
 
     default:
         throw fn_error("interpreter",
                       "unrecognized opcode at address " + std::to_string((i32)ip),
-                      *code.location_of(ip));
+                      *code->location_of(ip));
         break;
     }
     ++ip;
 
     // skip or jump if needed
     if (skip) {
-        ip += instr_width(code.read_byte(ip));
+        ip += instr_width(code->read_byte(ip));
     }
     if (jump) {
         ip = addr;
@@ -1148,14 +929,14 @@ void virtual_machine::step() {
 }
 
 void virtual_machine::execute() {
-    while (ip < code.get_size()) {
+    while (ip < code->size()) {
         step();
     }
 }
 
 // disassemble a single instruction, writing output to out
-void disassemble_instr(const bytecode& code, bc_addr ip, std::ostream& out) {
-    u8 instr = code[ip];
+void disassemble_instr(const code_chunk* code, bc_addr ip, std::ostream& out) {
+    u8 instr = code->read_byte(ip);
     switch (instr) {
     case OP_NOP:
         out << "nop";
@@ -1164,25 +945,25 @@ void disassemble_instr(const bytecode& code, bc_addr ip, std::ostream& out) {
         out << "pop";
         break;
     case OP_LOCAL:
-        out << "local " << (i32)code[ip+1];
+        out << "local " << (i32)code->read_byte(ip+1);
         break;
     case OP_SET_LOCAL:
-        out << "set-local " << (i32)code[ip+1];
+        out << "set-local " << (i32)code->read_byte(ip+1);
         break;
     case OP_COPY:
-        out << "copy " << (i32)code[ip+1];
+        out << "copy " << (i32)code->read_byte(ip+1);
         break;
     case OP_UPVALUE:
-        out << "upvalue " << (i32)code[ip+1];
+        out << "upvalue " << (i32)code->read_byte(ip+1);
         break;
     case OP_SET_UPVALUE:
-        out << "set-upvalue " << (i32)code[ip+1];
+        out << "set-upvalue " << (i32)code->read_byte(ip+1);
         break;
     case OP_CLOSURE:
-        out << "closure " << code.read_short(ip+1);
+        out << "closure " << code->read_short(ip+1);
         break;
     case OP_CLOSE:
-        out << "close " << (i32)((code.read_byte(ip+1)));;
+        out << "close " << (i32)((code->read_byte(ip+1)));;
         break;
     case OP_GLOBAL:
         out << "global";
@@ -1191,7 +972,7 @@ void disassemble_instr(const bytecode& code, bc_addr ip, std::ostream& out) {
         out << "set-global";
         break;
     case OP_CONST:
-        out << "const " << code.read_short(ip+1);
+        out << "const " << code->read_short(ip+1);
         break;
     case OP_NULL:
         out << "null";
@@ -1215,16 +996,16 @@ void disassemble_instr(const bytecode& code, bc_addr ip, std::ostream& out) {
         out << "import";
         break;
     case OP_JUMP:
-        out << "jump " << (i32)(static_cast<i16>(code.read_short(ip+1)));
+        out << "jump " << (i32)(static_cast<i16>(code->read_short(ip+1)));
         break;
     case OP_CJUMP:
-        out << "cjump " << (i32)(static_cast<i16>(code.read_short(ip+1)));
+        out << "cjump " << (i32)(static_cast<i16>(code->read_short(ip+1)));
         break;
     case OP_CALL:
-        out << "call " << (i32)((code.read_byte(ip+1)));;
+        out << "call " << (i32)((code->read_byte(ip+1)));;
         break;
     case OP_APPLY:
-        out << "apply " << (i32)((code.read_byte(ip+1)));;
+        out << "apply " << (i32)((code->read_byte(ip+1)));;
         break;
     case OP_RETURN:
         out << "return";
@@ -1239,11 +1020,11 @@ void disassemble_instr(const bytecode& code, bc_addr ip, std::ostream& out) {
     }
 }
 
-void disassemble(const bytecode& code, std::ostream& out) {
+void disassemble(const code_chunk* code, std::ostream& out) {
     u32 ip = 0;
     // TODO: annotate with line number
-    while (ip < code.get_size()) {
-        u8 instr = code[ip];
+    while (ip < code->size()) {
+        u8 instr = code->read_byte(ip);
         // write line
         out << std::setw(6) << ip << "  ";
         disassemble_instr(code, ip, out);
@@ -1252,9 +1033,9 @@ void disassemble(const bytecode& code, std::ostream& out) {
         if (instr == OP_CONST) {
             // write constant value
             out << " ; "
-                << v_to_string(code.get_constant(code.read_short(ip+1)), code.get_symbol_table());
+                << v_to_string(code->get_const(code->read_short(ip+1)), code->st);
         } else if (instr == OP_CLOSURE) {
-            out << " ; addr = " << code.get_function(code.read_short(ip+1))->addr;
+            out << " ; addr = " << code->get_function(code->read_short(ip+1))->addr;
         }
 
         out << "\n";

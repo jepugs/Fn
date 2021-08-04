@@ -116,16 +116,16 @@ fn_namespace* v_namespace(vm_handle vm, value v) {
 
 // functions to create memory managed objects
 value alloc_string(vm_handle vm, const string& str) {
-    return vm->get_alloc().add_string(str);
+    return vm->get_alloc()->add_string(str);
 }
 value alloc_string(vm_handle vm, const char* str) {
-    return vm->get_alloc().add_string(str);
+    return vm->get_alloc()->add_string(str);
 }
 value alloc_cons(vm_handle vm, value head, value tail) {
-    return vm->get_alloc().add_cons(head, tail);
+    return vm->get_alloc()->add_cons(head, tail);
 }
 value alloc_table(vm_handle vm) {
-    return vm->get_alloc().add_table();
+    return vm->get_alloc()->add_table();
 }
 
 // generate a symbol with a unique ID

@@ -58,12 +58,12 @@ struct code_chunk {
     code_chunk(symbol_table* st);
 
     // chunk size in bytes
-    u32 size();
+    u32 size() const;
 
     // read a byte. Requires (where < size())
-    u8 read_byte(u32 where);
+    u8 read_byte(u32 where) const;
     // read a 2-byte short. Requires (where < size())
-    u16 read_short(u32 where);
+    u16 read_short(u32 where) const;
 
     // write a byte to the end of the chunk
     void write_byte(u8 data);
@@ -76,6 +76,7 @@ struct code_chunk {
 
     // add a constant. No duplication checking is done.
     const_id add_const(value k);
+    value get_const(const_id id) const;
 
     // add a new function and return its id. pparams is a list of parameter
     // names. req_args is number of required args.
@@ -86,9 +87,12 @@ struct code_chunk {
                      bool var_list,
                      bool var_tab);
     func_stub* get_function(u16 id);
+    const func_stub* get_function(u16 id) const;
 
     // add a source location. new writes to the end will use this value
     void add_source_loc(const source_loc& s);
+    // find the location of an instruction
+    source_loc* location_of(u32 addr);
 };
 
 

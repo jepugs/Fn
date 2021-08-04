@@ -25,7 +25,7 @@ code_chunk::code_chunk(symbol_table* st)
     add_source_loc(source_loc{std::shared_ptr<string>(new string{""}),0,0});
 }
 
-u32 code_chunk::size() {
+u32 code_chunk::size() const {
     return static_cast<u32>(code.size());
 }
 
