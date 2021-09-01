@@ -491,6 +491,7 @@ void v_set(vm_handle vm, value obj, value key, value v) {
 obj_header::obj_header(value ptr, bool gc)
     : ptr{ptr}
     , gc{gc}
+    , pin_count{0}
     , mark{false} {
 }
 
@@ -579,7 +580,7 @@ inline optional<const symbol*> symbol_table::find(const string& str) const {
     return { };
 }
 
-u8 func_stub::get_upvalue(local_addr slot, bool direct) {
+local_addr function_stub::get_upvalue(local_addr slot, bool direct) {
     for (local_addr i = 0; i < num_upvals; ++i) {
         auto u = upvals[i];
         if (u.slot == slot && u.direct == direct) {
@@ -593,14 +594,14 @@ u8 func_stub::get_upvalue(local_addr slot, bool direct) {
     return num_upvals++;
 }
 
-function::function(func_stub* stub,
+function::function(function_stub* stub,
                    const std::function<void (upvalue_slot*,value*)>& populate,
                    bool gc)
     : h{as_value(this),gc}
     , stub{stub} {
     upvals = new upvalue_slot[stub->num_upvals];
-    if (stub->optional_index < stub->positional.size()) {
-        init_vals = new value[stub->positional.size() - stub->optional_index];
+    if (stub->req_args < stub->pos_params.size()) {
+        init_vals = new value[stub->pos_params.size() - stub->req_args];
     } else {
         init_vals = nullptr;
     }

@@ -7,28 +7,173 @@ namespace fn {
 
 static constexpr u32 COLLECT_TH = 4096;
 
+void working_set::add_to_gc() {
+    // add new objects to the allocator's list
+    for (auto v : new_objects) {
+        auto h = v.header();
+        if (!h.has_value()) {
+            continue;
+        }
+        alloc->objects.push_front(*h);
+    }
+
+    // decrease the reference count for pinned objects. The pinned_objects list
+    // is automatically pruned by the allocator.
+    for (auto h : pinned_objects) {
+        --h->pin_count;
+    }
+}
+
+working_set::working_set(allocator* use_alloc)
+    : released{false}
+    , alloc{use_alloc} {
+}
+
+working_set::working_set(working_set&& other) noexcept {
+    *this = std::move(other);
+}
+
+working_set::~working_set() {
+    if (!released) {
+        add_to_gc();
+    }
+}
+
+working_set& working_set::operator=(working_set&& other) noexcept {
+    this->released = other.released;
+    this->alloc = other.alloc;
+    this->new_objects = std::move(other.new_objects);
+    this->pinned_objects = std::move(other.pinned_objects);
+    other.released = true;
+    return *this;
+}
+
+value working_set::add_cons(value hd, value tl) {
+    alloc->collect();
+    alloc->mem_usage += sizeof(cons);
+    ++alloc->count;
+    auto v = as_value(new cons{hd,tl,true});
+    new_objects.push_front(v);
+    return v;
+}
+
+value working_set::add_string(const string& s) {
+    alloc->collect();
+    alloc->mem_usage += sizeof(fn_string) + s.length();
+    ++alloc->count;
+    auto v = as_value(new fn_string{s});
+    new_objects.push_front(v);
+    return v;
+}
+
+value working_set::add_table() {
+    alloc->collect();
+    alloc->mem_usage += sizeof(fn_table);
+    ++alloc->count;
+    auto v = as_value(new fn_table{});
+    new_objects.push_front(v);
+    return v;
+}
+
+value working_set::add_function(function_stub* stub, const std::function<void (upvalue_slot*,value*)>& populate) {
+    alloc->collect();
+    alloc->mem_usage += sizeof(function);
+    ++alloc->count;
+    auto v = as_value(new function{stub, populate, true});
+    new_objects.push_front(v);
+    return v;
+}
+
+value working_set::add_foreign(local_addr min_args,
+                               bool var_args,
+                               optional<value> (*func)(local_addr, value*, virtual_machine*)) {
+    alloc->collect();
+    alloc->mem_usage += sizeof(foreign_func);
+    ++alloc->count;
+    auto v = as_value(new foreign_func{min_args, var_args, func, true});
+    new_objects.push_front(v);
+    return v;
+}
+
+value working_set::add_namespace() {
+    alloc->collect();
+    alloc->mem_usage += sizeof(fn_namespace);
+    ++alloc->count;
+    auto v = as_value(new fn_namespace{});
+    new_objects.push_front(v);
+    return v;
+}
+
+value working_set::pin_value(value v) {
+    auto h = v.header();
+    if(h.has_value()) {
+        if ((*h)->pin_count++ == 0) {
+            // first time this object is pinned
+            alloc->pinned_objects.push_front(v);
+        }
+        pinned_objects.push_front(*h);
+    }
+    return v;
+}
+
+root_stack::root_stack(u32 size)
+    : size{size}
+    , pointer{0}
+    , dead{false} {
+}
+
+u16 root_stack::get_pointer() const {
+    return pointer;
+}
+
+value root_stack::peek(stack_addr offset) const {
+    return contents[pointer - offset - 1];
+}
+
+value root_stack::peek_bottom(stack_addr offset) const {
+    return contents[offset];
+}
+
+value root_stack::pop() {
+    --pointer;
+    auto res = contents.back();
+    contents.pop_back();
+    return res;
+}
+
+void root_stack::push(value v) {
+    ++pointer;
+    contents.push_back(v);
+}
+
+void root_stack::clear() {
+    pointer = 0;
+    contents.clear();
+}
+
+void root_stack::mark_for_deletion() {
+    dead = true;
+}
+
 allocator::allocator()
-    : objects{}
-    , gc_enabled{false}
+    : gc_enabled{false}
     , to_collect{false}
     , mem_usage{0}
     , collect_threshold{COLLECT_TH}
-    , count{0}
-    , root_generators{} {
+    , count{0} {
 }
 
 allocator::~allocator() {
     for (auto o : objects) {
         dealloc(o->ptr);
     }
+    for (auto s : root_stacks) {
+        delete s;
+    }
     auto keys = const_table.keys();
     for (auto k : keys) {
         dealloc(**const_table.get(*k));
     }
-}
-
-void allocator::add_root_generator(allocator::root_function get_roots) {
-    root_generators.push_back(get_roots);
 }
 
 void allocator::dealloc(value v) {
@@ -75,7 +220,7 @@ vector<value> allocator::accessible(value v) {
             if (f->upvals[i].ref_count == nullptr) continue;
             res.push_back(**f->upvals[i].val);
         }
-        auto num_opt = f->stub->positional.size() - f->stub->optional_index;
+        auto num_opt = f->stub->pos_params.size() - f->stub->req_args;
         for (u32 i = 0; i < num_opt; ++i) {
             res.push_back(f->init_vals[i]);
         }
@@ -103,12 +248,36 @@ void allocator::mark_descend(obj_header* o) {
 }
 
 void allocator::mark() {
-    for (auto f : root_generators) {
-        for (auto v : f()) {
-            auto h = v.header();
-            if (h.has_value()) {
-                mark_descend(*h);
+    for (auto v : root_objects) {
+        auto h = v.header();
+        if (h.has_value()) {
+            mark_descend(*h);
+        }
+    }
+
+    for (auto it = root_stacks.begin(); it != root_stacks.end();) {
+        if ((*it)->dead) {
+            delete *it;
+            it = root_stacks.erase(it);
+        } else {
+            for (auto i = 0; i < (*it)->pointer; ++i) {
+                auto h = (*it)->contents[i].header();
+                if (h.has_value()) {
+                    mark_descend(*h);
+                }
             }
+        }
+    }
+
+    for (auto it = pinned_objects.begin(); it != pinned_objects.end();) {
+        auto h = it->header();
+        if (!h.has_value() || (*h)->pin_count == 0) {
+            // remove unreferenced pins and immediate values, (although a
+            // non-immediate value should never be here)
+            it = pinned_objects.erase(it);
+        } else {
+            mark_descend(*h);
+            ++it;
         }
     }
 }
@@ -118,6 +287,8 @@ void allocator::sweep() {
     auto orig_ct = count;
     auto orig_sz = mem_usage;
 #endif
+    // FIXME: this is a doubly-linked list
+
     // delete unmarked objects
     std::list<obj_header*> more_objs;
     for (auto h : objects) {
@@ -193,6 +364,20 @@ void allocator::force_collect() {
     to_collect = false;
 }
 
+void allocator::add_root_object(value v) {
+    root_objects.push_back(v);
+}
+
+root_stack* allocator::add_root_stack(u32 size) {
+    auto res = new root_stack{size};
+    root_stacks.push_front(res);
+    return res;
+}
+
+working_set allocator::add_working_set() {
+    return working_set{this};
+}
+
 value allocator::add_cons(value hd, value tl) {
     collect();
     mem_usage += sizeof(cons);
@@ -229,7 +414,7 @@ value allocator::add_table() {
     return as_value(v);
 }
 
-value allocator::add_function(func_stub* stub,
+value allocator::add_function(function_stub* stub,
                               const std::function<void (upvalue_slot*,value*)>& populate) {
     collect();
     mem_usage += sizeof(function);

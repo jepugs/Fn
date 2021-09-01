@@ -322,9 +322,14 @@ void v_set(vm_handle vm, value obj, value key, value v);
 struct alignas(32) obj_header {
     // a value pointing to this. (also encodes the type via the tag)
     value ptr;
-    // does the gc manage this object?
+
+    // gc flags
+    // if false, the gc acts as if this object doesn't exist
     bool gc;
-    // gc mark bit (indicates reachable, starts false)
+    // FIXME: pinning is not thread-safe
+    // reference count equal to number of working sets that have this pinned
+    i16 pin_count;
+    // gc mark bit (true indicates reachable, starts false)
     bool mark;
 
     obj_header(value ptr, bool gc);
@@ -369,25 +374,25 @@ struct upvalue {
     bool direct;
 };
 
+// forward declarations for function_stub
+struct code_chunk;
+struct working_set;
+
 // a stub describing a function. these go in the bytecode object
-struct func_stub {
-    // list of parameter names in the order in which they occur
-    vector<symbol_id> positional;
-    // Index (from 0) of the first optional parameter. Also determines the size
-    // of the init_vals array in the function struct. Equals postional.size() if
-    // there are no such parameters.
-    local_addr optional_index;
+struct function_stub {
+    vector<symbol_id> pos_params;  // positional params
+    local_addr req_args;           // # of required arguments
+    optional<symbol_id> vl_param;  // variadic list parameter
+    optional<symbol_id> vt_param;  // variadic table parameter
 
-    // whether this function accepts a variadic list (resp. table) argument
-    bool var_list;
-    bool var_table;
+    // If foreign_func != nullptr, addr and upvalue fields are ignored, and the
+    // function is evaluated by calling foreign_func instead of jumping
+    value (*foreign_func)(working_set*, value*);
+    code_chunk* chunk;             // chunk containing the function
+    bc_addr addr;                  // function address in its chunk
 
-    // upvalues
     local_addr num_upvals;
     vector<upvalue> upvals;
-
-    // bytecode address
-    bc_addr addr;              // bytecode address of the function
 
     // get an upvalue and return its id. adds a new upvalue if one doesn't exist
     local_addr get_upvalue(local_addr id, bool direct);
@@ -472,12 +477,13 @@ struct upvalue_slot {
 
 struct alignas(32) function {
     obj_header h;
-    func_stub* stub;
+    function_stub* stub;
     upvalue_slot* upvals;
     value* init_vals;
 
+    // FIXME: replace this populate function with array or pointer arguments
     // warning: you must manually set up the upvalues
-    function(func_stub* stub,
+    function(function_stub* stub,
              const std::function<void (upvalue_slot*,value*)>& populate,
              bool gc=false);
     // TODO: use refcount on upvalues
@@ -503,6 +509,8 @@ struct alignas(32) foreign_func {
     local_addr min_args;
     bool var_args;
     optional<value> (*func)(local_addr, value*, virtual_machine*);
+    // TODO: new foreign func signature
+    //value (*func)(working_set*, value*);
 
     foreign_func(local_addr min_args,
                  bool var_args,
