@@ -3,9 +3,8 @@
 namespace fn {
 
 using namespace fn_parse;
-using namespace fn_bytes;
 
-local_table::local_table(local_table* parent, func_stub* func)
+local_table::local_table(local_table* parent, function_stub* func)
     : vars{}
     , parent{parent}
     , cur_func{func}
@@ -78,18 +77,6 @@ optional<local_addr> compiler::find_local(local_table& locals,
     return std::nullopt;
 }
 
-void compiler::constant(const_id id) {
-    dest->write_byte(fn_bytes::OP_CONST);
-    dest->write_short(id);
-}
-
-void compiler::compile_const(value k) {
-    // TODO: add table of constants (to compiler) to avoid duplication
-    auto id = dest->add_const(k);
-    write_byte(OP_CONST);
-    write_short(id);
-}
-
 void compiler::write_byte(u8 byte) {
     dest->write_byte(byte);
 }
@@ -100,8 +87,33 @@ void compiler::patch_short(bc_addr where, u16 u) {
     dest->write_short(where, u);
 }
 
+// TODO: check for number of constants
+void compiler::compile_num(f64 num) {
+    auto id = dest->const_num(num);
+    dest->write_byte(OP_CONST);
+    dest->write_short(id);
+}
+
+void compiler::compile_sym(symbol_id id) {
+    auto cid = dest->const_sym(id);
+    dest->write_byte(OP_CONST);
+    dest->write_short(cid);
+}
+
+void compiler::compile_string(const fn_string& str) {
+    auto id = dest->const_string(str);
+    dest->write_byte(OP_CONST);
+    dest->write_short(id);
+}
+
+void compiler::compile_quoted_form(const fn_parse::ast_node* node) {
+    auto id = dest->const_quote(node);
+    dest->write_byte(OP_CONST);
+    dest->write_short(id);
+}
+
 symbol_table& compiler::get_symtab() {
-    return *dest->st;
+    return *dest->get_symtab();
 }
 
 void compiler::compile_atom(local_table& locals,
@@ -110,11 +122,11 @@ void compiler::compile_atom(local_table& locals,
     const symbol* s;
     switch (atom.type) {
     case at_number:
-        compile_const(as_value(atom.datum.num));
+        compile_num(atom.datum.num);
         ++locals.sp;
         break;
     case at_string:
-        compile_const(alloc->const_string(*atom.datum.str));
+        compile_string(*atom.datum.str);
         ++locals.sp;
         break;
     case at_symbol:
@@ -145,7 +157,7 @@ void compiler::compile_var(local_table& locals,
         write_byte(up ? OP_UPVALUE : OP_LOCAL);
         write_byte(*l);
     } else {
-        compile_const(as_sym_value(sym));
+        compile_sym(sym);
         write_byte(OP_GLOBAL);
     }
     ++locals.sp;
@@ -172,7 +184,7 @@ void compiler::compile_dot_obj(local_table& locals,
         if (!dot_expr[i]->is_symbol()) {
             error("Arguments to dot must be symbols.", dot_expr[i]->loc);
         }
-        compile_const(as_sym_value(dot_expr[i]->get_symbol_id(st)));
+        compile_sym(dot_expr[i]->get_symbol_id(st));
         write_byte(OP_OBJ_GET);
     }
 }
@@ -290,13 +302,13 @@ void compiler::compile_call(local_table& locals,
         // should be an error.
 
         // convert this symbol to a non-keyword one
-        auto key = as_sym_value(get_symtab().intern(s.name.substr(1))->id);
+        auto key = get_symtab().intern(s.name.substr(1))->id;
 
         // add the argument to the keyword table
         write_byte(OP_LOCAL);
         write_byte(base_sp + 1);
         ++locals.sp;
-        compile_const(key);
+        compile_sym(key);
         ++locals.sp;
         compile_subexpr(locals, list[i+1]);
         write_byte(OP_OBJ_SET);
@@ -347,21 +359,23 @@ void compiler::compile_function(local_table& locals,
     // positional arguments
     vector<symbol_id> args;
 
-    // find optional index
-    local_addr opt_ind;
-    for (opt_ind = 0; opt_ind < params.positional.size(); ++opt_ind) {
-        if(params.positional[opt_ind].init_form != nullptr) {
+    // TODO: change the param_list parser to do this work for us
+
+    // number of arguments required
+    local_addr req_args;
+    for (req_args = 0; req_args < params.positional.size(); ++req_args) {
+        if(params.positional[req_args].init_form != nullptr) {
             break;
         }
-        args.push_back(params.positional[opt_ind].sym);
+        args.push_back(params.positional[req_args].sym);
     }
-    for (auto i = opt_ind; i < params.positional.size(); ++i) {
+    for (auto i = req_args; i < params.positional.size(); ++i) {
         args.push_back(params.positional[i].sym);
     }
 
     bool vl = params.var_list.has_value();
     bool vt = params.var_table.has_value();
-    auto func_id = dest->add_function(args, opt_ind, vl, vt);
+    auto func_id = dest->add_function(args, req_args, vl, vt);
 
     // create the new local environment
     local_table fn_locals{&locals, dest->get_function(func_id)};
@@ -387,7 +401,7 @@ void compiler::compile_function(local_table& locals,
     patch_short(patch_addr, dest->size()-patch_addr-2);
 
     // compile initial values
-    for(auto i = opt_ind; i < params.positional.size(); ++i) {
+    for(auto i = req_args; i < params.positional.size(); ++i) {
         compile_subexpr(locals, params.positional[i].init_form);
     }
 
@@ -466,8 +480,7 @@ void compiler::compile_def(local_table& locals,
 
     auto sym = list[1]->datum.atom->datum.sym;
     // TODO: check for illegal symbol names
-    compile_const(as_sym_value(sym));
-    //constant(get_bytecode().add_const(as_sym_value(sym)));
+    compile_sym(sym);
     ++locals.sp;
     compile_subexpr(locals, list[2]);
     write_byte(OP_SET_GLOBAL);
@@ -486,7 +499,7 @@ void compiler::compile_defn(local_table& locals,
 
     auto sym = list[1]->datum.atom->datum.sym;
     // TODO: check for illegal symbol names
-    compile_const(as_sym_value(sym));
+    compile_sym(sym);
     ++locals.sp;
 
     auto params = parse_params(get_symtab(), *list[2]);
@@ -569,7 +582,6 @@ void compiler::compile_import(local_table& locals,
             error("Argument to import not a symbol or dot form.", list[1]->loc);
         }
         auto x = list[1]->copy();
-        x->datum.list->erase(x->datum.list->begin());
 
         // name for the set-global
         // TODO: check for :as argument
@@ -577,12 +589,11 @@ void compiler::compile_import(local_table& locals,
         if (!name_form->is_symbol()) {
             error("Malformed namespace id in import.", list[1]->loc);
         }
-        auto v = as_value(name_form->get_symbol(get_symtab()));
-        compile_const(v);
+        auto v = name_form->get_symbol(get_symtab()).id;
+        compile_sym(v);
 
         // ns id for import
-        v = alloc->const_quote(x);
-        compile_const(v);
+        compile_quoted_form(x);
 
         // done with this
         delete x;
@@ -590,12 +601,11 @@ void compiler::compile_import(local_table& locals,
         write_byte(OP_IMPORT);
         write_byte(OP_SET_GLOBAL);
     } else if (list[1]->is_symbol()) {
+        auto sym = list[1]->get_symbol(get_symtab()).id;
         // name for set-global
-        auto sym = list[1]->get_symbol(get_symtab());
-        compile_const(as_value(sym));
-
+        compile_sym(sym);
         // ns id for import
-        compile_const(alloc->const_cons(as_value(sym), V_EMPTY));
+        compile_sym(sym);
 
         write_byte(OP_IMPORT);
         write_byte(OP_SET_GLOBAL);
@@ -708,8 +718,7 @@ void compiler::compile_quote(local_table& locals,
     if (list.size() != 2) {
         error("Wrong number of arguments to quote", loc);
     }
-    auto v = alloc->const_quote(list[1]);
-    compile_const(v);
+    compile_quoted_form(list[1]);
     ++locals.sp;
 }
 
@@ -729,7 +738,7 @@ void compiler::compile_set(local_table& locals,
             write_byte(up ? OP_SET_UPVALUE : OP_SET_LOCAL);
             write_byte(*l);
         } else {
-            compile_const(as_sym_value(sym));
+            compile_sym(sym);
             ++locals.sp;
             compile_subexpr(locals, list[2]);
             write_byte(OP_SET_GLOBAL);
@@ -754,7 +763,7 @@ void compiler::compile_set(local_table& locals,
            }
 
            // last key for the set operation
-           compile_const(as_sym_value(last->get_symbol(get_symtab()).id));
+           compile_sym(last->get_symbol(get_symtab()).id);
            ++locals.sp;
 
            // compute the value

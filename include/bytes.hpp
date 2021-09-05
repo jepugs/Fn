@@ -3,13 +3,13 @@
 #define __FN_BYTES_HPP
 
 #include "base.hpp"
+#include "parse.hpp"
 #include "values.hpp"
 
 #include <iostream>
+#include <list>
 
-namespace fn_bytes {
-
-using namespace fn;
+namespace fn {
 
 // each chunk stores a linked list of chunk_source_info objects. To find the
 // source_loc associated to an address, we search for the smallest end_addr
@@ -20,45 +20,41 @@ using namespace fn;
 struct chunk_source_info {
     u32 end_addr;
     source_loc loc;
+
+    chunk_source_info(u32, const source_loc&);
 };
 
 // IMPLNOTE: the structures below currently contain STL containers, but it might
 // be better to replace these with C-style ad-hoc containers, in case I want to
 // make C bindings later.
 
-struct code_chunk;
-
-struct function_stub {
-    vector<symbol_id> pos_params;  // positional params
-    local_addr req_args;           // # of required arguments
-    optional<symbol_id> vl_param;  // variadic list parameter
-    optional<symbol_id> vt_param;  // variadic table parameter
-
-    code_chunk* location;          // chunk containing the function
-    u32 addr;                      // function address in its chunk
-};
-
 // A code_chunk is a dynamic array of bytecode instructions combined with all
 // constants and functions used by that chunk.
 struct code_chunk {
+private:
     vector<u8> code;
-    vector<value> consts;
+    vector<value> const_table;
+
+    vector<fn_string*> const_strings;
+    vector<cons*> const_conses;
     // TODO: use function_stub
-    vector<func_stub*> functions;
-    forward_list<chunk_source_info> source_info;
-    // TODO: put namespace or chunk ID into the chunk, i.e.
-    //value ns;
-    // or
-    //vector<symbol_id> ns_id;
+    vector<function_stub*> functions;
+    std::list<chunk_source_info> source_info;
+    value ns;
 
     // This is a weak reference. It's the responsibility of the code using the
     // chunk to make sure the pertinent symbol table is alive.
     symbol_table* st;
 
-    code_chunk(symbol_table* st);
+    value quote_helper(const fn_parse::ast_node* node);
+
+public:
+    code_chunk(symbol_table* use_st, value use_ns);
+    ~code_chunk();
 
     // chunk size in bytes
     u32 size() const;
+    symbol_table* get_symtab();
 
     // read a byte. Requires (where < size())
     u8 read_byte(u32 where) const;
@@ -74,25 +70,28 @@ struct code_chunk {
     // overwrite 2 bytes in the chunk. Requires (where < size()-1)
     void write_short(u16 data, u32 where);
 
-    // add a constant. No duplication checking is done.
-    const_id add_const(value k);
+    // add constants. No duplication checking is done.
+    const_id const_num(f64 num);
+    const_id const_sym(symbol_id id);
+    const_id const_string(const fn_string& s);
+    const_id const_quote(const fn_parse::ast_node* node);
+    // get a constant
     value get_const(const_id id) const;
 
     // add a new function and return its id. pparams is a list of parameter
     // names. req_args is number of required args.
 
-    // TODO: change to use function_stub
     u16 add_function(const vector<symbol_id>& pparams,
                      local_addr req_args,
-                     bool var_list,
-                     bool var_tab);
-    func_stub* get_function(u16 id);
-    const func_stub* get_function(u16 id) const;
+                     optional<symbol_id> vl_param,
+                     optional<symbol_id> vt_param);
+    function_stub* get_function(u16 id);
+    const function_stub* get_function(u16 id) const;
 
     // add a source location. new writes to the end will use this value
     void add_source_loc(const source_loc& s);
     // find the location of an instruction
-    source_loc* location_of(u32 addr);
+    source_loc location_of(u32 addr);
 };
 
 
@@ -139,20 +138,20 @@ constexpr u8 OP_FALSE = 0x14;
 constexpr u8 OP_TRUE  = 0x15;
 
 
-// obj-get; get the value of a property. stack arguments ->[key] obj ...
+// obj-get;  stack arguments ->[key] obj; get the value of a property.
 constexpr u8 OP_OBJ_GET = 0x16;
 // obj-set; add or update the value of a property. stack arguments ->[new-value] key obj ...
 constexpr u8 OP_OBJ_SET = 0x17;
 
-// TODO: 
+// TODO:
 // TODO: implement these changes in vm
-// TODO: 
-// module; change the current module. stack arguments ->[module-object] ...
-constexpr u8 OP_NAMESPACE = 0x18;
-// import; given a module id list, put the corresponding module object on top of
-// the stack. if no such module exists, a new one will be created. stack
-// arguments ->[module-id-list] ...
+// TODO:
+// import; stack arguments ->[ns_id]; perform an import using the given
+// namespace id.
 constexpr u8 OP_IMPORT = 0x19;
+
+// ns_root; push the namespace root to the top of the stack
+constexpr u8 OP_NS_ROOT = 0x20;
 
 
 // control flow & function calls
@@ -174,18 +173,10 @@ constexpr u8 OP_RETURN = 0x33;
 constexpr u8 OP_APPLY = 0x34;
 
 // tcall BYTE; perform a tail call
-//constexpr u8 OP_t_ca_ll = 0x35;
-
-
-// might want this for implementing apply
-// // apply;
-// constexpr u8 OP_APPLY = 0x34;
-
-// might want this for implementing t_co
-// // long-jump a_dd_r; jump to the given 32-bit address
-// constexpr u8 OP_l_on_g_JUMP = 0x35;
+//constexpr u8 OP_TCALL = 0x35;
 
 // value manipulation
+// FIXME: not sure if I need this...
 // table ; create a new empty table
 constexpr u8 OP_TABLE = 0x40;
 // constexpr u8 OP_EMPTY = 0x41;
@@ -205,7 +196,6 @@ inline u8 instr_width(u8 instr) {
     case OP_RETURN:
     case OP_OBJ_GET:
     case OP_OBJ_SET:
-    case OP_NAMESPACE:
     case OP_IMPORT:
     case OP_TABLE:
         return 1;

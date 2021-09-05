@@ -11,8 +11,6 @@
 
 namespace fn {
 
-using namespace fn_bytes;
-
 // TODO: rename (to locals_table unless I think of a better name)
 struct local_table {
     // table of local variable locations
@@ -20,13 +18,14 @@ struct local_table {
     // parent environment
     local_table* parent;
 
-    // the function we're currently compiling. this is needed to keep track of upvalues
-    func_stub* cur_func;
+    // the function we're currently compiling. this is needed to keep track of
+    // upvalues
+    function_stub* cur_func;
 
     // stack pointer
     u8 sp;
 
-    local_table(local_table* parent=nullptr, func_stub* cur_func=nullptr);
+    local_table(local_table* parent=nullptr, function_stub* cur_func=nullptr);
     // add an upvalue which has the specified number of levels of indirection (each level corresponds
     // to one more enclosing function before)
     u8 add_upvalue(u32 levels, u8 pos);
@@ -44,13 +43,15 @@ private:
     // (indirect reference), false otherwise.
     optional<u8> find_local(local_table& locals, bool* is_upval, symbol_id name);
 
-    void constant(const_id id);
-    // Compile a constant value to the chunk. Unlike other compile_* functions,
-    // this does not adjust the stack pointer.
-    void compile_const(value k);
     void write_byte(u8 byte);
     void write_short(u16 u);
     void patch_short(bc_addr where, u16 u);
+
+    // these don't automatically adjust the stack pointer
+    void compile_num(f64 num);
+    void compile_sym(symbol_id id);
+    void compile_string(const fn_string& id);
+    void compile_quoted_form(const fn_parse::ast_node* form);
 
     // FIXME: should probably replace this
     symbol_table& get_symtab();
@@ -157,10 +158,6 @@ public:
 
     // compile a single expression
     void compile_expr(fn_parse::ast_node* expr);
-
-    // interpret a file, i.e. compile it one expression at a time and run the
-    // code as we go.
-    void interpret(const string& filename);
 
     inline void error(const char* msg, const source_loc& loc) {
         throw fn_error("compiler", msg, loc);
