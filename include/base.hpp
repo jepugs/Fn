@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <forward_list>
+#include <list>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -59,6 +60,10 @@ typedef u8 local_id;
 typedef u16 const_id;
 // used to identify symbols
 typedef u32 symbol_id;
+// used to identify namespaces. An empty list is understood to refer to fn.default
+struct namespace_id {
+    std::list<symbol_id> symbols;
+};
 
 // Used to track debugging information. An empty string for the filename
 // indicates that the bytecode was either internally generated or came from a
@@ -100,7 +105,7 @@ class fn_error : public std::exception {
     const string message;
     const source_loc origin;
 
-    // t_od_o: move this to a .cpp file so we don't need to include sstream
+    // TODO: move this to a .cpp file so we don't need to include sstream
     fn_error(const string& subsystem, const string& message, const source_loc& origin)
         : subsystem(subsystem)
         , message(message)

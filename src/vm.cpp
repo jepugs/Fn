@@ -13,118 +13,17 @@
 
 namespace fn {
 
-using namespace fn_bytes;
-
-// source_loc* bytecode::location_of(bc_addr addr) const {
-//     if(locs == nullptr)
-//         return nullptr;
-
-//     auto l = locs;
-//     // note: max_addr of 0 indicates that this was the last location set and so it doesn't have an
-//     // upper limit yet.
-//     while (l->max_addr <= addr && l->max_addr != 0) {
-//         l = l->next;
-//     }
-//     return &l->loc;
-// }
-
-call_frame* call_frame::extend_frame(bc_addr ret_addr,
-                                     local_addr num_args,
-                                     function* caller) {
-    return new call_frame(this, ret_addr, bp+sp-num_args, caller, num_args);
-}
-
-upvalue_slot call_frame::create_upvalue(local_addr pos, value* ptr) {
-    if (pos >= sp) {
-        // TODO: probably an error
-        return nullptr;
-    }
-
-    // check if an upvalue is already open for this stack position
-    for (auto u : open_upvals) {
-        if (u.pos == pos) {
-            return u.slot;
-        }
-    }
-    // TODO: ref_count
-    auto res = upvalue_slot(ptr);
-    open_upvals.push_front(open_upvalue{ .slot=res, .pos=pos });
-    return res;
-}
-
-void call_frame::close(stack_addr n) {
-    sp -= n;
-    open_upvals.remove_if([this](auto u) {
-        if (u.pos >= sp) {
-            u.slot.close();
-            return true;
-        }
-        return false;
-    });
-}
-
-void call_frame::close_all() {
-    sp = 0;
-    for (auto u : open_upvals) {
-        *u.slot.open = false;
-        auto v = **u.slot.val;
-        *u.slot.val = new value();
-        **u.slot.val = v;
-    }
-
-    open_upvals.clear();
-}
-
-
-virtual_machine::virtual_machine(allocator* use_alloc, code_chunk* init_chunk)
-    : alloc{use_alloc}
-    , code{init_chunk}
-    , core_ns{nullptr}
-    , wd{fs::current_path().string()}
+vm_thread::vm_thread(global_env* use_glob, code_chunk* use_chunk)
+    : glob{use_glob}
+    , alloc{use_glob->get_alloc()}
+    , toplevel_chunk{use_chunk}
     , ip{0}
     , frame{new call_frame(nullptr, 0, 0, nullptr)}
     , lp{V_NULL} {
-
-    alloc->disable_gc();
-    alloc->add_root_generator([this] { return get_roots(); });
-
-    ns_root = alloc->add_namespace().unamespace();
-
-    // TODO: create chunk namespace in namespace hierarchy and use as
-    // current/core namespace
-
-    auto ns_id = alloc->add_cons(get_symbol("core"), V_EMPTY);
-    ns_id = alloc->add_cons(get_symbol("fn"), ns_id);
-    core_ns = create_ns(ns_id);
-
-    cur_ns = core_ns;
-
-    alloc->enable_gc();
+    stack = alloc->add_root_stack();
 }
 
-// virtual_machine::virtual_machine(const string& wd)
-//     : code{}
-//     , core_ns{nullptr}
-//     , alloc{[this] { return get_roots(); }}
-//     , wd{wd}
-//     , ip{0}
-//     , frame{new call_frame(nullptr, 0, 0, nullptr)}
-//     , lp{V_NULL} {
-
-//     alloc->disable_gc();
-
-//     ns_root = alloc->add_namespace().unamespace();
-
-//     auto ns_id = alloc->add_cons(get_symbol("core"), V_EMPTY);
-//     ns_id = alloc->add_cons(get_symbol("fn"), ns_id);
-//     core_ns = create_ns(ns_id);
-
-//     cur_ns = core_ns;
-
-//     alloc->enable_gc();
-// }
-
-virtual_machine::~virtual_machine() {
+vm_thread::~vm_thread() {
     // delete all call frames
     while (frame != nullptr) {
         auto tmp = frame->prev;
@@ -134,362 +33,108 @@ virtual_machine::~virtual_machine() {
     }
 }
 
-void virtual_machine::do_apply(local_addr num_args) {
-    ip = apply(num_args);
+value vm_thread::get_symbol(const string& name) {
+    return as_value(get_symtab()->intern(name));
 }
 
-void virtual_machine::set_wd(const string& new_wd) {
-    wd = new_wd;
-}
-
-string virtual_machine::get_wd() {
-    return wd;
-}
-
-fn_namespace* virtual_machine::find_ns(value id) {
-    // FIXME: should check for cons
-    auto hd = v_head(this, id);
-    auto tl = v_tail(this, id);
-    auto ns = ns_root;
-    while (true) {
-        auto x = ns->contents.get(v_sym_id(this,hd));
-        if (x.has_value()) {
-            if (!(**x).is_namespace()) {
-                runtime_error("Error: namespace id overlaps with non-namespace definition.");
-            }
-            ns = (**x).unamespace();
-        } else {
-            return nullptr;
-        }
-
-        if(!tl.is_cons()) {
-            break;
-        }
-
-        hd = v_uhead(tl);
-        tl = v_utail(tl);
-    }
-
-    return ns;
-}
-
-optional<string> virtual_machine::find_ns_file(value id) {
-    fs::path rel_path{};
-    // FIXME: should check that these are all symbols
-    auto hd = v_head(this, id);
-    auto tl = v_tail(this, id);
-    while (tl.is_cons()) {
-        rel_path /= get_symtab()[v_usym_id(hd)].name;
-        hd = v_uhead(tl);
-        tl = v_utail(tl);
-    }
-    rel_path /= get_symtab()[v_usym_id(hd)].name + ".fn";
-    
-    fs::path p{wd / rel_path};
-    if (fs::exists(p)) {
-        return p.string();
-    }
-
-    // TODO: set these properly
-
-    // s = "${HOME}" + "/.local/lib/fn/ns/" + rel_path;
-    // if (fs::exists(s)) {
-    //     return s;
-    // }
-
-    // add the prefix
-    p = fs::path{PREFIX} / "lib" / "fn" / "ns" / rel_path;
-    if (fs::exists(p)) {
-        return p.string();
-    }
-
-    return std::nullopt;
-}
-
-fn_namespace* virtual_machine::create_empty_ns(value id) {
-    if (!id.is_cons()) {
-        runtime_error("(Internal). Namespace id not a list of symbols.");
-    }
-    auto hd = v_uhead(id);
-    auto tl = v_utail(id);
-    auto ns = ns_root;
-    while (true) {
-        if (!tl.is_cons() && !tl.is_empty()) {
-            runtime_error("(Internal). Namespace id not a list of symbols.");
-            break;
-        }
-        if (!hd.is_symbol()) {
-            runtime_error("Namespace id must be a list of symbols.");
-            break;
-        }
-
-        auto x = ns->contents.get(v_usym_id(hd));
-        if (x.has_value()) {
-            if (!(**x).is_namespace()) {
-                runtime_error("Error: namespace id overlaps with non-namespace definition.");
-            }
-            ns = (**x).unamespace();
-        } else {
-            auto next = alloc->add_namespace().unamespace();
-            v_set(this, as_value(ns), hd, as_value(next));
-            ns = next;
-        }
-
-        if(tl.is_empty()) {
-            break;
-        }
-
-        hd = v_head(this, tl);
-        tl = v_tail(this, tl);
-    }
-    return ns;
-}
-
-fn_namespace* virtual_machine::create_ns(value id) {
-    auto res = create_empty_ns(id);
-
-    auto sym = get_symbol("ns");
-    v_set(this, as_value(res), sym, as_value(ns_root));
-
-    return res;
-}
-
-fn_namespace* virtual_machine::create_ns(value id,
-                                                fn_namespace* templ) {
-    auto res = create_empty_ns(id);
-
-    res->contents = table{templ->contents};
-
-    auto sym = get_symbol("ns");
-    v_uns_set(as_value(res), sym, as_value(ns_root));
-
-    return res;
-}
-
-// FIXME: this shouldn't be here.
-fn_namespace* virtual_machine::load_ns(value id, const string& filename) {
-    // save vm parameters
-    auto tmp_ns = cur_ns;
-    auto tmp_ip = ip;
-    value tmp_stack[STACK_SIZE];
-    memcpy(tmp_stack, stack, STACK_SIZE*sizeof(value));
-    auto tmp_frame = frame;
-
-    // set up a fresh environment
-    cur_ns = create_ns(id, core_ns);
-    ip = code->size();
-    frame = new call_frame(nullptr, 0, 0, nullptr);
-
-    
-    // FIXME: we should probably add a long jump operator for this sort of
-    // thing.
-
-    // write some code to jump over the intepreted file
-    code->write_byte(OP_JUMP);
-    code->write_short(0);
-    auto patch_loc = code->size();
-
-    // interpret the dang thing
-    interpret_file(filename);
-
-    // now that we know how long that file was, we know how far to jump
-    code->write_short(patch_loc-2, ip - patch_loc);
-
-    auto res = cur_ns;
-
-    memcpy(stack, tmp_stack, STACK_SIZE*sizeof(value));
-    cur_ns = tmp_ns;
-    frame = tmp_frame;
-    ip = tmp_ip;
-
-    return res;
-}
-
-fn_namespace* virtual_machine::import_ns(value id) {
-    auto ns = find_ns(id);
-    if (ns == nullptr) {
-        auto path = find_ns_file(id);
-        if (!path.has_value()) {
-            runtime_error("Import failed. Could not find file.");
-        }
-        auto res = load_ns(id, *path);
-        return res;
-    } else {
-        return ns;
-    }
-}
-
-vector<value> virtual_machine::get_roots() {
-    vector<value> res;
-
-    // stack
-    u32 m = frame->sp + frame->bp;
-    for (u32 i = 0; i < m; ++i) {
-        res.push_back(stack[i]);
-    }
-    
-    // upvalues for the current call frame
-    for (auto f = frame; f != nullptr; f = f->prev) {
-        auto n = f->caller->stub->num_upvals;
-        for (u32 i = 0; i < n; ++i) {
-            auto u = f->caller->upvals;
-            res.push_back(**u[i++].val);
-        }
-    }
-
-    // this will handle all the global variables
-    res.push_back(as_value(ns_root));
-
-    // While unlikely, it is possible that garbage collection happens after a
-    // pop but before the last pop value is used. This ensures it won't be freed
-    // prematurely.
-    res.push_back(lp);
-
-    return res;
-}
-
-u32 virtual_machine::get_ip() const {
+u32 vm_thread::get_ip() const {
     return ip;
 }
 
-value virtual_machine::last_pop() const {
+value vm_thread::last_pop() const {
     return lp;
 }
 
-void virtual_machine::add_global(value name, value v) {
+void vm_thread::add_global(value name, value v) {
     if (!name.is_symbol()) {
         runtime_error("Global name is not a symbol.");
     }
-    auto sym = v_usym_id(name);
-    if (frame != nullptr && frame->caller != nullptr) {
-        // TODO: get namespace from chunk
-        auto ns = cur_ns;
-        ns->set(sym, v);
-    } else {
-        cur_ns->set(sym, v);
-    }
+    auto ns = cur_chunk()->get_ns().unamespace();
+    ns->set(v_usym_id(name), v);
 }
 
-value virtual_machine::get_global(value name) {
+value vm_thread::get_global(value name) {
     if (!name.is_symbol()) {
         runtime_error("Global name is not a symbol.");
     }
-    auto sym = v_usym_id(name);
 
-    optional<value> res;
-    if (frame != nullptr && frame->caller != nullptr) {
-        // TODO: get namespace from chunk
-        auto ns = cur_ns;
-        //auto ns = frame->caller->stub->ns;
-        res = ns->get(sym);
-    } else {
-        res = cur_ns->get(sym);
-    }
+    auto ns = cur_chunk()->get_ns().unamespace();
+    auto res = ns->get(v_usym_id(name));
 
     if (!res.has_value()) {
         runtime_error("Attempt to access unbound global variable "
-                      + v_to_string(name, &get_symtab()));
+                + v_to_string(name, cur_chunk()->get_symtab()));
     }
     return *res;
 }
 
-upvalue_slot virtual_machine::get_upvalue(u8 id) const {
-    if (frame->caller == nullptr || frame->caller->stub->num_upvals <= id) {
-        throw fn_error("interpreter", "Attempt to access nonexistent upvalue",
-                      *code->location_of(ip));
-        // TODO: error: nonexistent upvalue
+code_chunk* vm_thread::cur_chunk() const {
+    if (frame->caller) {
+        return frame->caller->stub->chunk;
+    } else {
+        return toplevel_chunk;
     }
-    return frame->caller->upvals[id];
 }
-
-
-void virtual_machine::add_foreign(string name,
-                                  optional<value> (*func)(local_addr, value*, virtual_machine*),
-                                  local_addr min_args,
-                                  bool var_args) {
-    auto v = alloc->add_foreign(min_args, var_args, func);
-    auto tmp = cur_ns;
-    cur_ns = core_ns;
-    add_global(get_symbol(name), v);
-    cur_ns = tmp;
+code_chunk* vm_thread::get_toplevel_chunk() {
+    return toplevel_chunk;
 }
-
-code_chunk* virtual_machine::get_chunk() {
-    return code;
-}
-allocator* virtual_machine::get_alloc() {
+allocator* vm_thread::get_alloc() {
     return alloc;
 }
-symbol_table& virtual_machine::get_symtab() {
-    return *code->st;
+symbol_table* vm_thread::get_symtab() {
+    return cur_chunk()->get_symtab();
 }
 
-fn_namespace* virtual_machine::current_ns() {
-    return cur_ns;
+void vm_thread::runtime_error(const string& msg) const {
+    auto p = cur_chunk()->location_of(ip);
+    throw fn_error("runtime", "(ip = " + std::to_string(ip) + ") " + msg, p);
 }
 
-void virtual_machine::runtime_error(const string& msg) const {
-    auto p = code->location_of(ip);
-    if (p == nullptr) {
-        throw fn_error("runtime",
-                       "(ip = " + std::to_string(ip) + ") " + msg,
-                       source_loc{"<bytecode top>"});
+void vm_thread::push(value v) {
+    if (stack->get_pointer() >= STACK_SIZE - 1) {
+        runtime_error("stack exhausted.");
     }
-    throw fn_error("runtime", "(ip = " + std::to_string(ip) + ") " + msg, *p);
+    stack->push(v);
 }
 
-void virtual_machine::push(value v) {
-    if (frame->sp + frame->bp >= STACK_SIZE - 1) {
-        throw fn_error("runtime", "stack exhausted.", *code->location_of(ip));
+value vm_thread::pop() {
+    if (frame->bp <= stack->get_pointer()) {
+        runtime_error("pop on empty call frame");
     }
-    stack[frame->bp + frame->sp++] = v;
+    return stack->pop();
 }
 
-value virtual_machine::pop() {
-    if (frame->sp == 0) {
-        throw fn_error("runtime",
-                      "pop on empty call frame at address " + std::to_string((i32)ip),
-                      *code->location_of(ip));
+void vm_thread::pop_times(stack_addr n) {
+    if (frame->bp - n < stack->get_pointer()) {
+        runtime_error("pop on empty call frame");
     }
-    return stack[frame->bp + --frame->sp];
+    stack->pop_times(n);
 }
 
-value virtual_machine::pop_times(stack_addr n) {
-    if (frame->sp < n) {
-        throw fn_error("runtime",
-                      "pop on empty call frame at address " + std::to_string((i32)ip),
-                      *code->location_of(ip));
+value vm_thread::peek(stack_addr i) const {
+    if (frame->bp - i < stack->get_pointer()) {
+        runtime_error("peek out of stack bounds");
     }
-    frame->sp -= n;
-    return stack[frame->bp + frame->sp];
+    return stack->peek(i);
 }
 
-value virtual_machine::peek(stack_addr i) const {
-    if (frame->sp <= i) {
-        throw fn_error("runtime",
-                      "peek out of stack bounds at address " + std::to_string((i32)ip),
-                      *code->location_of(ip));
-    }
-    return stack[frame->bp + frame->sp - i - 1];
-}
-
-value virtual_machine::local(local_addr i) const {
+value vm_thread::local(local_addr i) const {
     stack_addr pos = i + frame->bp;
-    if (frame->sp <= i) {
-        throw fn_error("runtime", "out of stack bounds on local.", *code->location_of(ip));
+    if (pos >= stack->get_pointer()) {
+        runtime_error("out of stack bounds on local");
     }
-    return stack[pos];
+    return stack->peek_bottom(pos);
 }
 
-void virtual_machine::set_local(local_addr i, value v) {
+void vm_thread::set_local(local_addr i, value v) {
     stack_addr pos = i + frame->bp;
-    if (frame->sp <= i) {
+    if (pos >= stack->get_pointer()) {
         runtime_error("out of stack bounds on set-local.");
     }
-    stack[pos] = v;
+    stack->set(pos, v);
 }
 
-bc_addr virtual_machine::apply(local_addr num_args) {
+bc_addr vm_thread::apply(working_set& use_ws, local_addr num_args) {
     // last argument is table, second to last is list
     auto arg_tab = pop();
     auto arg_list = pop();
@@ -529,172 +174,132 @@ bc_addr virtual_machine::apply(local_addr num_args) {
         runtime_error("Too many arguments for function call in apply.");
     }
 
-    return call(static_cast<local_addr>(vlen + num_args));
+    return call(use_ws, static_cast<local_addr>(vlen + num_args));
 }
 
-bc_addr virtual_machine::call(local_addr num_args) {
+bc_addr vm_thread::call(working_set& use_ws, local_addr num_args) {
     // the function to call should be at the bottom
     auto callee = peek(num_args + 1);
     auto kw = peek(num_args); // keyword arguments come first
     if (!kw.is_table()) {
         runtime_error("VM call operation has malformed keyword table.");
     }
-    value res;
-    auto tag = v_tag(callee);
-    if (tag == TAG_FUNC) {
-        // pause the garbage collector to allow stack manipulation
-        alloc->disable_gc();
-        auto func = callee.ufunction();
-        auto stub = func->stub;
-
-        // usually, positional arguments can get left where they are
-
-        // extra positional arguments go to the variadic list parameter
-        value vlist = V_EMPTY;
-        if (stub->positional.size() < num_args) {
-            if (!stub->var_list) {
-                runtime_error("Too many positional arguments to function.");
-            }
-            for (auto i = stub->positional.size(); i < num_args; ++i) {
-                vlist = alloc->add_cons(peek(num_args - i), vlist);
-            }
-            // clear variadic arguments from the stack
-            pop_times(num_args - stub->positional.size());
-        }
-
-        // positional arguments after num_args
-        table<symbol_id,value> pos;
-        // things we put in vtable
-        table<symbol_id,bool> extra;
-        value vtable = stub->var_table ? alloc->add_table() : V_NULL;
-        auto& cts = kw.utable()->contents;
-        for (auto k : cts.keys()) {
-            auto id = v_usym_id(*k);
-            bool found = false;
-            for (u32 i = 0; i < stub->positional.size(); ++i) {
-                if (stub->positional[i] == id) {
-                    if (pos.get(id).has_value() || i < num_args) {
-                        if (!stub->var_table) {
-                            runtime_error("Extra keyword argument.");
-                        } else {
-                            extra.insert(id, true);
-                        }
-                    } else {
-                        found = true;
-                        pos.insert(id,**cts.get(*k));
-                    }
-                    break;
-                }
-            }
-            if (!found) {
-                if (!stub->var_table) {
-                    runtime_error("Extraneous keyword arguments.");
-                }
-                v_utab_set(vtable, *k, **cts.get(*k));
-            }
-        }
-
-        // finish placing positional parameters on the stack
-        for (u32 i = num_args; i < stub->positional.size(); ++i) {
-            auto v = pos.get(stub->positional[i]);
-            if (v.has_value()) {
-                push(**v);
-            } else if (i >= stub->optional_index) {
-                push(callee.ufunction()->init_vals[i-stub->optional_index]);
-            } else {
-                runtime_error("Missing parameter with no default.");
-            }
-        }
-
-        // push variadic list and table parameters 
-        if (stub->var_list) {
-            push(vlist);
-        }
-        if (stub->var_table) {
-            push(vtable);
-        }
-
-        // extend the call frame and move on
-        frame = frame->
-            extend_frame(ip+2,
-                         stub->positional.size() + stub->var_list + stub->var_table,
-                         func);
-        alloc->enable_gc();
-        return stub->addr;
-    } else if (tag == TAG_FOREIGN) {
-        if (kw.utable()->contents.get_size() != 0) {
-            runtime_error("Foreign function was passed keyword arguments.");
-        }
-        alloc->disable_gc();
-        auto f = callee.uforeign();
-        if (num_args < f->min_args) {
-            runtime_error("Too few arguments for foreign function call at ip="
-                          + std::to_string(ip));
-        } else if (!f->var_args && num_args > f->min_args) {
-            runtime_error("Too many arguments for foreign function call at ip="
-                          + std::to_string(ip));
-        } else {
-            // correct arity
-            auto x = f->func((u16)num_args,
-                             &stack[frame->bp+frame->sp-num_args],
-                             this);
-            // if there's no return value, it means the foreign function handed
-            // control off to another function, so we don't manipulate the stack.
-            if (x.has_value()) {
-                res = *x;
-            } else {
-                return ip;
-            }
-        }
-        // pop args+2 times (to get the function and keyword dictionary)
-        pop_times(num_args+2);
-        push(res);
-        alloc->enable_gc();
-        return ip + 2;
-    } else if (tag == TAG_TABLE) {
-        auto v = v_utab_get(callee, get_symbol("__on-call"));
-
-        // make space to insert the table on the stack
-        push(V_NULL);
-        auto sp = frame->bp + frame->sp;
-        for (u32 i = 0; i < num_args; ++i) {
-            stack[sp - i - 1] = stack[sp - i];
-        }
-        stack[sp - num_args - 1] = callee;
-        stack[sp - num_args - 3] = v;
-        return call(num_args + 1);
-    } else {
-        runtime_error("attempt to call nonfunction at address " + std::to_string((i32)ip));
+    if (v_tag(callee) != TAG_FUNC) {
+        runtime_error("attempt to call nonfunction");
         return ip + 2;
     }
+    
+    auto func = callee.ufunction();
+    auto stub = func->stub;
+    if (stub->foreign_func) {
+        // TODO: foreign function
+        runtime_error("Foreign functions not supported.");
+        return ip + 2;
+    }
+
+    // native function call
+
+    // usually, positional arguments can get left where they are
+
+    // extra positional arguments go to the variadic list parameter
+    value vlist = V_EMPTY;
+    if (stub->pos_params.size() < num_args) {
+        if (!stub->vl_param.has_value()) {
+            runtime_error("Too many positional arguments to function.");
+        }
+        for (auto i = stub->pos_params.size(); i < num_args; ++i) {
+            vlist = use_ws.add_cons(peek(num_args - i), vlist);
+        }
+        // clear variadic arguments from the stack
+        pop_times(num_args - stub->pos_params.size());
+    }
+
+    // positional arguments after num_args
+    table<symbol_id,value> pos;
+    // things we put in vtable
+    table<symbol_id,bool> extra;
+    value vtable = use_ws.add_table();
+    auto& cts = kw.utable()->contents;
+    for (auto k : cts.keys()) {
+        auto id = v_usym_id(*k);
+        bool found = false;
+        for (u32 i = 0; i < stub->pos_params.size(); ++i) {
+            if (stub->pos_params[i] == id) {
+                if (pos.get(id).has_value() || i < num_args) {
+                    if (!stub->vt_param.has_value()) {
+                        runtime_error("Extra keyword argument.");
+                    } else {
+                        extra.insert(id, true);
+                    }
+                } else {
+                    found = true;
+                    pos.insert(id,**cts.get(*k));
+                }
+                break;
+            }
+        }
+        if (!found) {
+            if (!stub->vt_param.has_value()) {
+                runtime_error("Extraneous keyword arguments.");
+            }
+            v_utab_set(vtable, *k, **cts.get(*k));
+        }
+    }
+
+    // finish placing positional parameters on the stack
+    for (u32 i = num_args; i < stub->pos_params.size(); ++i) {
+        auto v = pos.get(stub->pos_params[i]);
+        if (v.has_value()) {
+            push(**v);
+        } else if (i >= stub->req_args) {
+            push(callee.ufunction()->init_vals[i-stub->req_args]);
+        } else {
+            runtime_error("Missing parameter with no default.");
+        }
+    }
+
+    // push variadic list and table parameters 
+    if (stub->vl_param.has_value()) {
+        push(vlist);
+    }
+    if (stub->vt_param.has_value()) {
+        push(vtable);
+    }
+
+    // extend the call frame
+    // stack pointer for the new frame
+    u8 sp = static_cast<u8>(stub->pos_params.size()
+            + stub->vl_param.has_value()
+            + stub->vt_param.has_value());
+    u32 bp = stack->get_pointer() - sp;
+    frame = new call_frame{frame, ip+2, bp, func, sp};
+    return stub->addr;
 }
 
-
 #define push_bool(b) push(b ? V_TRUE : V_FALSE);
-void virtual_machine::step() {
+void vm_thread::step() {
 
-    u8 instr = code->read_byte(ip);
+    u8 instr = cur_chunk()->read_byte(ip);
 
     // variable for use inside the switch
     value v1, v2, v3;
     optional<value*> vp;
 
-    bool skip = false;
     bool jump = false;
     bc_addr addr = 0;
 
-    fn_namespace* ns;
-
     local_addr num_args;
 
-    func_stub* stub;
+    function_stub* stub;
 
     local_addr l;
     u16 id;
 
     call_frame *tmp;
 
-    upvalue_slot u;
+    upvalue_cell* u;
+
+    working_set ws{alloc};
 
     // note: when an instruction uses an argument that occurs in the bytecode, it is responsible for
     // updating the instruction pointer at the end of its exection (which should be after any
@@ -706,64 +311,56 @@ void virtual_machine::step() {
         lp = pop();
         break;
     case OP_COPY:
-        v1 = peek(code->read_byte(ip+1));
+        v1 = peek(cur_chunk()->read_byte(ip+1));
         push(v1);
         ++ip;
         break;
     case OP_LOCAL:
-        v1 = local(code->read_byte(ip+1));
+        v1 = local(cur_chunk()->read_byte(ip+1));
         push(v1);
         ++ip;
         break;
     case OP_SET_LOCAL:
         v1 = pop();
-        set_local(code->read_byte(ip+1), v1);
+        set_local(cur_chunk()->read_byte(ip+1), v1);
         ++ip;
         break;
 
     case OP_UPVALUE:
-        l = code->read_byte(ip+1);
+        l = cur_chunk()->read_byte(ip+1);
         // TODO: check upvalue exists
         u = frame->caller->upvals[l];
-        push(**u.val);
+        if (u->closed) {
+            push(u->closed_value);
+        } else {
+            auto pos = frame->caller->stub->upvals[l] + frame->bp;
+            push(stack->peek_bottom(pos));
+        }
         ++ip;
         break;
     case OP_SET_UPVALUE:
-        l = code->read_byte(ip+1);
+        l = cur_chunk()->read_byte(ip+1);
         // TODO: check upvalue exists
         u = frame->caller->upvals[l];
-        **u.val = pop();
+        if (u->closed) {
+            u->closed_value = pop();
+        } else {
+            auto pos = frame->caller->stub->upvals[l] + frame->bp;
+            stack->set(pos, pop());
+        }
         ++ip;
         break;
 
     case OP_CLOSURE:
-        id = code->read_short(ip+1);
-        stub = code->get_function(code->read_short(ip+1));
-        push(alloc->add_function
-             (stub,
-              [this, stub](auto upvals, auto init_vals) {
-                  for (u32 i = 0; i < stub->num_upvals; ++i) {
-                      auto u = stub->upvals[i];
-                      if (u.direct) {
-                          upvals[i] = frame
-                              ->create_upvalue(u.slot,
-                                               &stack[frame->bp+u.slot]);
-                      } else {
-                          upvals[i] = get_upvalue(u.slot);
-                      }
-                  }
-                  auto num_opt = stub->positional.size()
-                      - stub->optional_index;
-                  for (i32 i = num_opt-1; i >= 0; --i) {
-                      init_vals[i] = pop();
-                  }
-              }));
+        id = cur_chunk()->read_short(ip+1);
+        stub = cur_chunk()->get_function(cur_chunk()->read_short(ip+1));
+        push(ws.add_function(stub, stack, frame->bp));
         ip += 2;
         break;
 
     case OP_CLOSE:
-        num_args = code->read_byte(ip+1);
-        frame->close(num_args);
+        num_args = cur_chunk()->read_byte(ip+1);
+        stack->close(stack->get_pointer() - num_args);
         // TODO: check stack size >= num_args
         ++ip;
         break;
@@ -785,12 +382,11 @@ void virtual_machine::step() {
         break;
 
     case OP_CONST:
-        id = code->read_short(ip+1);
-        if (id >= code->consts.size()) {
-            throw fn_error("runtime", "attempt to access nonexistent constant.",
-                          *code->location_of(ip));
+        id = cur_chunk()->read_short(ip+1);
+        if (id >= cur_chunk()->num_consts()) {
+            runtime_error("attempt to access nonexistent constant.");
         }
-        push(code->get_const(id));
+        push(cur_chunk()->get_const(id));
         ip += 2;
         break;
 
@@ -839,54 +435,43 @@ void virtual_machine::step() {
         v2.utable()->contents.insert(v1,v3);
         break;
 
-    case OP_NAMESPACE:
-        v1 = pop();
-
-        if (v_tag(v1) != TAG_NAMESPACE) {
-            runtime_error("namespace operand not a namespace");
-        }
-        cur_ns = v1.unamespace();
-        break;
-
     case OP_IMPORT:
-        v1 = pop();
-        ns = import_ns(v1);
-        push(as_value(ns));
+        do_import();
+        // ns = import_ns(v1);
+        // push(as_value(ns));
         break;
 
     case OP_JUMP:
         jump = true;
-        addr = ip + 3 + static_cast<i16>(code->read_short(ip+1));
+        addr = ip + 3 + static_cast<i16>(cur_chunk()->read_short(ip+1));
         break;
 
     case OP_CJUMP:
         // jump on false
         if (!v_truthy(pop())) {
             jump = true;
-            addr = ip + 3 + static_cast<i16>(code->read_short(ip+1));
+            addr = ip + 3 + static_cast<i16>(cur_chunk()->read_short(ip+1));
         } else {
             ip += 2;
         }
         break;
 
     case OP_CALL:
-        num_args = code->read_byte(ip+1);
+        num_args = cur_chunk()->read_byte(ip+1);
         jump = true;
-        addr = call(num_args);
+        addr = call(ws, num_args);
         break;
 
     case OP_APPLY:
-        num_args = code->read_byte(ip+1);
+        num_args = cur_chunk()->read_byte(ip+1);
         jump = true;
-        addr = apply(num_args);
+        addr = apply(ws, num_args);
         break;
 
     case OP_RETURN:
         // check that we are in a call frame
         if (frame->caller == nullptr) {
-            throw fn_error("interpreter",
-                          "return instruction at top level. ip = " + std::to_string((i32)ip),
-                          *code->location_of(ip));
+            runtime_error("return instruction at top level.");
         }
         // get return value
         v1 = pop();
@@ -896,7 +481,7 @@ void virtual_machine::step() {
         addr = frame->ret_addr;
 
         num_args = frame->num_args;
-        frame->close_all();
+        stack->close(frame->bp);
         tmp = frame;
         // TODO: restore stack pointer
         frame = tmp->prev;
@@ -908,28 +493,26 @@ void virtual_machine::step() {
         break;
 
     case OP_TABLE:
-        push(alloc->add_table());
+        push(ws.add_table());
         break;
 
     default:
-        throw fn_error("interpreter",
-                      "unrecognized opcode at address " + std::to_string((i32)ip),
-                      *code->location_of(ip));
+        runtime_error("unrecognized opcode");
         break;
     }
     ++ip;
 
-    // skip or jump if needed
-    if (skip) {
-        ip += instr_width(code->read_byte(ip));
-    }
     if (jump) {
         ip = addr;
     }
 }
 
-void virtual_machine::execute() {
-    while (ip < code->size()) {
+void vm_thread::execute() {
+    while (status == vs_running) {
+        if (ip < cur_chunk()->size()) {
+            status = vs_stopped;
+            break;
+        }
         step();
     }
 }
@@ -989,9 +572,6 @@ void disassemble_instr(const code_chunk* code, bc_addr ip, std::ostream& out) {
     case OP_OBJ_SET:
         out << "obj-set";
         break;
-    case OP_NAMESPACE:
-        out << "namespace";
-        break;
     case OP_IMPORT:
         out << "import";
         break;
@@ -1033,7 +613,8 @@ void disassemble(const code_chunk* code, std::ostream& out) {
         if (instr == OP_CONST) {
             // write constant value
             out << " ; "
-                << v_to_string(code->get_const(code->read_short(ip+1)), code->st);
+                << v_to_string(code->get_const(code->read_short(ip+1)),
+                        code->get_symtab());
         } else if (instr == OP_CLOSURE) {
             out << " ; addr = " << code->get_function(code->read_short(ip+1))->addr;
         }

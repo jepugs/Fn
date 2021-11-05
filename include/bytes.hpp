@@ -54,7 +54,8 @@ public:
 
     // chunk size in bytes
     u32 size() const;
-    symbol_table* get_symtab();
+    symbol_table* get_symtab() const;
+    value get_ns();
 
     // read a byte. Requires (where < size())
     u8 read_byte(u32 where) const;
@@ -77,6 +78,8 @@ public:
     const_id const_quote(const fn_parse::ast_node* node);
     // get a constant
     value get_const(const_id id) const;
+    // get the number of constants
+    u32 num_consts() const;
 
     // add a new function and return its id. pparams is a list of parameter
     // names. req_args is number of required args.

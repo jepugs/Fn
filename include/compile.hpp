@@ -11,24 +11,28 @@
 
 namespace fn {
 
-// TODO: rename (to locals_table unless I think of a better name)
+// TODO: rename (to local_environment unless I think of a better name)
 struct local_table {
     // table of local variable locations
     table<symbol_id,u8> vars;
+    // table of upvalue offsets
+    table<symbol_id, i32> upvals;
+
     // parent environment
     local_table* parent;
 
-    // the function we're currently compiling. this is needed to keep track of
-    // upvalues
-    function_stub* cur_func;
+    // Non-null value means this local environment is the base of a new
+    // function.
+    function_stub* enclosing_func;
 
     // stack pointer
     u8 sp;
+    // base pointer of the current function relative to enclosing one
+    u8 bp;
 
-    local_table(local_table* parent=nullptr, function_stub* cur_func=nullptr);
-    // add an upvalue which has the specified number of levels of indirection (each level corresponds
-    // to one more enclosing function before)
-    u8 add_upvalue(u32 levels, u8 pos);
+    // Construct a new local_table with the given parent. If new_func !=
+    // nullptr, then the created local environment has its stack pointer reset.
+    local_table(local_table* parent=nullptr, function_stub* new_func=nullptr);
 };
 
 struct compiler {

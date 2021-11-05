@@ -7,6 +7,96 @@ namespace fn {
 
 static constexpr u32 COLLECT_TH = 4096;
 
+root_stack::root_stack()
+    : pointer{0}
+    , dead{false} {
+}
+
+root_stack::~root_stack() {
+    close(0);
+}
+
+u32 root_stack::get_pointer() const {
+    return pointer;
+}
+
+value root_stack::peek(u32 offset) const {
+    return contents[pointer - offset - 1];
+}
+
+value root_stack::peek_bottom(u32 offset) const {
+    return contents[offset];
+}
+
+value root_stack::pop() {
+    --pointer;
+    auto res = contents.back();
+    contents.pop_back();
+    return res;
+}
+
+void root_stack::pop_times(u32 n) {
+    pointer -= n;
+    contents.resize(pointer);
+}
+
+void root_stack::push(value v) {
+    ++pointer;
+    contents.push_back(v);
+}
+
+void root_stack::set(u32 offset, value v) {
+    contents[offset] = v;
+}
+
+void root_stack::add_upvalues(function* f, u32 base_ptr) {
+    auto stub = f->stub;
+
+    for (u32 i = 0; i < stub->num_upvals; ++i) {
+        upvalue_cell* cell;
+        // iterate over the open upvalues
+        for (auto it = upvals.begin(); it != upvals.end(); ) {
+            auto pos = base_ptr + stub->upvals[i];
+            if (it->pos == pos) {
+                // add an existing upvalue
+                cell = it->cell;
+                break;
+            } else if (it->pos < pos) {
+                // create a new upvalue
+                cell = new upvalue_cell{};
+                upvals.insert(it, stack_upvalue{.cell=cell, .pos=pos});
+                break;
+            }
+            ++it;
+        }
+        f->upvals[i] = cell;
+    }
+}
+
+void root_stack::close(u32 base_addr) {
+    for (auto it = upvals.begin(); it != upvals.end(); ) {
+        if (it->pos < base_addr) {
+            break;
+        }
+
+        auto cell = it->cell;
+        cell->close(contents[it->pos]);
+        cell->dereference();
+        // IMPLNOTE: This if statement prevents a memory leak. If no live
+        // functions reference this cell, the garbage collector won't see it.
+        if (cell->dead()) {
+            delete cell;
+        }
+        it = upvals.erase(it);
+    }
+    pointer = base_addr;
+    contents.resize(base_addr);
+}
+
+void root_stack::mark_for_deletion() {
+    dead = true;
+}
+
 void working_set::add_to_gc() {
     // add new objects to the allocator's list
     for (auto v : new_objects) {
@@ -75,11 +165,27 @@ value working_set::add_table() {
     return v;
 }
 
-value working_set::add_function(function_stub* stub, const std::function<void (upvalue_slot*,value*)>& populate) {
+value working_set::add_function(function_stub* stub,
+        root_stack* stack,
+        u32 base_ptr) {
     alloc->collect();
     alloc->mem_usage += sizeof(function);
     ++alloc->count;
-    auto v = as_value(new function{stub, populate, true});
+    auto f = new function{stub, true};
+
+    // add upvalues
+    stack->add_upvalues(f, base_ptr);
+
+    // Add init values
+
+    // DANGER! Init vals are popped right off the stack, so they better be there
+    // when this function gets added!
+    auto num_opt = stub->pos_params.size() - stub->req_args;
+    for (i32 i = num_opt; i < stub->num_upvals; ++i) {
+        f->init_vals[i] = stack->pop();
+    }
+
+    auto v = as_value(f);
     new_objects.push_front(v);
     return v;
 }
@@ -114,45 +220,6 @@ value working_set::pin_value(value v) {
         pinned_objects.push_front(*h);
     }
     return v;
-}
-
-root_stack::root_stack(u32 size)
-    : size{size}
-    , pointer{0}
-    , dead{false} {
-}
-
-u16 root_stack::get_pointer() const {
-    return pointer;
-}
-
-value root_stack::peek(stack_addr offset) const {
-    return contents[pointer - offset - 1];
-}
-
-value root_stack::peek_bottom(stack_addr offset) const {
-    return contents[offset];
-}
-
-value root_stack::pop() {
-    --pointer;
-    auto res = contents.back();
-    contents.pop_back();
-    return res;
-}
-
-void root_stack::push(value v) {
-    ++pointer;
-    contents.push_back(v);
-}
-
-void root_stack::clear() {
-    pointer = 0;
-    contents.clear();
-}
-
-void root_stack::mark_for_deletion() {
-    dead = true;
 }
 
 allocator::allocator()
@@ -190,7 +257,18 @@ void allocator::dealloc(value v) {
         delete v.utable();
     } else if (v.is_function()) {
         mem_usage -= sizeof(function);
-        delete v.ufunction();
+        auto f = v.ufunction();
+
+        // delete dead upvalues
+        for (int i = 0; i < f->stub->num_upvals; ++i) {
+            auto cell = f->upvals[i];
+            cell->dereference();
+            if (cell->dead()) {
+                delete cell;
+            }
+        }
+
+        delete f;
     } else if (v.is_foreign()) {
         mem_usage -= sizeof(foreign_func);
         delete v.uforeign();
@@ -217,8 +295,10 @@ vector<value> allocator::accessible(value v) {
         // add the upvalues
         auto m = f->stub->num_upvals;
         for (local_addr i = 0; i < m; ++i) {
-            if (f->upvals[i].ref_count == nullptr) continue;
-            res.push_back(**f->upvals[i].val);
+            auto cell = f->upvals[i];
+            if (cell->closed) {
+                res.push_back(cell->closed_value);
+            }
         }
         auto num_opt = f->stub->pos_params.size() - f->stub->req_args;
         for (u32 i = 0; i < num_opt; ++i) {
@@ -260,7 +340,7 @@ void allocator::mark() {
             delete *it;
             it = root_stacks.erase(it);
         } else {
-            for (auto i = 0; i < (*it)->pointer; ++i) {
+            for (u32 i = 0; i < (*it)->get_pointer(); ++i) {
                 auto h = (*it)->contents[i].header();
                 if (h.has_value()) {
                     mark_descend(*h);
@@ -368,8 +448,8 @@ void allocator::add_root_object(value v) {
     root_objects.push_back(v);
 }
 
-root_stack* allocator::add_root_stack(u32 size) {
-    auto res = new root_stack{size};
+root_stack* allocator::add_root_stack() {
+    auto res = new root_stack{};
     root_stacks.push_front(res);
     return res;
 }
@@ -378,143 +458,6 @@ working_set allocator::add_working_set() {
     return working_set{this};
 }
 
-value allocator::add_cons(value hd, value tl) {
-    collect();
-    mem_usage += sizeof(cons);
-    ++count;
-
-    auto v = new cons{hd,tl,true};
-    objects.push_front(&v->h);
-    return as_value(v);
-}
-
-value allocator::add_string(const string& s) {
-    collect();
-    mem_usage += sizeof(fn_string);
-    // also add size of the string's payload
-    mem_usage += s.size();
-    ++count;
-
-    auto v = new fn_string{s, true};
-    objects.push_front(&v->h);
-    return as_value(v);
-}
-
-value allocator::add_string(const char* s) {
-    return add_string(string{s});
-}
-
-value allocator::add_table() {
-    collect();
-    mem_usage += sizeof(fn_table);
-    ++count;
-
-    auto v = new fn_table{true};
-    objects.push_front(&v->h);
-    return as_value(v);
-}
-
-value allocator::add_function(function_stub* stub,
-                              const std::function<void (upvalue_slot*,value*)>& populate) {
-    collect();
-    mem_usage += sizeof(function);
-    ++count;
-
-    auto v = new function{stub, populate, true};
-    objects.push_front(&v->h);
-    return as_value(v);
-}
-
-value allocator::add_foreign(local_addr min_args,
-                             bool var_args,
-                             optional<value> (*func)(local_addr, value*, virtual_machine*)) {
-    collect();
-    mem_usage += sizeof(foreign_func);
-    ++count;
-
-    auto v = new foreign_func{min_args, var_args, func, true};
-    objects.push_front(&v->h);
-    return as_value(v);
-}
-
-value allocator::add_namespace() {
-    collect();
-    mem_usage += sizeof(fn_namespace);
-    ++count;
-
-    auto v = new fn_namespace{true};
-    objects.push_front(&v->h);
-    return as_value(v);
-}
-
-value allocator::const_cons(value hd, value tl) {
-    mem_usage += sizeof(cons);
-    ++count;
-
-    auto v = as_value(new cons{hd,tl,false});
-    auto x = const_table.get(v);
-    if (x.has_value()) {
-        dealloc(v);
-        return **x;
-    } else {
-        const_table.insert(v, v);
-        return v;
-    }
-}
-
-value allocator::const_string(const string& s) {
-    mem_usage += sizeof(fn_string);
-    // also add size of the string's payload
-    mem_usage += s.size();
-    ++count;
-
-    auto v = as_value(new fn_string{s, false});
-    auto x = const_table.get(v);
-    if (x.has_value()) {
-        dealloc(v);
-        return **x;
-    } else {
-        const_table.insert(v, v);
-        return v;
-    }
-}
-
-value allocator::const_string(const char* s) {
-    return const_string(string{s});
-}
-
-value allocator::const_string(const fn_string& s) {
-    return const_string(s.data);
-}
-
-value allocator::const_quote(const fn_parse::ast_node* node) {
-    if (node->kind == fn_parse::ak_atom) {
-        auto& atom = *node->datum.atom;
-        switch (atom.type) {
-        case fn_parse::at_number:
-            return as_value(atom.datum.num);
-        case fn_parse::at_symbol:
-            return as_sym_value(atom.datum.sym);
-        case fn_parse::at_string:
-            return const_string(*atom.datum.str);
-        default:
-            // FIXME: maybe should raise an exception?
-            return V_NULL;
-        }
-    } else if (node->kind == fn_parse::ak_list) {
-        auto tl = V_EMPTY;
-        for (i32 i = node->datum.list->size() - 1; i >= 0; --i) {
-            auto hd = const_quote(node->datum.list->at(i));
-            tl = const_cons(hd, tl);
-        }
-        return tl;
-    } else {
-        // FIXME: probably should be an error
-        return V_NULL;
-    }
-}
-
-
 void allocator::print_status() {
     std::cout << "allocator information\n";
     std::cout << "=====================\n";
@@ -522,6 +465,5 @@ void allocator::print_status() {
     std::cout << "number of objects: " << count << '\n';
     // descend into values
 }
-
 
 }

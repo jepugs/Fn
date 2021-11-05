@@ -15,6 +15,62 @@ namespace fn {
 
 struct allocator;
 
+// A root_stack is a stack of garbage collector root objects. These are used for
+// the virtual machine stack.
+
+// used by root_stack to track which stack positions are associated to upvalues
+struct stack_upvalue {
+    upvalue_cell* cell;
+    u32 pos;
+};
+
+// TODO: replace the vector here with a manually-managed array
+struct root_stack {
+    friend class allocator;
+private:
+    // only the allocator is allowed to construct these
+    root_stack();
+    u32 pointer;
+    vector<value> contents;
+    // open upvalues in descending order by stack position
+    std::list<stack_upvalue> upvals;
+    bool dead; // if true, stack will be deleted when garbage is collected
+
+public:
+    // no copying! These cannot be moved around in memory or else
+    // mark_for_deletion will not work properly.
+    root_stack(const root_stack& other) = delete;
+    root_stack& operator=(const root_stack& other) = delete;
+    root_stack(root_stack&& other) = delete;
+    root_stack& operator=(root_stack&& other) = delete;
+
+    ~root_stack();
+
+    u32 get_pointer() const;
+
+    value peek(u32 offset=0) const;
+    value peek_bottom(u32 offset=0) const;
+    value pop();
+    void pop_times(u32 n);
+    void push(value v);
+    // set a value, indexed so 0 is the bottom
+    void set(u32 offset, value v);
+
+    // set the upvalues of a function object with the given base pointer
+    void add_upvalues(function* f, u32 base_ptr);
+    // close all upvalues with stack addresses >= base_addr. (Closing an upvalue
+    // involves copying its value to the heap and removing it from the list of
+    // upvalues).
+    void close(u32 base_addr);
+
+    value& operator[](u32 offset) {
+        return contents[offset];
+    }
+
+    void mark_for_deletion();
+};
+
+
 // A working_set is a unique object (read: move semantics only) used to store
 // values newly created by the allocator before they are added to the list for
 // garbage collection. This is done automatically on destruction.
@@ -51,11 +107,13 @@ public:
     value add_cons(value hd, value tl);
     value add_string(const string& s);
     value add_table();
-    value add_function(function_stub* stub,
-                       const std::function<void (upvalue_slot*,value*)>& populate);
+    // Create a function. The stack and base pointer are for setting upvalues
+    // and init values. This means that the stack will be popped as many times
+    // as the number of optional arguments indicated in the stub
+    value add_function(function_stub* stub, root_stack* stack, u32 base_ptr);
     value add_foreign(local_addr min_args,
-                      bool var_args,
-                      optional<value> (*func)(local_addr, value*, virtual_machine*));
+            bool var_args,
+            optional<value> (*func)(local_addr, value*, virtual_machine*));
     value add_namespace();
 
     // FIXME: pinning is not thread-safe
@@ -65,37 +123,6 @@ public:
     // reference count hits 0.
     value pin_value(value v);
 };
-
-
-struct root_stack {
-    friend class allocator;
-private:
-    // only the allocator is allowed to make these
-    root_stack(u32 size);
-    u32 size;
-    u16 pointer;
-    vector<value> contents;
-    bool dead; // if true, stack will be deleted when garbage is collected
-
-public:
-    // no copying! These cannot be moved around in memory or else
-    // mark_for_deletion will not work properly.
-    root_stack(const root_stack& other) = delete;
-    root_stack& operator=(const root_stack& other) = delete;
-    root_stack(root_stack&& other) = delete;
-    root_stack& operator=(root_stack&& other) = delete;
-
-    u16 get_pointer() const;
-
-    value peek(stack_addr offset=0) const;
-    value peek_bottom(stack_addr offset=0) const;
-    value pop();
-    void push(value v);
-    void clear();
-
-    void mark_for_deletion();
-};
-
 
 struct allocator {
     friend class working_set;
@@ -143,16 +170,8 @@ private:
     void mark();
     void sweep();
 
-    value add_cons(value hd, value tl);
-    value add_string(const string& s);
-    value add_string(const char* s);
-    value add_table();
-    value add_function(function_stub* stub,
-                       const std::function<void (upvalue_slot*,value*)>& populate);
-    value add_foreign(local_addr min_args,
-                      bool var_args,
-                      optional<value> (*func)(local_addr, value*, virtual_machine*));
-    value add_namespace();
+    void pin_object(obj_header* o);
+    void unpin_object(obj_header* o);
 
 public:
     allocator();
@@ -174,19 +193,8 @@ public:
     // add a value to the list of root values so it will not be collected
     void add_root_object(value v);
     // create a root stack managed by this allocator
-    root_stack* add_root_stack(u32 size);
+    root_stack* add_root_stack();
     working_set add_working_set();
-
-    // FIXME: remove these and use working_set with appropriate lifetime instead
-    // Note: values passed to const_cons must be constant or they will be
-    // deallocated prematurely (bad)
-    value const_cons(value hd, value tl);
-    value const_string(const char* s);
-    value const_string(const string& s);
-    value const_string(const fn_string& s);
-
-    // convert an ast_node object to a quoted form
-    value const_quote(const fn_parse::ast_node* node);
 
     void print_status();
 };

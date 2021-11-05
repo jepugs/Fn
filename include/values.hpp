@@ -368,11 +368,6 @@ struct alignas(32) fn_table {
     fn_table(bool gc=false);
 };
 
-// upvalue
-struct upvalue {
-    local_addr slot;
-    bool direct;
-};
 
 // forward declarations for function_stub
 struct code_chunk;
@@ -392,101 +387,55 @@ struct function_stub {
     bc_addr addr;                  // function address in its chunk
 
     local_addr num_upvals;
-    vector<upvalue> upvals;
+    // upvalues are identified by their offset relative to the base pointer.
+    // Upvalues defined in a containing function are then identified
+    vector<i32> upvals;
 
-    // get an upvalue and return its id. adds a new upvalue if one doesn't exist
-    local_addr get_upvalue(local_addr id, bool direct);
+    // get an upvalue address based on its stack location (offset relative to
+    // the function base pointer). The upvalue is added if necessary
+    local_addr get_upvalue(i32 offset);
 };
 
-// we use pointers to upvalue_slots to create two levels of indirection. in this
-// way, upvalue_slot objects can be shared between function objects. meanwhile,
-// upvalue_slot contains a pointer to a value, which is initially on the stack
-// and migrates to the heap if the upvalue outlives its lexical scope.
+// A location storing a captured variable. These are shared across functions.
+struct upvalue_cell {
+    bool closed;         // if false, the value is still on the stack
+    u32 ref_count;       // number of functions using this upvalue
+    value closed_value;  // holds the upvalue for closed cells
+    // TODO: lock these :'(
 
-// upvalue_slots are shared objects which track the location of an upvalue (i.e.
-// a value cell containing a local_addr variable which was captured by a
-// function).
-
-// concretely, an upvalue_slot is a reference-counted pointer to a cell
-// containing a value. upvalue_slots are initially expected to point to a
-// location on the interpreter stack; corresponding upvalues are said to be
-// "open". "closing" an upvalue means copying its value to the stack so that
-// functions may access it even after the stack local_addr environment expires.
-// upvalue_slots implement this behavior via the field open and the method
-// close(). once closed, the upvalue_slot takes ownership of its own value cell,
-// and it will be deleted when the reference count drops to 0.
-struct upvalue_slot {
-    // if true, val is a location on the interpreter stack
-    bool* open;
-    value** val;
-    u32* ref_count;
-
-    upvalue_slot()
-        : open(nullptr)
-        , val(nullptr)
-        , ref_count(nullptr) {
+    inline void reference() {
+        ++ref_count;
     }
-    upvalue_slot(value* place)
-        : open(new bool)
-        , val(new value*)
-        , ref_count(new u32) {
-        *open = true;
-        *val = place;
-        *ref_count = 1;
+    inline void dereference() {
+        --ref_count;
     }
-    upvalue_slot(const upvalue_slot& u)
-        : open(u.open)
-        , val(u.val)
-        , ref_count(u.ref_count) {
-        ++*ref_count;
+    inline bool dead() {
+        return ref_count == 0;
     }
-    ~upvalue_slot() {
-        if (ref_count == nullptr) {
-            return;
-        }
-
-        --*ref_count;
-        if (*ref_count == 0) {
-            if (!*open) {
-                // closed upvals need to have their data deleted
-                delete *val;
-            }
-            delete open;
-            delete val;
-            delete ref_count;
-        }
+    inline void close(value v) {
+        closed_value = v;
+        closed = true;
     }
 
-    upvalue_slot& operator=(const upvalue_slot& u) {
-        this->open = u.open;
-        this->val = u.val;
-        this->ref_count = u.ref_count;
-        ++*ref_count;
-        return *this;
-    }
-
-    // copies this upvalue's value cell to the heap. the new value cell will be cleared when the
-    // last reference to this upvalue_slot is deleted.
-    void close() {
-        *open = false;
-        auto v = **val;
-        *val = new value;
-        **val = v;
+    // create a new open cell with reference count 1
+    upvalue_cell()
+        : closed{false}
+        , ref_count{1} {
     }
 };
 
 struct alignas(32) function {
     obj_header h;
     function_stub* stub;
-    upvalue_slot* upvals;
+    upvalue_cell** upvals;
     value* init_vals;
 
-    // FIXME: replace this populate function with array or pointer arguments
-    // warning: you must manually set up the upvalues
-    function(function_stub* stub,
-             const std::function<void (upvalue_slot*,value*)>& populate,
-             bool gc=false);
-    // TODO: use refcount on upvalues
+    // The function stub must outlive associated function objects.
+
+    // During construction, upvals is allocated according to the num_upvals
+    // field in stub. However, it is the responsibility of the function creator
+    // to allocate it.
+    function(function_stub* stub, bool gc=false);
     ~function();
 };
 

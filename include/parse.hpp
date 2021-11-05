@@ -105,6 +105,9 @@ struct parameter {
     }
 };
 
+// TODO: replace positional with a vector of symbol ids, a req_args field, and a
+// separate vector of initforms. This will remove the need for the parameter
+// structure.
 struct param_list {
     vector<parameter> positional;
     optional<symbol_id> var_list;

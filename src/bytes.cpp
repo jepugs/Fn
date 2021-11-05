@@ -31,8 +31,12 @@ u32 code_chunk::size() const {
     return static_cast<u32>(code.size());
 }
 
-symbol_table* code_chunk::get_symtab() {
+symbol_table* code_chunk::get_symtab() const {
     return st;
+}
+
+value code_chunk::get_ns() {
+    return ns;
 }
 
 void code_chunk::write_byte(u8 data) {
@@ -125,10 +129,11 @@ u16 code_chunk::add_function(const vector<symbol_id>& pparams,
             .req_args=req_args,
             .vl_param=vl_param,
             .vt_param=vt_param,
+            .foreign_func = nullptr,
             .chunk=this,
             .addr=size(),
             .num_upvals=0,
-            .upvals=vector<upvalue>(),});
+            .upvals=vector<i32>()});
     return (u16) (functions.size() - 1);
 }
 

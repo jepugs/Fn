@@ -4,30 +4,20 @@ namespace fn {
 
 using namespace fn_parse;
 
-local_table::local_table(local_table* parent, function_stub* func)
+local_table::local_table(local_table* parent, function_stub* new_func)
     : vars{}
     , parent{parent}
-    , cur_func{func}
-    , sp{0} {
+    , enclosing_func{new_func}
+    , sp{0}
+    , bp{0} {
     if (parent != nullptr) {
-        sp = parent->sp;
+        if (enclosing_func != nullptr) {
+            bp = parent->sp;
+        } else {
+            sp = parent->sp;
+            bp = parent->bp;
+        }
     }
-}
-
-u8 local_table::add_upvalue(u32 levels, u8 pos) {
-    auto call = this;
-    while (call->cur_func == nullptr && call != nullptr) {
-        call = call->parent;
-    }
-
-    // levels == 1 => this is a direct upvalue, so add it and return
-    if (levels == 1) {
-        return call->cur_func->get_upvalue(pos, true);
-    }
-
-    // levels > 1 => need to get the upvalue from an enclosing function
-    u8 slot = call->parent->add_upvalue(levels - 1, pos);
-    return call->cur_func->get_upvalue(slot, false);
 }
 
 void compiler::compile_subexpr(local_table& locals, const ast_node* expr) {
@@ -43,11 +33,11 @@ void compiler::compile_subexpr(local_table& locals, const ast_node* expr) {
 
 
 optional<local_addr> compiler::find_local(local_table& locals,
-                                          bool* is_upval,
-                                          symbol_id name) {
+        bool* is_upval,
+        symbol_id name) {
     local_table* l = &locals;
     optional<u8*> res;
-    u32 levels = 0;
+    i32 base_offset = 0;
     // keep track of how many enclosing functions we need to go into
     while (true) {
         res = l->vars.get(name);
@@ -55,20 +45,19 @@ optional<local_addr> compiler::find_local(local_table& locals,
             break;
         }
 
-
-        // here we're about to ascend to an enclosing function, so we need an upvalue
-        if (l->cur_func != nullptr) {
-            levels += 1;
-        }
+        // when entering an enclosing function, update the base offset
         if (l->parent == nullptr) {
             break;
+        }
+        if (l->enclosing_func != nullptr) {
+            base_offset -= l->bp;
         }
         l = l->parent;
     }
 
-    if (levels > 0 && res.has_value()) {
+    if (base_offset < 0 && res.has_value()) {
         *is_upval = true;
-        return locals.add_upvalue(levels, **res);
+        return l->enclosing_func->get_upvalue(base_offset + **res);
     } else if (res.has_value()) {
         *is_upval = false;
         return **res;
@@ -379,7 +368,6 @@ void compiler::compile_function(local_table& locals,
 
     // create the new local environment
     local_table fn_locals{&locals, dest->get_function(func_id)};
-    fn_locals.sp = 0;
     for (auto x : params.positional) {
         fn_locals.vars.insert(x.sym, fn_locals.sp);
         ++fn_locals.sp;
