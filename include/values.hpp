@@ -5,7 +5,6 @@
 
 #include "base.hpp"
 #include "table.hpp"
-#include "vm_handle.hpp"
 
 #include <functional>
 #include <cstring>
@@ -202,55 +201,55 @@ inline bool v_truthy(value a) {
 }
 
 // Safe value accessors. These check tags and generate errors if necessary.
-f64 v_num(vm_handle vm, value v);
-bool v_bool(vm_handle vm, value v);
-fn_string* v_string(vm_handle vm, value v);
-cons* v_cons(vm_handle vm, value v);
-fn_table* v_table(vm_handle vm, value v);
-function* v_function(vm_handle vm, value v);
-foreign_func* v_foreign(vm_handle vm, value v);
-fn_namespace* v_namespace(vm_handle vm, value v);
+// f64 v_num(vm_handle vm, value v);
+// bool v_bool(vm_handle vm, value v);
+// fn_string* v_string(vm_handle vm, value v);
+// cons* v_cons(vm_handle vm, value v);
+// fn_table* v_table(vm_handle vm, value v);
+// function* v_function(vm_handle vm, value v);
+// foreign_func* v_foreign(vm_handle vm, value v);
+// fn_namespace* v_namespace(vm_handle vm, value v);
 
 // functions to create memory managed objects
-value alloc_string(vm_handle vm, const string& str);
-value alloc_string(vm_handle vm, const char* str);
-value alloc_cons(vm_handle vm, value head, value tail);
-value alloc_table(vm_handle vm);
+// value alloc_string(vm_handle vm, const string& str);
+// value alloc_string(vm_handle vm, const char* str);
+// value alloc_cons(vm_handle vm, value head, value tail);
+// value alloc_table(vm_handle vm);
 
 // generate a symbol with a unique ID
-value v_gensym(vm_handle vm);
+// value v_gensym(vm_handle vm);
 
 // safe arithmetic operations
-value v_plus(vm_handle vm, value a, value b);
-value v_minus(vm_handle vm, value a, value b);
-value v_times(vm_handle vm, value a, value b);
-value v_div(vm_handle vm, value a, value b);
-value v_pow(vm_handle vm, value a, value b);
+// value v_plus(vm_handle vm, value a, value b);
+// value v_minus(vm_handle vm, value a, value b);
+// value v_times(vm_handle vm, value a, value b);
+// value v_div(vm_handle vm, value a, value b);
+// value v_pow(vm_handle vm, value a, value b);
 // note: the modulus is floor(b) if b is not an integer
-value v_mod(vm_handle vm, value a, value b);
+// value v_mod(vm_handle vm, value a, value b);
 
 // these overloads allow us to operate on values with f64's
-value v_plus(vm_handle vm, value a, f64 b);
-value v_minus(vm_handle vm, value a, f64 b);
-value v_times(vm_handle vm, value a, f64 b);
-value v_div(vm_handle vm, value a, f64 b);
-value v_pow(vm_handle vm, value a, f64 b);
-value v_mod(vm_handle vm, value a, f64 b);
+// value v_plus(vm_handle vm, value a, f64 b);
+// value v_minus(vm_handle vm, value a, f64 b);
+// value v_times(vm_handle vm, value a, f64 b);
+// value v_div(vm_handle vm, value a, f64 b);
+// value v_pow(vm_handle vm, value a, f64 b);
+// value v_mod(vm_handle vm, value a, f64 b);
 
 // absolute value
 value v_uabs(value a);
-value v_abs(vm_handle vm, value a);
+// value v_abs(vm_handle vm, value a);
 
 // natural log
 value v_ulog(value a);
-value v_log(vm_handle vm, value a);
+// value v_log(vm_handle vm, value a);
 
 // floor and ceiling functions
 value v_ufloor(value a);
 value v_uceil(value a);
 
-value v_floor(vm_handle vm, value a);
-value v_ceil(vm_handle vm, value a);
+// value v_floor(vm_handle vm, value a);
+// value v_ceil(vm_handle vm, value a);
 
 // ordering
 bool v_ult(value a, value b);
@@ -258,26 +257,26 @@ bool v_ugt(value a, value b);
 bool v_ule(value a, value b);
 bool v_uge(value a, value b);
 
-bool v_lt(vm_handle vm, value a, value b);
-bool v_gt(vm_handle vm, value a, value b);
-bool v_le(vm_handle vm, value a, value b);
-bool v_ge(vm_handle vm, value a, value b);
+// bool v_lt(vm_handle vm, value a, value b);
+// bool v_gt(vm_handle vm, value a, value b);
+// bool v_le(vm_handle vm, value a, value b);
+// bool v_ge(vm_handle vm, value a, value b);
 
 // string functions
 value v_ustrlen(value str);
-value v_strlen(vm_handle vm, value str);
+// value v_strlen(vm_handle vm, value str);
 
 // symbol functions
-const symbol* v_lookup_symbol(vm_handle vm, value sym);
-value v_intern(vm_handle vm, value name);
-value v_intern(vm_handle vm, const string& name);
-value v_intern(vm_handle vm, const char* name);
+// const symbol* v_lookup_symbol(vm_handle vm, value sym);
+// value v_intern(vm_handle vm, value name);
+// value v_intern(vm_handle vm, const string& name);
+// value v_intern(vm_handle vm, const char* name);
 
-string v_usym_name(vm_handle vm, value sym);
+// string v_usym_name(vm_handle vm, value sym);
 symbol_id v_usym_id(value sym);
 
-string v_sym_name(vm_handle vm, value sym);
-symbol_id v_sym_id(vm_handle vm, value sym);
+// string v_sym_name(vm_handle vm, value sym);
+// symbol_id v_sym_id(vm_handle vm, value sym);
 
 // list functions
 
@@ -285,35 +284,35 @@ symbol_id v_sym_id(vm_handle vm, value sym);
 value v_uhead(value x);
 value v_utail(value x);
 
-// generates error on cons
-value v_head(vm_handle vm, value x);
-// this works on empty
-value v_tail(vm_handle vm, value x);
+// // generates error on cons
+// value v_head(vm_handle vm, value x);
+// // this works on empty
+// value v_tail(vm_handle vm, value x);
 
 // table/namespace functions
 forward_list<value> v_utab_get_keys(value obj);
 forward_list<value> v_uns_get_keys(value obj);
-forward_list<value> v_tab_get_keys(vm_handle vm, value obj);
-forward_list<value> v_ns_get_keys(vm_handle vm, value obj);
+// forward_list<value> v_tab_get_keys(vm_handle vm, value obj);
+// forward_list<value> v_ns_get_keys(vm_handle vm, value obj);
 
 bool v_utab_has_key(value obj, value key);
 bool v_uns_has_key(value obj, value key);
-bool v_tab_has_key(vm_handle vm, value obj, value key);
-bool v_ns_has_key(vm_handle vm, value obj, value key);
+// bool v_tab_has_key(vm_handle vm, value obj, value key);
+// bool v_ns_has_key(vm_handle vm, value obj, value key);
 
 value v_utab_get(value obj, value key);
 void v_utab_set(value obj, value key, value v);
 value v_uns_get(value obj, value key);
 void v_uns_set(value obj, value key, value v);
 
-value v_tab_get(vm_handle vm, value obj, value key);
-void v_tab_set(vm_handle vm, value obj, value key, value v);
-value v_ns_get(vm_handle vm, value obj, value key);
-void v_ns_set(vm_handle vm, value obj, value key, value v);
+// value v_tab_get(vm_handle vm, value obj, value key);
+// void v_tab_set(vm_handle vm, value obj, value key, value v);
+// value v_ns_get(vm_handle vm, value obj, value key);
+// void v_ns_set(vm_handle vm, value obj, value key, value v);
 
-forward_list<value> v_get_keys(vm_handle vm, value obj);
-value v_get(vm_handle vm, value obj, value key);
-void v_set(vm_handle vm, value obj, value key, value v);
+// forward_list<value> v_get_keys(vm_handle vm, value obj);
+// value v_get(vm_handle vm, value obj, value key);
+// void v_set(vm_handle vm, value obj, value key, value v);
 
 
 /// value structures
