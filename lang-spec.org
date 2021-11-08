@@ -3,9 +3,756 @@
 
 * About this Document
 
-This document is a minimal formal spec of fn for Version 0.1.0. The goal is to completely describe
-fn without any ambiguity so that it may be implemented precisely, with no undefined behavior. It is
-meant mainly as an aid to the implementor.
+This document fully specifies the syntax and semantics of the Fn programming
+language. Any part of it may be changed at any time. Since the interpreter is
+still unfinished, its actual behavior may differ from what's described here.
+
+Section [[Language Description]] contains a description of the semantics of Fn. It's
+meant to read like a user's manual, and should cover everything about the core
+language when it's done. I'm trying to make this readable.
+
+After this comes the technical part of the document. It's a big old list of all
+the types of expressions in Fn with precise descriptions of their behaviors.
+
+Following this is the lexical analysis section. This rounds out the
+specification by giving a character-by-character description of Fn syntax. I'm
+planning to rewrite this at some point. It's in rough shape after repeated
+cut-and-pastes from different documents.
+
+At the end is some other miscellaneous stuff I copied from old design documents
+because I didn't want to delete it from the main repository yet.
+
+There will be more sections (and subsections!) in the future.
+
+
+* Language Description
+
+** Overview
+
+Fn is a dynamically typed, garbage-collected, general-purpose programming
+language with Lisp-like syntax. A couple of its defining characteristics are:
+- The core language has relatively few operators, with special care taken to
+  ensure they have consistent and concise syntax.
+- Fn is designed for a "mostly functional" programming style, where immutability
+  and referential transparency are favored, but not required.
+- The native macro system allows definition of new syntax (and even entire
+  domain-specific languages) using regular Fn code and data structures.
+
+The syntax looks like this:
+
+#+BEGIN_SRC fn
+(def sqrt-precision 0.001)
+(def approx-sqrt (x)
+  (letfn iterate (guess)
+    (if (< (abs (- x (* guess guess)) sqrt-precision))
+        guess
+        (iterate (/ (+ guess (/ x guess) 2)))))
+  (if (>= x 0)
+      (iterate (/ x 2))
+      (error "Cannot approximate square root of a negative number.")))
+#+END_SRC
+
+
+** Variables and Mutation
+
+*** Local Variables
+
+Local variables can be created using one of the special operators ~let~, ~letfn~, or
+~with~.[fn:let-other-lisp] They all bind variables in the same way, but with
+different syntax for programmer convenience. Function parameters are also
+treated as local variables within the function body.
+
+Before proceeding, we note that the full story about local variables involves
+variable capture semantics, which are covered in a later section. Variable
+capture doesn't affect any of the concepts discussed in the rest of this section.
+
+~let~ is the most elementary way to create a local variable. It defines one or
+more new variables in the current lexical environment.
+
+#+BEGIN_SRC fn  ;; let binds one or more variables to the given values
+;; let binds variables to the given values
+(let x 'symbol)
+;; multiple definitions can be made in a single let
+(let a 16
+     b (reverse "string")
+     ;; value expressions can refer to variables from earlier in the same let
+     c (+ a (length b))
+#+END_SRC
+
+~with~ is similar to ~let~, but rather than creating definitions in the containing
+environment, it creates a new lexical environment.
+
+#+BEGIN_SRC fn
+;; this creates two variables
+(with (a 3
+       b 4)
+  ;; the body can contain multiple expressions
+  (println "hello")
+  (+ a b))
+;; returns 7
+;; the variables a, b do not exist outside of the with body
+#+END_SRC
+
+~letfn~ has a streamlined syntax for creating functions, but otherwise behaves
+like ~let~. See the documentation below for details.
+
+All local variables can have their value changed with ~set!~. The exclamation
+point is because mutation is not to be taken lightly. The syntax for ~set!~ is
+like this:
+
+#+BEGIN_SRC fn
+(set! var-name new-value)
+;; for example
+(let var 'hi)
+(println var) ;; prints 'hi
+(set! var 'lo)
+(println var) ;; prints 'lo
+#+END_SRC
+
+Note that attempting to ~set!~ a global variable will result in an error.
+
+[fn:let-other-lisp] In Fn, the ~with~ operator provides the functionality of what
+most Lisp-like languages call ~let~, while Fn's ~let~ is quite different, as it acts
+on the surrounding environment.
+
+
+*** Global Variables
+
+Global variables in Fn are created using ~def~ or ~defn~. E.g.
+
+#+BEGIN_SRC fn
+(def my-global 'special-constant)
+(def my-other-global (+ 21 69))
+#+END_SRC
+
+~defn~ behaves exactly like ~def~, but has special syntax streamlined for defining
+functions.
+
+Global variables are immutable, i.e. they cannot be changed by using ~set!~.
+However, by assigning global variables to mutable datatypes or by exploiting
+variable capture (discussed in a later section), mutable state can still be
+associated to a global variable. This is intended behavior, however, it is not
+recommended that you abuse it.
+
+
+** Data Types
+
+Fn provides the following builtin data types (type names in Fn are
+~Capitalized-Like-This~):
+
+- ~Nil~ :: The special constant ~nil~, used to indicate no value.
+- ~Bool~ :: The special boolean constants ~true~ and ~false~.
+- ~Num~ :: Floating-point numbers. (These are almost IEEE 64-bit floats, but we
+  truncate the significand by three bits to fit type information).
+- ~Symbol~ :: Internalized strings. These are essentially strings with a faster
+  equality test, at the expensive of slower access to the characters of the
+  string. They are used extensively by the macro system.
+- ~String~ :: (Immutable) sequences of bytes. Usually these are UTF-8 encoded
+  character streams.
+- ~List~ :: (Immutable) singley-linked lists.
+- ~Table~ :: Mutable key-value stores.
+
+Of these, only lists and tables logically contain other values. (Substrings can
+be extracted from strings, but this actually creates a new string object and
+just copies in data from the other string). So, we call ~List~ and ~Table~ the two
+*compound data types*, and call the rest of them *simple data types*.
+
+*** Simple Data Types
+Here is what the syntax looks like for the simple data types:
+
+#+BEGIN_SRC fn
+;; numbers are pretty much what you'd expect
+2
+-6
+3.14159
+2.0e-6 ;; we have scientific notation
+0xFf ;; hexadecimal, even!
+
+;; strings are enclosed within matched double quotes
+"string"
+"Fn uses escape codes from C, e.g. \\ \"\n"
+""
+
+;; symbols are prefixed by a single quote.
+'sym1
+'sym2
+;; symbols can contain whitespace and syntax characters, provided they are 
+;; escaped with a backslash
+'sym\ with\ \"escapes\"
+;; be careful about the quote operator. If the quoted expression is a number,
+;; it will result in a number instead of a symbol. You can get around this 
+;; with escapes:
+'0xb8  ;; this is a number
+'\0xb8 ;; this is a symbol
+
+;; booleans and nil are called by name
+true
+false
+nil
+#+END_SRC
+
+See also subsection [[Quoting]] for more on symbols and the quote operator.
+
+
+*** Lists
+
+Lists in Fn are what you'd expect for a functional programming language. They're
+created using square brackets or by using the ~List~ function.
+
+#+BEGIN_SRC fn
+[] ; empty list
+['a 'b] ; list of two symbols
+[1 'a "str"] ; lists may contain objects of arbitrary type
+
+;; List is identical to square bracket syntax
+[1 2 3]
+(List 1 2 3)
+#+END_SRC
+
+Lists can be manipulated with builtin functions:
+
+#+BEGIN_SRC fn
+(def list1 [["str" 2] 'a 'b])
+(def list2 [0 2 4 6 8 10])
+
+;; head and tail access the head and tail of the list
+(head list1) ;=> ["str" 2]
+(head list2) ;=> 0
+(tail list1) ;=> ['a 'b]
+
+(tail [])    ;=> []
+(head [])    ;=> error (empty list has no head)
+
+;; nth allows random access:
+(nth list1 2) ;=> 'b
+(nth list2 1) ;=> 2
+
+;; length gives the length of a list
+(length []) ;=> 0
+(length list1) ;=> 3
+(length list2) ;=> 6
+
+;; cons prepends elements
+(cons 2 []) ;=> [2]
+(cons nil list1) ;=> [nil ["str" 2] 'a 'b]
+
+;; concat concatenates two or more lists
+(concat [1 2 3] [4 5 6]) ;=> [1 2 3 4 5 6]
+(concat [37] ['foo] ["bar"]) ;=> [37 'foo "bar"]
+(concat list2 list1) ;=> [0 2 4 6 8 10 ["str" 2] 'a 'b]
+
+;; reverse reverse the direction of a list
+(reverse list2) => [10 8 6 4 2 0]
+#+END_SRC
+
+
+*** TODO Tables
+
+Tables are key-value stores. Any type of object may be used as a key or a value,
+(note, however, that it takes longer to hash more complicated data structures
+since we have to descend on their fields)[fn:key-equality].
+
+Tables are built using braces ~{}~ or the equivalent ~Table~ function. This must be
+passed an even number of arguments.
+
+#+BEGIN_SRC fn
+{} ;=> empty table
+{'key1 4 'key 6} ;=> table with two kv-pairs
+(Table 'key1 4 'key 6) ;=> table with two kv-pairs
+#+END_SRC
+
+Table elements may be accessed using the builtin function ~get~. When the key is a
+constant symbol, dot syntax (or the equivalent ~dot~ special operator) can be
+used instead. This is how this looks:
+
+#+BEGIN_SRC fn
+(def tab1 {'name "Mr. Table"
+          'occupation "Holds data"
+          'child {'name "Table Jr." 
+                  'occupation "Holds less data"}})
+(def tab2 {0 'zero 1 'one 2 'two 3 'three 4 'four})
+
+;; these all return "Mr. Table"
+(get tab1 'name)
+tab1.name
+(dot tab1 name) ; equivalent syntax to the dot expression
+;; Note that the symbols in the dot expressions are unquoted. Arguments to dot 
+;; must be unquoted symbols or a compilation error occurs.
+
+;; get is more flexible than dot and allows arbitrary key and value expressions
+(get tab2 (+ 1 2)) ;=> 'three
+(get {'k 'v} 'k) ;=> 'v
+
+;; dot makes it convenient to descend on tables with symbolic key names
+tab1.child.name ;=> "Table Jr."
+;; equivalent expression:
+(dot tab1 child name)
+#+END_SRC
+
+Since tables are mutable, the main way to populate them is to use the ~set!~
+operator (the same one as for local variables). In this case, the first argument
+may be any legal ~get~ or ~dot~ expression on a table.
+
+# TODO: write code examples here
+#+BEGIN_SRC fn
+#+END_SRC
+
+Lastly, tables size can be checked with ~length~, a list of keys can be retrieved
+with ~table-keys~, and two or more tables can be combined with ~concat~ (if any of
+the tables have keys in common, the last table in the argument list takes
+priority).
+
+[fn:key-equality] Two keys are equal if ~(= k1 k2)~ is true (using the builtin
+equality function). For simple data types the meaning of equality is obvious.
+Lists and tables are compared componentwise. That is, two lists are equal if and
+only if all their respective entries are equal. Two tables are equal if their
+key sets are equal (disregarding order), and for each key the corresponding
+values in each table are equal.
+
+
+*** Quoting
+
+"Quoting" refers to the process of converting Fn source code into native Fn
+data. This allows us to easily process and manipulate Fn source code using the
+same facilities as for normal data.
+
+Quoting is the secret sauce that makes Fn's macro system work. It's the main
+reason why Fn has the syntax it has.
+
+The ~quote~ special operator has syntax:
+#+BEGIN_SRC fn
+(quote <expr>) ;; or, equivalently
+'<expr>
+#+END_SRC
+where ~<expr>~ can be any expression (in fact, it need not be a legal expression
+by itself). These two notations are exactly the same. The interpreter expands
+the second into the first before evaluation.
+
+The value returned by quote is guaranteed to only consist of lists, symbols,
+numbers, and strings. We refer to the latter three as *atoms*. Here are some
+examples:
+#+BEGIN_SRC fn
+'(a b c) ;; returns ['a 'b 'c]
+'"string" ;; returns "string"
+'(+ a (/ x 2)) ;; returns ['+ 'a ['/ 'x 2]]
+
+''quot ;; is equivalent to
+(quote (quote quot)) ;; which returns ['quote 'quot]
+#+END_SRC
+
+Note that ~<expr>~ only needs to be syntactically valid (i.e. not freak out the
+parser). Illegal expressions can be quoted just fine:
+#+BEGIN_SRC fn
+'() ;; returns [] (the empty list)
+'(2 (3 4)) ;; returns [2 [3 4]]
+'(quote) ;; returns ['quote]
+#+END_SRC
+
+This makes ~quote~ very handy for creating nested lists of atoms. (~quote~ also has
+a big sister named ~quasiquote~, which is covered in the section on macros, and
+allows for much more flexibility).
+
+~quote~ is also the primary way to create symbols. As noted in subsection [[Simple
+Data Types]], this can lead to problems when we want a symbol whose name is a
+syntactically valid number. Adding an escape character to the symbol name
+designates to the parser that the token should be read as a symbol rather than a
+number. In fact, we can even use this trick to give variables numbers for names:
+#+BEGIN_SRC fn
+;; probably don't do this
+(def \2 3)
+2  ;; returns 2
+\2 ;; returns 3
+#+END_SRC
+
+My recommendation: just don't use symbol names that are syntactically legal
+numbers.
+
+
+** TODO Control Flow and Functions
+
+*** Conditional Execution
+
+The conditional control flow primitives are ~if~ and ~cond~.
+
+
+*** Creating Functions
+
+Functions are created using ~fn~.
+
+A short syntax is also provided for creating functions via the dollar sign,
+which expands into a ~dollar-fn~ special form.
+
+
+*** Variable Capture
+
+
+** TODO Namespaces and Import
+
+*** Namespaces
+
+*** Import Search
+
+*** Global Namespace Objects
+
+
+** TODO Macros
+
+*** Macro Basics
+
+*** Quasiquotation
+
+*** Variable Capture and ~gensym~
+
+
+* Formal Semantics
+
+This section is a formal description of every type of expression in Fn. It is
+currently incomplete and inaccurate. I don't know why you'd want to look at it.
+
+#+begin_src
+program ::= expr* expr ::= immediate
+        | variable
+        | special-form
+        | function-call
+        | macro-call
+#+end_src
+
+** Immediate Expressions and Variables
+
+Syntax:
+#+begin_src
+immediate ::= boolean 
+          | null
+          | number
+          | string
+variable ::= non-special-symbol
+#+end_src
+
+An immediate expression is a literal representing a constant value. On
+evaluation, immediate expressions immediately return the value they represent.
+
+Variables are represented by non-special symbols, (where special symbols are
+those naming special forms, boolean values, or null). If there exists a binding
+in the current environment for the provided symbol, then its value is returned.
+Otherwise an exception is raised.
+
+
+** Special forms
+
+Special forms are so called because they have different semantics than function
+or macro calls.
+
+*** and
+Syntax:
+#+begin_src
+and-expr ::= "(" "and" expr* ")"
+#+end_src
+
+Expressions are evaluated one at a time until a logically false value is
+encountered, then returns ~false~. If the end of the list is reached, returns
+~true~.
+
+*** cond
+Syntax:
+#+begin_src
+cond-expr ::= "(" "cond" cond-case+ ")"
+cond-case ::= expr expr
+#+end_src
+
+For each cond-case, the following is done:
+- evaluate the first expression
+- if the first expression is logically true, return the value of the second
+  expression
+- otherwise, proceed to the next cond-case.
+
+If the end of the list is reached, returns ~null~.
+*** def
+Syntax:
+#+begin_src
+def-expr ::= "(" "def" identifier expr ")"
+         | "(" "def" func-proto expr+")"
+func-proto ::= "(" identifier param-list ")"
+#+end_src
+
+Create a (global) binding in the current namespace. The first syntax binds the
+identifier to the value of the expression. The second syntax creates a function
+with the specified name and parameter list and the expressions as its body. In
+either case, if the identifier is already bound, an exception is raised.
+
+Returns ~null~.
+
+*** TODO defmacro
+Syntax:
+#+begin_src
+defmacro-expr ::= "(" "defmacro" identifier param-list expr+ ")"
+#+end_src
+
+*** defn
+*** do
+Syntax:
+#+begin_src
+do-expr ::= "(" "do" expr* ")"
+#+end_src
+
+Evaluates provided expressions one at a time, returning the value of the last
+one, or ~null~ if no expressions are given.
+
+*** do-inline
+*** TODO dot
+Syntax:
+#+begin_src
+dot-expr ::= dotted-symbol
+           | "(" "dot" symbol+ ")"
+#+end_src
+
+This operator is usually used with the dotted-symbol syntax, e.g. ~table.key~.
+
+The first symbol (leftmost in the inline notation) must name a variable bound to
+a table. The next symbol is used as a key to access an element of the table. If
+additional symbols are provided, then they are used as keys to recursively
+descend into a tree of tables. An exception is raised if one of the keys is
+invalid or if an attempt is made to access an object which is not a table.
+
+*** dollar-fn
+Syntax:
+#+begin_src
+dollar-fn-expr ::= "(" "dollar-fn" expr ")"
+               | "$(" expr+ ")"
+               | "$[" expr+ "]"
+               | "${" expr+ "}"
+               | "$`" form
+#+end_src
+
+Creates an anonymous function which evaluates the provided expression. With the
+"$" syntax, this is the expression after the dollar sign. (The only expressions
+which may follow are parenthesized forms, quasiquote forms, or list/table
+expressions).
+
+Within the provided expression, variables named ~$N~ where N is a nonnegative
+integer, are bound to the corresponding positional parameters starting from 0.
+In addition, ~$~ is bound to the first parameter ~$0~ and ~$&~ is used for a
+variadic parameter.
+
+The parameter list for the created function accepts as many positional
+parameters as the highest value of N and a variadic parameter only if ~$&~
+appears in the expression. (This is accomplished by performing code-walking,
+including macroexpansion, before compiling the ~dollar-fn~).
+
+*** if
+Syntax:
+#+begin_src
+if-expr ::= "(" "if" test-expr expr expr ")"
+test-expr ::= expr
+#+end_src
+
+Evaluates test-expr. If the result is logically true, evaluates the second
+argument, otherwise evaluates final argument, returning the result.
+
+*** TODO import
+Syntax:
+#+begin_src
+import-expr ::= "(" "import" import-designator
+                             [:as identifier] ")"
+import-designator ::= string | symbol
+#+end_src
+
+Import bindings from another namespace. Every variable and macro definition from
+the target namespace is copied into the current namespace. The newly created
+bindings have names of the form ~namespace-name:variable-name~. Since it is
+illegal to create variables whose names contain the colon character, this
+ensures that no name collisions can occur, provided there is not already a
+namespace imported with this name.
+
+If an identifier is provided via the ~:as~ argument, then that is used instead of
+the namespace name.
+
+When ~import~ is used on a namespace that is not already loaded, the interpreter
+checks for appropriate files in the search path, then compiles and loads them as
+necessary.
+
+**** Future changes
+
+- Support for unqualified imports will be added (i.e. imports without the ~namespace~name:~
+  prefix).
+- Import may be changed so as to not recursively import imports from the package
+  named. With current behavior, we could get names like ~ns1:ns2:function~ when
+  ~ns1~ imports ~ns2~. This is mostly harmless, but we'd rather not overclutter
+  namespaces if only for memory concerns. Also, it could definitely cause
+  trouble if used with unqualified imports.
+- Along with unqualified imports, we may add the notion of exports to
+  namespaces, so that only certain bindings in a namespace are even made
+  available to external namespaces. This is probably good for convenience for
+  users of a library, but it also can give implementors some peace of mind
+  knowing that their internal functions won't be called directly by user code.
+
+*** fn
+Syntax:
+#+begin_src
+fn-expr ::= "(" "fn" "(" param-list ")" expr+ ")"
+#+end_src
+
+Creates a function object using the provided parameter list and function body.
+
+Functions have full variable capture semantics. Among other things, this means
+that captured variables are shared among functions, so that if one function
+mutates the variable, this change is reflected in the other functions accessing
+the variable.
+
+*** let
+Syntax:
+#+begin_src
+let-expr ::= "(" "let" let-pair+ ")"
+let-pair ::= identifier expr
+#+end_src
+
+Extends the current local environment. For each let-pair initially binds the
+provided identifier to null. Then, in the order provided, each expression is
+evaluated and the binding is updated to the resultant value.
+
+The initial null-binding allows definition of recursive and even mutually
+recursive functions. Care must be taken because this null binding will shadow
+existing variables with the same name.
+
+Returns null.
+
+*** TODO letfn
+*** TODO namespace
+*** or
+Syntax:
+#+begin_src
+or-expr ::= "(" "or" expr* ")"
+#+end_src
+
+Evaluates provided expressions one at a time until a logically true value is
+obtained. Then returns ~true~. If the end of the list is reached, returns ~false~.
+
+*** quasiquote
+Syntax:
+#+begin_src
+quasiquote-expr ::= "`" form
+                | "(" "quasiquote" form ")"
+#+end_src
+
+First, creates a fn object corresponding to form just like quote. Before
+returning the form, the following transformation is done:
+- The form is walked like a tree.
+- When an unquote-expr is encountered, instead of descending into it, evaluate
+  its argument and insert the result into the tree at that point.
+- When an unquote-splicing form is encountered, instead of descending into it,
+  evaluate its argument. If the result is not a list or if this is root of the
+  tree, raise an error. Otherwise, splice the elements of the list inline into
+  the tree at this point.
+- Along the way, we keep track of all symbols whose names begin with a hash
+  character "#". For each unique hash symbol, a single gensym is created, and
+  the hash symbols are replaced by the gensyms in the final expansion. For
+  example, see the following code snippet:
+#+begin_src
+`(#sym1 #sym2 #sym2) ; is the same as
+(with (sym1 (gensym)
+       sym2 (gensym))
+ [sym1 sym2 sym2])
+#+end_src
+Note that #-symbols have lexical scope, i.e. they are shared by quasiquote forms
+occurring within the outer form.
+
+IMPLNOTE: the semantics of #-symbols may be too complicated for what they get
+us. Might be better to just make the developer deal with ~gensym~ directly, or to
+make #-symbols a feature of defmacro.
+
+*** quote
+Syntax:
+#+begin_src
+quote-expr ::= "'" form
+           | "(" "quote" form ")"
+#+end_src
+
+Returns the syntactic form as an fn object (a tree of atoms and lists).
+
+*** unquote
+Syntax:
+#+begin_src
+unquote-expr ::= "," expr
+             | "(" "unquote" expr ")"
+#+end_src
+Emits an error unless encountered within a quasiquote form.
+
+*** unquote-splicing
+Syntax:
+#+begin_src
+unquote-splicing-expr ::= ",@" expr | "(" "unquote-splicing" expr ")"
+#+end_src
+Emits an error unless encountered within a quasiquote form.
+
+*** TODO set!
+Syntax:
+#+begin_src
+set!-form ::= "(" "set!" place expr ")"
+place ::= identifier 
+      | dot-expr
+      | get-form
+get-form ::= "(" "get" expr+ ")"
+#+end_src
+
+*** with
+Syntax:
+#+begin_src
+with-expr ::= "(" with-bindings expr+ ")"
+with-bindings ::= "(" (id expr)* ")"
+#+end_src
+
+Behaves like ~let~, but rather than operating on the enclosing lexical
+environment, instead creates a new child environment and adds bindings to that,
+then evaluates the provided expressions in the newly created environment.
+
+Note that this is how ~let~ works in most LISP-like languages.
+
+
+** Function Calls
+
+Syntax:
+#+begin_src
+function-call ::= "(" func argument-list ")"
+#+end_src
+where ~func~ may be any expression other than a reserved symbol.
+
+First, the function and then all the arguments are evaluated from left to right.
+
+Arguments are bound to parameters as follows:
+
+Positional arguments are bound to the function's parameters in the order
+provided. If there are more positional arguments than parameters, a list of the
+extras are bound to the variadic list parameter if one exists. If not, an error
+is generated.
+
+After this, keyword arguments are bound to parameters by name. If two keyword
+arguments have the same name, an error is raised. If the name isn't one of the
+function's parameters, or if it names a parameter already provided by a
+positional argument, it is added to the variadic table parameter if one exists.
+If not, an error is raised.
+
+If any parameters without default values remain unbound, an error is raised.
+
+Then, the function is called. Foreign functions have behavior determined by the
+external code they call. Ordinary functions work by switching back to the
+lexical environment in which they were created, binding parameters as local
+variables, and executing the function body.
+
+
+** Macro Calls
+
+Syntax:
+#+begin_src
+macro-call ::= "(" macro-name form* ")"
+macro-name ::= identifier | dot-expr
+#+end_src
+
+The expressions for macro arguments aren't evaluated, but are converted to data
+and passed to the macro function as arguments. The resultant value is treated as
+code and evaluated.
+
+In order to prevent ambiguity, macros do not recognize keyword arguments. A
+keyword will be passed to the macro as a positional argument containing the
+keyword symbol.
 
 
 * Lexical Analysis
@@ -113,543 +860,6 @@ encodings is undefined. In the future, Fn will be extended so that UTF-8
 characters can appear in strings and symbols.
 
 
-* TODO Parsing and Quoting
-
-The *parser* is the next piece of the pipeline after the scanner. The parser
-converts streams of tokens into abstract syntax tree objects.
-
-Fn has a remarkably simple structure once parsed. The produced objects are trees
-whose leaves are either symbols, string literals, or numeric literals. These
-leaf forms are collectively referred to as *atoms*, and correspond to symbol,
-string, or number (resp) values in Fn. This correspondence is important to Fn's
-metaprogramming facility, macros.
-
-
-* Data Model
-
-Every value in Fn is an *object*. All objects have a single *type*, which
-describes the contents of the object as well as the supported operations. The
-types of objects are:
-
-- number :: floating point number (62 bits)
-- string :: sequence of bytes. Max length 2^32-1
-- symbol :: internalized string
-- bool :: special constants true and false
-- null :: null value
-- list :: immutable singley-linked list
-- table :: (mutable) generalized key-value store. Keys may be any object
-- namespace :: key-value store associating symbols to values. Represents a
-  global environment.
-- function :: a function object which may be called
-
-Lists and tables are the primary means for structuring data in Fn. Tables in
-particular can have an ~__on-call__~ entry defined, which allows the table to be
-called like a function (see [[Calling Tables as Functions]]). It is intended to use
-this facility for message passing OOP.
-
-Fn is meant for mostly functional programming, and tables are the only mutable
-native data structure. (In the future, a mutable sequence of bytes type may be
-added for working with foreign code). In general, stateful programming should be
-avoided.
-
-Whenever a new data structure must be defined, there are a number of operations
-which will naturally be associated to it. Making these methods (rather than
-global functions) allows the object itself to be treated as a makeshift
-namespace to access the functions that act on it, which shortens code and allows
-common names to be reused. It also provides a straightforward way to accomplish
-polymorphism, by having multiple table-based data structures implement the same
-methods.
-
-We suggest creating class data structures to describe the methods supported by a
-data structure. Examples of this will be provided with the Fn source code.
-
-
-* Variable and Namespaces
-
-For our purposes, a *variable* is a place to hold a value which is named by an
-identifier. Variables are defined through dedicated language facilities, and
-their values may be recalled using their names.
-
-** Global Variables
-
-Global variables may be defined or accessed at any point in the program source.
-A runtime error occurs if an attempt is made to access a global variable before
-its definition.
-
-Global variables are created using the ~def~ special operator. Attempting to
-define a global variable when it already exists will cause an error. In
-addition, global variables are immutable. Attempts to change them with ~set!~
-will result in an error. Global variables which are tables may still have their
-contents set, however this is generally discouraged except for the purposes of
-performing a one-time initialization of the table.
-
-Global variables are stored in namespaces. Namespaces exist in a global
-hierarchy which is accessible at runtime using the special global variable ~ns~.
-See [[Namespace Loading]] for details. Note that once loaded, namespaces are
-immutable objects, in order to preserve immutability of global variables.
-
-At any given expression in an Fn program, there is understood to be a single
-active global namespace. References to global variables made in the expression
-are resolved in this namespace.
-
-** Local Variables and Shadowing
-
-Local variables in Fn are managed using the lexical scope semantics typical of
-modern programming languages. Local variables may be introduced using the
-special operators ~with~ or ~let~. We say a local variable is "in scope" if it is
-accessible from a given lexical context in source code (so global variables are
-always in scope).
-
-If there are multiple local variables in scope with the same name, then the
-variable introduced at the deepest level takes precedent, (rendering those
-higher up in scope temporarily inaccessible).
-
-** Import and Namespace Loading
-
-Namespaces are uniquely identified by dot forms. The first time a namespace is
-imported, it must be *loaded* from a file. Subsequent imports will not trigger
-reloading.
-
-Namespaces are identified by dot expressions. The dot expression is converted to
-a path by turning dots into a path separators and attaching the filename
-extension ".fn" to the last element in the list. E.g. "my.lib.component" would
-translate to "my/lib/component.fn".
-
-Import searches for this namespace file in each directory in the namespace
-search path.
-
-Once a namespace is loaded, it is added to object ~ns~. ~ns~ is a namespace
-object containing all loaded namespaces. The namespaces are contained in a
-hierarchy within ns, so that the dot expression identifying the namespace can be
-used to access it within ~ns~. E.g. ~my.lib.component~ would be
-~ns.my.lib.component~. ~ns~ is automatically bound as a variable whenever a new
-namespace is created.
-
-In addition, every namespace automatically inherits every variable from
-~fn.core~.
-
-** Namespace Search Path
-
-Note: this depends on a UNIX-like enivornment and directory structure. Support
-for Windows will require some additional work.
-
-The last path in the search path is always ~${PREFIX}/lib/Fn/ns~, the system
-namespace directory. Here ~${PREFIX}~ is a location determined at compile time,
-probably ~/usr~ or ~/usr/local~. By default, the interpreter working directory
-is searched first, then ~${HOME}/.local/lib/Fn/ns~, however this can be
-controlled using the ~--no-wd~ and ~--no-home~ interpreter flags to suppress
-these locations respectively.
-
-Files passed as command line arguments are evaluated with the working directory
-set to their parent directory. Calls to import do not change the working
-directory.
-
-The repl working directory is the one from which the program was launched.
-
-It is recommended that single file scripts use the flag ~--no-wd~ and that
-system scripts use ~--sys-only~, which is equivalent to using both ~--no-wd~ and
-~--no-home~.
-
-** [Future Addition] Dynamically-scoped variables
-
-Dynamic global variables will be added as a feature in a future release of Fn.
-These will function very similar to dynamic variables in Common Lisp. The
-general design is this:
-
-- Add a special operator called ~def*~ which behaves like ~def~ but defines
-  global dynamic variables
-- Dynamic variables must have earmuffs around their names. This will be enforced
-  by the compiler.
-- Dynamic variables may be locally rebound using ~let~ or ~with~.
-
-The main difference between dynamic variables and lexical variables is that when
-a function is called, the dynamic variable bindings are forwarded to the callee.
-Lexical variables, on the other hand, get "reset" on every function call. This
-relationship is perhaps best conceptualized by considering the relationship
-between a program's call graph and its AST. When a lexical variable is
-introduced in a vertex of the AST, this variable is available precisely to the
-vertex's children in the AST. On the other hand, when a dynamic variable is
-introduced somewhere in the call graph, it is accessible to all the children in
-the call graph.
-
-A program's call graph is generally much more complicated than its AST, (the
-call graph is not usually a tree), so misuse of dynamic variables can cause
-terrible readability problems.
-
-In practice, dynamic variables are mainly useful for cases where you may want to
-provide additional information to a function without extending its parameter
-list. Since dynamic variables do not need to be passed explicitly, they are also
-useful for situations where we have many independent functions which need the
-same information.
-
-A concrete example of why we would want dynamic variables is for plotting
-libraries (such as ggplot2 or matplotlib). These libraries are generally very
-imperative and involve building a plot one step at a time. At each step, there
-are a number of formatting options to pass around, as well as some sort of
-global plot object which is mutated. By using dynamic variables, we can avoid
-creating a global object and keep formatting options out of the argument list.
-
-#+BEGIN_SRC
-;; example: hypothetical plotting library. We use dynamic variables to set up
-;; the plotting environment and then plot some data.
-
-(import plot-lib as pl)
-
-(with (pl.*current-plot* (pl.new-plot "title")
-       pl.*line-style* 'dashed
-       pl.*color-scheme* pl.colors.bright)
-  (pl.label-axis x)
-  (pl.plot-data my-data))
-#+END_SRC
-
-
-* Expressions
-
-#+begin_src
-program ::= expr* expr ::= immediate
-        | variable
-        | special-form
-        | function-call
-        | macro-call
-#+end_src
-
-** Immediate Expressions and Variables
-Syntax:
-#+begin_src
-immediate ::= boolean 
-          | null
-          | number
-          | string
-variable ::= non-special-symbol
-#+end_src
-
-An immediate expression is a literal representing a constant value. On
-evaluation, immediate expressions immediately return the value they represent.
-See [[Syntax]] for information on how immediate expression syntax.
-
-Variables are represented by non-special symbols, (where special symbols are
-those naming special forms, boolean values, or null). If there exists a binding
-in the current environment for the provided symbol, then its value is returned.
-Otherwise an exception is raised.
-
-
-** Special forms
-Special forms are so called because they have different semantics than function
-or macro calls.
-
-*** and
-Syntax:
-#+begin_src
-and-expr ::= "(" "and" expr* ")"
-#+end_src
-
-Expressions are evaluated one at a time until a logically false value is
-encountered, then returns ~false~. If the end of the list is reached, returns
-~true~.
-
-*** cond
-Syntax:
-#+begin_src
-cond-expr ::= "(" "cond" cond-case+ ")"
-cond-case ::= expr expr
-#+end_src
-
-For each cond-case, the following is done:
-- evaluate the first expression
-- if the first expression is logically true, return the value of the second
-  expression
-- otherwise, proceed to the next cond-case.
-
-If the end of the list is reached, returns ~null~.
-*** def
-Syntax:
-#+begin_src
-def-expr ::= "(" "def" identifier expr ")"
-         | "(" "def" func-proto expr+")"
-func-proto ::= "(" identifier param-list ")"
-#+end_src
-
-Create a (global) binding in the current namespace. The first syntax binds the
-identifier to the value of the expression. The second syntax creates a function
-with the specified name and parameter list and the expressions as its body. In
-either case, if the identifier is already bound, an exception is raised.
-
-Returns ~null~.
-
-*** TODO defmacro
-Syntax:
-#+begin_src
-defmacro-expr ::= "(" "defmacro" macro-proto expr+ ")"
-macro-proto ::= "(" identifier param-list ")"
-#+end_src
-
-*** defn
-*** do
-Syntax:
-#+begin_src
-do-expr ::= "(" "do" expr* ")"
-#+end_src
-
-Evaluates provided expressions one at a time, returning the value of the last
-one, or ~null~ if no expressions are given.
-
-*** dot
-Syntax:
-#+begin_src
-dot-expr ::= symbol "." dot-key
-           | "(" "dot" symbol+ ")"
-dot-key  ::= symbol | symbol "." dot-key
-#+end_src
-
-In addition, when using the inline "." notation, there may not be space between
-the dot and the symbols.
-
-The first symbol (leftmost in the inline notation) must name a variable bound to
-either a namespace or a table. The next symbol is used as a key to access an
-element of the table. If additional symbols are provided, then they are used as
-keys to recursively descend into a tree of tables. An exception is raised if one
-of the keys is invalid or if an attempt is made to access an object which is
-neither a table nor a namespaec.
-
-~dot~ is generally used in the form of dot syntax as a concise way to handle
-both namespaces and tables whose keys are symbols.
-
-*** dollar-fn
-Syntax:
-#+begin_src
-dollar-fn-expr ::= "(" "dollar-fn" expr ")"
-               | "$(" expr+ ")"
-               | "$[" expr+ "]"
-               | "${" expr+ "}"
-               | "$`" form
-#+end_src
-
-Creates an anonymous function which evaluates the provided expression. With the
-"$" syntax, this is the expression after the dollar sign. (The only expressions
-which may follow are parenthesized forms, quasiquote forms, or list/table
-expressions).
-
-Within the provided expression, variables named ~$N~ where N is a nonnegative
-integer, are bound to the corresponding positional parameters starting from 0.
-In addition, ~$~ is bound to the first parameter ~$0~ and ~$&~ is used for a
-variadic parameter.
-
-The parameter list for the created function accepts as many positional
-parameters as the highest value of N and a variadic parameter only if ~$&~
-appears in the expression. (This is accomplished by performing code-walking,
-including macroexpansion, before compiling the ~dollar-fn~).
-
-*** if
-Syntax:
-#+begin_src
-if-expr ::= "(" "if" test-expr expr expr ")"
-test-expr ::= expr
-#+end_src
-
-Evaluates test-expr. If the result is logically true, returns the value of the
-second argument, otherwise returns the value of the final argument.
-
-*** import
-Syntax:
-#+begin_src
-import-expr ::= "(" "import" import-designator [identifier]
-                    [import-designator] ")"
-import-designator ::= dot-expr | string | symbol
-#+end_src
-
-Load a namespace and bind it to a global variable. If an identifier is provided,
-then that name is used. Otherwise, the variable name is chosen based upon the
-kind of import-designator provided:
-- if it is a dot form, then the last key in the dot form is used (e.g. ~pkg.lib~
-  would give a variable name ~lib~).
-- if it is a symbol, the symbol itself is used
-- if it is a string, then the stem of the filename is converted to a symbol and
-  then used
-
-In addition, if the special identifier ~_~ is used, then no variable is created
-(but namespace loading will still occur).
-
-Specifying a second import designator allows the position in ns object to be
-controlled.
-
-See [[Namespace Loading]] for information about how files are located.
-
-*** fn
-Syntax:
-#+begin_src
-fn-expr ::= "(" "fn" "(" param-list ")" expr+ ")"
-#+end_src
-
-Returns a function object with the provided parameter list and function body. If
-the enclosing environment does not already have an associated closure, one is
-created. The resulting function's closure ID will be the same as the current
-environment.
-
-Functions may only reference local variables which are defined in the local
-environment prior to function creation. Mutually recursive functions local can
-be defined by putting definitions in a single with or let expression.
-
-*** let
-Syntax:
-#+begin_src
-let-expr ::= "(" "let" let-pair+ ")"
-let-pair ::= identifier expr
-#+end_src
-
-Extends the current local environment. For each let-pair initially binds the
-provided identifier to null. Then, in the order provided, each expression is
-evaluated and the binding is updated to the resultant value.
-
-The initial null-binding allows definition of recursive and even mutually
-recursive functions. Care must be taken because this null binding will shadow
-existing variables with the same name.
-
-Returns null.
-
-*** letfn
-*** or
-Syntax:
-#+begin_src
-or-expr ::= "(" "or" expr* ")"
-#+end_src
-
-Evaluates provided expressions one at a time until a logically true value is
-obtained. Then returns ~true~. If the end of the list is reached, returns ~false~.
-
-*** quasiquote
-Syntax:
-#+begin_src
-quasiquote-expr ::= "`" form
-                | "(" "quasiquote" form ")"
-#+end_src
-
-First, creates a fn object corresponding to form just like quote. Before
-returning the form, the following transformation is done:
-- The form is walked like a tree.
-- When an unquote-expr is encountered, instead of descending into it, evaluate
-  its argument and insert the result into the tree at that point.
-- When an unquote-splicing form is encountered, instead of descending into it,
-  evaluate its argument. If the result is not a list or if this is root of the
-  tree, raise an error. Otherwise, splice the elements of the list inline into
-  the tree at this point.
-- Along the way, we keep track of all symbols whose names begin with a hash
-  character "#". For each unique hash symbol, a single gensym is created, and
-  the hash symbols are replaced by the gensyms in the final expansion. For
-  example, see the following code snippet:
-
-#+begin_src
-`(#sym1 #sym2 #sym2) ; has the same value as
-(with (sym1 (gensym)
-       sym2 (gensym))
- [sym1 sym2 sym2])
-#+end_src
-*** quote
-Syntax:
-#+begin_src
-quote-expr ::= "'" form
-           | "(" "quote" form ")"
-#+end_src
-
-Returns the syntactic form as an fn object (a tree of atoms and lists).
-
-*** unquote
-Syntax:
-#+begin_src
-unquote-expr ::= "," expr
-             | "(" "unquote" expr ")"
-#+end_src
-Emits an error unless encountered within a quasiquote form.
-
-*** unquote-splicing
-Syntax:
-#+begin_src
-unquote-splicing-expr ::= ",@" expr | "(" "unquote-splicing" expr ")"
-#+end_src
-Emits an error unless encountered within a quasiquote form.
-
-*** TODO set!
-Syntax:
-#+begin_src
-set!-form ::= "(" "set!" place expr ")"
-place ::= identifier 
-      | dot-expr
-      | get-form
-get-form ::= "(" "get" expr+ ")"
-#+end_src
-
-*** with
-Syntax:
-#+begin_src
-with-expr ::= "(" with-bindings expr+ ")"
-with-bindings ::= "(" (id expr)* ")"
-#+end_src
-
-Behaves like ~let~, but rather than operating on the enclosing lexical
-environment, instead creates a new child environment and adds bindings to that,
-then evaluates the provided expressions in the newly created environment.
-
-Note that this is how ~let~ works in most LISP-like languages.
-
-
-** Function Calls
-
-Syntax:
-#+begin_src
-function-call ::= "(" func argument-list ")"
-#+end_src
-where ~func~ may be any expression other than a reserved symbol.
-
-First, the function and then all the arguments are evaluated from left to right.
-(The operator here could also be a table, see [[Calling Tables as Functions]]).
-
-Arguments are bound to parameters as follows:
-
-Positional arguments are bound to the function's parameters in the order
-provided. If there are more positional arguments than parameters, a list of the
-extras are bound to the variadic list parameter if one exists. If not, an error
-is generated.
-
-After this, keyword arguments are bound to parameters by name. If two keyword
-arguments have the same name, an error is raised. If the name isn't one of the
-function's parameters, or if it names a parameter already provided by a
-positional argument, it is added to the variadic table parameter if one exists.
-If not, an error is raised.
-
-If any parameters without default values remain unbound, an error is raised.
-
-Then, the function is called. Foreign functions have behavior determined by the
-external code they call. Ordinary functions work by switching back to the
-lexical environment in which they were created, binding parameters as local
-variables, and executing the function body.
-
-
-** Calling Tables as Functions
-
-A table may used as functions by setting its ~'__on-call__~ entry to an
-appropriate function. When the table is called, this function is invoked with
-the table itself as the first argument, followed by the arguments provided in
-the initial call. E.g. ~(tab x y)~ is equivalent to ~(tab.__on-call__ tab x y)~.
-
-When defining the function for ~__on-call__~, it is conventional to name the
-first argument ~this~.
-
-
-** Macro Calls
-Syntax:
-#+begin_src
-macro-call ::= "(" macro-name form* ")"
-macro-name ::= identifier | dot-expr
-#+end_src
-
-The expressions for macro arguments aren't evaluated, but are converted to data
-and passed to the macro function as arguments. The resultant value is treated as
-code and evaluated.
-
-In order to prevent ambiguity, macros do not recognize keyword arguments. A
-keyword will be passed to the macro as a positional argument containing the
-keyword symbol.
-
-
 * TODO Built-in Functions
 
 Fn provides a number of built-in functions in the namespace ~fn.builtin~.
@@ -677,23 +887,24 @@ source code by using the primitives.
   - the length of a string in bytes,
   - the number of elements in a list, or
   - the number of keys in a table or namespace.
+- concat (seq0 & seqs) :: Concatenate strings or lists. All the arguments must
+  be of the same type.
+- nth (n seq) :: Get the nth element of a list or string. If seq is a string the
+  result will be a string of length 1 containing the (n-1)th byte of the string.
 
 - = :: check for equality
 - same? :: check for equality
 - not :: logical not
 
-- to-table ::
-- to-list ::
-- to-string ::
 
 Type Checkers:
 
 - bool? ::
 - function? ::
-- list? ::
 - int? ::
-- number? ::
+- list? ::
 - namespace? ::
+- number? ::
 - null? ::
 - string? ::
 - symbol? ::
@@ -711,6 +922,7 @@ Tables and Namespaces:
   of pairs consisting of keys followed by values.
 - get (key obj) :: access a field from a table or namespace
 - get-keys (obj) :: get a list of keys from a table or namespace
+- has-key? (obj key) :: get a list of keys from a table or namespace
 
 Arithmetic:
 - + ::
@@ -775,16 +987,4 @@ All of these are non-destructive.
 - every? (test seq)
 - any? (test seq)
 
-
-* Future Functionality
-
-Features I would like to add:
-- integer datatypes (including fixnum)
-- docstrings for variables, functions, and macros
-- vector/array native datatype
-- (maybe) bytes data structure
-- (maybe) dynamic variables
-- foreign function interface
-- built-in packages for I/O (including sockets/IPC), subroutine management, and
-  threading
 
