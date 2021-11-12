@@ -388,11 +388,68 @@ which expands into a ~dollar-fn~ special form.
 
 ** TODO Namespaces and Import
 
-*** Namespaces
+*** Namespaces and Packages
 
-*** Import Search
+A namespace is a collection of global variables and macros. They are identified
+by a name which is required to be globally unique. All Fn code lives inside of
+some namespace.
 
-*** Global Namespace Objects
+Some examples of namespace names are:
+#+BEGIN_SRC
+fn/builtin
+fn/repl
+project/main
+project/subsystem/parser
+#+END_SRC
+
+The slashes above are delimiters. In particular, everything to the left of the
+last slash is called the *package name*, and the part to the right is called the
+*short name*. For instance the namespace ~project/subsystem/parser~ has package
+~project/subsystem~ and short name ~parser~.
+
+We also have the concept of a *subpackage*. In the above examples,
+~project/subsystem~ is a subpackage of ~project~. That is, the subpackages of a
+~<pkg>~ are all packages with names of the form ~<pkg>/...~.
+
+
+*** Namespace Determination
+
+When a file is interpreted, the short name of the namespace is set to the stem
+of the filename. There is no way to change this. The package, however, may be
+anything at all, and is specified by putting a ~package~ declaration at the top of
+the file:
+
+#+BEGIN_SRC fn
+(package myproject/util)
+#+END_SRC
+
+If no package declaration is present, the package ~fn/user~ is used by default.
+
+Unlike other special forms in Fn, there can only be one package declaration per
+file, and it must come at the beginning of the file, although it can be
+preceeded by comments and whitespace.
+
+The REPL allows the current namespace to be changed interactively. By default it
+uses the namespace ~fn/repl~.
+
+
+*** Importing Namespaces
+
+Importing a namespace means taking its bindings into the current namespace.
+
+
+*** Builtin Namespace
+
+When a new namespace is created, an unqualified import of ~fn/builtin~ is
+automatically performed.
+
+
+*** Global Names
+
+After a namespace has been imported once, its bindings can be referenced even
+without importing it explicitly. This is done by using symbols whose names are
+structured like with ~#:<namespace>:<symbol>~. For example, ~#:fn/builtin:map~
+refers to the function ~map~ in the ~fn/builtin~ namespace.
 
 
 ** TODO Macros
