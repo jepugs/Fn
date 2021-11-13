@@ -37,6 +37,7 @@ struct local_table {
 
 struct compiler {
 private:
+    symbol_table* symtab;
     allocator* alloc;
     code_chunk* dest;
 
@@ -49,16 +50,13 @@ private:
 
     void write_byte(u8 byte);
     void write_short(u16 u);
-    void patch_short(bc_addr where, u16 u);
+    void patch_short(code_address where, u16 u);
 
     // these don't automatically adjust the stack pointer
     void compile_num(f64 num);
     void compile_sym(symbol_id id);
     void compile_string(const fn_string& id);
     void compile_quoted_form(const fn_parse::ast_node* form);
-
-    // FIXME: should probably replace this
-    symbol_table& get_symtab();
 
     void compile_atom(local_table& locals,
                       const fn_parse::ast_atom& atom,
@@ -80,15 +78,6 @@ private:
                           const fn_parse::param_list& params,
                           const vector<fn_parse::ast_node*>& body_vec,
                           u32 body_start);
-
-    // Define a global function by directly specifying its bytecode. The
-    // bytecode is responsible for calling return or making a tail call.
-    void define_bytecode_function(const string& name,
-                                  const vector<symbol_id>& positional,
-                                  local_addr optional_index,
-                                  bool var_list,
-                                  bool var_table,
-                                  vector<u8>& bytes);
 
     void compile_and(local_table& locals,
                      const vector<fn_parse::ast_node*>& list,
@@ -152,8 +141,9 @@ private:
                       const source_loc& loc);
 public:
 
-    compiler(allocator* use_alloc, code_chunk* dest)
-        : alloc{use_alloc}
+    compiler(symbol_table* use_symtab, allocator* use_alloc, code_chunk* dest)
+        : symtab{use_symtab}
+        , alloc{use_alloc}
         , dest{dest} {
     }
 

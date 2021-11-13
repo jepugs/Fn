@@ -32,7 +32,7 @@ void compiler::compile_subexpr(local_table& locals, const ast_node* expr) {
 }
 
 
-optional<local_addr> compiler::find_local(local_table& locals,
+optional<local_address> compiler::find_local(local_table& locals,
         bool* is_upval,
         symbol_id name) {
     local_table* l = &locals;
@@ -72,8 +72,8 @@ void compiler::write_byte(u8 byte) {
 void compiler::write_short(u16 u) {
     dest->write_short(u);
 }
-void compiler::patch_short(bc_addr where, u16 u) {
-    dest->write_short(where, u);
+void compiler::patch_short(code_address where, u16 u) {
+    dest->write_short(u, where);
 }
 
 // TODO: check for number of constants
@@ -101,10 +101,6 @@ void compiler::compile_quoted_form(const fn_parse::ast_node* node) {
     dest->write_short(id);
 }
 
-symbol_table& compiler::get_symtab() {
-    return *dest->get_symtab();
-}
-
 void compiler::compile_atom(local_table& locals,
                             const ast_atom& atom,
                             const source_loc& loc) {
@@ -120,7 +116,7 @@ void compiler::compile_atom(local_table& locals,
         break;
     case at_symbol:
         // TODO: check for special symbols
-        s = &(get_symtab()[atom.datum.sym]);
+        s = &((*symtab)[atom.datum.sym]);
         if (s->name == "null") {
             write_byte(OP_NULL);
             ++locals.sp;
@@ -156,7 +152,7 @@ void compiler::compile_dot_obj(local_table& locals,
                                const vector<ast_node*>& dot_expr,
                                u8 all_but,
                                const source_loc& loc) {
-    auto& st = get_symtab();
+    auto& st = *symtab;
     if (dot_expr.size() < 3) {
         error("Too few arguments to dot.", loc);
     }
@@ -185,7 +181,7 @@ void compiler::compile_list(local_table& locals,
         error("Encountered empty list.", loc);
         return;
     }
-    auto& st = get_symtab();
+    auto& st = *symtab;
     if (list[0]->kind == ak_atom
         && list[0]->datum.atom->type == at_symbol) {
         auto sym = list[0]->datum.atom->datum.sym;
@@ -256,7 +252,7 @@ void compiler::compile_call(local_table& locals,
     for (i = 1; i < list.size(); ++i) {
         // TODO: check for keyword
         if(list[i]->is_symbol()) {
-            auto& s = list[i]->get_symbol(get_symtab());
+            auto& s = list[i]->get_symbol(*symtab);
             if(s.name.length() > 0 && s.name[0] == ':') {
                 break;
             } else {
@@ -270,7 +266,7 @@ void compiler::compile_call(local_table& locals,
     }
 
     for (; i < list.size(); i += 2) {
-        auto& s = list[i]->get_symbol(get_symtab());
+        auto& s = list[i]->get_symbol(*symtab);
         if(s.name.length() == 0 || s.name[0] != ':') {
             error("Non-keyword argument following keyword argument.",
                   list[i]->loc);
@@ -291,7 +287,7 @@ void compiler::compile_call(local_table& locals,
         // should be an error.
 
         // convert this symbol to a non-keyword one
-        auto key = get_symtab().intern(s.name.substr(1))->id;
+        auto key = symtab->intern(s.name.substr(1))->id;
 
         // add the argument to the keyword table
         write_byte(OP_LOCAL);
@@ -351,7 +347,7 @@ void compiler::compile_function(local_table& locals,
     // TODO: change the param_list parser to do this work for us
 
     // number of arguments required
-    local_addr req_args;
+    local_address req_args;
     for (req_args = 0; req_args < params.positional.size(); ++req_args) {
         if(params.positional[req_args].init_form != nullptr) {
             break;
@@ -402,7 +398,7 @@ void compiler::compile_function(local_table& locals,
 void compiler::compile_and(local_table& locals,
                            const vector<fn_parse::ast_node*>& list,
                            const source_loc& loc) {
-    forward_list<bc_addr> patch_locs;
+    forward_list<code_address> patch_locs;
     for (u32 i = 1; i < list.size(); ++i) {
         compile_subexpr(locals, list[i]);
         // skip to end jump on false
@@ -428,8 +424,8 @@ void compiler::compile_cond(local_table& locals,
     if (list.size() % 2 != 1) {
         error("Odd number of arguments to cond", loc);
     }
-    bc_addr patch_loc;
-    forward_list<bc_addr> patch_to_end;
+    code_address patch_loc;
+    forward_list<code_address> patch_to_end;
     for (u32 i = 1; i < list.size(); i += 2) {
         compile_subexpr(locals, list[i]);
         write_byte(OP_CJUMP);
@@ -490,10 +486,11 @@ void compiler::compile_defn(local_table& locals,
     compile_sym(sym);
     ++locals.sp;
 
-    auto params = parse_params(get_symtab(), *list[2]);
+    auto params = parse_params(*symtab, *list[2]);
     compile_function(locals, params, list, 3);
 
     write_byte(OP_SET_GLOBAL);
+
     --locals.sp;
 }
 
@@ -525,7 +522,7 @@ void compiler::compile_fn(local_table& locals,
     }
 
     // parse parameters and set up the function stub
-    auto params = parse_params(get_symtab(), *list[1]);
+    auto params = parse_params(*symtab, *list[1]);
     compile_function(locals, params, list, 2);
 }
 
@@ -566,7 +563,7 @@ void compiler::compile_import(local_table& locals,
     if (list[1]->kind == ak_list) {
         auto& l = *list[1]->datum.list;
         if (!l[0]->is_symbol()
-            || l[0]->get_symbol(get_symtab()).name != "dot") {
+            || l[0]->get_symbol(*symtab).name != "dot") {
             error("Argument to import not a symbol or dot form.", list[1]->loc);
         }
         auto x = list[1]->copy();
@@ -577,7 +574,7 @@ void compiler::compile_import(local_table& locals,
         if (!name_form->is_symbol()) {
             error("Malformed namespace id in import.", list[1]->loc);
         }
-        auto v = name_form->get_symbol(get_symtab()).id;
+        auto v = name_form->get_symbol(*symtab).id;
         compile_sym(v);
 
         // ns id for import
@@ -589,7 +586,7 @@ void compiler::compile_import(local_table& locals,
         write_byte(OP_IMPORT);
         write_byte(OP_SET_GLOBAL);
     } else if (list[1]->is_symbol()) {
-        auto sym = list[1]->get_symbol(get_symtab()).id;
+        auto sym = list[1]->get_symbol(*symtab).id;
         // name for set-global
         compile_sym(sym);
         // ns id for import
@@ -620,7 +617,7 @@ void compiler::compile_let(local_table& locals,
         if (!list[i]->is_symbol()) {
             error("Local variable name not a symbol.", list[i]->loc);
         }
-        auto sym = list[i]->get_symbol(get_symtab()).id;
+        auto sym = list[i]->get_symbol(*symtab).id;
         if (locals.vars.get(sym).has_value()) {
             error("Local variable already exists.", list[i]->loc);
         }
@@ -667,7 +664,7 @@ void compiler::compile_letfn(local_table& locals,
     write_byte(OP_NULL);
     locals.vars.insert(sym, pos);
 
-    auto params = parse_params(get_symtab(), *list[2]);
+    auto params = parse_params(*symtab, *list[2]);
     compile_function(locals, params, list, 3);
 
     write_byte(OP_SET_LOCAL);
@@ -678,7 +675,7 @@ void compiler::compile_letfn(local_table& locals,
 void compiler::compile_or(local_table& locals,
                           const vector<fn_parse::ast_node*>& list,
                           const source_loc& loc) {
-    forward_list<bc_addr> patch_locs;
+    forward_list<code_address> patch_locs;
     for (u32 i = 1; i < list.size(); ++i) {
         compile_subexpr(locals, list[i]);
         // skip the next jump on false
@@ -738,7 +735,7 @@ void compiler::compile_set(local_table& locals,
         // check if it's a dot
         auto op = (*list[1]->datum.list)[0];
         if (op->is_symbol()) {
-           auto& sym = op->get_symbol(get_symtab());
+           auto& sym = op->get_symbol(*symtab);
            if (sym.name != "dot") {
                error("Illegal place in set! operation.", list[1]->loc);
            }
@@ -751,7 +748,7 @@ void compiler::compile_set(local_table& locals,
            }
 
            // last key for the set operation
-           compile_sym(last->get_symbol(get_symtab()).id);
+           compile_sym(last->get_symbol(*symtab).id);
            ++locals.sp;
 
            // compute the value
@@ -791,7 +788,7 @@ void compiler::compile_with(local_table& locals,
         if (!bindings[i]->is_symbol()) {
             error("with binding name not a symbol.", bindings[i]->loc);
         }
-        auto sym = bindings[i]->get_symbol(get_symtab()).id;
+        auto sym = bindings[i]->get_symbol(*symtab).id;
         new_locals.vars.insert(sym, new_locals.sp);
         names.push_back(sym);
         write_byte(OP_NULL);

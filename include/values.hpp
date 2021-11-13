@@ -25,6 +25,9 @@ constexpr u64 TAG_CONS      = 1;
 constexpr u64 TAG_STRING    = 2;
 constexpr u64 TAG_TABLE     = 3;
 constexpr u64 TAG_FUNC      = 4;
+// NOTE: TAG_FOREIGN and TAG_NAMESPACE are currently unused, as the foreign type
+// was combined with the function type and the first-class namespace type was
+// removed.
 constexpr u64 TAG_FOREIGN   = 5;
 constexpr u64 TAG_NAMESPACE = 6;
 constexpr u64 TAG_EXT       = 7;
@@ -200,56 +203,15 @@ inline bool v_truthy(value a) {
     return !(v_same(a, V_FALSE) || v_same(a, V_NULL));
 }
 
-// Safe value accessors. These check tags and generate errors if necessary.
-// f64 v_num(vm_handle vm, value v);
-// bool v_bool(vm_handle vm, value v);
-// fn_string* v_string(vm_handle vm, value v);
-// cons* v_cons(vm_handle vm, value v);
-// fn_table* v_table(vm_handle vm, value v);
-// function* v_function(vm_handle vm, value v);
-// foreign_func* v_foreign(vm_handle vm, value v);
-// fn_namespace* v_namespace(vm_handle vm, value v);
-
-// functions to create memory managed objects
-// value alloc_string(vm_handle vm, const string& str);
-// value alloc_string(vm_handle vm, const char* str);
-// value alloc_cons(vm_handle vm, value head, value tail);
-// value alloc_table(vm_handle vm);
-
-// generate a symbol with a unique ID
-// value v_gensym(vm_handle vm);
-
-// safe arithmetic operations
-// value v_plus(vm_handle vm, value a, value b);
-// value v_minus(vm_handle vm, value a, value b);
-// value v_times(vm_handle vm, value a, value b);
-// value v_div(vm_handle vm, value a, value b);
-// value v_pow(vm_handle vm, value a, value b);
-// note: the modulus is floor(b) if b is not an integer
-// value v_mod(vm_handle vm, value a, value b);
-
-// these overloads allow us to operate on values with f64's
-// value v_plus(vm_handle vm, value a, f64 b);
-// value v_minus(vm_handle vm, value a, f64 b);
-// value v_times(vm_handle vm, value a, f64 b);
-// value v_div(vm_handle vm, value a, f64 b);
-// value v_pow(vm_handle vm, value a, f64 b);
-// value v_mod(vm_handle vm, value a, f64 b);
-
 // absolute value
 value v_uabs(value a);
-// value v_abs(vm_handle vm, value a);
 
 // natural log
 value v_ulog(value a);
-// value v_log(vm_handle vm, value a);
 
 // floor and ceiling functions
 value v_ufloor(value a);
 value v_uceil(value a);
-
-// value v_floor(vm_handle vm, value a);
-// value v_ceil(vm_handle vm, value a);
 
 // ordering
 bool v_ult(value a, value b);
@@ -257,26 +219,11 @@ bool v_ugt(value a, value b);
 bool v_ule(value a, value b);
 bool v_uge(value a, value b);
 
-// bool v_lt(vm_handle vm, value a, value b);
-// bool v_gt(vm_handle vm, value a, value b);
-// bool v_le(vm_handle vm, value a, value b);
-// bool v_ge(vm_handle vm, value a, value b);
-
 // string functions
 value v_ustrlen(value str);
-// value v_strlen(vm_handle vm, value str);
 
 // symbol functions
-// const symbol* v_lookup_symbol(vm_handle vm, value sym);
-// value v_intern(vm_handle vm, value name);
-// value v_intern(vm_handle vm, const string& name);
-// value v_intern(vm_handle vm, const char* name);
-
-// string v_usym_name(vm_handle vm, value sym);
 symbol_id v_usym_id(value sym);
-
-// string v_sym_name(vm_handle vm, value sym);
-// symbol_id v_sym_id(vm_handle vm, value sym);
 
 // list functions
 
@@ -284,35 +231,13 @@ symbol_id v_usym_id(value sym);
 value v_uhead(value x);
 value v_utail(value x);
 
-// // generates error on cons
-// value v_head(vm_handle vm, value x);
-// // this works on empty
-// value v_tail(vm_handle vm, value x);
-
-// table/namespace functions
+// table functions
 forward_list<value> v_utab_get_keys(value obj);
-forward_list<value> v_uns_get_keys(value obj);
-// forward_list<value> v_tab_get_keys(vm_handle vm, value obj);
-// forward_list<value> v_ns_get_keys(vm_handle vm, value obj);
 
 bool v_utab_has_key(value obj, value key);
-bool v_uns_has_key(value obj, value key);
-// bool v_tab_has_key(vm_handle vm, value obj, value key);
-// bool v_ns_has_key(vm_handle vm, value obj, value key);
 
 value v_utab_get(value obj, value key);
 void v_utab_set(value obj, value key, value v);
-value v_uns_get(value obj, value key);
-void v_uns_set(value obj, value key, value v);
-
-// value v_tab_get(vm_handle vm, value obj, value key);
-// void v_tab_set(vm_handle vm, value obj, value key, value v);
-// value v_ns_get(vm_handle vm, value obj, value key);
-// void v_ns_set(vm_handle vm, value obj, value key, value v);
-
-// forward_list<value> v_get_keys(vm_handle vm, value obj);
-// value v_get(vm_handle vm, value obj, value key);
-// void v_set(vm_handle vm, value obj, value key, value v);
 
 
 /// value structures
@@ -375,7 +300,7 @@ struct working_set;
 // a stub describing a function. these go in the bytecode object
 struct function_stub {
     vector<symbol_id> pos_params;  // positional params
-    local_addr req_args;           // # of required arguments
+    local_address req_args;        // # of required arguments
     optional<symbol_id> vl_param;  // variadic list parameter
     optional<symbol_id> vt_param;  // variadic table parameter
 
@@ -383,16 +308,16 @@ struct function_stub {
     // function is evaluated by calling foreign_func instead of jumping
     value (*foreign_func)(working_set*, value*);
     code_chunk* chunk;             // chunk containing the function
-    bc_addr addr;                  // function address in its chunk
+    code_address addr;             // function address in its chunk
 
-    local_addr num_upvals;
+    local_address num_upvals;
     // upvalues are identified by their offset relative to the base pointer.
     // Upvalues defined in a containing function are then identified
     vector<i32> upvals;
 
     // get an upvalue address based on its stack location (offset relative to
     // the function base pointer). The upvalue is added if necessary
-    local_addr get_upvalue(i32 offset);
+    local_address get_upvalue(i32 offset);
 };
 
 // A location storing a captured variable. These are shared across functions.
@@ -454,15 +379,15 @@ struct virtual_machine;
 // foreign functions
 struct alignas(32) foreign_func {
     obj_header h;
-    local_addr min_args;
+    local_address min_args;
     bool var_args;
-    optional<value> (*func)(local_addr, value*, virtual_machine*);
+    optional<value> (*func)(local_address, value*, virtual_machine*);
     // TODO: new foreign func signature
     //value (*func)(working_set*, value*);
 
-    foreign_func(local_addr min_args,
+    foreign_func(local_address min_args,
                  bool var_args,
-                 optional<value> (*func)(local_addr, value*, virtual_machine*), bool gc=false);
+                 optional<value> (*func)(local_address, value*, virtual_machine*), bool gc=false);
 };
 
 // symbols in fn are represented by a 32-bit unsigned ids
@@ -483,23 +408,13 @@ public:
 
     const symbol* intern(const string& str);
     bool is_internal(const string& str) const;
+    symbol_id intern_id(const string& str);
 
     optional<const symbol*> find(const string& str) const;
 
     const symbol& operator[](symbol_id id) const {
         return by_id[id];
     }
-};
-
-// key-value stores used to hold global variables and imports
-struct alignas(32) fn_namespace {
-    obj_header h;
-    table<symbol_id,value> contents;
-
-    fn_namespace(bool gc=false);
-
-    optional<value> get(symbol_id name);
-    void set(symbol_id name, const value& v);
 };
 
 /// as_value functions to create values

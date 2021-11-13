@@ -3,6 +3,7 @@
 #include "config.h"
 
 #include "bytes.hpp"
+#include "namespace.hpp"
 #include "values.hpp"
 
 #include <cstdlib>
@@ -13,9 +14,11 @@
 
 namespace fn {
 
-vm_thread::vm_thread(global_env* use_glob, code_chunk* use_chunk)
-    : glob{use_glob}
-    , alloc{use_glob->get_alloc()}
+vm_thread::vm_thread(allocator* use_alloc, global_env* use_globals,
+        code_chunk* use_chunk)
+    : symtab{use_globals->get_symtab()}
+    , globals{use_globals}
+    , alloc{use_alloc}
     , toplevel_chunk{use_chunk}
     , ip{0}
     , frame{new call_frame(nullptr, 0, 0, nullptr)}
@@ -31,6 +34,10 @@ vm_thread::~vm_thread() {
         delete frame;
         frame = tmp;
     }
+}
+
+vm_status vm_thread::check_status() const {
+    return status;
 }
 
 value vm_thread::get_symbol(const string& name) {
@@ -49,7 +56,8 @@ void vm_thread::add_global(value name, value v) {
     if (!name.is_symbol()) {
         runtime_error("Global name is not a symbol.");
     }
-    auto ns = cur_chunk()->get_ns().unamespace();
+    auto ns_id = cur_chunk()->get_ns_id();
+    auto ns = *globals->get_ns(ns_id);
     ns->set(v_usym_id(name), v);
 }
 
@@ -58,15 +66,27 @@ value vm_thread::get_global(value name) {
         runtime_error("Global name is not a symbol.");
     }
 
-    auto ns = cur_chunk()->get_ns().unamespace();
+    auto ns_id = cur_chunk()->get_ns_id();
+    auto ns = *globals->get_ns(ns_id);
     auto res = ns->get(v_usym_id(name));
 
     if (!res.has_value()) {
         runtime_error("Attempt to access unbound global variable "
-                + v_to_string(name, cur_chunk()->get_symtab()));
+                + v_to_string(name, get_symtab()));
     }
     return *res;
 }
+
+
+optional<value> vm_thread::try_import(symbol_id ns_id) {
+    // TODO: write this
+}
+
+void vm_thread::do_import() {
+    auto ns_id = pop().usym_id();
+    // TODO: write this :(
+}
+
 
 code_chunk* vm_thread::cur_chunk() const {
     if (frame->caller) {
@@ -82,7 +102,7 @@ allocator* vm_thread::get_alloc() {
     return alloc;
 }
 symbol_table* vm_thread::get_symtab() {
-    return cur_chunk()->get_symtab();
+    return symtab;
 }
 
 void vm_thread::runtime_error(const string& msg) const {
@@ -98,43 +118,43 @@ void vm_thread::push(value v) {
 }
 
 value vm_thread::pop() {
-    if (frame->bp <= stack->get_pointer()) {
+    if (frame->bp >= stack->get_pointer()) {
         runtime_error("pop on empty call frame");
     }
     return stack->pop();
 }
 
-void vm_thread::pop_times(stack_addr n) {
-    if (frame->bp - n < stack->get_pointer()) {
+void vm_thread::pop_times(stack_address n) {
+    if (frame->bp >= stack->get_pointer() - n + 1) {
         runtime_error("pop on empty call frame");
     }
     stack->pop_times(n);
 }
 
-value vm_thread::peek(stack_addr i) const {
-    if (frame->bp - i < stack->get_pointer()) {
+value vm_thread::peek(stack_address i) const {
+    if (i >= stack->get_pointer()) {
         runtime_error("peek out of stack bounds");
     }
     return stack->peek(i);
 }
 
-value vm_thread::local(local_addr i) const {
-    stack_addr pos = i + frame->bp;
+value vm_thread::local(local_address i) const {
+    stack_address pos = i + frame->bp;
     if (pos >= stack->get_pointer()) {
         runtime_error("out of stack bounds on local");
     }
     return stack->peek_bottom(pos);
 }
 
-void vm_thread::set_local(local_addr i, value v) {
-    stack_addr pos = i + frame->bp;
+void vm_thread::set_local(local_address i, value v) {
+    stack_address pos = i + frame->bp;
     if (pos >= stack->get_pointer()) {
         runtime_error("out of stack bounds on set-local.");
     }
     stack->set(pos, v);
 }
 
-bc_addr vm_thread::apply(working_set& use_ws, local_addr num_args) {
+code_address vm_thread::apply(working_set& use_ws, local_address num_args) {
     // last argument is table, second to last is list
     auto arg_tab = pop();
     auto arg_list = pop();
@@ -174,10 +194,10 @@ bc_addr vm_thread::apply(working_set& use_ws, local_addr num_args) {
         runtime_error("Too many arguments for function call in apply.");
     }
 
-    return call(use_ws, static_cast<local_addr>(vlen + num_args));
+    return call(use_ws, static_cast<local_address>(vlen + num_args));
 }
 
-bc_addr vm_thread::call(working_set& use_ws, local_addr num_args) {
+code_address vm_thread::call(working_set& use_ws, local_address num_args) {
     // the function to call should be at the bottom
     auto callee = peek(num_args + 1);
     auto kw = peek(num_args); // keyword arguments come first
@@ -207,10 +227,10 @@ bc_addr vm_thread::call(working_set& use_ws, local_addr num_args) {
         if (!stub->vl_param.has_value()) {
             runtime_error("Too many positional arguments to function.");
         }
-        for (auto i = stub->pos_params.size(); i < num_args; ++i) {
-            vlist = use_ws.add_cons(peek(num_args - i), vlist);
+        i32 m = num_args - stub->pos_params.size();
+        for (auto i = 0; i < m; ++i) {
+            vlist = use_ws.add_cons(peek(i), vlist);
         }
-        // clear variadic arguments from the stack
         pop_times(num_args - stub->pos_params.size());
     }
 
@@ -272,7 +292,7 @@ bc_addr vm_thread::call(working_set& use_ws, local_addr num_args) {
             + stub->vl_param.has_value()
             + stub->vt_param.has_value());
     u32 bp = stack->get_pointer() - sp;
-    frame = new call_frame{frame, ip+2, bp, func, sp};
+    frame = new call_frame{frame, ip+2, bp, func, stub->pos_params.size()};
     return stub->addr;
 }
 
@@ -286,13 +306,13 @@ void vm_thread::step() {
     optional<value*> vp;
 
     bool jump = false;
-    bc_addr addr = 0;
+    code_address addr = 0;
 
-    local_addr num_args;
+    local_address num_args;
 
     function_stub* stub;
 
-    local_addr l;
+    local_address l;
     u16 id;
 
     call_frame *tmp;
@@ -488,6 +508,7 @@ void vm_thread::step() {
         delete tmp;
 
         // pop the arguments + the caller + the keyword table
+        // clear variadic arguments from the stack
         pop_times(num_args+2);
         push(v1);
         break;
@@ -508,8 +529,9 @@ void vm_thread::step() {
 }
 
 void vm_thread::execute() {
+    status = vs_running;
     while (status == vs_running) {
-        if (ip < cur_chunk()->size()) {
+        if (ip >= cur_chunk()->size()) {
             status = vs_stopped;
             break;
         }
@@ -518,8 +540,8 @@ void vm_thread::execute() {
 }
 
 // disassemble a single instruction, writing output to out
-void disassemble_instr(const code_chunk* code, bc_addr ip, std::ostream& out) {
-    u8 instr = code->read_byte(ip);
+void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& out) {
+    u8 instr = code.read_byte(ip);
     switch (instr) {
     case OP_NOP:
         out << "nop";
@@ -528,25 +550,25 @@ void disassemble_instr(const code_chunk* code, bc_addr ip, std::ostream& out) {
         out << "pop";
         break;
     case OP_LOCAL:
-        out << "local " << (i32)code->read_byte(ip+1);
+        out << "local " << (i32)code.read_byte(ip+1);
         break;
     case OP_SET_LOCAL:
-        out << "set-local " << (i32)code->read_byte(ip+1);
+        out << "set-local " << (i32)code.read_byte(ip+1);
         break;
     case OP_COPY:
-        out << "copy " << (i32)code->read_byte(ip+1);
+        out << "copy " << (i32)code.read_byte(ip+1);
         break;
     case OP_UPVALUE:
-        out << "upvalue " << (i32)code->read_byte(ip+1);
+        out << "upvalue " << (i32)code.read_byte(ip+1);
         break;
     case OP_SET_UPVALUE:
-        out << "set-upvalue " << (i32)code->read_byte(ip+1);
+        out << "set-upvalue " << (i32)code.read_byte(ip+1);
         break;
     case OP_CLOSURE:
-        out << "closure " << code->read_short(ip+1);
+        out << "closure " << code.read_short(ip+1);
         break;
     case OP_CLOSE:
-        out << "close " << (i32)((code->read_byte(ip+1)));;
+        out << "close " << (i32)((code.read_byte(ip+1)));;
         break;
     case OP_GLOBAL:
         out << "global";
@@ -555,7 +577,7 @@ void disassemble_instr(const code_chunk* code, bc_addr ip, std::ostream& out) {
         out << "set-global";
         break;
     case OP_CONST:
-        out << "const " << code->read_short(ip+1);
+        out << "const " << code.read_short(ip+1);
         break;
     case OP_NULL:
         out << "null";
@@ -576,16 +598,16 @@ void disassemble_instr(const code_chunk* code, bc_addr ip, std::ostream& out) {
         out << "import";
         break;
     case OP_JUMP:
-        out << "jump " << (i32)(static_cast<i16>(code->read_short(ip+1)));
+        out << "jump " << (i32)(static_cast<i16>(code.read_short(ip+1)));
         break;
     case OP_CJUMP:
-        out << "cjump " << (i32)(static_cast<i16>(code->read_short(ip+1)));
+        out << "cjump " << (i32)(static_cast<i16>(code.read_short(ip+1)));
         break;
     case OP_CALL:
-        out << "call " << (i32)((code->read_byte(ip+1)));;
+        out << "call " << (i32)((code.read_byte(ip+1)));;
         break;
     case OP_APPLY:
-        out << "apply " << (i32)((code->read_byte(ip+1)));;
+        out << "apply " << (i32)((code.read_byte(ip+1)));;
         break;
     case OP_RETURN:
         out << "return";
@@ -600,11 +622,11 @@ void disassemble_instr(const code_chunk* code, bc_addr ip, std::ostream& out) {
     }
 }
 
-void disassemble(const code_chunk* code, std::ostream& out) {
+void disassemble(const symbol_table& symtab, const code_chunk& code, std::ostream& out) {
     u32 ip = 0;
     // TODO: annotate with line number
-    while (ip < code->size()) {
-        u8 instr = code->read_byte(ip);
+    while (ip < code.size()) {
+        u8 instr = code.read_byte(ip);
         // write line
         out << std::setw(6) << ip << "  ";
         disassemble_instr(code, ip, out);
@@ -613,10 +635,10 @@ void disassemble(const code_chunk* code, std::ostream& out) {
         if (instr == OP_CONST) {
             // write constant value
             out << " ; "
-                << v_to_string(code->get_const(code->read_short(ip+1)),
-                        code->get_symtab());
+                << v_to_string(code.get_const(code.read_short(ip+1)),
+                        &symtab);
         } else if (instr == OP_CLOSURE) {
-            out << " ; addr = " << code->get_function(code->read_short(ip+1))->addr;
+            out << " ; addr = " << code.get_function(code.read_short(ip+1))->addr;
         }
 
         out << "\n";

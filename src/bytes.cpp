@@ -7,9 +7,8 @@ chunk_source_info::chunk_source_info(u32 end_addr, const source_loc& loc)
     , loc{loc} {
 }
 
-code_chunk::code_chunk(symbol_table* st, value use_ns)
-    : ns{use_ns}
-    , st{st} {
+code_chunk::code_chunk(symbol_id use_ns)
+    : ns_id{use_ns} {
     add_source_loc(source_loc{std::shared_ptr<string>(new string{""}),0,0});
 }
 
@@ -31,12 +30,18 @@ u32 code_chunk::size() const {
     return static_cast<u32>(code.size());
 }
 
-symbol_table* code_chunk::get_symtab() const {
-    return st;
+symbol_id code_chunk::get_ns_id() {
+    return ns_id;
 }
 
-value code_chunk::get_ns() {
-    return ns;
+u8 code_chunk::read_byte(u32 where) const {
+    return code[where];
+}
+
+u16 code_chunk::read_short(u32 where) const {
+    u16 lo = code[where];
+    u16 hi = code[where + 1];
+    return (hi << 8) | lo;
 }
 
 void code_chunk::write_byte(u8 data) {
@@ -120,8 +125,12 @@ value code_chunk::get_const(const_id id) const {
     return const_table[id];
 }
 
+u32 code_chunk::num_consts() const {
+    return const_table.size();
+}
+
 u16 code_chunk::add_function(const vector<symbol_id>& pparams,
-                             local_addr req_args,
+                             local_address req_args,
                              optional<symbol_id> vl_param,
                              optional<symbol_id> vt_param) {
     functions.push_back(new function_stub {

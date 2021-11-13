@@ -11,42 +11,13 @@
 #include "values.hpp"
 
 #include <filesystem>
-#include <forward_list>
-#include <vector>
 
 namespace fn {
 
 namespace fs = std::filesystem;
 
-// global_env keeps track of currently-loaded chunks and namespaces
-struct global_env {
-private:
-    value root_ns;
-    value builtin_ns;
-    allocator* alloc;
-    vector<code_chunk*> loaded_chunks;
-
-public:
-    // this creates the root namespace hierarchy including the fn.builtin
-    // namespace.
-    global_env(allocator* use_alloc);
-    ~global_env();
-
-    allocator* get_alloc();
-    value get_root_ns();
-    value get_builtin_fs();
-
-    // create a namespace without importing builtin functions. The ns variable
-    // will still be set
-    value add_empty_namespace(bool* existed, namespace_id ns_id);
-    // create a namespace with builtin imports
-    value add_namespace(bool* existed, namespace_id ns_id);
-    code_chunk* add_chunk(value ns);
-};
-
-
 // virtual_machine stack size limit (per call frame)
-constexpr stack_addr STACK_SIZE = 255;
+constexpr stack_address STACK_SIZE = 255;
 
 // This structure includes a pointer to the previous call frame, so it is
 // actually a linked list representing the entire call stack.
@@ -54,19 +25,19 @@ struct call_frame {
     // call frame above this one
     call_frame* prev;
     // return address
-    bc_addr ret_addr;
+    code_address ret_addr;
     // base pointer (i.e. offset from the true bottom of the stack)
     u32 bp;
     // the function we're in. nullptr on the top level.
     function* caller;
     // the number of arguments we need to pop after exiting the current call
-    local_addr num_args;
+    local_address num_args;
 
     call_frame(call_frame* prev,
-            bc_addr ret_addr,
+            code_address ret_addr,
             u32 bp,
             function* caller,
-            local_addr num_args=0)
+            local_address num_args=0)
         : prev(prev)
         , ret_addr(ret_addr)
         , bp(bp)
@@ -75,13 +46,8 @@ struct call_frame {
     }
 };
 
-// The architecture here is that the virtual_machine object manages a collection
-// of vm_threads. When a vm_thread finishes executing, it will leave behind some
-// exit state, which can indicate that it's done, that it requires an import, or
-// that it. Comment: perhaps the vm_thread object can replace the
-// virtual_machine one, and the interpreter can handle the coordination. It
-// would avoid the need for the separate import_manager class, because we could
-// simply terminate with a WAITING_FOR_IMPORT status.
+// When a vm_thread finishes executing, it will leave behind some exit state,
+// which can indicate that it's done, that it requires an import, etc.
 
 // possible statuses for a vm_thread
 enum vm_status {
@@ -100,10 +66,10 @@ enum vm_status {
 struct vm_thread {
 private:
     // These are weak references to objects maintained by the interpreter.
-    global_env* glob;
+    symbol_table* symtab;
+    global_env* globals;
     allocator* alloc;
     code_chunk* toplevel_chunk;
-    value root_ns;
 
     // current execution status
     vm_status status;
@@ -113,7 +79,7 @@ private:
     value pending_import_id;
 
     // instruction pointer and stack
-    bc_addr ip;
+    code_address ip;
     call_frame* frame;
     root_stack* stack;
 
@@ -121,11 +87,11 @@ private:
     value lp;
 
     // peek relative to the top of the stack
-    value peek(stack_addr offset=0) const;
+    value peek(stack_address offset=0) const;
     // get a local value from the current call frame
-    value local(local_addr l) const;
-    // set a local_addr value
-    void set_local(local_addr l, value v);
+    value local(local_address l) const;
+    // set a local_address value
+    void set_local(local_address l, value v);
 
     // internalize a symbol by name
     value get_symbol(const string& name);
@@ -134,7 +100,7 @@ private:
     value get_global(value name);
 
     // attempt an import without escaping to interpreter
-    optional<value> try_import(const namespace_id& ns_id);
+    optional<value> try_import(symbol_id ns_id);
     // perform an import using the top of the stack as the id. If the target
     // namespace is not already loaded, then this will cause execution to halt
     // with the waiting_for_import status.
@@ -142,16 +108,17 @@ private:
 
     // stack operations
     value pop();
-    void pop_times(stack_addr n);
+    void pop_times(stack_address n);
     void push(value v);
 
     // returns the next addr to go to
-    bc_addr call(working_set& use_ws, local_addr num_args);
-    bc_addr apply(working_set& use_ws, local_addr num_args);
+    code_address call(working_set& use_ws, local_address num_args);
+    code_address apply(working_set& use_ws, local_address num_args);
 
 public:
     // initialize the virtual machine
-    vm_thread(global_env* use_glob, code_chunk* use_chunk);
+    vm_thread(allocator* use_alloc, global_env* use_globals,
+            code_chunk* use_chunk);
     ~vm_thread();
 
     vm_status check_status() const;
@@ -163,7 +130,7 @@ public:
     // execute instructions (stops if the end of the generated bytecode is reached)
     void execute();
     // get the instruction pointer
-    bc_addr get_ip() const;
+    code_address get_ip() const;
 
     // get the last popped value (null if there isn't any)
     value last_pop() const;
@@ -179,9 +146,9 @@ public:
 
 
 // disassemble a single instruction, writing output to out
-void disassemble_instr(const code_chunk& code, bc_addr ip, std::ostream& out);
+void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& out);
 
-void disassemble(const code_chunk& code, std::ostream& out);
+void disassemble(const symbol_table& symtab, const code_chunk& code, std::ostream& out);
 
 
 }

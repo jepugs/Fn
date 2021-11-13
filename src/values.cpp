@@ -57,135 +57,15 @@ optional<obj_header*> value::header() const {
         return &utable()->h;
     } else if (is_function()) {
         return &ufunction()->h;
-    } else if (is_namespace()) {
-        return &unamespace()->h;
-    } else if (is_foreign()) {
-        return &uforeign()->h;
     }
     return { };
 }
 
-// f64 v_num(vm_handle vm, value v) {
-//     if (!v.is_num()) {
-//         runtime_error(vm, err_type, "Expected number.");
-//     }
-//     return v.unum();
-// }
-// bool v_bool(vm_handle vm, value v) {
-//     if (!v.is_bool()) {
-//         runtime_error(vm, err_type, "Expected bool.");
-//     }
-//     return v.ubool();
-// }
-// fn_string* v_string(vm_handle vm, value v) {
-//     if (!v.is_string()) {
-//         runtime_error(vm, err_type, "Expected string.");
-//     }
-//     return v.ustring();
-// }
-// cons* v_cons(vm_handle vm, value v) {
-//     if (!v.is_cons()) {
-//         runtime_error(vm, err_type, "Expected cons.");
-//     }
-//     return v.ucons();
-// }
-// fn_table* v_table(vm_handle vm, value v) {
-//     if (!v.is_table()) {
-//         runtime_error(vm, err_type, "Expected table.");
-//     }
-//     return v.utable();
-// }
-// function* v_function(vm_handle vm, value v) {
-//     if (!v.is_function()) {
-//         runtime_error(vm, err_type, "Expected function.");
-//     }
-//     return v.ufunction();
-// }
-// foreign_func* v_foreign(vm_handle vm, value v) {
-//     if (!v.is_foreign()) {
-//         runtime_error(vm, err_type, "Expected foreign function.");
-//     }
-//     return v.uforeign();
-// }
-// fn_namespace* v_namespace(vm_handle vm, value v) {
-//     if (!v.is_namespace()) {
-//         runtime_error(vm, err_type, "Expected namespace.");
-//     }
-//     return v.unamespace();
-// }
-
-
-// generate a symbol with a unique ID
-
-// safe arithmetic operations
-// value v_plus(vm_handle vm, value a, value b) {
-//     if (!a.is_num() || !b.is_num()) {
-//         runtime_error(vm, err_type, "plus: not a number.");
-//     }
-//     return a + b;
-// }
-// value v_minus(vm_handle vm, value a, value b) {
-//     if (!a.is_num() || !b.is_num()) {
-//         runtime_error(vm, err_type, "minus: not a number.");
-//     }
-//     return a - b;
-// }
-// value v_times(vm_handle vm, value a, value b) {
-//     if (!a.is_num() || !b.is_num()) {
-//         runtime_error(vm, err_type, "times: not a number.");
-//     }
-//     return a * b;
-// }
-// value v_div(vm_handle vm, value a, value b) {
-//     if (!a.is_num() || !b.is_num()) {
-//         runtime_error(vm, err_type, "div: not a number.");
-//     }
-//     return a / b;
-// }
-// value v_pow(vm_handle vm, value a, value b) {
-//     if (!a.is_num() || !b.is_num()) {
-//         runtime_error(vm, err_type, "pow: not a number.");
-//     }
-//     return a.pow(b);
-// }
-// value v_mod(vm_handle vm, value a, value b) {
-//     if (!a.is_num() || !b.is_num()) {
-//         runtime_error(vm, err_type, "mod: not a number.");
-//     }
-//     return a % b;
-// }
-
-
-// these overloads allow us to operate on values with plain f64's
-// value v_plus(vm_handle vm, value a, f64 b) {
-//     return v_plus(vm, a, as_value(b));
-// }
-// value v_minus(vm_handle vm, value a, f64 b) {
-//     return v_minus(vm, a, as_value(b));
-// }
-// value v_times(vm_handle vm, value a, f64 b) {
-//     return v_times(vm, a, as_value(b));
-// }
-// value v_div(vm_handle vm, value a, f64 b) {
-//     return v_div(vm, a, as_value(b));
-// }
-// value v_pow(vm_handle vm, value a, f64 b) {
-//     return v_pow(vm, a, as_value(b));
-// }
-// value v_mod(vm_handle vm, value a, f64 b) {
-//     return v_mod(vm, a, as_value(b));
-// }
 
 // natural log (unsafe & safe)
 value v_ulog(value a) {
     return as_value(log(a.unum()));
 }
-// value v_log(vm_handle vm, value a) {
-//     if (!a.is_num()) {
-//         runtime_error(vm, err_type, "log: not a number.");
-//     }
-//     return v_ulog(a);
-// }
 
 // floor and ceiling functions
 value v_ufloor(value a) {
@@ -194,19 +74,6 @@ value v_ufloor(value a) {
 value v_uceil(value a){
     return as_value(ceil(a.unum()));
 }
-
-// value v_floor(vm_handle vm, value a) {
-//     if (!a.is_num()) {
-//         runtime_error(vm, err_type, "floor: not a number.");
-//     }
-//     return v_ufloor(a);
-// }
-// value v_ceil(vm_handle vm, value a) {
-//     if (!a.is_num()) {
-//         runtime_error(vm, err_type, "ceil: not a number.");
-//     }
-//     return v_uceil(a);
-// }
 
 // ordering
 bool v_ult(value a, value b) {
@@ -222,84 +89,9 @@ bool v_uge(value a, value b) {
     return a >= b;
 }
 
-// bool v_lt(vm_handle vm, value a, value b) {
-//     if (!a.is_num() || !b.is_num()) {
-//         runtime_error(vm, err_type, "lt: not a number.");
-//     }
-//     return v_ult(a,b);
-// }
-// bool v_gt(vm_handle vm, value a, value b) {
-//     if (!a.is_num() || !b.is_num()) {
-//         runtime_error(vm, err_type, "gt: not a number.");
-//     }
-//     return v_ugt(a,b);
-// }
-// bool v_le(vm_handle vm, value a, value b) {
-//     if (!a.is_num() || !b.is_num()) {
-//         runtime_error(vm, err_type, "le: not a number.");
-//     }
-//     return v_ule(a,b);
-// }
-// bool v_ge(vm_handle vm, value a, value b) {
-//     if (!a.is_num() || !b.is_num()) {
-//         runtime_error(vm, err_type, "ge: not a number.");
-//     }
-//     return v_uge(a,b);
-// }
-
-// string functions
-// value v_ustrlen(value str) {
-//     return as_value((i64)str.ustring()->len);
-// }
-// value v_strlen(vm_handle vm, value str) {
-//     if (!str.is_string()) {
-//         runtime_error(vm, err_type, "strlen: not a string.");
-//     }
-//     return v_ustrlen(str);
-// }
-
-// symbol functions
-// const symbol* v_lookup_symbol(vm_handle vm, value sym) {
-//     auto& symtab = vm->get_symtab();
-//     auto id = v_usym_id(sym);
-//     return &symtab[id];
-// }
-// value v_intern(vm_handle vm, value name) {
-//     if (!name.is_string()) {
-//         runtime_error(vm, err_type, "intern: name must be a string.");
-//     }
-//     auto& symtab = vm->get_symtab();
-//     return as_value(symtab.intern(name.ustring()->as_string()));
-// }
-// value v_intern(vm_handle vm, const string& name) {
-//     auto& symtab = vm->get_symtab();
-//     return as_value(symtab.intern(name));
-// }
-// value v_intern(vm_handle vm, const char* name) {
-//     return v_intern(vm, string{name});
-// }
-
-// string v_usym_name(vm_handle vm, value sym) {
-//     return v_lookup_symbol(vm, sym)->name;
-// }
-
 symbol_id v_usym_id(value sym) {
     return sym.usym_id();
 }
-// string v_sym_name(vm_handle vm, value sym) {
-//     if (!sym.is_symbol()) {
-//         runtime_error(vm, err_type, "sym_name: not a symbol.");
-//     }
-//     return v_usym_name(vm, sym);
-// }
-
-// symbol_id v_sym_id(vm_handle vm, value sym) {
-//     if (!sym.is_symbol()) {
-//         runtime_error(vm, err_type, "sym_id: not a symbol.");
-//     }
-//     return sym.usym_id();
-// }
-
 
 // list functions
 
@@ -311,24 +103,8 @@ value v_utail(value x) {
     return x.ucons()->tail;
 }
 
-// // generates error on empty
-// value v_head(vm_handle vm, value x) {
-//     if (!x.is_cons()) {
-//         runtime_error(vm, err_type, "head: object must be a cons.");
-//     }
-//     return v_uhead(x);
-// }
-// // this works on empty
-// value v_tail(vm_handle vm, value x) {
-//     if (x.is_empty()) {
-//         return V_EMPTY;
-//     } else if (!x.is_cons()) {
-//         runtime_error(vm, err_type, "tail: object must be a cons.");
-//     }
-//     return v_utail(x);
-// }
 
-// table/namespace functions
+// table functions
 forward_list<value> v_utab_get_keys(value obj) {
     forward_list<value> res;
     for (auto x : obj.utable()->contents.keys()) {
@@ -336,48 +112,9 @@ forward_list<value> v_utab_get_keys(value obj) {
     }
     return res;
 }
-forward_list<value> v_uns_get_keys(value obj) {
-    forward_list<value> res;
-    for (auto x : obj.unamespace()->contents.keys()) {
-        res.push_front(as_sym_value(*x));
-    }
-    return res;
-}
-// forward_list<value> v_tab_get_keys(vm_handle vm, value obj) {
-//     if (!obj.is_table()) {
-//         runtime_error(vm, err_type, "tab_get_keys: object must be a table.");
-//     }
-//     return v_utab_get_keys(obj);
-// }
-// forward_list<value> v_ns_get_keys(vm_handle vm, value obj) {
-//     if (!obj.is_namespace()) {
-//         runtime_error(vm, err_type, "ns_get_keys: object must be a namespace.");
-//     }
-//     return v_uns_get_keys(obj);
-// }
 
 bool v_utab_has_key(value obj, value key) {
     return obj.utable()->contents.has_key(key);
-}
-bool v_uns_has_key(value obj, value key) {
-    if (!key.is_symbol()) {
-        return false;
-    }
-    return obj.unamespace()->contents.has_key(v_usym_id(key));
-}
-
-bool v_tab_has_key(vm_handle vm, value obj, value key) {
-    if (!obj.is_table()) {
-        runtime_error(vm, err_type, "tab_has_key: object must be a table.");
-    }
-    return v_utab_has_key(obj, key);
-}
-
-bool v_ns_has_key(vm_handle vm, value obj, value key) {
-    if (!obj.is_namespace()) {
-        runtime_error(vm, err_type, "ns_has_key: object must be a namespace.");
-    }
-    return v_uns_has_key(obj, key);
 }
 
 value v_utab_get(value obj, value key) {
@@ -392,87 +129,6 @@ value v_utab_get(value obj, value key) {
 void v_utab_set(value obj, value key, value v) {
     obj.utable()->contents.insert(key, v);
 }
-
-value v_uns_get(value obj, value key) {
-    auto x = obj.unamespace()->contents.get(v_usym_id(key));
-    if (x.has_value()) {
-        return **x;
-    } else {
-        return V_NULL;
-    }
-}
-
-void v_uns_set(value obj, value key, value v) {
-    obj.unamespace()->contents.insert(v_usym_id(key), v);
-}
-
-// value v_tab_get(vm_handle vm, value obj, value key) {
-//     if (!key.is_symbol()) {
-//         runtime_error(vm, err_type, "tab_get: namespace key must be symbol.");
-//     }
-//     auto x = v_table(vm, obj)->contents.get(key);
-//     if (x.has_value()) {
-//         return **x;
-//     } else {
-//         return V_NULL;
-//     }
-// }
-
-// void v_tab_set(vm_handle vm, value obj, value key, value v) {
-//     if (!obj.is_table()) {
-//         runtime_error(vm, err_type, "tab_has_key: object must be a table.");
-//     }
-//     v_utab_set(obj, key, v);
-// }
-
-// value v_ns_get(vm_handle vm, value obj, value key) {
-//     if (!obj.is_namespace()) {
-//         runtime_error(vm, err_type, "ns_get: object must be a namespace.");
-//     }
-//     return v_uns_get(obj, key);
-// }
-
-// void v_ns_set(vm_handle vm, value obj, value key, value v) {
-//     if (!obj.is_namespace()) {
-//         runtime_error(vm, err_type, "ns_set: object must be a namespace.");
-//     }
-//     if (!key.is_symbol()) {
-//         runtime_error(vm, err_type, "ns_set: namespace key must be symbol.");
-//     }
-//     v_uns_set(obj, key, v);
-// }
-
-// forward_list<value> v_get_keys(vm_handle vm, value obj) {
-//     if (obj.is_table()) {
-//         return v_utab_get_keys(obj);
-//     } else if (obj.is_namespace()) {
-//         return v_uns_get_keys(obj);
-//     } else {
-//         runtime_error(vm, err_type, "get_keys: object must be table or namespace.");
-//     }
-//     return forward_list<value>{};
-// }
-
-// value v_get(vm_handle vm, value obj, value key) {
-//     if (obj.is_table()) {
-//         return v_utab_get(obj, key);
-//     } else if (obj.is_namespace()) {
-//         return v_uns_get(obj, key);
-//     } else {
-//         runtime_error(vm, err_type, "get: object must be table or namespace.");
-//     }
-//     return V_NULL;
-// }
-
-// void v_set(vm_handle vm, value obj, value key, value v) {
-//     if (obj.is_table()) {
-//         v_utab_set(obj, key, v);
-//     } else if (obj.is_namespace()) {
-//         v_uns_set(obj, key, v);
-//     } else {
-//         runtime_error(vm, err_type, "set: object must be table or namespace.");
-//     }
-// }
 
 obj_header::obj_header(value ptr, bool gc)
     : ptr{ptr}
@@ -554,6 +210,10 @@ const symbol* symbol_table::intern(const string& str) {
     }
 }
 
+symbol_id symbol_table::intern_id(const string& str) {
+    return intern(str)->id;
+}
+
 bool symbol_table::is_internal(const string& str) const {
     return by_name.get(str).has_value();
 }
@@ -566,8 +226,8 @@ inline optional<const symbol*> symbol_table::find(const string& str) const {
     return { };
 }
 
-local_addr function_stub::get_upvalue(i32 offset) {
-    for (local_addr i = 0; i < num_upvals; ++i) {
+local_address function_stub::get_upvalue(i32 offset) {
+    for (local_address i = 0; i < num_upvals; ++i) {
         if (upvals[i] == offset) {
             // found the upvalue
             return i;
@@ -594,34 +254,6 @@ function::~function() {
     if (stub->req_args < stub->pos_params.size()) {
         delete[] init_vals;
     }
-}
-
-foreign_func::foreign_func(local_addr min_args,
-                           bool var_args,
-                           optional<value> (*func)(local_addr, value*, virtual_machine*),
-                           bool gc)
-    : h{as_value(this),gc}
-    , min_args{min_args}
-    , var_args{var_args}
-    , func{func} {
-}
-
-fn_namespace::fn_namespace(bool gc)
-    : h{as_value(this),gc}
-    , contents{} {
-}
-
-optional<value> fn_namespace::get(symbol_id sym) {
-    auto x = contents.get(sym);
-    if (x.has_value()) {
-        return **x;
-    } else {
-        return std::nullopt;
-    }
-}
-
-void fn_namespace::set(symbol_id sym, const value& v) {
-    contents.insert(sym, v);
 }
 
 bool value::operator==(const value& v) const {
@@ -671,10 +303,7 @@ template<> u32 hash<value>(const value& v) {
         return v_usym_id(v) + tag;
     case TAG_TABLE:
     case TAG_CONS:
-        // TODO: write these
-        return 0;
     case TAG_FUNC:
-    case TAG_FOREIGN:
     default:
         return 0;
     }
@@ -684,7 +313,6 @@ string v_to_string(value v, const symbol_table* symbols) {
     auto tag = v_tag(v);
     string res;
     fn_table* t;
-    fn_namespace* ns;
     // TODO: add escaping to strings/characters
     switch(tag) {
     case TAG_NUM:
@@ -712,8 +340,6 @@ string v_to_string(value v, const symbol_table* symbols) {
         return res + "}";
     case TAG_FUNC:
         return "<function>";
-    case TAG_FOREIGN:
-        return "<foreign>";
     case TAG_NULL:
         return "null";
     case TAG_TRUE:
@@ -724,19 +350,6 @@ string v_to_string(value v, const symbol_table* symbols) {
         return "[]";
     case TAG_SYM:
         return "'" + (*symbols)[v_usym_id(v)].name;
-    case TAG_NAMESPACE:
-                // TODO: recursively track which objects we've descended into
-        res = "<namespace: ";
-        ns = v.unamespace();
-        for (auto k : ns->contents.keys()) {
-            res += v_to_string(as_sym_value(*k),symbols) + " "
-                + v_to_string(**ns->contents.get(*k),symbols) + " ";
-            if (res.size() >= 69) {
-                res += "...";
-                break;
-            }
-        }
-        return res + ">";
     }
     return "<unprintable-object>";
 }

@@ -13,7 +13,6 @@
 #include <unistd.h>
 
 using namespace fn;
-using namespace fn_bytes;
 
 namespace fs = std::filesystem;
 using std::endl;
@@ -85,11 +84,13 @@ int main(int argc, char** argv) {
     }
 
     interpreter inter{};
+    // TODO: use proper namespaces
+    value res;
     for (auto s : evals) {
         if (s[0] == 's') {
-            inter.interpret_string(s.substr(1));
+            res = inter.interpret_string(s.substr(1));
         } else {
-            inter.interpret_file(src.u8string());
+            res = inter.interpret_file(s);
         }
     }
 
@@ -99,12 +100,14 @@ int main(int argc, char** argv) {
         while (!std::cin.eof()) {
             std::cout << "fn> ";
             std::getline(std::cin, line);
-            inter.interpret_string(line);
+            res = inter.interpret_string(line);
             // print value
-            std::cout << v_to_string(inter.get_vm()->last_pop(),
-                                     inter.get_symtab())
+            std::cout << v_to_string(res, inter.get_symtab())
                       << endl;
         }
+    } else {
+        std::cout << v_to_string(res, inter.get_symtab())
+                  << endl;
     }
 
     return 0;

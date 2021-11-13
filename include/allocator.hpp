@@ -6,6 +6,8 @@
 // #define GC_DEBUG
 
 #include "base.hpp"
+#include "bytes.hpp"
+#include "namespace.hpp"
 #include "parse.hpp"
 #include "values.hpp"
 
@@ -111,10 +113,9 @@ public:
     // and init values. This means that the stack will be popped as many times
     // as the number of optional arguments indicated in the stub
     value add_function(function_stub* stub, root_stack* stack, u32 base_ptr);
-    value add_foreign(local_addr min_args,
+    value add_foreign(local_address min_args,
             bool var_args,
-            optional<value> (*func)(local_addr, value*, virtual_machine*));
-    value add_namespace();
+            optional<value> (*func)(local_address, value*, virtual_machine*));
 
     // FIXME: pinning is not thread-safe
 
@@ -130,6 +131,10 @@ private:
     // note: we guarantee that every pointer in this array is actually memory
     // managed by this garbage collector
     std::list<obj_header*> objects;
+    // holds global variables
+    global_env* globals;
+    // chunks are also managed by the garbage collector
+    vector<code_chunk*> chunks;
     // separate list of constant objects
     table<value,value> const_table;
     // flag used to determine garbage collector behavior. starts out false to
@@ -174,7 +179,7 @@ private:
     void unpin_object(obj_header* o);
 
 public:
-    allocator();
+    allocator(global_env* use_globals);
     ~allocator();
 
     // TODO: implement in allocator.cpp
@@ -195,6 +200,10 @@ public:
     // create a root stack managed by this allocator
     root_stack* add_root_stack();
     working_set add_working_set();
+
+    // add a chunk with name the specified namespace. (The namespace will be
+    // created if it does not already exist).
+    code_chunk* add_chunk(symbol_id ns_name);
 
     void print_status();
 };

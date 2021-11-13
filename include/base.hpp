@@ -40,30 +40,29 @@ static_assert(sizeof(uintptr_t) == 8);
 
 // we also assume we have 64-bit double and 32-bit float
 static_assert(sizeof(float) == 4);
-typedef float f32;
+typedef float f32; // note: this is not used anywhere at the time of writing
+                   // this comment (11/05). Maybe we can drop the assert?
 static_assert(sizeof(double) == 8);
 typedef double f64;
 
 // this is implemented as needed
 template<typename T> u32 hash(const T& v);
 
-/// semantic typedefs
-// addresses on the stack
-typedef u16 stack_addr;
-// addresses in the current call frame (i.e. arguments and local variables)
-typedef u8 local_addr;
-// 32-bit integers represent addresses in the bytecode
-typedef u32 bc_addr;
-// used to identify local variables and upvalues
-typedef u8 local_id;
-// used to identify bytecode constant
+// naming convention: you can do arithmetic on types whose names end in
+// _address, but should not on types that end in _id.
+
+// absolute addresses on the stack
+typedef u32 stack_address;
+// indexes stack values in the current call frame as well as upvalues
+typedef u8 local_address;
+// addresses in bytecode
+typedef u32 code_address;
+// used to identify constant values
 typedef u16 const_id;
 // used to identify symbols
 typedef u32 symbol_id;
-// used to identify namespaces. An empty list is understood to refer to fn.default
-struct namespace_id {
-    std::list<symbol_id> symbols;
-};
+// used to identify namespaces in the global environment
+typedef u16 namespace_id;
 
 // Used to track debugging information. An empty string for the filename
 // indicates that the bytecode was either internally generated or came from a
@@ -100,7 +99,7 @@ class fn_error : public std::exception {
     // is properly cleaned up when the object is destroyed.
     string *formatted;
 
-    public:
+public:
     const string subsystem;
     const string message;
     const source_loc origin;

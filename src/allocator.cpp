@@ -190,26 +190,6 @@ value working_set::add_function(function_stub* stub,
     return v;
 }
 
-value working_set::add_foreign(local_addr min_args,
-                               bool var_args,
-                               optional<value> (*func)(local_addr, value*, virtual_machine*)) {
-    alloc->collect();
-    alloc->mem_usage += sizeof(foreign_func);
-    ++alloc->count;
-    auto v = as_value(new foreign_func{min_args, var_args, func, true});
-    new_objects.push_front(v);
-    return v;
-}
-
-value working_set::add_namespace() {
-    alloc->collect();
-    alloc->mem_usage += sizeof(fn_namespace);
-    ++alloc->count;
-    auto v = as_value(new fn_namespace{});
-    new_objects.push_front(v);
-    return v;
-}
-
 value working_set::pin_value(value v) {
     auto h = v.header();
     if(h.has_value()) {
@@ -222,8 +202,9 @@ value working_set::pin_value(value v) {
     return v;
 }
 
-allocator::allocator()
-    : gc_enabled{false}
+allocator::allocator(global_env* use_globals)
+    : globals{use_globals}
+    , gc_enabled{false}
     , to_collect{false}
     , mem_usage{0}
     , collect_threshold{COLLECT_TH}
@@ -240,6 +221,9 @@ allocator::~allocator() {
     auto keys = const_table.keys();
     for (auto k : keys) {
         dealloc(**const_table.get(*k));
+    }
+    for (auto c : chunks) {
+        delete c;
     }
 }
 
@@ -269,12 +253,6 @@ void allocator::dealloc(value v) {
         }
 
         delete f;
-    } else if (v.is_foreign()) {
-        mem_usage -= sizeof(foreign_func);
-        delete v.uforeign();
-    } else if (v.is_namespace()) {
-        mem_usage -= sizeof(fn_namespace);
-        delete v.unamespace();
     }
     --count;
 }
@@ -294,7 +272,7 @@ vector<value> allocator::accessible(value v) {
         auto f = v.ufunction();
         // add the upvalues
         auto m = f->stub->num_upvals;
-        for (local_addr i = 0; i < m; ++i) {
+        for (local_address i = 0; i < m; ++i) {
             auto cell = f->upvals[i];
             if (cell->closed) {
                 res.push_back(cell->closed_value);
@@ -303,10 +281,6 @@ vector<value> allocator::accessible(value v) {
         auto num_opt = f->stub->pos_params.size() - f->stub->req_args;
         for (u32 i = 0; i < num_opt; ++i) {
             res.push_back(f->init_vals[i]);
-        }
-    } else if (v.is_namespace()) {
-        for (auto sym : v_uns_get_keys(v)) {
-            res.push_back(v_uns_get(v, sym));
         }
     }
 
@@ -358,6 +332,16 @@ void allocator::mark() {
         } else {
             mark_descend(*h);
             ++it;
+        }
+    }
+
+    // global namespaces
+    for (auto k : globals->ns_table.keys()) {
+        auto ns = *globals->get_ns(*k);
+        // iterate over bindings
+        for (auto k2 : ns->contents.keys()) {
+            auto h = ns->get(*k2)->header();
+            mark_descend(*h);
         }
     }
 }
@@ -456,6 +440,17 @@ root_stack* allocator::add_root_stack() {
 
 working_set allocator::add_working_set() {
     return working_set{this};
+}
+
+code_chunk* allocator::add_chunk(symbol_id ns_name) {
+    // ensure namespace exists
+    auto x = globals->get_ns(ns_name);
+    if (!x.has_value()) {
+        globals->create_ns(ns_name);
+    }
+    auto res = new code_chunk{ns_name};
+    chunks.push_back(res);
+    return res;
 }
 
 void allocator::print_status() {

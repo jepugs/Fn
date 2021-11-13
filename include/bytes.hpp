@@ -34,28 +34,24 @@ struct code_chunk {
 private:
     vector<u8> code;
     vector<value> const_table;
+    // namespace id
+    symbol_id ns_id;
 
     vector<fn_string*> const_strings;
     vector<cons*> const_conses;
     // TODO: use function_stub
     vector<function_stub*> functions;
     std::list<chunk_source_info> source_info;
-    value ns;
-
-    // This is a weak reference. It's the responsibility of the code using the
-    // chunk to make sure the pertinent symbol table is alive.
-    symbol_table* st;
 
     value quote_helper(const fn_parse::ast_node* node);
 
 public:
-    code_chunk(symbol_table* use_st, value use_ns);
+    code_chunk(symbol_id use_ns);
     ~code_chunk();
 
     // chunk size in bytes
     u32 size() const;
-    symbol_table* get_symtab() const;
-    value get_ns();
+    symbol_id get_ns_id();
 
     // read a byte. Requires (where < size())
     u8 read_byte(u32 where) const;
@@ -85,7 +81,7 @@ public:
     // names. req_args is number of required args.
 
     u16 add_function(const vector<symbol_id>& pparams,
-                     local_addr req_args,
+                     local_address req_args,
                      optional<symbol_id> vl_param,
                      optional<symbol_id> vt_param);
     function_stub* get_function(u16 id);

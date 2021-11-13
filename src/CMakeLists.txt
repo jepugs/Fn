@@ -2,12 +2,12 @@ add_library(fn_lib OBJECT
             allocator.cpp
             bytes.cpp
             compile.cpp
-            init.cpp
+            interpret.cpp
+            namespace.cpp
             parse.cpp
             scan.cpp
             values.cpp
             vm.cpp
-            vm_handle.cpp
             )
 
 target_include_directories(fn_lib PUBLIC
