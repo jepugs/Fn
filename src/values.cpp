@@ -223,6 +223,9 @@ local_address function_stub::add_upvalue(u8 addr, bool direct) {
 function::function(function_stub* stub, bool gc)
     : h{as_value(this),gc}
     , stub{stub} {
+    if (stub == nullptr) {
+        return;
+    }
     upvals = new upvalue_cell*[stub->num_upvals];
     if (stub->req_args < stub->pos_params.size()) {
         init_vals = new value[stub->pos_params.size() - stub->req_args];
@@ -231,6 +234,9 @@ function::function(function_stub* stub, bool gc)
 
 // TODO: use refcount on upvalues
 function::~function() {
+    if (stub == nullptr) {
+        return;
+    }
     delete[] upvals;
     if (stub->req_args < stub->pos_params.size()) {
         delete[] init_vals;

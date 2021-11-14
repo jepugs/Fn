@@ -37,11 +37,14 @@ struct global_env {
     optional<fn_namespace*> get_ns(symbol_id name);
     fn_namespace* create_ns(symbol_id name);
 
-    // import bindings src into dest. The new bindings' names consist
-    // of the names in src with prefix prepended.
-    void do_import(symbol_id dest, symbol_id src, const string& prefix);
 };
 
+// import bindings src into dest. The new bindings' names consist
+// of the names in src with prefix prepended.
+void do_import(symbol_table& symtab,
+        fn_namespace& dest,
+        fn_namespace& src,
+        const string& prefix);
 
 }
 

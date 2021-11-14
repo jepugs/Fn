@@ -214,15 +214,22 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
     }
 
     auto func = callee.ufunction();
-    auto stub = func->stub;
-    if (stub->foreign_func) {
-        // TODO: foreign function
-        runtime_error("Error on call instruction: foreign functions not supported.");
+    if (func->foreign_func) {
+        auto args = new value[num_args];
+        if (!kw_tab.utable()->contents.keys().empty()) {
+            runtime_error("Foreign functions don't accept keyword arguments.");
+        }
+        auto ws2 = alloc->add_working_set();
+        for (i32 i = num_args - 1; i >= 0; --i) {
+            args[i] = ws2.pin_value(pop());
+        }
+        push(func->foreign_func(&ws2, num_args, args));
         return ip + 2;
     }
 
     // native function call
 
+    auto stub = func->stub;
     auto num_pos = stub->pos_params.size();
 
     // For the most part, positional arguments can get left where they are.

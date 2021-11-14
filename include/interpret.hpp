@@ -34,6 +34,11 @@ public:
     symbol_table* get_symtab();
     global_env* get_global_env();
 
+    // Init
+    // adds a foreign function to fn/builtin
+    void add_builtin_function(const string& name,
+            value (*foreign_func)(working_set*,local_address,value*));
+    
     // Evaluate a source file in an empty chunk. Returns the value from the last
     // expression (or null for an empty file).
     value interpret_file(const string& path);

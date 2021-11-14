@@ -221,12 +221,14 @@ void allocator::dealloc(value v) {
         mem_usage -= sizeof(function);
         auto f = v.ufunction();
 
-        // delete dead upvalues
-        for (int i = 0; i < f->stub->num_upvals; ++i) {
-            auto cell = f->upvals[i];
-            cell->dereference();
-            if (cell->dead()) {
-                delete cell;
+        if (f->stub != nullptr) {
+            // delete dead upvalues
+            for (int i = 0; i < f->stub->num_upvals; ++i) {
+                auto cell = f->upvals[i];
+                cell->dereference();
+                if (cell->dead()) {
+                    delete cell;
+                }
             }
         }
 

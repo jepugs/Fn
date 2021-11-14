@@ -38,6 +38,14 @@ void show_usage() {
         ;
 }
 
+value fn_builtin_add(working_set* ws, local_address argc, value* argv) {
+    value v = as_value(0.0);
+    for (auto i = 0; i < argc; ++i) {
+        v = v + argv[i];
+    }
+    return v;
+}
+
 int main(int argc, char** argv) {
     int opt;
     // this contains filenames and strings to evaluate. the first character of each entry indicates
@@ -84,6 +92,7 @@ int main(int argc, char** argv) {
     }
 
     interpreter inter{};
+    inter.add_builtin_function("+", fn_builtin_add);
     // TODO: use proper namespaces
     value res;
     for (auto s : evals) {

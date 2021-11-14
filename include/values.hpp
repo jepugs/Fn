@@ -303,9 +303,6 @@ struct function_stub {
     optional<symbol_id> vl_param;  // variadic list parameter
     optional<symbol_id> vt_param;  // variadic table parameter
 
-    // If foreign_func != nullptr, addr and upvalue fields are ignored, and the
-    // function is evaluated by calling foreign_func instead of jumping
-    value (*foreign_func)(working_set*, value*);
     code_chunk* chunk;             // chunk containing the function
     code_address addr;             // function address in its chunk
 
@@ -355,6 +352,9 @@ struct upvalue_cell {
 struct alignas(32) function {
     obj_header h;
     function_stub* stub;
+    // If foreign_func != nullptr, addr and upvalue fields are ignored, and the
+    // function is evaluated by calling foreign_func instead of jumping
+    value (*foreign_func)(working_set*,local_address,value*);
     upvalue_cell** upvals;
     value* init_vals;
 

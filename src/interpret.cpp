@@ -15,6 +15,7 @@ interpreter::interpreter()
     search_path.push_back(fs::current_path().u8string());
 
     globals.create_ns(symtab.intern("fn/builtin"));
+    globals.create_ns(symtab.intern("fn/repl"));
 }
 
 interpreter::~interpreter() {
@@ -66,8 +67,11 @@ value interpreter::interpret_string(const string& src) {
     fn_scan::scanner sc{&in};
 
     auto ns_name = symtab.intern("fn/repl");
-
     auto chunk = alloc.add_chunk(ns_name);
+    do_import(symtab,
+            **globals.get_ns(ns_name),
+            **globals.get_ns(symtab.intern("fn/builtin")),
+            "");
     compiler c{&symtab, &alloc, chunk};
     vm_thread vm{&alloc, &globals, chunk};
 
@@ -75,9 +79,6 @@ value interpreter::interpret_string(const string& src) {
     while ((expr = fn_parse::parse_node(sc, symtab))) {
         // TODO: this is where macroexpansion goes
         c.compile_expr(expr);
-        // this is for testing, but maybe we should expose this functionality
-        // somewhere else
-        disassemble(symtab, *chunk, std::cout);
         delete expr;
         interpret_to_end(vm);
     }
@@ -92,6 +93,20 @@ allocator* interpreter::get_alloc() {
 
 symbol_table* interpreter::get_symtab() {
     return &symtab;
+}
+
+global_env* interpreter::get_global_env() {
+    return &globals;
+}
+
+void interpreter::add_builtin_function(const string& name,
+        value (*foreign_func)(working_set*, local_address, value*)) {
+    auto ws = alloc.add_working_set();
+    auto f = ws.add_function(nullptr).ufunction();
+    f->foreign_func = foreign_func;
+
+    auto builtin = *globals.get_ns(symtab.intern("fn/builtin"));
+    builtin->set(symtab.intern(name), as_value(f));
 }
 
 

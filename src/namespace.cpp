@@ -43,4 +43,13 @@ fn_namespace* global_env::create_ns(symbol_id name) {
     return res;
 }
 
+void do_import(symbol_table& symtab, fn_namespace& dest, fn_namespace& src,
+        const string& prefix) {
+    for (auto k : src.contents.keys()) {
+        auto name = symtab.intern(prefix + symtab[k]);
+        dest.set(name, *src.get(k));
+    }
+}
+
+
 }
