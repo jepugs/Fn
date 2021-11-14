@@ -53,33 +53,32 @@ upvalue_cell* root_stack::get_upvalue(stack_address pos) {
     // iterate over the open upvalues
     auto it = upvals.begin();
     while (it != upvals.end()) {
-        if (it->pos == pos) {
+        if ((*it)->pos == pos) {
             // return an existing upvalue
-            return it->cell;
-        } else if (it->pos < pos) {
+            return *it;
+        } else if ((*it)->pos < pos) {
             break;
         }
         ++it;
     }
     // create a new upvalue
-    auto cell = new upvalue_cell{};
-    upvals.insert(it, stack_upvalue{.cell=cell, .pos=pos});
+    auto cell = new upvalue_cell{pos};
+    upvals.insert(it, cell);
     return cell;
 }
 
 void root_stack::close(u32 base_addr) {
     for (auto it = upvals.begin(); it != upvals.end(); ) {
-        if (it->pos < base_addr) {
+        if ((*it)->pos < base_addr) {
             break;
         }
 
-        auto cell = it->cell;
-        cell->close(contents[it->pos]);
-        cell->dereference();
+        (*it)->close(contents[(*it)->pos]);
+        (*it)->dereference();
         // IMPLNOTE: This if statement prevents a memory leak. If no live
         // functions reference this cell, the garbage collector won't see it.
-        if (cell->dead()) {
-            delete cell;
+        if ((*it)->dead()) {
+            delete *it;
         }
         it = upvals.erase(it);
     }

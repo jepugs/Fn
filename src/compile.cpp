@@ -333,7 +333,7 @@ void compiler::compile_body(local_table& locals,
         write_byte(start);
         --locals.sp;
         write_byte(OP_CLOSE);
-        write_byte(locals.sp - start -1);
+        write_byte(locals.sp - start - 1);
         locals.sp = start + 1;
     }
 }

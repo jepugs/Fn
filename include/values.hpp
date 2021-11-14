@@ -324,8 +324,9 @@ struct function_stub {
 
 // A location storing a captured variable. These are shared across functions.
 struct upvalue_cell {
-    bool closed;         // if false, the value is still on the stack
     u32 ref_count;       // number of functions using this upvalue
+    bool closed;         // if false, the value is still on the stack
+    stack_address pos;   // position on the stack while open
     value closed_value;  // holds the upvalue for closed cells
     // TODO: lock these :'(
 
@@ -344,9 +345,10 @@ struct upvalue_cell {
     }
 
     // create a new open cell with reference count 1
-    upvalue_cell()
-        : closed{false}
-        , ref_count{1} {
+    upvalue_cell(stack_address pos)
+        : ref_count{1}
+        , closed{false}
+        , pos{pos} {
     }
 };
 

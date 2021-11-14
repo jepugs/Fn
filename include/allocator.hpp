@@ -20,12 +20,6 @@ struct allocator;
 // A root_stack is a stack of garbage collector root objects. These are used for
 // the virtual machine stack.
 
-// used by root_stack to track which stack positions are associated to upvalues
-struct stack_upvalue {
-    upvalue_cell* cell;
-    u32 pos;
-};
-
 // TODO: replace the vector here with a manually-managed array
 struct root_stack {
     friend class allocator;
@@ -35,7 +29,7 @@ private:
     u32 pointer;
     vector<value> contents;
     // open upvalues in descending order by stack position
-    std::list<stack_upvalue> upvals;
+    std::list<upvalue_cell*> upvals;
     bool dead; // if true, stack will be deleted when garbage is collected
 
 public:

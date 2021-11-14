@@ -380,7 +380,10 @@ void vm_thread::step() {
         if (u->closed) {
             push(u->closed_value);
         } else {
-            auto pos = frame->caller->stub->upvals[l] + frame->bp;
+            if (frame->prev == nullptr) {
+                runtime_error("Upvalue get in toplevel frame.");
+            }
+            auto pos = u->pos;
             push(stack->peek_bottom(pos));
         }
         ++ip;
@@ -522,7 +525,8 @@ void vm_thread::step() {
         addr = frame->ret_addr;
 
         num_args = frame->num_args;
-        stack->close(frame->bp);
+        // bp-1 to get rid of the caller
+        stack->close(frame->bp-1);
         tmp = frame;
         // TODO: restore stack pointer
         frame = tmp->prev;
