@@ -80,10 +80,11 @@ value vm_thread::get_global(value name) {
 
 optional<value> vm_thread::try_import(symbol_id ns_id) {
     // TODO: write this
+    return std::nullopt;
 }
 
 void vm_thread::do_import() {
-    auto ns_id = pop().usym_id();
+    // auto ns_id = pop().usym_id();
     // TODO: write this :(
 }
 
@@ -197,84 +198,83 @@ code_address vm_thread::apply(working_set& use_ws, local_address num_args) {
     return call(use_ws, static_cast<local_address>(vlen + num_args));
 }
 
+// Calling convention: a call uses num_args + 2 elements on the stack. At the
+// very bottom we expect the callee, followed by num_args positional arguments,
+// and finally a table containing keyword arguments.
 code_address vm_thread::call(working_set& use_ws, local_address num_args) {
     // the function to call should be at the bottom
     auto callee = peek(num_args + 1);
-    auto kw = peek(num_args); // keyword arguments come first
-    if (!kw.is_table()) {
-        runtime_error("VM call operation has malformed keyword table.");
+    auto kw_tab = use_ws.pin_value(pop()); // keyword arguments
+    if (!kw_tab.is_table()) {
+        runtime_error("Error on call instruction: malformed keyword table.");
     }
     if (v_tag(callee) != TAG_FUNC) {
-        runtime_error("attempt to call nonfunction");
+        runtime_error("Error on call instruction: callee is not a function");
         return ip + 2;
     }
-    
+
     auto func = callee.ufunction();
     auto stub = func->stub;
     if (stub->foreign_func) {
         // TODO: foreign function
-        runtime_error("Foreign functions not supported.");
+        runtime_error("Error on call instruction: foreign functions not supported.");
         return ip + 2;
     }
 
     // native function call
 
-    // usually, positional arguments can get left where they are
+    auto num_pos = stub->pos_params.size();
 
-    // extra positional arguments go to the variadic list parameter
+    // For the most part, positional arguments can get left where they are.
+    // Extra positional arguments go to the variadic list parameter
     value vlist = V_EMPTY;
-    if (stub->pos_params.size() < num_args) {
+    if (num_pos < num_args) {
         if (!stub->vl_param.has_value()) {
             runtime_error("Too many positional arguments to function.");
         }
-        i32 m = num_args - stub->pos_params.size();
+        i32 m = num_args - num_pos;
         for (auto i = 0; i < m; ++i) {
-            vlist = use_ws.add_cons(peek(i), vlist);
+            // this builds the list in the correct order
+            vlist = use_ws.add_cons(pop(), vlist);
         }
-        pop_times(num_args - stub->pos_params.size());
     }
 
-    // positional arguments after num_args
-    table<symbol_id,value> pos;
-    // things we put in vtable
-    table<symbol_id,bool> extra;
+    // validate keyword table
     value vtable = use_ws.add_table();
-    auto& cts = kw.utable()->contents;
-    for (auto k : cts.keys()) {
+    auto& kw = kw_tab.utable()->contents;
+    table<symbol_id,value> pos; // holds additional positional parameters
+    for (auto k : kw.keys()) {
         auto id = v_usym_id(*k);
-        bool found = false;
-        for (u32 i = 0; i < stub->pos_params.size(); ++i) {
-            if (stub->pos_params[i] == id) {
-                if (pos.get(id).has_value() || i < num_args) {
-                    if (!stub->vt_param.has_value()) {
-                        runtime_error("Extra keyword argument.");
-                    } else {
-                        extra.insert(id, true);
-                    }
-                } else {
-                    found = true;
-                    pos.insert(id,**cts.get(*k));
-                }
+        // first, check if this is a positional argument we still need
+        bool found_pos = false;
+        for (auto i = num_args; i < num_pos; ++i) {
+            if(stub->pos_params[i] == id) {
+                pos.insert(id, **kw.get(*k));
+                found_pos = true;
                 break;
             }
         }
-        if (!found) {
-            if (!stub->vt_param.has_value()) {
-                runtime_error("Extraneous keyword arguments.");
-            }
-            v_utab_set(vtable, *k, **cts.get(*k));
+        if (found_pos) {
+            break;
+        }
+
+        if (!stub->vt_param.has_value()) {
+            // if there's no variadic table argument, we have an error here
+            runtime_error("Unrecognized keyword argument in call.");
+        } else {
+            vtable.utable()->contents.insert(*k, **kw.get(*k));
         }
     }
 
     // finish placing positional parameters on the stack
-    for (u32 i = num_args; i < stub->pos_params.size(); ++i) {
+    for (u32 i = num_args; i < num_pos; ++i) {
         auto v = pos.get(stub->pos_params[i]);
         if (v.has_value()) {
             push(**v);
         } else if (i >= stub->req_args) {
             push(callee.ufunction()->init_vals[i-stub->req_args]);
         } else {
-            runtime_error("Missing parameter with no default.");
+            runtime_error("Missing non-optional argument.");
         }
     }
 
@@ -288,12 +288,39 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
 
     // extend the call frame
     // stack pointer for the new frame
-    u8 sp = static_cast<u8>(stub->pos_params.size()
+    u8 sp = static_cast<u8>(num_pos
             + stub->vl_param.has_value()
             + stub->vt_param.has_value());
     u32 bp = stack->get_pointer() - sp;
+
     frame = new call_frame{frame, ip+2, bp, func, stub->pos_params.size()};
     return stub->addr;
+}
+
+
+void vm_thread::init_function(function* f) {
+    auto stub = f->stub;
+
+    // Add init values
+    // DANGER! Init vals are popped right off the stack, so they better be there
+    // when this function gets initialized!
+    for (i32 i = stub->req_args; i < stub->pos_params.size(); ++i) {
+        f->init_vals[i] = stack->pop();
+    }
+
+    // set upvalues
+    for (auto i = 0; i < stub->num_upvals; ++i) {
+        auto pos = stub->upvals[i];
+        if (stub->upvals_direct[i]) {
+            auto u = stack->get_upvalue(frame->bp + pos);
+            u->reference();
+            f->upvals[i] = u;
+        } else {
+            auto u = frame->caller->upvals[pos];
+            u->reference();
+            f->upvals[i] = u;
+        }
+    }
 }
 
 #define push_bool(b) push(b ? V_TRUE : V_FALSE);
@@ -374,7 +401,9 @@ void vm_thread::step() {
     case OP_CLOSURE:
         id = cur_chunk()->read_short(ip+1);
         stub = cur_chunk()->get_function(cur_chunk()->read_short(ip+1));
-        push(ws.add_function(stub, stack, frame->bp));
+        v1 = ws.add_function(stub);
+        init_function(v1.ufunction());
+        push(v1);
         ip += 2;
         break;
 
@@ -394,7 +423,9 @@ void vm_thread::step() {
         break;
     case OP_SET_GLOBAL:
         v1 = pop(); // value
-        v2 = peek(); // name
+        // FIXME: potential optimization: make the second pop() here a peek()
+        // instead and leave the symbol on the stack
+        v2 = pop(); // name
         if (v_tag(v2) != TAG_SYM) {
             runtime_error("OP_SET_GLOBAL name operand is not a symbol.");
         }
@@ -494,7 +525,7 @@ void vm_thread::step() {
             runtime_error("return instruction at top level.");
         }
         // get return value
-        v1 = pop();
+        v1 = ws.pin_value(pop());
 
         // jump to return address
         jump = true;
@@ -507,9 +538,6 @@ void vm_thread::step() {
         frame = tmp->prev;
         delete tmp;
 
-        // pop the arguments + the caller + the keyword table
-        // clear variadic arguments from the stack
-        pop_times(num_args+2);
         push(v1);
         break;
 

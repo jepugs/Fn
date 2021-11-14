@@ -35,35 +35,42 @@ void compiler::compile_subexpr(local_table& locals, const ast_node* expr) {
 optional<local_address> compiler::find_local(local_table& locals,
         bool* is_upval,
         symbol_id name) {
-    local_table* l = &locals;
-    optional<u8*> res;
-    i32 base_offset = 0;
-    // keep track of how many enclosing functions we need to go into
-    while (true) {
-        res = l->vars.get(name);
-        if (res.has_value()) {
-            break;
-        }
 
-        // when entering an enclosing function, update the base offset
-        if (l->parent == nullptr) {
-            break;
-        }
-        if (l->enclosing_func != nullptr) {
-            base_offset -= l->bp;
-        }
-        l = l->parent;
-    }
-
-    if (base_offset < 0 && res.has_value()) {
-        *is_upval = true;
-        return l->enclosing_func->get_upvalue(base_offset + **res);
-    } else if (res.has_value()) {
+    // check the current local environment
+    auto res = locals.vars.get(name);
+    if (res.has_value()) {
+        // found locally
         *is_upval = false;
         return **res;
     }
+    res = locals.upvals.get(name);
+    if (res.has_value()) {
+        *is_upval = true;
+        return **res;
+    }
 
-    return std::nullopt;
+    if (locals.parent == nullptr) {
+        return std::nullopt;
+    }
+
+    // this recursive call does a lot of work for us
+    auto x = find_local(*locals.parent, is_upval, name);
+    if (!x.has_value()) {
+        return std::nullopt;
+    }
+
+    // as the call stack unwinds, we have to add appropriate upvalues to each
+    // function_stub involved. We only need to do this on call frames.
+    if (locals.is_call_frame) {
+        auto local = locals.enclosing_func->add_upvalue(*x, !(*is_upval));
+
+        // add to the upvalues table
+        locals.upvals.insert(name, local);
+        *is_upval = true;
+        return local;
+    }
+
+    return x;
 }
 
 void compiler::write_byte(u8 byte) {
@@ -242,10 +249,6 @@ void compiler::compile_call(local_table& locals,
     // compile the operator
     compile_subexpr(locals, list[0]);
 
-    // table for keywords
-    write_byte(OP_TABLE);
-    ++locals.sp;
-
     u32 num_args = 0;
     u32 i;
     vector<symbol_id> kw; // keyword symbol id's we've seen
@@ -264,6 +267,10 @@ void compiler::compile_call(local_table& locals,
             ++num_args;
         }
     }
+
+    // table for keywords
+    write_byte(OP_TABLE);
+    ++locals.sp;
 
     for (; i < list.size(); i += 2) {
         auto& s = list[i]->get_symbol(*symtab);
@@ -291,7 +298,7 @@ void compiler::compile_call(local_table& locals,
 
         // add the argument to the keyword table
         write_byte(OP_LOCAL);
-        write_byte(base_sp + 1);
+        write_byte(locals.sp-1); // table on top of the stack
         ++locals.sp;
         compile_sym(key);
         ++locals.sp;
@@ -327,7 +334,7 @@ void compiler::compile_body(local_table& locals,
         write_byte(start);
         --locals.sp;
         write_byte(OP_CLOSE);
-        write_byte(locals.sp - start - 1);
+        write_byte(locals.sp - start -1);
         locals.sp = start + 1;
     }
 }
@@ -360,7 +367,7 @@ void compiler::compile_function(local_table& locals,
 
     bool vl = params.var_list.has_value();
     bool vt = params.var_table.has_value();
-    auto func_id = dest->add_function(args, req_args, vl, vt);
+    auto func_id = dest->add_function(args, req_args, params.var_list, params.var_table);
 
     // create the new local environment
     local_table fn_locals{&locals, dest->get_function(func_id)};
@@ -392,6 +399,8 @@ void compiler::compile_function(local_table& locals,
     // create the function object
     write_byte(OP_CLOSURE);
     write_short(func_id);
+    // subtract stack positions for initial values
+    locals.sp -= (params.positional.size() - req_args);
     ++locals.sp;
 }
 
@@ -465,9 +474,13 @@ void compiler::compile_def(local_table& locals,
     auto sym = list[1]->datum.atom->datum.sym;
     // TODO: check for illegal symbol names
     compile_sym(sym);
-    ++locals.sp;
+    // copy the symbol so there's an extra one to return
+    write_byte(OP_LOCAL);
+    write_byte(locals.sp);
+    locals.sp += 2;
     compile_subexpr(locals, list[2]);
     write_byte(OP_SET_GLOBAL);
+    locals.sp -= 2;
 }
 
 void compiler::compile_defn(local_table& locals,
@@ -727,8 +740,7 @@ void compiler::compile_set(local_table& locals,
             ++locals.sp;
             compile_subexpr(locals, list[2]);
             write_byte(OP_SET_GLOBAL);
-            write_byte(OP_POP);
-            --locals.sp;
+            locals.sp -= 2;
         }
         write_byte(OP_NULL);
     } else if (list[1]->kind == ak_list) {

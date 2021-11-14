@@ -77,7 +77,7 @@ value interpreter::interpret_string(const string& src) {
         c.compile_expr(expr);
         // this is for testing, but maybe we should expose this functionality
         // somewhere else
-        //disassemble(symtab, *chunk, std::cout);
+        disassemble(symtab, *chunk, std::cout);
         delete expr;
         interpret_to_end(vm);
     }

@@ -59,7 +59,7 @@ public:
     void set(u32 offset, value v);
 
     // set the upvalues of a function object with the given base pointer
-    void add_upvalues(function* f, u32 base_ptr);
+    upvalue_cell* get_upvalue(stack_address loc);
     // close all upvalues with stack addresses >= base_addr. (Closing an upvalue
     // involves copying its value to the heap and removing it from the list of
     // upvalues).
@@ -109,10 +109,9 @@ public:
     value add_cons(value hd, value tl);
     value add_string(const string& s);
     value add_table();
-    // Create a function. The stack and base pointer are for setting upvalues
-    // and init values. This means that the stack will be popped as many times
-    // as the number of optional arguments indicated in the stub
-    value add_function(function_stub* stub, root_stack* stack, u32 base_ptr);
+    // Create a function. The caller is responsible for correctly setting
+    // upvalues and init values.
+    value add_function(function_stub* stub);
     value add_foreign(local_address min_args,
             bool var_args,
             optional<value> (*func)(local_address, value*, virtual_machine*));

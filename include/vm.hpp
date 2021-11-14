@@ -115,6 +115,10 @@ private:
     code_address call(working_set& use_ws, local_address num_args);
     code_address apply(working_set& use_ws, local_address num_args);
 
+    // set up a newly created function (including taking init values off the
+    // stack)
+    void init_function(function* obj);
+
 public:
     // initialize the virtual machine
     vm_thread(allocator* use_alloc, global_env* use_globals,

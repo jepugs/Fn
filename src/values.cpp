@@ -226,16 +226,9 @@ inline optional<const symbol*> symbol_table::find(const string& str) const {
     return { };
 }
 
-local_address function_stub::get_upvalue(i32 offset) {
-    for (local_address i = 0; i < num_upvals; ++i) {
-        if (upvals[i] == offset) {
-            // found the upvalue
-            return i;
-        }
-    }
-    // add a new upvalue
-    upvals.push_back(offset);
-
+local_address function_stub::add_upvalue(u8 addr, bool direct) {
+    upvals.push_back(addr);
+    upvals_direct.push_back(direct);
     return num_upvals++;
 }
 

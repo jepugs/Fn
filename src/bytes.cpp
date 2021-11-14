@@ -142,7 +142,8 @@ u16 code_chunk::add_function(const vector<symbol_id>& pparams,
             .chunk=this,
             .addr=size(),
             .num_upvals=0,
-            .upvals=vector<i32>()});
+            .upvals=vector<local_address>{},
+            .upvals_direct=vector<bool>{}});
     return (u16) (functions.size() - 1);
 }
 

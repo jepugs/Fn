@@ -49,28 +49,22 @@ void root_stack::set(u32 offset, value v) {
     contents[offset] = v;
 }
 
-void root_stack::add_upvalues(function* f, u32 base_ptr) {
-    auto stub = f->stub;
-
-    for (u32 i = 0; i < stub->num_upvals; ++i) {
-        upvalue_cell* cell;
-        // iterate over the open upvalues
-        for (auto it = upvals.begin(); it != upvals.end(); ) {
-            auto pos = base_ptr + stub->upvals[i];
-            if (it->pos == pos) {
-                // add an existing upvalue
-                cell = it->cell;
-                break;
-            } else if (it->pos < pos) {
-                // create a new upvalue
-                cell = new upvalue_cell{};
-                upvals.insert(it, stack_upvalue{.cell=cell, .pos=pos});
-                break;
-            }
-            ++it;
+upvalue_cell* root_stack::get_upvalue(stack_address pos) {
+    // iterate over the open upvalues
+    auto it = upvals.begin();
+    while (it != upvals.end()) {
+        if (it->pos == pos) {
+            // return an existing upvalue
+            return it->cell;
+        } else if (it->pos < pos) {
+            break;
         }
-        f->upvals[i] = cell;
+        ++it;
     }
+    // create a new upvalue
+    auto cell = new upvalue_cell{};
+    upvals.insert(it, stack_upvalue{.cell=cell, .pos=pos});
+    return cell;
 }
 
 void root_stack::close(u32 base_addr) {
@@ -165,26 +159,11 @@ value working_set::add_table() {
     return v;
 }
 
-value working_set::add_function(function_stub* stub,
-        root_stack* stack,
-        u32 base_ptr) {
+value working_set::add_function(function_stub* stub) {
     alloc->collect();
     alloc->mem_usage += sizeof(function);
     ++alloc->count;
     auto f = new function{stub, true};
-
-    // add upvalues
-    stack->add_upvalues(f, base_ptr);
-
-    // Add init values
-
-    // DANGER! Init vals are popped right off the stack, so they better be there
-    // when this function gets added!
-    auto num_opt = stub->pos_params.size() - stub->req_args;
-    for (i32 i = num_opt; i < stub->num_upvals; ++i) {
-        f->init_vals[i] = stack->pop();
-    }
-
     auto v = as_value(f);
     new_objects.push_front(v);
     return v;

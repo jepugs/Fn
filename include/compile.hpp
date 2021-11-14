@@ -15,14 +15,15 @@ namespace fn {
 struct local_table {
     // table of local variable locations
     table<symbol_id,u8> vars;
-    // table of upvalue offsets
-    table<symbol_id, i32> upvals;
+    // table of upvalue IDs. (These only go on call frames).
+    table<symbol_id, u8> upvals;
 
     // parent environment
     local_table* parent;
 
-    // Non-null value means this local environment is the base of a new
-    // function.
+    // true value means this is the base frame of a function call.
+    bool is_call_frame;
+    // the stub for the function we're in (nullptr at the top level)
     function_stub* enclosing_func;
 
     // stack pointer

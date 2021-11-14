@@ -311,13 +311,16 @@ struct function_stub {
     code_address addr;             // function address in its chunk
 
     local_address num_upvals;
-    // upvalues are identified by their offset relative to the base pointer.
-    // Upvalues defined in a containing function are then identified
-    vector<i32> upvals;
+    // upvalues are identified by addresses in the surrounding call frame
+    vector<u8> upvals;
+    vector<bool> upvals_direct;
+    // if the corresponding entry of upvals_direct = false, then it means this
+    // upvalue corresponds to an upvalue in the surrounding frame. Otherwise
+    // it's a stack value.
 
     // get an upvalue address based on its stack location (offset relative to
     // the function base pointer). The upvalue is added if necessary
-    local_address get_upvalue(i32 offset);
+    local_address add_upvalue(u8 addr, bool direct);
 };
 
 // A location storing a captured variable. These are shared across functions.
