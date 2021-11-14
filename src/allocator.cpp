@@ -199,7 +199,7 @@ allocator::~allocator() {
     }
     auto keys = const_table.keys();
     for (auto k : keys) {
-        dealloc(**const_table.get(*k));
+        dealloc(*const_table.get(k));
     }
     for (auto c : chunks) {
         delete c;
@@ -316,10 +316,10 @@ void allocator::mark() {
 
     // global namespaces
     for (auto k : globals->ns_table.keys()) {
-        auto ns = *globals->get_ns(*k);
+        auto ns = *globals->get_ns(k);
         // iterate over bindings
         for (auto k2 : ns->contents.keys()) {
-            auto h = ns->get(*k2)->header();
+            auto h = ns->get(k2)->header();
             mark_descend(*h);
         }
     }

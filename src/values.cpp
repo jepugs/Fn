@@ -106,11 +106,7 @@ value v_utail(value x) {
 
 // table functions
 forward_list<value> v_utab_get_keys(value obj) {
-    forward_list<value> res;
-    for (auto x : obj.utable()->contents.keys()) {
-        res.push_front(*x);
-    }
-    return res;
+    return obj.utable()->contents.keys();
 }
 
 bool v_utab_has_key(value obj, value key) {
@@ -119,11 +115,7 @@ bool v_utab_has_key(value obj, value key) {
 
 value v_utab_get(value obj, value key) {
     auto x = obj.utable()->contents.get(key);
-    if (x.has_value()) {
-        return **x;
-    } else {
-        return V_NULL;
-    }
+    return x.has_value() ? *x : V_NULL;
 }
 
 void v_utab_set(value obj, value key, value v) {
@@ -197,33 +189,29 @@ symbol_table::symbol_table()
     , by_id{} {
 }
 
-const symbol* symbol_table::intern(const string& str) {
-    auto v = find(str);
+symbol_id symbol_table::intern(const string& str) {
+    auto v = by_name.get(str);
     if (v.has_value()) {
-        return *v;
+        return v->id;
     } else {
         u32 id = by_id.size();
-        symbol s{ .id=id, .name=str };
+        symtab_entry s{ .id=id, .name=str };
         by_id.push_back(s);
         by_name.insert(str,s);
-        return &(by_id[by_id.size() - 1]);
+        return id;
     }
-}
-
-symbol_id symbol_table::intern_id(const string& str) {
-    return intern(str)->id;
 }
 
 bool symbol_table::is_internal(const string& str) const {
     return by_name.get(str).has_value();
 }
 
-inline optional<const symbol*> symbol_table::find(const string& str) const {
-    auto v = by_name.get(str);
-    if (v.has_value()) {
-        return *v;
+string symbol_table::symbol_name(symbol_id sym) const {
+    if (sym >= by_id.size()) {
+        return "";
+    } else {
+        return by_id[sym].name;
     }
-    return { };
 }
 
 local_address function_stub::add_upvalue(u8 addr, bool direct) {
@@ -323,8 +311,8 @@ string v_to_string(value v, const symbol_table* symbols) {
         res = "{ ";
         t = v.utable();
         for (auto k : t->contents.keys()) {
-            res += v_to_string(*k,symbols) + " "
-                + v_to_string(**t->contents.get(*k),symbols) + " ";
+            res += v_to_string(k,symbols) + " "
+                + v_to_string(*t->contents.get(k),symbols) + " ";
             if (res.size() >= 69) {
                 res += "...";
                 break;
@@ -342,7 +330,7 @@ string v_to_string(value v, const symbol_table* symbols) {
     case TAG_EMPTY:
         return "[]";
     case TAG_SYM:
-        return "'" + (*symbols)[v_usym_id(v)].name;
+        return "'" + symbols->symbol_name(v_usym_id(v));
     }
     return "<unprintable-object>";
 }

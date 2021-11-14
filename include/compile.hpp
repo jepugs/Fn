@@ -14,9 +14,9 @@ namespace fn {
 // TODO: rename (to local_environment unless I think of a better name)
 struct local_table {
     // table of local variable locations
-    table<symbol_id,u8> vars;
+    table<symbol_id,local_address> vars;
     // table of upvalue IDs. (These only go on call frames).
-    table<symbol_id, u8> upvals;
+    table<symbol_id,local_address> upvals;
 
     // parent environment
     local_table* parent;

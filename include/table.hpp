@@ -149,7 +149,7 @@ public:
     }
 
     // returns nullptr when no object is associated to the key
-    optional<T*> get(const K& k) const {
+    optional<T> get(const K& k) const {
         u32 h = hash(k);
         u32 i = h % this->cap;
         // this count is so that we don't wrap around a full array
@@ -162,7 +162,7 @@ public:
                 return std::nullopt;
             } else if (array[i]->key == k && x) {
                 // found the key
-                return std::make_optional(&array[i]->val);
+                return std::make_optional(array[i]->val);
             }
             i = (i+1) % cap;
             ++ct;
@@ -186,11 +186,11 @@ public:
         }
     }
 
-    forward_list<const K*> keys() const {
-        forward_list<const K*> res;
+    const forward_list<K> keys() const {
+        forward_list<K> res;
         for (u32 i = 0; i < cap; ++i) {
             if(array[i] != nullptr) {
-                res.push_front(&array[i]->key);
+                res.push_front(array[i]->key);
             }
         }
         return res;
@@ -207,7 +207,7 @@ public:
             auto v1 = x.get(k);
             if (!v1.has_value()) {
                 return false;
-            } else if (**this->get(k) != **v1) {
+            } else if (this->get(k) != v1) {
                 return false;
             }
         }

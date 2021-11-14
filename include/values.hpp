@@ -37,7 +37,6 @@ constexpr u64 TAG_FALSE     = 10;
 constexpr u64 TAG_EMPTY     = 11;
 constexpr u64 TAG_SYM       = 12;
 
-struct symbol;
 struct cons;
 struct fn_string;
 struct fn_table;
@@ -394,7 +393,7 @@ struct alignas(32) foreign_func {
 };
 
 // symbols in fn are represented by a 32-bit unsigned ids
-struct symbol {
+struct symtab_entry {
     symbol_id id;
     string name;
 };
@@ -403,20 +402,19 @@ struct symbol {
 // and vice versa.
 class symbol_table {
 private:
-    table<string,symbol> by_name;
-    vector<symbol> by_id;
+    table<string,symtab_entry> by_name;
+    vector<symtab_entry> by_id;
 
 public:
     symbol_table();
 
-    const symbol* intern(const string& str);
+    symbol_id intern(const string& str);
     bool is_internal(const string& str) const;
-    symbol_id intern_id(const string& str);
+    // if symbol_id does not name a valid symbol, returns the empty string
+    string symbol_name(symbol_id sym) const;
 
-    optional<const symbol*> find(const string& str) const;
-
-    const symbol& operator[](symbol_id id) const {
-        return by_id[id];
+    string operator[](symbol_id id) const {
+        return symbol_name(id);
     }
 };
 
@@ -444,9 +442,6 @@ inline value as_value(i64 num) {
     res.raw &= (~0xf);
     res.raw |= TAG_NUM;
     return res;
-}
-inline value as_value(symbol s) {
-    return { .raw = (s.id << 4) | TAG_SYM };
 }
 inline value as_value(const fn_string* str) {
     u64 raw = reinterpret_cast<u64>(str);

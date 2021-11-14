@@ -41,7 +41,7 @@ vm_status vm_thread::check_status() const {
 }
 
 value vm_thread::get_symbol(const string& name) {
-    return as_value(get_symtab()->intern(name));
+    return as_sym_value(get_symtab()->intern(name));
 }
 
 u32 vm_thread::get_ip() const {
@@ -244,12 +244,12 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
     auto& kw = kw_tab.utable()->contents;
     table<symbol_id,value> pos; // holds additional positional parameters
     for (auto k : kw.keys()) {
-        auto id = v_usym_id(*k);
+        auto id = v_usym_id(k);
         // first, check if this is a positional argument we still need
         bool found_pos = false;
         for (auto i = num_args; i < num_pos; ++i) {
             if(stub->pos_params[i] == id) {
-                pos.insert(id, **kw.get(*k));
+                pos.insert(id, *kw.get(k));
                 found_pos = true;
                 break;
             }
@@ -262,7 +262,7 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
             // if there's no variadic table argument, we have an error here
             runtime_error("Unrecognized keyword argument in call.");
         } else {
-            vtable.utable()->contents.insert(*k, **kw.get(*k));
+            vtable.utable()->contents.insert(k, *kw.get(k));
         }
     }
 
@@ -270,7 +270,7 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
     for (u32 i = num_args; i < num_pos; ++i) {
         auto v = pos.get(stub->pos_params[i]);
         if (v.has_value()) {
-            push(**v);
+            push(*v);
         } else if (i >= stub->req_args) {
             push(callee.ufunction()->init_vals[i-stub->req_args]);
         } else {
@@ -293,7 +293,7 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
             + stub->vt_param.has_value());
     u32 bp = stack->get_pointer() - sp;
 
-    frame = new call_frame{frame, ip+2, bp, func, stub->pos_params.size()};
+    frame = new call_frame{frame, ip+2, bp, func, (u8)stub->pos_params.size()};
     return stub->addr;
 }
 
@@ -304,7 +304,7 @@ void vm_thread::init_function(function* f) {
     // Add init values
     // DANGER! Init vals are popped right off the stack, so they better be there
     // when this function gets initialized!
-    for (i32 i = stub->req_args; i < stub->pos_params.size(); ++i) {
+    for (auto i = stub->req_args; i < stub->pos_params.size(); ++i) {
         f->init_vals[i] = stack->pop();
     }
 
@@ -459,18 +459,8 @@ void vm_thread::step() {
         if (v_tag(v2) == TAG_TABLE) {
             push(v_utab_get(v2, v1));
             break;
-        } else if (v_tag(v2) == TAG_NAMESPACE) {
-            if (v_tag(v1) == TAG_SYM) {
-                vp = v2.unamespace()->contents.get(v_usym_id(v1));
-                if (!vp.has_value()) {
-                    runtime_error("obj-get undefined key for namespace");
-                }
-                push(**vp);
-                break;
-            }
-            runtime_error("obj-get namespace key must be a symbol");
-        }
-        runtime_error("obj-get operand not a table or namespace");
+        } 
+        runtime_error("obj-get operand not a table");
         break;
 
     case OP_OBJ_SET:

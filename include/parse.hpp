@@ -32,23 +32,18 @@ struct ast_atom  {
         symbol_id sym;
     } datum;
 
-    ast_atom(f64 num);
-    ast_atom(const fn_string& str);
-    ast_atom(fn_string&& str);
-    ast_atom(const symbol& sym);
-
-    // this will copy the string if necessary
-    ast_atom(const ast_atom& at);
-    // copy operator
-    ast_atom& operator=(const ast_atom& at);
-
-    // rvalue move operations
-    ast_atom(ast_atom&& at);
-    ast_atom& operator=(ast_atom&& at);
-
-    // string is automatically freed
+    ast_atom();
     ~ast_atom();
+    ast_atom(const ast_atom& at);
+    ast_atom(ast_atom&& at);
+    ast_atom& operator=(const ast_atom& at);
+    ast_atom& operator=(ast_atom&& at);
 };
+
+ast_atom make_number_atom(f64 num);
+ast_atom make_string_atom(const fn_string& str);
+ast_atom make_string_atom(fn_string&& str);
+ast_atom make_symbol_atom(symbol_id sym);
 
 struct ast_node {
     source_loc loc;
@@ -75,8 +70,7 @@ struct ast_node {
 
     bool is_symbol() const;
     bool is_keyword(const symbol_table& symtab) const;
-    const symbol& get_symbol(const symbol_table& symtab) const;
-    symbol_id get_symbol_id(const symbol_table& symtab) const;
+    symbol_id get_symbol() const;
 };
 
 // get the next form by reading tokens one at a time from the scanner. Return a

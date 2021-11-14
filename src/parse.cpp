@@ -5,24 +5,9 @@ namespace fn_parse {
 using namespace fn;
 using namespace fn_scan;
 
-ast_atom::ast_atom(f64 num)
-    : type{at_number} {
-    datum.num = num;
-}
-
-ast_atom::ast_atom(const fn_string& str)
-    : type{at_string} {
-    datum.str = new fn_string{str};
-}
-
-ast_atom::ast_atom(fn_string&& str)
-    : type{at_string} {
-    datum.str = new fn_string{str};
-}
-
-ast_atom::ast_atom(const symbol& sym)
-    : type{at_symbol} {
-    datum.sym = sym.id;
+ast_atom::ast_atom()
+    : type{at_number}
+    , datum{.num=0.0} {
 }
 
 ast_atom::ast_atom(const ast_atom& at)
@@ -67,6 +52,34 @@ ast_atom& ast_atom::operator=(ast_atom&& at) {
     at.type = at_number;
 
     return *this;
+}
+
+ast_atom make_number_atom(f64 num) {
+    ast_atom res{};
+    res.type = at_number;
+    res.datum.num = num;
+    return res;
+}
+
+ast_atom make_string_atom(const fn_string& str) {
+    ast_atom res{};
+    res.type = at_string;
+    res.datum.str = new fn_string{str};
+    return res;
+}
+
+ast_atom make_string_atom(fn_string&& str) {
+    ast_atom res{};
+    res.type = at_string;
+    res.datum.str = new fn_string{str};
+    return res;
+}
+
+ast_atom make_symbol_atom(symbol_id sym) {
+    ast_atom res{};
+    res.type = at_symbol;
+    res.datum.sym = sym;
+    return res;
 }
 
 
@@ -204,7 +217,7 @@ string ast_node::as_string(const symbol_table& symtab) const {
                 + "\"";
             break;
         case at_symbol:
-            return with_escapes(symtab[datum.atom->datum.sym].name);
+            return with_escapes(symtab[datum.atom->datum.sym]);
             break;
         }
         break;
@@ -228,16 +241,12 @@ bool ast_node::is_keyword(const symbol_table& symtab) const {
     if (!is_symbol()) {
         return false;
     }
-    auto& x = symtab[datum.atom->datum.sym];
-    return x.name.length() > 0 && x.name[0] == ':';
+    auto name = symtab[datum.atom->datum.sym];
+    return name.length() > 0 && name[0] == ':';
 }
 
-const symbol& ast_node::get_symbol(const symbol_table& symtab) const {
-    return symtab[datum.atom->datum.sym];
-}
-
-symbol_id ast_node::get_symbol_id(const symbol_table& symtab) const {
-    return symtab[datum.atom->datum.sym].id;
+symbol_id ast_node::get_symbol() const {
+    return datum.atom->datum.sym;
 }
 
 
@@ -264,7 +273,7 @@ void parse_prefix(scanner& sc,
                   const string& op,
                   const source_loc& loc,
                   optional<token> t0 = std::nullopt) {
-    buf.push_back(new ast_node{ast_atom{*(symtab.intern(op))},
+    buf.push_back(new ast_node{make_symbol_atom(symtab.intern(op)),
                                loc});
     buf.push_back(parse_node(sc, symtab, t0));
 }
@@ -275,22 +284,22 @@ ast_node* parse_node(scanner& sc, symbol_table& symtab, optional<token> t0) {
     string* str = tok.datum.str;
     vector<ast_node*> buf;
 
-    ast_atom at{1.0};
+    ast_atom at = make_number_atom(1.0);
 
     switch (tok.tk) {
     case tk_eof:
         return nullptr;
 
     case tk_number:
-        res = new ast_node{ast_atom{tok.datum.num}, tok.loc};
+        res = new ast_node{make_number_atom(tok.datum.num), tok.loc};
         break;
     case tk_string:
         // at = ast_atom(fn_string(*str));
         // res = new ast_node(at, tok.loc);
-        res = new ast_node{ast_atom{fn_string{*str}}, tok.loc};
+        res = new ast_node{make_string_atom(fn_string{*str}), tok.loc};
         break;
     case tk_symbol:
-        res = new ast_node{ast_atom{*symtab.intern(*str)}, tok.loc};
+        res = new ast_node{make_symbol_atom(symtab.intern(*str)), tok.loc};
         break;
 
     case tk_lparen:
@@ -301,7 +310,8 @@ ast_node* parse_node(scanner& sc, symbol_table& symtab, optional<token> t0) {
         parse_error("Unmatched delimiter ')'.", tok.loc);
         break;
     case tk_lbrace:
-        buf.push_back(new ast_node{ast_atom{*symtab.intern("Table")}, tok.loc});
+        buf.push_back(new ast_node{make_symbol_atom(symtab.intern("Table")),
+                                   tok.loc});
         parse_to_delimiter(sc, symtab, buf, tk_rbrace);
         res = new ast_node{buf, tok.loc};
         break;
@@ -309,7 +319,8 @@ ast_node* parse_node(scanner& sc, symbol_table& symtab, optional<token> t0) {
         parse_error("Unmatched delimiter '}'.", tok.loc);
         break;
     case tk_lbracket:
-        buf.push_back(new ast_node{ast_atom{*symtab.intern("List")}, tok.loc});
+        buf.push_back(new ast_node{make_symbol_atom(symtab.intern("List")),
+                                   tok.loc});
         parse_to_delimiter(sc, symtab, buf, tk_rbracket);
         res = new ast_node{buf, tok.loc};
         break;
@@ -318,9 +329,11 @@ ast_node* parse_node(scanner& sc, symbol_table& symtab, optional<token> t0) {
         break;
 
     case tk_dot:
-        buf.push_back(new ast_node{ast_atom{*symtab.intern("dot")}, tok.loc});
+        buf.push_back(new ast_node{make_symbol_atom(symtab.intern("dot")),
+                                   tok.loc});
         for (auto s : *tok.datum.ids) {
-            buf.push_back(new ast_node{ast_atom{*symtab.intern(s)}, tok.loc});
+            buf.push_back(new ast_node{make_symbol_atom(symtab.intern(s)),
+                                       tok.loc});
         }
         res = new ast_node{buf, tok.loc};
         break;
@@ -366,7 +379,7 @@ ast_node* parse_node(scanner& sc, symbol_table& symtab, optional<token> t0) {
     return res;
 }
 
-#define check_name(name) (symtab.intern(name)->id == sym)
+#define check_name(name) (symtab.intern(name) == sym)
 
 static bool is_legal_name(symbol_table& symtab, symbol_id sym) {
     bool reserved =
@@ -382,9 +395,9 @@ static bool is_legal_name(symbol_table& symtab, symbol_id sym) {
         return false;
     }
 
-    auto& s = symtab[sym];
+    auto name = symtab[sym];
     // keywords
-    if (s.name[0] == ':') {
+    if (name[0] == ':') { // FIXME: should check that strlen > 1?
         return false;
     }
 
@@ -400,8 +413,8 @@ param_list parse_params(symbol_table& symtab, const ast_node& form) {
     }
 
     auto& list = *form.datum.list;
-    auto amp = symtab.intern("&")->id;
-    auto kamp = symtab.intern(":&")->id;
+    auto amp = symtab.intern("&");
+    auto kamp = symtab.intern(":&");
 
     param_list res;
     auto& pos = res.positional;

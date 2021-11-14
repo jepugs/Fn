@@ -14,7 +14,7 @@ interpreter::interpreter()
     search_path.push_back("/usr/lib/fn/ns");
     search_path.push_back(fs::current_path().u8string());
 
-    globals.create_ns(symtab.intern_id("fn/builtin"));
+    globals.create_ns(symtab.intern("fn/builtin"));
 }
 
 interpreter::~interpreter() {
@@ -42,7 +42,7 @@ value interpreter::interpret_file(const string& path) {
 
     // namespace name
     fs::path path_obj{path};
-    auto ns_name = symtab.intern_id(pkg + path_obj.stem().u8string());
+    auto ns_name = symtab.intern(pkg + path_obj.stem().u8string());
 
     auto chunk = alloc.add_chunk(ns_name);
     compiler c{&symtab, &alloc, chunk};
@@ -65,7 +65,7 @@ value interpreter::interpret_string(const string& src) {
     std::istringstream in{src};
     fn_scan::scanner sc{&in};
 
-    auto ns_name = symtab.intern_id("fn/repl");
+    auto ns_name = symtab.intern("fn/repl");
 
     auto chunk = alloc.add_chunk(ns_name);
     compiler c{&symtab, &alloc, chunk};
