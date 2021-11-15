@@ -3,6 +3,8 @@ add_library(fn_lib OBJECT
             bytes.cpp
             compile.cpp
             interpret.cpp
+            ffi/builtin.cpp
+            ffi/interpreter_handle.cpp
             namespace.cpp
             parse.cpp
             scan.cpp

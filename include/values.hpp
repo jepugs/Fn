@@ -20,18 +20,15 @@ namespace fn {
 // significant digits of the pointer address will all be 0.
 
 // tags
+constexpr u64 TAG_WIDTH     = 4;
+constexpr u64 TAG_MASK      = (1 << TAG_WIDTH) - 1;
+
 constexpr u64 TAG_NUM       = 0;
 constexpr u64 TAG_CONS      = 1;
 constexpr u64 TAG_STRING    = 2;
 constexpr u64 TAG_TABLE     = 3;
 constexpr u64 TAG_FUNC      = 4;
-// NOTE: TAG_FOREIGN and TAG_NAMESPACE are currently unused, as the foreign type
-// was combined with the function type and the first-class namespace type was
-// removed.
-constexpr u64 TAG_FOREIGN   = 5;
-constexpr u64 TAG_NAMESPACE = 6;
-constexpr u64 TAG_EXT       = 7;
-constexpr u64 TAG_NULL      = 8;
+constexpr u64 TAG_NIL       = 8;
 constexpr u64 TAG_TRUE      = 9;
 constexpr u64 TAG_FALSE     = 10;
 constexpr u64 TAG_EMPTY     = 11;
@@ -58,7 +55,7 @@ struct obj_header;
 union value {
     u64 raw;
     void* ptr;
-    f64 num_val;
+    f64 num;
     
     // implemented in values.cpp
     bool operator==(const value& v) const;
@@ -66,20 +63,19 @@ union value {
 
     // functions to check for a tag
     inline u64 tag() const {
-        return raw & 0xf;
+        return raw & TAG_MASK;
     }
     inline bool is_num() const {
-        return (raw & 0xf) == TAG_NUM;
+        return (raw & TAG_MASK) == TAG_NUM;
     }
-    bool is_int() const;
     inline bool is_symbol() const {
-        return (raw & 0xf) == TAG_SYM;
+        return (raw & TAG_MASK) == TAG_SYM;
     }
     inline bool is_string() const {
-        return (raw & 0xf) == TAG_STRING;
+        return (raw & TAG_MASK) == TAG_STRING;
     }
     inline bool is_null() const {
-        return raw == TAG_NULL;
+        return raw == TAG_NIL;
     }
     inline bool is_bool() const {
         return raw == TAG_TRUE || raw == TAG_FALSE;
@@ -88,54 +84,48 @@ union value {
         return raw == TAG_EMPTY;
     }
     inline bool is_cons() const {
-        return (raw & 0xf) == TAG_CONS;
+        return (raw & TAG_MASK) == TAG_CONS;
     }
     inline bool is_table() const {
-        return (raw & 0xf) == TAG_TABLE;
+        return (raw & TAG_MASK) == TAG_TABLE;
     }
     inline bool is_function() const {
-        return (raw & 0xf) == TAG_FUNC;
-    }
-    inline bool is_foreign() const {
-        return (raw & 0xf) == TAG_FOREIGN;
-    }
-    inline bool is_namespace() const {
-        return (raw & 0xf) == TAG_NAMESPACE;
+        return (raw & TAG_MASK) == TAG_FUNC;
     }
 
     // unsafe generic pointer accessor
     inline void* get_pointer() const {
-        return reinterpret_cast<void*>(raw & (~0xf));
+        return reinterpret_cast<void*>(raw & (~TAG_MASK));
     }
 
-    // unsafe accessors are prefixed with u. they don't check type tags or throw value errors.
-    inline f64 unum() const {
-        return num_val;
-    }
-    inline symbol_id usym_id() const {
-        return static_cast<symbol_id>((raw & (~0xf)) >> 4);
-    }
-    inline fn_string* ustring() const {
-        return reinterpret_cast<fn_string*>(raw & (~0xf));
-    }
-    inline bool ubool() const {
-        return this->tag() == TAG_TRUE;
-    }
-    inline cons* ucons() const {
-        return reinterpret_cast<cons*>(raw & (~0xf));
-    }
-    inline fn_table* utable() const {
-        return reinterpret_cast<fn_table*>(raw & (~0xf));
-    }
-    inline function* ufunction() const {
-        return reinterpret_cast<function*>(raw & (~0xf));
-    }
-    inline foreign_func* uforeign() const {
-        return reinterpret_cast<foreign_func*>(raw & (~0xf));
-    }
-    inline fn_namespace* unamespace() const {
-        return reinterpret_cast<fn_namespace*>(raw & (~0xf));
-    }
+    // // unsafe accessors are prefixed with u. they don't check type tags or throw value errors.
+    // inline f64 unum() const {
+    //     return val;
+    // }
+    // inline symbol_id usym_id() const {
+    //     return static_cast<symbol_id>((raw & (~TAG_MASK)) >> 4);
+    // }
+    // inline fn_string* ustring() const {
+    //     return reinterpret_cast<fn_string*>(raw & (~TAG_MASK));
+    // }
+    // inline bool ubool() const {
+    //     return this->tag() == TAG_TRUE;
+    // }
+    // inline cons* ucons() const {
+    //     return reinterpret_cast<cons*>(raw & (~TAG_MASK));
+    // }
+    // inline fn_table* utable() const {
+    //     return reinterpret_cast<fn_table*>(raw & (~TAG_MASK));
+    // }
+    // inline function* ufunction() const {
+    //     return reinterpret_cast<function*>(raw & (~TAG_MASK));
+    // }
+    // inline foreign_func* uforeign() const {
+    //     return reinterpret_cast<foreign_func*>(raw & (~TAG_MASK));
+    // }
+    // inline fn_namespace* unamespace() const {
+    //     return reinterpret_cast<fn_namespace*>(raw & (~TAG_MASK));
+    // }
 
     // all functions below are safe. foreign functions can call them without
     // first checking the types of the arguments provided, and an appropriate
@@ -160,34 +150,21 @@ union value {
 };
 
 // constant values
-constexpr value V_NULL  = { .raw = TAG_NULL };
+constexpr value V_NIL  = { .raw = TAG_NIL };
 constexpr value V_FALSE = { .raw = TAG_FALSE };
 constexpr value V_TRUE  = { .raw = TAG_TRUE };
 constexpr value V_EMPTY = { .raw = TAG_EMPTY };
 
 inline void* get_pointer(value v) {
     // mask out the three l_sb with 0's
-    return (void*)(v.raw & (~0xf));
+    return (void*)(v.raw & (~TAG_MASK));
 };
 
 // value type/tag checking
 
 inline u64 v_tag(value v) {
-    return v.raw & 0xf;
+    return v.raw & TAG_MASK;
 }
-
-// bool v_is_num(value v);
-// bool v_is_int(value v);
-// bool v_is_sym(value v);
-// bool v_is_string(value v);
-// bool v_is_bool(value v);
-// bool v_is_null(value v);
-// bool v_is_empty(value v);
-// bool v_is_cons(value v);
-// bool v_is_list(value v);
-// bool v_is_table(value v);
-// bool v_is_namespace(value v);
-// bool v_is_function(value v);
 
 // equality
 inline bool v_same(value a, value b) {
@@ -199,44 +176,58 @@ inline bool v_equal(value a, value b) {
 
 // truthiness (everything but null and false are truthy)
 inline bool v_truthy(value a) {
-    return !(v_same(a, V_FALSE) || v_same(a, V_NULL));
+    return !(v_same(a, V_FALSE) || v_same(a, V_NIL));
 }
 
-// absolute value
-value v_uabs(value a);
+// (unsafe) value accessors:
+inline void* vpointer(value v) {
+    return reinterpret_cast<void*>(v.raw & (~TAG_MASK));
+}
 
-// natural log
-value v_ulog(value a);
+inline f64 vnumber(value v) {
+    return v.num;
+}
 
-// floor and ceiling functions
-value v_ufloor(value a);
-value v_uceil(value a);
+inline fn_string* vstring(value v) {
+    return (fn_string*)vpointer(v);
+}
 
-// ordering
-bool v_ult(value a, value b);
-bool v_ugt(value a, value b);
-bool v_ule(value a, value b);
-bool v_uge(value a, value b);
+inline symbol_id vsymbol(value v) {
+    return static_cast<symbol_id>(v.raw >> TAG_WIDTH);
+}
 
-// string functions
-value v_ustrlen(value str);
+inline cons* vcons(value v) {
+    return (cons*)vpointer(v);
+}
 
-// symbol functions
-symbol_id v_usym_id(value sym);
+inline fn_table* vtable(value v) {
+    return (fn_table*)vpointer(v);
+}
+
+// returns true
+inline bool vtruth(value v) {
+    return V_NIL != v && V_FALSE != v;
+}
+
+inline function* vfunction(value v) {
+    return (function*)vpointer(v);
+}
+
+
 
 // list functions
 
 // these only work on conses, not on empty
-value v_uhead(value x);
-value v_utail(value x);
+value v_head(value x);
+value v_tail(value x);
 
 // table functions
-forward_list<value> v_utab_get_keys(value obj);
+forward_list<value> v_tab_get_keys(value obj);
 
-bool v_utab_has_key(value obj, value key);
+bool v_tab_has_key(value obj, value key);
 
-value v_utab_get(value obj, value key);
-void v_utab_set(value obj, value key, value v);
+value v_tab_get(value obj, value key);
+void v_tab_set(value obj, value key, value v);
 
 
 /// value structures
@@ -349,12 +340,13 @@ struct upvalue_cell {
     }
 };
 
+struct interpreter_handle;
 struct alignas(32) function {
     obj_header h;
     function_stub* stub;
     // If foreign_func != nullptr, addr and upvalue fields are ignored, and the
     // function is evaluated by calling foreign_func instead of jumping
-    value (*foreign_func)(working_set*,local_address,value*);
+    value (*foreign_func)(interpreter_handle*,local_address,value*);
     upvalue_cell** upvals;
     value* init_vals;
 
@@ -422,9 +414,9 @@ public:
 
 /// as_value functions to create values
 inline value as_value(f64 num) {
-    value res = { .num_val=num };
+    value res = { .num=num };
     // make the first four bits 0
-    res.raw &= (~0xf);
+    res.raw &= (~TAG_MASK);
     res.raw |= TAG_NUM;
     return res;
 }
@@ -432,16 +424,16 @@ inline value as_value(bool b) {
     return b ? V_TRUE : V_FALSE;
 }
 inline value as_value(int num) {
-    value res = { .num_val=(f64)num };
+    value res = { .num=(f64)num };
     // make the first four bits 0
-    res.raw &= (~0xf);
+    res.raw &= (~TAG_MASK);
     res.raw |= TAG_NUM;
     return res;
 }
 inline value as_value(i64 num) {
-    value res = { .num_val=(f64)num };
+    value res = { .num=(f64)num };
     // make the first four bits 0
-    res.raw &= (~0xf);
+    res.raw &= (~TAG_MASK);
     res.raw |= TAG_NUM;
     return res;
 }
@@ -461,16 +453,8 @@ inline value as_value(function* ptr) {
     u64 raw = reinterpret_cast<u64>(ptr);
     return { .raw = raw | TAG_FUNC };
 }
-inline value as_value(foreign_func* ptr) {
-    u64 raw = reinterpret_cast<u64>(ptr);
-    return { .raw = raw | TAG_FOREIGN };
-}
-inline value as_value(fn_namespace* ptr) {
-    u64 raw = reinterpret_cast<u64>(ptr);
-    return { .raw = raw | TAG_NAMESPACE };
-}
 inline value as_sym_value(symbol_id sym) {
-    return { .raw = (sym << 4) | TAG_SYM };
+    return { .raw = (sym << TAG_WIDTH) | TAG_SYM };
 }
 
 string v_to_string(value v, const symbol_table* symbols);

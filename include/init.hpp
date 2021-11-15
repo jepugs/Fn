@@ -2,11 +2,12 @@
 #ifndef __FN_INIT_HPP
 #define __FN_INIT_HPP
 
-#include "vm.hpp"
+#include "interpret.hpp"
 
 namespace fn {
 
-void init(virtual_machine* vm);
+// adds all builtin functions to the interpreter
+void init_builtin(interpreter* inter);
 
 }
 

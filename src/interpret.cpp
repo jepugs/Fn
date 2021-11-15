@@ -87,6 +87,11 @@ value interpreter::interpret_string(const string& src) {
     return vm.last_pop();
 }
 
+void interpreter::runtime_error(const string& msg,
+        const source_loc& loc) {
+    throw fn_error("runtime", msg, loc);
+}
+
 allocator* interpreter::get_alloc() {
     return &alloc;
 }
@@ -100,9 +105,9 @@ global_env* interpreter::get_global_env() {
 }
 
 void interpreter::add_builtin_function(const string& name,
-        value (*foreign_func)(working_set*, local_address, value*)) {
+        value (*foreign_func)(interpreter_handle*, local_address, value*)) {
     auto ws = alloc.add_working_set();
-    auto f = ws.add_function(nullptr).ufunction();
+    auto f = vfunction(ws.add_function(nullptr));
     f->foreign_func = foreign_func;
 
     auto builtin = *globals.get_ns(symtab.intern("fn/builtin"));

@@ -208,18 +208,18 @@ allocator::~allocator() {
 void allocator::dealloc(value v) {
     if (v.is_cons()) {
         mem_usage -= sizeof(cons);
-        delete v.ucons();
+        delete vcons(v);
     } else if (v.is_string()) {
-        auto s = v.ustring();
+        auto s = vstring(v);
         mem_usage -= s->len;
         mem_usage -= sizeof(fn_string);
         delete s;
     } else if (v.is_table()) {
         mem_usage -= sizeof(fn_table);
-        delete v.utable();
+        delete vtable(v);
     } else if (v.is_function()) {
         mem_usage -= sizeof(function);
-        auto f = v.ufunction();
+        auto f = vfunction(v);
 
         if (f->stub != nullptr) {
             // delete dead upvalues
@@ -240,16 +240,16 @@ void allocator::dealloc(value v) {
 vector<value> allocator::accessible(value v) {
     vector<value> res;
     if (v.is_cons()) {
-        res.push_back(v_uhead(v));
-        res.push_back(v_utail(v));
+        res.push_back(vcons(v)->head);
+        res.push_back(vcons(v)->tail);
     } else if (v.is_table()) {
-        for (auto k : v_utab_get_keys(v)) {
+        for (auto k : vtable(v)->contents.keys()) {
             res.push_back(k);
-            res.push_back(v_utab_get(v, k));
+            res.push_back(*vtable(v)->contents.get(k));
         }
         return res;
     } else if (v.is_function()) {
-        auto f = v.ufunction();
+        auto f = vfunction(v);
         // add the upvalues
         auto m = f->stub->num_upvals;
         for (local_address i = 0; i < m; ++i) {

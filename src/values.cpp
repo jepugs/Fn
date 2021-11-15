@@ -5,121 +5,17 @@
 
 namespace fn {
 
-bool value::is_int() const {
-    if (!is_num()) {
-    }
-    auto f = unum();
-    return f == (i64)f;
-}
-
-value value::operator+(const value& v) const {
-    return as_value(unum() + v.unum());
-}
-value value::operator-(const value& v) const {
-    return as_value(unum() - v.unum());
-}
-value value::operator*(const value& v) const {
-    return as_value(unum() * v.unum());
-}
-value value::operator/(const value& v) const {
-    return as_value(unum() / v.unum());
-}
-value value::operator%(const value& v) const {
-    i64 x = (i64)floor(unum());
-    f64 frac = unum() - x;
-    return as_value((x % (i64)floor(v.unum())) + frac);
-}
-
-bool value::operator<(const value& v) const {
-    return unum() < v.unum();
-}
-bool value::operator>(const value& v) const {
-    return unum() > v.unum();
-}
-bool value::operator<=(const value& v) const {
-    return unum() <= v.unum();
-}
-bool value::operator>=(const value& v) const {
-    return unum() >= v.unum();
-}
-
-
-value value::pow(const value& expt) const {
-    return as_value(std::pow(unum(),expt.unum()));
-}
-
 optional<obj_header*> value::header() const {
     if (is_cons()) {
-        return &ucons()->h;
+        return &vcons(*this)->h;
     } else if (is_string()) {
-        return &ustring()->h;
+        return &vstring(*this)->h;
     } else if (is_table()) {
-        return &utable()->h;
+        return &vtable(*this)->h;
     } else if (is_function()) {
-        return &ufunction()->h;
+        return &vfunction(*this)->h;
     }
     return { };
-}
-
-
-// natural log (unsafe & safe)
-value v_ulog(value a) {
-    return as_value(log(a.unum()));
-}
-
-// floor and ceiling functions
-value v_ufloor(value a) {
-    return as_value(floor(a.unum()));
-}
-value v_uceil(value a){
-    return as_value(ceil(a.unum()));
-}
-
-// ordering
-bool v_ult(value a, value b) {
-    return a < b;
-}
-bool v_ugt(value a, value b) {
-    return a > b;
-}
-bool v_ule(value a, value b) {
-    return a <= b;
-}
-bool v_uge(value a, value b) {
-    return a >= b;
-}
-
-symbol_id v_usym_id(value sym) {
-    return sym.usym_id();
-}
-
-// list functions
-
-// these only work on conses, not on empty
-value v_uhead(value x) {
-    return x.ucons()->head;
-}
-value v_utail(value x) {
-    return x.ucons()->tail;
-}
-
-
-// table functions
-forward_list<value> v_utab_get_keys(value obj) {
-    return obj.utable()->contents.keys();
-}
-
-bool v_utab_has_key(value obj, value key) {
-    return obj.utable()->contents.has_key(key);
-}
-
-value v_utab_get(value obj, value key) {
-    auto x = obj.utable()->contents.get(key);
-    return x.has_value() ? *x : V_NULL;
-}
-
-void v_utab_set(value obj, value key, value v) {
-    obj.utable()->contents.insert(key, v);
 }
 
 obj_header::obj_header(value ptr, bool gc)
@@ -254,12 +150,12 @@ bool value::operator==(const value& v) const {
     }
     switch (v_tag(*this)) {
     case TAG_STRING:
-        return *ustring() == *v.ustring();
+        return *vstring(*this) == *vstring(v);
     case TAG_CONS:
-        return v_uhead(*this) == v_uhead(v)
-            && v_utail(*this) == v_utail(v);
+        return vcons(*this)->head == vcons(v)->head
+            && vcons(*this)->tail == vcons(v)->tail;
     case TAG_TABLE:
-        return utable()->contents == v.utable()->contents;
+        return vtable(*this)->contents == vtable(v)->contents;
 
     // default behavior when raw values are inequal is to return false. note:
     // this default case accounts for numbers, symbols, true, false, null,
@@ -272,7 +168,7 @@ bool value::operator==(const value& v) const {
 }
 
 bool value::operator!=(const value& v) const {
-    return !(*this==v);
+    return !(*this == v);
 }
 
 // FIXME: should probably pick a better hash function
@@ -281,13 +177,13 @@ template<> u32 hash<value>(const value& v) {
     switch (tag) {
     case TAG_NUM:
     case TAG_STRING:
-    case TAG_NULL:
+    case TAG_NIL:
     case TAG_TRUE:
     case TAG_FALSE:
     case TAG_EMPTY:
         return hash(v_to_string(v, nullptr)) + tag;
     case TAG_SYM:
-        return v_usym_id(v) + tag;
+        return vsymbol(v) + tag;
     case TAG_TABLE:
     case TAG_CONS:
     case TAG_FUNC:
@@ -303,19 +199,19 @@ string v_to_string(value v, const symbol_table* symbols) {
     // TODO: add escaping to strings/characters
     switch(tag) {
     case TAG_NUM:
-        return std::to_string(v.unum());
+        return std::to_string(vnumber(v));
     case TAG_CONS:
         res = "[ ";
-        for (value x = v; v_tag(x) == TAG_CONS; x = v_utail(x)) {
-            res += v_to_string(v_uhead(x),symbols) + " ";
+        for (value x = v; v_tag(x) == TAG_CONS; x = vcons(x)->tail) {
+            res += v_to_string(vcons(x)->head,symbols) + " ";
         }
         return res + "]";
     case TAG_STRING:
-        return "\"" + string{v.ustring()->data} + "\"";
+        return "\"" + string{vstring(v)->data} + "\"";
     case TAG_TABLE:
         // TODO: recursively track which objects we've descended into
         res = "{ ";
-        t = v.utable();
+        t = vtable(v);
         for (auto k : t->contents.keys()) {
             res += v_to_string(k,symbols) + " "
                 + v_to_string(*t->contents.get(k),symbols) + " ";
@@ -327,7 +223,7 @@ string v_to_string(value v, const symbol_table* symbols) {
         return res + "}";
     case TAG_FUNC:
         return "<function>";
-    case TAG_NULL:
+    case TAG_NIL:
         return "null";
     case TAG_TRUE:
         return "true";
@@ -336,7 +232,7 @@ string v_to_string(value v, const symbol_table* symbols) {
     case TAG_EMPTY:
         return "[]";
     case TAG_SYM:
-        return "'" + symbols->symbol_name(v_usym_id(v));
+        return "'" + symbols->symbol_name(vsymbol(v));
     }
     return "<unprintable-object>";
 }

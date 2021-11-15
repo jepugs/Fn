@@ -22,7 +22,7 @@ vm_thread::vm_thread(allocator* use_alloc, global_env* use_globals,
     , toplevel_chunk{use_chunk}
     , ip{0}
     , frame{new call_frame(nullptr, 0, 0, nullptr)}
-    , lp{V_NULL} {
+    , lp{V_NIL} {
     stack = alloc->add_root_stack();
 }
 
@@ -58,7 +58,7 @@ void vm_thread::add_global(value name, value v) {
     }
     auto ns_id = cur_chunk()->get_ns_id();
     auto ns = *globals->get_ns(ns_id);
-    ns->set(v_usym_id(name), v);
+    ns->set(vsymbol(name), v);
 }
 
 value vm_thread::get_global(value name) {
@@ -68,7 +68,7 @@ value vm_thread::get_global(value name) {
 
     auto ns_id = cur_chunk()->get_ns_id();
     auto ns = *globals->get_ns(ns_id);
-    auto res = ns->get(v_usym_id(name));
+    auto res = ns->get(vsymbol(name));
 
     if (!res.has_value()) {
         runtime_error("Attempt to access unbound global variable "
@@ -185,8 +185,8 @@ code_address vm_thread::apply(working_set& use_ws, local_address num_args) {
     u32 vlen = 0;
     auto tl = arg_list;
     while (tl.is_cons()) {
-        push(v_uhead(tl));
-        tl = v_utail(tl);
+        push(vcons(tl)->head);
+        tl = vcons(tl)->tail;
         ++vlen;
     }
  
@@ -213,17 +213,18 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
         return ip + 2;
     }
 
-    auto func = callee.ufunction();
+    auto func = vfunction(callee);
     if (func->foreign_func) {
         auto args = new value[num_args];
-        if (!kw_tab.utable()->contents.keys().empty()) {
+        if (!vtable(kw_tab)->contents.keys().empty()) {
             runtime_error("Foreign functions don't accept keyword arguments.");
         }
         auto ws2 = alloc->add_working_set();
         for (i32 i = num_args - 1; i >= 0; --i) {
             args[i] = ws2.pin_value(pop());
         }
-        push(func->foreign_func(&ws2, num_args, args));
+        interpreter_handle handle{.inter=this, .func_name="<ffi call>"};
+        push(func->foreign_func(&handle, num_args, args));
         return ip + 2;
     }
 
@@ -234,7 +235,7 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
 
     // For the most part, positional arguments can get left where they are.
     // Extra positional arguments go to the variadic list parameter
-    value vlist = V_EMPTY;
+    value var_list = V_EMPTY;
     if (num_pos < num_args) {
         if (!stub->vl_param.has_value()) {
             runtime_error("Too many positional arguments to function.");
@@ -242,16 +243,16 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
         i32 m = num_args - num_pos;
         for (auto i = 0; i < m; ++i) {
             // this builds the list in the correct order
-            vlist = use_ws.add_cons(pop(), vlist);
+            var_list = use_ws.add_cons(pop(), var_list);
         }
     }
 
     // validate keyword table
-    value vtable = use_ws.add_table();
-    auto& kw = kw_tab.utable()->contents;
+    value var_tab = use_ws.add_table();
+    auto& kw = vtable(kw_tab)->contents;
     table<symbol_id,value> pos; // holds additional positional parameters
     for (auto k : kw.keys()) {
-        auto id = v_usym_id(k);
+        auto id = vsymbol(k);
         // first, check if this is a positional argument we still need
         bool found_pos = false;
         for (auto i = num_args; i < num_pos; ++i) {
@@ -269,7 +270,7 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
             // if there's no variadic table argument, we have an error here
             runtime_error("Unrecognized keyword argument in call.");
         } else {
-            vtable.utable()->contents.insert(k, *kw.get(k));
+            vtable(var_tab)->contents.insert(k, *kw.get(k));
         }
     }
 
@@ -279,7 +280,7 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
         if (v.has_value()) {
             push(*v);
         } else if (i >= stub->req_args) {
-            push(callee.ufunction()->init_vals[i-stub->req_args]);
+            push(vfunction(callee)->init_vals[i-stub->req_args]);
         } else {
             runtime_error("Missing non-optional argument.");
         }
@@ -287,10 +288,10 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
 
     // push variadic list and table parameters 
     if (stub->vl_param.has_value()) {
-        push(vlist);
+        push(var_list);
     }
     if (stub->vt_param.has_value()) {
-        push(vtable);
+        push(var_tab);
     }
 
     // extend the call frame
@@ -412,7 +413,7 @@ void vm_thread::step() {
         id = cur_chunk()->read_short(ip+1);
         stub = cur_chunk()->get_function(cur_chunk()->read_short(ip+1));
         v1 = ws.add_function(stub);
-        init_function(v1.ufunction());
+        init_function(vfunction(v1));
         push(v1);
         ip += 2;
         break;
@@ -452,7 +453,7 @@ void vm_thread::step() {
         break;
 
     case OP_NULL:
-        push(V_NULL);
+        push(V_NIL);
         break;
     case OP_FALSE:
         push(V_FALSE);
@@ -467,7 +468,7 @@ void vm_thread::step() {
         // object
         v2 = pop();
         if (v_tag(v2) == TAG_TABLE) {
-            push(v_utab_get(v2, v1));
+            push(*vtable(v2)->contents.get(v1));
             break;
         } 
         runtime_error("obj-get operand not a table");
@@ -483,7 +484,7 @@ void vm_thread::step() {
         if (v_tag(v2) != TAG_TABLE) {
             runtime_error("obj-set operand not a table");
         }
-        v2.utable()->contents.insert(v1,v3);
+        vtable(v2)->contents.insert(v1,v3);
         break;
 
     case OP_IMPORT:

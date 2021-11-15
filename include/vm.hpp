@@ -6,6 +6,7 @@
 #include "allocator.hpp"
 #include "base.hpp"
 #include "compile.hpp"
+#include "ffi/interpreter_handle.hpp"
 #include "parse.hpp"
 #include "table.hpp"
 #include "values.hpp"

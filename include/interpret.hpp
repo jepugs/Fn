@@ -37,7 +37,7 @@ public:
     // Init
     // adds a foreign function to fn/builtin
     void add_builtin_function(const string& name,
-            value (*foreign_func)(working_set*,local_address,value*));
+            value (*foreign_func)(interpreter_handle*,local_address,value*));
     
     // Evaluate a source file in an empty chunk. Returns the value from the last
     // expression (or null for an empty file).
@@ -47,7 +47,7 @@ public:
     value interpret_string(const string& src);
 
     // Emit a runtime error in the form of an exception
-    void runtime_error(const string& msg);
+    void runtime_error(const string& msg, const source_loc& src);
 };
 
 }

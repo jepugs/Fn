@@ -98,7 +98,7 @@ value code_chunk::quote_helper(const fn_parse::ast_node* node) {
             return as_value(p);
         default:
             // FIXME: maybe should raise an exception?
-            return V_NULL;
+            return V_NIL;
         }
     } else if (node->kind == fn_parse::ak_list) {
         auto tl = V_EMPTY;
@@ -111,7 +111,7 @@ value code_chunk::quote_helper(const fn_parse::ast_node* node) {
         return tl;
     } else {
         // FIXME: probably should be an error
-        return V_NULL;
+        return V_NIL;
     }
 }
 

@@ -1,6 +1,7 @@
 #include "base.hpp"
 #include "bytes.hpp"
 #include "compile.hpp"
+#include "ffi/builtin.hpp"
 #include "interpret.hpp"
 #include "parse.hpp"
 #include "scan.hpp"
@@ -36,14 +37,6 @@ void show_usage() {
         "  -i            Start a repl (after running provided strings and files)\n"
         "Running with no options starts a repl.\n"
         ;
-}
-
-value fn_builtin_add(working_set* ws, local_address argc, value* argv) {
-    value v = as_value(0.0);
-    for (auto i = 0; i < argc; ++i) {
-        v = v + argv[i];
-    }
-    return v;
 }
 
 int main(int argc, char** argv) {
@@ -92,7 +85,7 @@ int main(int argc, char** argv) {
     }
 
     interpreter inter{};
-    inter.add_builtin_function("+", fn_builtin_add);
+    install_builtin(inter);
     // TODO: use proper namespaces
     value res;
     for (auto s : evals) {
