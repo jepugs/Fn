@@ -140,13 +140,13 @@ constexpr u8 OP_MACRO_GET = 0x14;
 constexpr u8 OP_MACRO_SET = 0x15;
 
 
-// const SHORT; load a constant via its 16-bit id
+// const SHORT; push a constant, identified by its 16-bit id
 constexpr u8 OP_CONST = 0x20;
-// null; push a null value on top of the stack
-constexpr u8 OP_NULL  = 0x21;
-// false; push a false value on top of the stack
+// nil; push nil value
+constexpr u8 OP_NIL  = 0x21;
+// false; push false value
 constexpr u8 OP_FALSE = 0x22;
-// true; push a true value on top of the stack
+// true; push true value
 constexpr u8 OP_TRUE  = 0x23;
 
 
@@ -179,7 +179,7 @@ inline u8 instr_width(u8 instr) {
     case OP_POP:
     case OP_GLOBAL:
     case OP_SET_GLOBAL:
-    case OP_NULL:
+    case OP_NIL:
     case OP_FALSE:
     case OP_TRUE:
     case OP_RETURN:

@@ -454,7 +454,7 @@ void vm_thread::step() {
         ip += 2;
         break;
 
-    case OP_NULL:
+    case OP_NIL:
         push(V_NIL);
         break;
     case OP_FALSE:
@@ -605,8 +605,8 @@ void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& ou
     case OP_CONST:
         out << "const " << code.read_short(ip+1);
         break;
-    case OP_NULL:
-        out << "null";
+    case OP_NIL:
+        out << "nil";
         break;
     case OP_FALSE:
         out << "false";

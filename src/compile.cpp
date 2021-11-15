@@ -123,8 +123,8 @@ void compiler::compile_atom(local_table& locals,
     case at_symbol:
         // TODO: check for special symbols
         auto name = symtab->symbol_name(atom.datum.sym);
-        if (name == "null") {
-            write_byte(OP_NULL);
+        if (name == "nil") {
+            write_byte(OP_NIL);
             ++locals.sp;
         } else if(name == "true") {
             write_byte(OP_TRUE);
@@ -317,7 +317,7 @@ void compiler::compile_body(local_table& locals,
                             const vector<fn_parse::ast_node*>& list,
                             u32 body_start) {
     auto start = locals.sp;
-    write_byte(OP_NULL);
+    write_byte(OP_NIL);
     ++locals.sp;
 
     u32 i;
@@ -450,7 +450,7 @@ void compiler::compile_cond(local_table& locals,
         // this is for the CJUMP to the next branch
         patch_short(patch_loc - 2, (u16) (dest->size() - patch_loc));
     }
-    write_byte(OP_NULL);
+    write_byte(OP_NIL);
     ++locals.sp;
 
     auto end = dest->size();
@@ -510,7 +510,7 @@ void compiler::compile_do(local_table& locals,
                           const vector<ast_node*>& list,
                           const source_loc& loc) {
     if (list.size() == 1) {
-        write_byte(OP_NULL);
+        write_byte(OP_NIL);
         ++locals.sp;
         return;
     }
@@ -635,7 +635,7 @@ void compiler::compile_let(local_table& locals,
         }
         locals.vars.insert(sym, locals.sp);
         names.push_back(sym);
-        write_byte(OP_NULL);
+        write_byte(OP_NIL);
         ++locals.sp;
     }
 
@@ -649,7 +649,7 @@ void compiler::compile_let(local_table& locals,
     }
 
     // return null
-    write_byte(OP_NULL);
+    write_byte(OP_NIL);
     ++locals.sp;
 }
 
@@ -673,7 +673,7 @@ void compiler::compile_letfn(local_table& locals,
     auto sym = list[1]->datum.atom->datum.sym;
     auto pos = locals.sp++;
     // initial value null (in case of recursive reads)
-    write_byte(OP_NULL);
+    write_byte(OP_NIL);
     locals.vars.insert(sym, pos);
 
     auto params = parse_params(*symtab, *list[2]);
@@ -681,7 +681,7 @@ void compiler::compile_letfn(local_table& locals,
 
     write_byte(OP_SET_LOCAL);
     write_byte(pos);
-    write_byte(OP_NULL);
+    write_byte(OP_NIL);
 }
 
 void compiler::compile_or(local_table& locals,
@@ -741,7 +741,7 @@ void compiler::compile_set(local_table& locals,
             write_byte(OP_SET_GLOBAL);
             locals.sp -= 2;
         }
-        write_byte(OP_NULL);
+        write_byte(OP_NIL);
     } else if (list[1]->kind == ak_list) {
         // check if it's a dot
         auto op = (*list[1]->datum.list)[0];
@@ -767,7 +767,7 @@ void compiler::compile_set(local_table& locals,
            write_byte(OP_OBJ_SET);
 
            // return null
-           write_byte(OP_NULL);
+           write_byte(OP_NIL);
            locals.sp -= 2;
         } else {
             error("Illegal place in set! operation.", list[1]->loc);
@@ -785,7 +785,7 @@ void compiler::compile_with(local_table& locals,
     }
 
     // a place for the result
-    write_byte(OP_NULL);
+    write_byte(OP_NIL);
     ++locals.sp;
 
     // create the local environment
@@ -802,7 +802,7 @@ void compiler::compile_with(local_table& locals,
         auto sym = bindings[i]->get_symbol();
         new_locals.vars.insert(sym, new_locals.sp);
         names.push_back(sym);
-        write_byte(OP_NULL);
+        write_byte(OP_NIL);
         ++new_locals.sp;
     }
 

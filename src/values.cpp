@@ -224,7 +224,7 @@ string v_to_string(value v, const symbol_table* symbols) {
     case TAG_FUNC:
         return "<function>";
     case TAG_NIL:
-        return "null";
+        return "nil";
     case TAG_TRUE:
         return "true";
     case TAG_FALSE:
