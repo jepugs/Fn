@@ -516,12 +516,6 @@ void vm_thread::step() {
         addr = call(ws, num_args);
         break;
 
-    case OP_APPLY:
-        num_args = cur_chunk()->read_byte(ip+1);
-        jump = true;
-        addr = apply(ws, num_args);
-        break;
-
     case OP_RETURN:
         // check that we are in a call frame
         if (frame->caller == nullptr) {
@@ -626,6 +620,12 @@ void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& ou
     case OP_OBJ_SET:
         out << "obj-set";
         break;
+    case OP_MACRO_GET:
+        out << "macro-get";
+        break;
+    case OP_MACRO_SET:
+        out << "macro-set";
+        break;
     case OP_IMPORT:
         out << "import";
         break;
@@ -638,8 +638,8 @@ void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& ou
     case OP_CALL:
         out << "call " << (i32)((code.read_byte(ip+1)));;
         break;
-    case OP_APPLY:
-        out << "apply " << (i32)((code.read_byte(ip+1)));;
+    case OP_TCALL:
+        out << "tcall " << (i32)((code.read_byte(ip+1)));;
         break;
     case OP_RETURN:
         out << "return";

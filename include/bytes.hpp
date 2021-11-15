@@ -118,7 +118,8 @@ constexpr u8 OP_SET_UPVALUE = 0x06;
 // takes the function's init values as arguments on the stack. Init vals are
 // ordered with the last one in the parameter list on the top of the stack.
 constexpr u8 OP_CLOSURE = 0x07;
-// close BYTE; pop the stack BYTE times, closing any open upvalues in the process
+// close BYTE; pop the stack BYTE times, closing any open upvalues in the
+// process
 constexpr u8 OP_CLOSE = 0x08;
 
 // global; get a global variable based on a string on top of the stack
@@ -126,31 +127,27 @@ constexpr u8 OP_GLOBAL = 0x10;
 // set-global; set a global variable. stack arguments ->[value] symbol ...
 // note: leaves the symbol on the stack
 constexpr u8 OP_SET_GLOBAL = 0x11;
+// obj-get;  stack arguments ->[key] obj; get the value of a property.
+constexpr u8 OP_OBJ_GET = 0x12;
+// obj-set; add or update the value of a property. stack arguments ->[new-value]
+// key obj ...
+constexpr u8 OP_OBJ_SET = 0x13;
+// macro-get; get the function associated to a symbol, raising an error if there
+// is none. stack arguments ->[symbol]
+constexpr u8 OP_MACRO_GET = 0x14;
+// macro-set; set the macro function associated to a symbol. stack arguments:
+// ->[function] symbol.
+constexpr u8 OP_MACRO_SET = 0x15;
+
 
 // const SHORT; load a constant via its 16-bit id
-constexpr u8 OP_CONST = 0x12;
+constexpr u8 OP_CONST = 0x20;
 // null; push a null value on top of the stack
-constexpr u8 OP_NULL  = 0x13;
+constexpr u8 OP_NULL  = 0x21;
 // false; push a false value on top of the stack
-constexpr u8 OP_FALSE = 0x14;
+constexpr u8 OP_FALSE = 0x22;
 // true; push a true value on top of the stack
-constexpr u8 OP_TRUE  = 0x15;
-
-
-// obj-get;  stack arguments ->[key] obj; get the value of a property.
-constexpr u8 OP_OBJ_GET = 0x16;
-// obj-set; add or update the value of a property. stack arguments ->[new-value] key obj ...
-constexpr u8 OP_OBJ_SET = 0x17;
-
-// TODO:
-// TODO: implement these changes in vm
-// TODO:
-// import; stack arguments ->[ns_id]; perform an import using the given
-// namespace id.
-constexpr u8 OP_IMPORT = 0x19;
-
-// ns_root; push the namespace root to the top of the stack
-constexpr u8 OP_NS_ROOT = 0x20;
+constexpr u8 OP_TRUE  = 0x23;
 
 
 // control flow & function calls
@@ -163,23 +160,16 @@ constexpr u8 OP_CJUMP = 0x31;
 // one for the function, one for each positional argument, and one for the
 // keyword table
 constexpr u8 OP_CALL = 0x32;
-// return; return from the current function
-constexpr u8 OP_RETURN = 0x33;
-
-// FIXME: this one doesn't work lol
-// apply BYTE; like call, but the last argument is actually a list to be expanded as individual
-// arugments
-constexpr u8 OP_APPLY = 0x34;
-
 // tcall BYTE; perform a tail call
-//constexpr u8 OP_TCALL = 0x35;
+constexpr u8 OP_TCALL = 0x33;
+// return; return from the current function
+constexpr u8 OP_RETURN = 0x34;
 
-// value manipulation
-// FIXME: not sure if I need this...
-// table ; create a new empty table
-constexpr u8 OP_TABLE = 0x40;
-// constexpr u8 OP_EMPTY = 0x41;
-// constexpr u8 OP_CONS  = 0x42;
+// import; stack arguments ->[ns_id]; perform an import using the given
+// namespace id (symbol).
+constexpr u8 OP_IMPORT = 0x40;
+
+constexpr u8 OP_TABLE = 0x50;
 
 
 // gives the width of an instruction + its operands in bytes
@@ -195,6 +185,8 @@ inline u8 instr_width(u8 instr) {
     case OP_RETURN:
     case OP_OBJ_GET:
     case OP_OBJ_SET:
+    case OP_MACRO_GET:
+    case OP_MACRO_SET:
     case OP_IMPORT:
     case OP_TABLE:
         return 1;
@@ -205,7 +197,7 @@ inline u8 instr_width(u8 instr) {
     case OP_SET_UPVALUE:
     case OP_CLOSE:
     case OP_CALL:
-    case OP_APPLY:
+    case OP_TCALL:
         return 2;
     case OP_CONST:
     case OP_JUMP:

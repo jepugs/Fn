@@ -143,7 +143,7 @@ Fn provides the following builtin data types (type names in Fn are
 - ~Nil~ :: The special constant ~nil~, used to indicate no value.
 - ~Bool~ :: The special boolean constants ~true~ and ~false~.
 - ~Num~ :: Floating-point numbers. (These are almost IEEE 64-bit floats, but we
-  truncate the significand by three bits to fit type information).
+  truncate the significand by four bits to fit type information).
 - ~Symbol~ :: Internalized strings. These are essentially strings with a faster
   equality test, at the expensive of slower access to the characters of the
   string. They are used extensively by the macro system.
