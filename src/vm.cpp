@@ -223,7 +223,9 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
         for (i32 i = num_args - 1; i >= 0; --i) {
             args[i] = ws2.pin_value(pop());
         }
-        interpreter_handle handle{.inter=this, .func_name="<ffi call>"};
+        // pop the foreign function itself
+        ws2.pin_value(pop());
+        interpreter_handle handle{.inter=this, .ws=&ws2, .func_name="<ffi call>"};
         push(func->foreign_func(&handle, num_args, args));
         return ip + 2;
     }

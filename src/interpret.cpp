@@ -80,6 +80,7 @@ value interpreter::interpret_string(const string& src) {
         // TODO: this is where macroexpansion goes
         c.compile_expr(expr);
         delete expr;
+        disassemble(symtab, *chunk, std::cout);
         interpret_to_end(vm);
     }
     // TODO: check vm status

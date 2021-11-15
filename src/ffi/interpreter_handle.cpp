@@ -17,36 +17,36 @@ void interpreter_handle::assert_type(u64 tag, value v) {
     }
 }
 
-value interpreter_handle::vadd(value a, value b) {
+value interpreter_handle::v_add(value a, value b) {
     assert_type(TAG_NUM, a);
     assert_type(TAG_NUM, b);
     return as_value(a.num + b.num);
 }
 
-value interpreter_handle::vsub(value a, value b) {
+value interpreter_handle::v_sub(value a, value b) {
     assert_type(TAG_NUM, a);
     assert_type(TAG_NUM, b);
     return as_value(a.num - b.num);
 }
 
-value interpreter_handle::vmul(value a, value b) {
+value interpreter_handle::v_mul(value a, value b) {
     assert_type(TAG_NUM, a);
     assert_type(TAG_NUM, b);
     return as_value(a.num * b.num);
 }
 
-value interpreter_handle::vdiv(value a, value b) {
+value interpreter_handle::v_div(value a, value b) {
     assert_type(TAG_NUM, a);
     assert_type(TAG_NUM, b);
     return as_value(a.num / b.num);
 }
 
-value interpreter_handle::vabs(value a) {
+value interpreter_handle::v_abs(value a) {
     assert_type(TAG_NUM, a);
     return as_value(fabs(a.num));
 }
 
-value interpreter_handle::vmod(value a, value b) {
+value interpreter_handle::v_mod(value a, value b) {
     assert_type(TAG_NUM, a);
     assert_type(TAG_NUM, b);
     auto x = a.num, y = b.num;
@@ -58,20 +58,56 @@ value interpreter_handle::vmod(value a, value b) {
     return as_value((f64)(x_int % y_int) + (x - x_int));
 }
 
-value interpreter_handle::vpow(value a, value b) {
+value interpreter_handle::v_pow(value a, value b) {
     assert_type(TAG_NUM, a);
     assert_type(TAG_NUM, b);
     return as_value(pow(a.num,b.num));
 }
 
-value interpreter_handle::vexp(value a) {
+value interpreter_handle::v_exp(value a) {
     assert_type(TAG_NUM, a);
     return as_value(exp(a.num));
 }
 
-value interpreter_handle::vlog(value a) {
+value interpreter_handle::v_log(value a) {
     assert_type(TAG_NUM, a);
     return as_value(log(a.num));
+}
+
+value interpreter_handle::v_head(value a) {
+    assert_type(TAG_CONS, a);
+    return vcons(a)->head;
+}
+
+value interpreter_handle::v_tail(value a) {
+    if (a.is_empty()) {
+        return V_EMPTY;
+    } else if (!a.is_cons()) {
+        runtime_error("Value does not have legal type.");
+    }
+    return vcons(a)->tail;
+}
+
+value interpreter_handle::v_cons(value hd, value tl) {
+    if (!tl.is_cons() && !tl.is_empty()) {
+        runtime_error("Value does not have legal type.");
+    }
+    return ws->add_cons(hd, tl);
+}
+
+value interpreter_handle::v_nth(i64 n, value lst) {
+    if (lst.is_empty()) {
+        return V_NIL;
+    }
+    assert_type(TAG_CONS, lst);
+    while (n != 0) {
+        if (lst.is_empty()) {
+            return V_NIL;
+        }
+        lst = vcons(lst)->tail;
+        --n;
+    }
+    return vcons(lst)->head;
 }
 
 }
