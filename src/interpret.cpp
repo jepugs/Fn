@@ -88,6 +88,10 @@ value interpreter::interpret_string(const string& src) {
     return vm.last_pop();
 }
 
+ast_node* macroexpand(fn_namespace* ns, const ast_node* form) {
+    auto res = form->copy();
+}
+
 void interpreter::runtime_error(const string& msg,
         const source_loc& loc) {
     throw fn_error("runtime", msg, loc);

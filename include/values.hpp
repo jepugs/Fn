@@ -23,25 +23,25 @@ namespace fn {
 constexpr u64 TAG_WIDTH     = 4;
 constexpr u64 TAG_MASK      = (1 << TAG_WIDTH) - 1;
 
+
 constexpr u64 TAG_NUM       = 0;
-constexpr u64 TAG_CONS      = 1;
-constexpr u64 TAG_STRING    = 2;
+
+// NOTE: These four must line up with the GC_TYPE tags in base.hpp
+constexpr u64 TAG_STRING    = 1;
+constexpr u64 TAG_CONS      = 2;
 constexpr u64 TAG_TABLE     = 3;
 constexpr u64 TAG_FUNC      = 4;
-constexpr u64 TAG_NIL       = 8;
-constexpr u64 TAG_TRUE      = 9;
-constexpr u64 TAG_FALSE     = 10;
-constexpr u64 TAG_EMPTY     = 11;
-constexpr u64 TAG_SYM       = 12;
 
-struct cons;
+constexpr u64 TAG_SYM       = 5;
+constexpr u64 TAG_NIL       = 6;
+constexpr u64 TAG_TRUE      = 7;
+constexpr u64 TAG_FALSE     = 8;
+constexpr u64 TAG_EMPTY     = 9;
+
 struct fn_string;
+struct cons;
 struct fn_table;
 struct function;
-struct foreign_func;
-struct fn_namespace;
-
-struct obj_header;
 
 // Design notes for value:
 // - we opt to make value a union with methods rather than a struct
@@ -146,7 +146,7 @@ union value {
     value pow(const value& expt) const;
 
     // used to get object header
-    optional<obj_header*> header() const;
+    optional<gc_header*> header() const;
 };
 
 // constant values
@@ -232,42 +232,25 @@ void v_tab_set(value obj, value key, value v);
 
 /// value structures
 
-// common header object for all objects requiring additional memory management
-struct alignas(32) obj_header {
-    // a value pointing to this. (also encodes the type via the tag)
-    value ptr;
-
-    // gc flags
-    // if false, the gc acts as if this object doesn't exist
-    bool gc;
-    // FIXME: pinning is not thread-safe
-    // reference count equal to number of working sets that have this pinned
-    i16 pin_count;
-    // gc mark bit (true indicates reachable, starts false)
-    bool mark;
-
-    obj_header(value ptr, bool gc);
-};
-
 // cons cells
 struct alignas(32) cons {
-    obj_header h;
+    gc_header h;
     value head;
     value tail;
 
-    cons(value head, value tail, bool gc=false);
+    cons(value head, value tail);
 };
 
 struct alignas(32) fn_string {
-    obj_header h;
-    const u32 len;
+    gc_header h;
+    u32 len;
     const char* data;
 
     // these constructors copy data
-    fn_string(const string& src, bool gc=false);
+    fn_string(const string& src);
     // src must be null terminated
-    fn_string(const char* src, bool gc=false);
-    fn_string(const fn_string& src, bool gc=false);
+    fn_string(const char* src);
+    fn_string(const fn_string& src);
     ~fn_string();
 
     string as_string();
@@ -276,10 +259,10 @@ struct alignas(32) fn_string {
 };
 
 struct alignas(32) fn_table {
-    obj_header h;
+    gc_header h;
     table<value,value> contents;
 
-    fn_table(bool gc=false);
+    fn_table();
 };
 
 
@@ -342,7 +325,7 @@ struct upvalue_cell {
 
 struct interpreter_handle;
 struct alignas(32) function {
-    obj_header h;
+    gc_header h;
     function_stub* stub;
     // If foreign_func != nullptr, addr and upvalue fields are ignored, and the
     // function is evaluated by calling foreign_func instead of jumping
@@ -355,7 +338,7 @@ struct alignas(32) function {
     // During construction, upvals is allocated according to the num_upvals
     // field in stub. However, it is the responsibility of the function creator
     // to allocate it.
-    function(function_stub* stub, bool gc=false);
+    function(function_stub* stub);
     ~function();
 };
 
@@ -372,20 +355,6 @@ struct virtual_machine;
 // functions can be defined directly in terms of bytecode, and allowing all VM
 // operations to be easily exposed to functions.
 
-// foreign functions
-struct alignas(32) foreign_func {
-    obj_header h;
-    local_address min_args;
-    bool var_args;
-    optional<value> (*func)(local_address, value*, virtual_machine*);
-    // TODO: new foreign func signature
-    //value (*func)(working_set*, value*);
-
-    foreign_func(local_address min_args,
-                 bool var_args,
-                 optional<value> (*func)(local_address, value*, virtual_machine*), bool gc=false);
-};
-
 // symbols in fn are represented by a 32-bit unsigned ids
 struct symtab_entry {
     symbol_id id;
@@ -400,7 +369,7 @@ private:
     vector<symtab_entry> by_id;
 
 public:
-    symbol_table();
+    symbol_table() = default;
 
     symbol_id intern(const string& str);
     bool is_internal(const string& str) const;

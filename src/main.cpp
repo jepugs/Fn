@@ -1,13 +1,13 @@
 #include "base.hpp"
 #include "bytes.hpp"
-#include "compile.hpp"
-#include "ffi/builtin.hpp"
-#include "interpret.hpp"
-#include "parse.hpp"
-#include "scan.hpp"
+//#include "compile.hpp"
+//#include "ffi/builtin.hpp"
+//#include "interpret.hpp"
+//#include "parse.hpp"
+//#include "scan.hpp"
 #include "table.hpp"
-#include "values.hpp"
-#include "vm.hpp"
+//#include "values.hpp"
+//#include "vm.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -84,6 +84,7 @@ int main(int argc, char** argv) {
         interact = true;
     }
 
+    /*
     interpreter inter{};
     install_builtin(inter);
     // TODO: use proper namespaces
@@ -111,6 +112,7 @@ int main(int argc, char** argv) {
         std::cout << v_to_string(res, inter.get_symtab())
                   << endl;
     }
+    */
 
     return 0;
 }

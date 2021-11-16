@@ -40,9 +40,10 @@ struct llir_def_obj {
     symbol_id name;
     llir_form* value;
 };
-llir_def_obj* make_llir_def(const source_loc& origin,
+llir_def_obj* mk_llir_def(const source_loc& origin,
         symbol_id name,
-        llir_form* value);
+        llir_form* value,
+        llir_def_obj* dest=nullptr);
 void free_llir_def(llir_def_obj* obj);
 
 struct llir_defmacro_obj {
@@ -50,9 +51,10 @@ struct llir_defmacro_obj {
     symbol_id name;
     llir_form* macro_fun;
 };
-llir_defmacro_obj* make_llir_defmacro(const source_loc& origin,
+llir_defmacro_obj* mk_llir_defmacro(const source_loc& origin,
         symbol_id name,
-        llir_form* macro_fun);
+        llir_form* macro_fun,
+        llir_defmacro_obj* dest=nullptr);
 void free_llir_defmacro(llir_defmacro_obj* obj);
 
 struct llir_dot_obj {
@@ -61,9 +63,10 @@ struct llir_dot_obj {
     local_address num_keys;
     symbol_id* keys;
 };
-llir_dot_obj* make_llir_dot(const source_loc& origin,
+llir_dot_obj* mk_llir_dot(const source_loc& origin,
         llir_form* obj,
-        local_address num_keys);
+        local_address num_keys,
+        llir_dot_obj* dest=nullptr);
 void free_llir_dot(llir_dot_obj* obj);
 
 struct llir_call_obj {
@@ -72,16 +75,19 @@ struct llir_call_obj {
     local_address num_args;
     llir_form** args;
 };
-llir_call_obj* make_llir_call(const source_loc& origin,
+llir_call_obj* mk_llir_call(const source_loc& origin,
         llir_form* caller,
-        local_address num_args);
+        local_address num_args,
+        llir_call_obj* dest=nullptr);
 void free_llir_call(llir_call_obj* obj);
 
 struct llir_const_obj {
     llir_form header;
-    const_id id;
+    constant_id id;
 };
-llir_const_obj* make_llir_const(const source_loc& origin, const_id id);
+llir_const_obj* mk_llir_const(const source_loc& origin,
+        constant_id id,
+        llir_const_obj* dest=nullptr);
 void free_llir_const(llir_const_obj* obj);
 
 struct llir_fn_params {
@@ -104,12 +110,13 @@ struct llir_fn_obj {
     llir_fn_params params;
     llir_form* body;
 };
-llir_fn_obj* make_llir_fn(const source_loc& origin,
+llir_fn_obj* mk_llir_fn(const source_loc& origin,
         local_address num_pos_args,
         bool has_var_list_arg,
         bool has_var_table_arg,
         local_address req_args,
-        llir_form* body);
+        llir_form* body,
+        llir_fn_obj* dest=nullptr);
 void free_llir_fn(llir_fn_obj* obj);
 
 struct llir_import_obj {
@@ -119,8 +126,9 @@ struct llir_import_obj {
     symbol_id alias;
     bool unqualified;
 };
-llir_import_obj* make_llir_import(const source_loc& origin,
-        symbol_id target);
+llir_import_obj* mk_llir_import(const source_loc& origin,
+        symbol_id target,
+        llir_import_obj* dest=nullptr);
 void free_llir_import(llir_import_obj* obj);
 
 struct llir_set_obj {
@@ -128,17 +136,19 @@ struct llir_set_obj {
     llir_form* target;
     llir_form* value;
 };
-llir_set_obj* make_llir_set(const source_loc& origin,
+llir_set_obj* mk_llir_set(const source_loc& origin,
         llir_form* target,
-        llir_form* value);
+        llir_form* value,
+        llir_set_obj* dest=nullptr);
 void free_llir_set(llir_set_obj* obj);
 
 struct llir_var_obj {
     llir_form header;
     symbol_id name;
 };
-llir_var_obj* make_llir_var(const source_loc& origin,
-        symbol_id name);
+llir_var_obj* mk_llir_var(const source_loc& origin,
+        symbol_id name,
+        llir_var_obj* dest=nullptr);
 void free_llir_var(llir_var_obj* obj);
 
 struct llir_with_obj {
@@ -148,9 +158,10 @@ struct llir_with_obj {
     llir_form** value_forms;
     llir_form* body;
 };
-llir_with_obj* make_llir_with(const source_loc& origin,
+llir_with_obj* mk_llir_with(const source_loc& origin,
         local_address num_vars,
-        llir_form* body);
+        llir_form* body,
+        llir_with_obj* dest=nullptr);
 void free_llir_with(llir_with_obj* obj);
 
 void free_llir_form(llir_form* obj);

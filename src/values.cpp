@@ -1,11 +1,8 @@
 #include "values.hpp"
 
-#include <cmath>
-#include "vm.hpp"
-
 namespace fn {
 
-optional<obj_header*> value::header() const {
+optional<gc_header*> value::header() const {
     if (is_cons()) {
         return &vcons(*this)->h;
     } else if (is_string()) {
@@ -18,39 +15,32 @@ optional<obj_header*> value::header() const {
     return { };
 }
 
-obj_header::obj_header(value ptr, bool gc)
-    : ptr{ptr}
-    , gc{gc}
-    , pin_count{0}
-    , mark{false} {
-}
-
-cons::cons(value head, value tail, bool gc)
-    : h{as_value(this),gc}
-    , head{head}
+cons::cons(value head, value tail)
+    : head{head}
     , tail{tail} {
+    mk_gc_header(GC_TYPE_CONS, &h);
 }
 
-fn_string::fn_string(const string& src, bool gc)
-    : h{as_value(this),gc}
-    , len{static_cast<u32>(src.size())} {
+fn_string::fn_string(const string& src)
+    : len{static_cast<u32>(src.size())} {
+    mk_gc_header(GC_TYPE_STRING, &h);
     auto v = new char[len+1];
     v[len] = '\0';
     std::memcpy(v, src.c_str(), len);
     data = v;
 }
-fn_string::fn_string(const char* src, bool gc)
-    : h{as_value(this),gc}
-    , len{static_cast<u32>(string{src}.size())} {
-    string s(src);
+fn_string::fn_string(const char* src) {
+    mk_gc_header(GC_TYPE_STRING, &h);
+    string s{src};
+    len = s.size();
     auto v = new char[len+1];
     v[len] = '\0';
     std::memcpy(v, s.c_str(), len);
     data = v;
 }
-fn_string::fn_string(const fn_string& src, bool gc)
-    : h{as_value(this),gc}
-    , len{src.len} {
+fn_string::fn_string(const fn_string& src)
+    : len{src.len} {
+    mk_gc_header(GC_TYPE_STRING, &h);
     auto v = new char[len+1];
     v[len] = '\0';
     std::memcpy(v, src.data, len);
@@ -76,13 +66,8 @@ bool fn_string::operator==(const fn_string& s) const {
     return true;
 }
 
-fn_table::fn_table(bool gc)
-    : h{as_value(this),gc}
-    , contents{} {
-}
-symbol_table::symbol_table()
-    : by_name{}
-    , by_id{} {
+fn_table::fn_table() {
+    mk_gc_header(GC_TYPE_TABLE, &h);
 }
 
 symbol_id symbol_table::intern(const string& str) {
@@ -116,9 +101,9 @@ local_address function_stub::add_upvalue(u8 addr, bool direct) {
     return num_upvals++;
 }
 
-function::function(function_stub* stub, bool gc)
-    : h{as_value(this),gc}
-    , stub{stub} {
+function::function(function_stub* stub)
+    : stub{stub} {
+    mk_gc_header(GC_TYPE_FUNCTION, &h);
     if (stub == nullptr) {
         return;
     }

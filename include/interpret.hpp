@@ -46,6 +46,10 @@ public:
     // expression (or null).
     value interpret_string(const string& src);
 
+    // macroexpand a form in the given namespace
+    ast_node* macroexpand(fn_namespace* ns, const ast_node* form);
+    
+
     // Emit a runtime error in the form of an exception
     void runtime_error(const string& msg, const source_loc& src);
 };

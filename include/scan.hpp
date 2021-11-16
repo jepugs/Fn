@@ -59,35 +59,35 @@ struct token {
     source_loc loc;
     token_datum datum;
 
-    token() : tk(tk_eof), loc(""), datum({.nothing = nullptr}) { }
+    token() : tk{tk_eof}, loc{}, datum{.nothing = nullptr} { }
     token(token_kind tk, source_loc loc)
-        : tk(tk)
-        , loc(loc)
-        , datum({.nothing = nullptr}) {
+        : tk{tk}
+        , loc{loc}
+        , datum{.nothing = nullptr} {
     }
     token(token_kind tk, source_loc loc, double num)
-        : tk(tk)
-        , loc(loc)
-        , datum({.num = num}) {
+        : tk{tk}
+        , loc{loc}
+        , datum{.num = num} {
     }
     token(token_kind tk, source_loc loc, const string& str)
-        : tk(tk)
-        , loc(loc)
-        , datum({.str = new string(str)}) {
+        : tk{tk}
+        , loc{loc}
+        , datum{.str = new string{str}} {
     }
     token(token_kind tk, source_loc loc, const vector<string>& ids)
-        : tk(tk)
-        , loc(loc)
-        , datum({.ids = new vector<string>(ids)}) {
+        : tk{tk}
+        , loc{loc}
+        , datum{.ids = new vector<string>{ids}} {
     }
 
     token(const token& tok)
-        : tk(tok.tk)
-        , loc(tok.loc) {
+        : tk{tok.tk}
+        , loc{tok.loc} {
         if (tk == tk_string || tk == tk_symbol) {
-            datum.str = new string(*tok.datum.str);
+            datum.str = new string{*tok.datum.str};
         } else if (tk == tk_dot) {
-            datum.ids = new vector<string>(*tok.datum.ids);
+            datum.ids = new vector<string>{*tok.datum.ids};
         } else {
             datum = tok.datum;
         }
@@ -184,10 +184,10 @@ struct token {
 class scanner {
 public:
     scanner(std::istream* in, const string& filename="", int line=1, int col=0)
-        : input(in)
-        , filename(new string(filename))
-        , line(line)
-        , col(col) {
+        : input{in}
+        , filename{filename}
+        , line{line}
+        , col{col} {
     }
     scanner(const string& filename)
         : line(1)
@@ -210,7 +210,7 @@ private:
     bool close_stream = false;
 
     // these track location in input (used for generating error messages)
-    std::shared_ptr<string> filename;
+    string filename;
     int line;
     int col;
 
@@ -254,7 +254,7 @@ private:
 
     // throw an appropriate fn_error
     inline void error(const char* msg) {
-        throw fn_error("scanner", msg, source_loc(filename, line, col-1));
+        throw fn_error{"scanner", msg, source_loc{filename, line, col-1}};
     }
 };
 

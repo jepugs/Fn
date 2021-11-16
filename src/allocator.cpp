@@ -3,6 +3,22 @@
 #include <algorithm>
 #include <iostream>
 
+// access parts of the gc_header
+#define gc_mark(h) (((h).bits | GC_MARK_BIT) == GC_MARK_BIT)
+#define gc_ignore(h) (((h).bits | GC_IGNORE_BIT) == GC_IGNORE_BIT)
+#define gc_global(h) (((h).bits | GC_GLOBAL_BIT) == GC_GLOBAL_BIT)
+#define gc_type(h) (((h).bits | GC_TYPE_BITMASK))
+
+#define gc_set_mark(h) (((h).bits |= GC_MARK_BIT))
+#define gc_unset_mark(h) (((h).bits &= ~GC_MARK_BIT))
+
+#define gc_set_ignore(h) (((h).bits |= GC_IGNORE_BIT))
+#define gc_unset_ignore(h) (((h).bits &= ~GC_IGNORE_BIT))
+
+#define gc_set_global(h) (((h).bits |= GC_GLOBAL_BIT))
+#define gc_unset_global(h) (((h).bits &= ~GC_GLOBAL_BIT))
+
+
 namespace fn {
 
 static constexpr u32 COLLECT_TH = 4096;
@@ -135,7 +151,7 @@ value working_set::add_cons(value hd, value tl) {
     alloc->collect();
     alloc->mem_usage += sizeof(cons);
     ++alloc->count;
-    auto v = as_value(new cons{hd,tl,true});
+    auto v = as_value(new cons{hd,tl});
     new_objects.push_front(v);
     return v;
 }
@@ -162,7 +178,7 @@ value working_set::add_function(function_stub* stub) {
     alloc->collect();
     alloc->mem_usage += sizeof(function);
     ++alloc->count;
-    auto f = new function{stub, true};
+    auto f = new function{stub};
     auto v = as_value(f);
     new_objects.push_front(v);
     return v;
@@ -191,93 +207,115 @@ allocator::allocator(global_env* use_globals)
 
 allocator::~allocator() {
     for (auto o : objects) {
-        dealloc(o->ptr);
+        dealloc(o);
     }
     for (auto s : root_stacks) {
         delete s;
     }
-    auto keys = const_table.keys();
-    for (auto k : keys) {
-        dealloc(*const_table.get(k));
-    }
-    for (auto c : chunks) {
-        delete c;
-    }
 }
 
-void allocator::dealloc(value v) {
-    if (v.is_cons()) {
-        mem_usage -= sizeof(cons);
-        delete vcons(v);
-    } else if (v.is_string()) {
-        auto s = vstring(v);
-        mem_usage -= s->len;
+void allocator::dealloc(gc_header* o) {
+    switch (gc_type(*o)) {
+    case GC_TYPE_CHUNK:
+        // TODO: maybe track chunk mem_usage
+        free_code_chunk((code_chunk*) o);
+        delete (code_chunk*)o;
+    case GC_TYPE_STRING:
+        mem_usage -= ((fn_string*)o)->len;
         mem_usage -= sizeof(fn_string);
-        delete s;
-    } else if (v.is_table()) {
+        delete (fn_string*)o;
+        break;
+    case GC_TYPE_CONS:
+        mem_usage -= sizeof(cons);
+        delete (cons*)o;
+        break;
+    case GC_TYPE_TABLE:
         mem_usage -= sizeof(fn_table);
-        delete vtable(v);
-    } else if (v.is_function()) {
+        delete (fn_table*)o;
+        break;
+    case GC_TYPE_FUNCTION:
         mem_usage -= sizeof(function);
-        auto f = vfunction(v);
+        {
+            auto f = (function*)o;
 
-        if (f->stub != nullptr) {
-            // delete dead upvalues
-            for (int i = 0; i < f->stub->num_upvals; ++i) {
-                auto cell = f->upvals[i];
-                cell->dereference();
-                if (cell->dead()) {
-                    delete cell;
+            if (f->stub != nullptr) {
+                // delete dead upvalues
+                for (int i = 0; i < f->stub->num_upvals; ++i) {
+                    auto cell = f->upvals[i];
+                    cell->dereference();
+                    if (cell->dead()) {
+                        delete cell;
+                    }
                 }
             }
-        }
 
-        delete f;
+            delete f;
+        }
+        break;
     }
     --count;
 }
 
-vector<value> allocator::accessible(value v) {
-    vector<value> res;
-    if (v.is_cons()) {
-        res.push_back(vcons(v)->head);
-        res.push_back(vcons(v)->tail);
-    } else if (v.is_table()) {
-        for (auto k : vtable(v)->contents.keys()) {
-            res.push_back(k);
-            res.push_back(*vtable(v)->contents.get(k));
-        }
-        return res;
-    } else if (v.is_function()) {
-        auto f = vfunction(v);
-        // add the upvalues
-        auto m = f->stub->num_upvals;
-        for (local_address i = 0; i < m; ++i) {
-            auto cell = f->upvals[i];
-            if (cell->closed) {
-                res.push_back(cell->closed_value);
+// add a value's header to dest if it has one
+static void add_value_header(value v, forward_list<gc_header*>& dest) {
+    auto x = v.header();
+    if (x.has_value()) {
+        dest.push_front(*x);
+    }
+}
+
+forward_list<gc_header*> allocator::accessible(gc_header* o) {
+    forward_list<gc_header*> res;
+    switch (gc_type(*o)) {
+    case GC_TYPE_CHUNK:
+        {
+            auto x = (code_chunk*)o;
+            for (auto i = 0; i < x->num_constants; ++i) {
+                add_value_header(x->constant_table[i], res);
             }
         }
-        auto num_opt = f->stub->pos_params.size() - f->stub->req_args;
-        for (u32 i = 0; i < num_opt; ++i) {
-            res.push_back(f->init_vals[i]);
+    case GC_TYPE_CONS:
+        add_value_header(((cons*)o)->head, res);
+        add_value_header(((cons*)o)->tail, res);
+        break;
+    case GC_TYPE_TABLE:
+        {
+            auto x = (fn_table*)o;
+            for (auto k : x->contents.keys()) {
+                add_value_header(k, res);
+                add_value_header(*x->contents.get(k), res);
+            }
         }
+        break;
+    case GC_TYPE_FUNCTION:
+        {
+            auto f = (function*)o;
+            auto m = f->stub->num_upvals;
+            for (local_address i = 0; i < m; ++i) {
+                auto cell = f->upvals[i];
+                if (cell->closed) {
+                    add_value_header(cell->closed_value, res);
+                }
+            }
+            auto num_opt = f->stub->pos_params.size() - f->stub->req_args;
+            for (u32 i = 0; i < num_opt; ++i) {
+                add_value_header(f->init_vals[i], res);
+            }
+        }
+        break;
     }
 
     return res;
 }
 
-void allocator::mark_descend(obj_header* o) {
-    if (o->mark || !o->gc) {
+void allocator::mark_descend(gc_header* o) {
+    if (gc_mark(*o)) {
         // already been here or not managed
         return;
     }
-    o->mark = true;
-    for (auto q : accessible(o->ptr)) {
-        auto h = q.header();
-        if (h.has_value()) {
-            mark_descend(*h);
-        }
+    gc_set_mark(*o);
+    for (auto h : accessible(o)) {
+        mark_descend(h);
     }
 }
 
@@ -334,18 +372,18 @@ void allocator::sweep() {
     // FIXME: this is a doubly-linked list
 
     // delete unmarked objects
-    std::list<obj_header*> more_objs;
+    std::list<gc_header*> more_objs;
     for (auto h : objects) {
-        if (h->mark) {
+        if (gc_mark(*h)) {
             more_objs.push_back(h);
         } else {
-            dealloc(h->ptr);
+            dealloc(h);
         }
     }
     objects.swap(more_objs);
     // unmark remaining objects
     for (auto h : objects) {
-        h->mark = false;
+        gc_unset_mark(*h) = false;
     }
 #ifdef GC_DEBUG
     auto ct = orig_ct - count;
@@ -422,14 +460,14 @@ working_set allocator::add_working_set() {
     return working_set{this};
 }
 
-code_chunk* allocator::add_chunk(symbol_id ns_name) {
+code_chunk* allocator::add_chunk(symbol_id ns_id) {
     // ensure namespace exists
-    auto x = globals->get_ns(ns_name);
+    auto x = globals->get_ns(ns_id);
     if (!x.has_value()) {
-        globals->create_ns(ns_name);
+        globals->create_ns(ns_id);
     }
-    auto res = new code_chunk{ns_name};
-    chunks.push_back(res);
+    auto res = mk_code_chunk(ns_id);
+    objects.push_back((gc_header*)res);
     return res;
 }
 

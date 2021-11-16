@@ -92,16 +92,16 @@ void scanner::advance(char ch) {
 }
 
 token scanner::make_token(token_kind tk) const {
-    return token{tk, source_loc(filename, line, col)};
+    return token{tk, source_loc{filename, line, col}};
 }
 token scanner::make_token(token_kind tk, const string& str) const {
-    return token{tk, source_loc(filename, line, col), str};
+    return token{tk, source_loc{filename, line, col}, str};
 }
 token scanner::make_token(token_kind tk, double num) const {
-    return token{tk, source_loc(filename, line, col), num};
+    return token{tk, source_loc{filename, line, col}, num};
 }
 token scanner::make_token(token_kind tk, const vector<string>& ids) const {
-    return token{tk, source_loc(filename, line, col), ids};
+    return token{tk, source_loc{filename, line, col}, ids};
 }
 
 // this is the main scanning function

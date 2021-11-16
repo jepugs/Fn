@@ -3,7 +3,6 @@
 #define __FN_BYTES_HPP
 
 #include "base.hpp"
-#include "parse.hpp"
 #include "values.hpp"
 
 #include <iostream>
@@ -20,8 +19,7 @@ namespace fn {
 struct chunk_source_info {
     u32 end_addr;
     source_loc loc;
-
-    chunk_source_info(u32, const source_loc&);
+    chunk_source_info* prev;
 };
 
 // IMPLNOTE: the structures below currently contain STL containers, but it might
@@ -31,27 +29,27 @@ struct chunk_source_info {
 // A code_chunk is a dynamic array of bytecode instructions combined with all
 // constants and functions used by that chunk.
 struct code_chunk {
-private:
-    vector<u8> code;
-    vector<value> const_table;
+    gc_header h;
+
     // namespace id
     symbol_id ns_id;
+    // (dynamic) arrays holding chunk data
+    u8* code;
+    code_address code_size;
+    code_address code_capacity;
+    value* constant_table;
+    constant_id num_constants;
+    constant_id constant_capacity;
+    function_stub** function_table;
+    constant_id num_functions;
+    constant_id function_capacity;
+    // debug information
+    chunk_source_info* source_info;
 
-    vector<fn_string*> const_strings;
-    vector<cons*> const_conses;
-    // TODO: use function_stub
-    vector<function_stub*> functions;
-    std::list<chunk_source_info> source_info;
-
-    value quote_helper(const fn_parse::ast_node* node);
-
-public:
-    code_chunk(symbol_id use_ns);
-    ~code_chunk();
-
-    // chunk size in bytes
-    u32 size() const;
-    symbol_id get_ns_id();
+    // functions used to resize dynamic arrays
+    void ensure_code_capacity(code_address min_cap);
+    void ensure_constant_capacity(constant_id min_cap);
+    void ensure_function_capacity(constant_id min_cap);
 
     // read a byte. Requires (where < size())
     u8 read_byte(u32 where) const;
@@ -68,18 +66,12 @@ public:
     void write_short(u16 data, u32 where);
 
     // add constants. No duplication checking is done.
-    const_id const_num(f64 num);
-    const_id const_sym(symbol_id id);
-    const_id const_string(const fn_string& s);
-    const_id const_quote(const fn_parse::ast_node* node);
+    constant_id add_const(value v);
     // get a constant
-    value get_const(const_id id) const;
-    // get the number of constants
-    u32 num_consts() const;
+    value get_const(constant_id id) const;
 
     // add a new function and return its id. pparams is a list of parameter
     // names. req_args is number of required args.
-
     u16 add_function(const vector<symbol_id>& pparams,
                      local_address req_args,
                      optional<symbol_id> vl_param,
@@ -92,6 +84,13 @@ public:
     // find the location of an instruction
     source_loc location_of(u32 addr);
 };
+
+// Initialize a new code chunk at location dest. If dest=nullptr, then a new
+// code_chunk is allocated. Returns a pointer to the created object.
+code_chunk* mk_code_chunk(symbol_id ns_id, code_chunk* dest=nullptr);
+// Deallocate code chunk members. This will not handle freeing the constant
+// values, (but it will take care of the function stubs)
+void free_code_chunk(code_chunk* obj);
 
 
 /// instruction opcodes

@@ -8,7 +8,6 @@
 #include "base.hpp"
 #include "bytes.hpp"
 #include "namespace.hpp"
-#include "parse.hpp"
 #include "values.hpp"
 
 #include <list>
@@ -84,7 +83,7 @@ private:
     // list)
     forward_list<value> new_objects;
     // pinned objects are guaranteed to live during this working_set's life
-    forward_list<obj_header*> pinned_objects;
+    forward_list<gc_header*> pinned_objects;
 
     // Gives newly created objects to the GC and releases pins. Does nothing
     // after the first call. This is called by the destructor.
@@ -123,13 +122,9 @@ struct allocator {
 private:
     // note: we guarantee that every pointer in this array is actually memory
     // managed by this garbage collector
-    std::list<obj_header*> objects;
+    std::list<gc_header*> objects;
     // holds global variables
     global_env* globals;
-    // chunks are also managed by the garbage collector
-    vector<code_chunk*> chunks;
-    // separate list of constant objects
-    table<value,value> const_table;
     // flag used to determine garbage collector behavior. starts out false to
     // allow initialization
     bool gc_enabled;
@@ -147,7 +142,7 @@ private:
     // variable-size stacks of root objects. Used for vm stacks.
     std::list<root_stack*> root_stacks;
     // pins are temporary root objects which are added and managed by
-    // working_sets. When an object's working_set reference count falls to 0 it
+    // working_sets. When an object's working_set reference count falls to 0, it
     // is removed automatically.
     std::list<value> pinned_objects;
 
@@ -157,19 +152,18 @@ private:
     // operate entirely independently.
 
     // deallocate an object, rendering all references to it meaningless
-    void dealloc(value v);
+    void dealloc(gc_header* o);
 
     // get a list of objects accessible from the given value
-    //forward_list<obj_header*> accessible(value v);
-    vector<value> accessible(value v);
+    forward_list<gc_header*> accessible(gc_header* o);
 
-    void mark_descend(obj_header* o);
+    void mark_descend(gc_header* o);
 
     void mark();
     void sweep();
 
-    void pin_object(obj_header* o);
-    void unpin_object(obj_header* o);
+    void pin_object(gc_header* o);
+    void unpin_object(gc_header* o);
 
 public:
     allocator(global_env* use_globals);
@@ -197,6 +191,9 @@ public:
     // add a chunk with name the specified namespace. (The namespace will be
     // created if it does not already exist).
     code_chunk* add_chunk(symbol_id ns_name);
+    // note: this namespace must be in the global environment of this allocator
+    // instance.
+    code_chunk* add_chunk(fn_namespace* ns);
 
     void print_status();
 };

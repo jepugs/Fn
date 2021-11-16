@@ -2,36 +2,36 @@
 
 namespace fn {
 
-chunk_source_info::chunk_source_info(u32 end_addr, const source_loc& loc)
-    : end_addr{end_addr}
-    , loc{loc} {
-}
-
-code_chunk::code_chunk(symbol_id use_ns)
-    : ns_id{use_ns} {
-    add_source_loc(source_loc{std::shared_ptr<string>(new string{""}),0,0});
-}
-
-code_chunk::~code_chunk() {
-    for (auto p : const_conses) {
-        delete p;
+void code_chunk::ensure_code_capacity(code_address min_cap) {
+    if (min_cap <= code_capacity) {
+        return;
     }
-    for (auto p : const_strings) {
-        delete p;
+    while (min_cap > code_capacity) {
+        code_capacity *= 2;
     }
-
-    // deallocate function stubs
-    for (auto stub : functions) {
-        delete stub;
-    }
+    code = (u8*)realloc(code, code_capacity*sizeof(u8));
 }
 
-u32 code_chunk::size() const {
-    return static_cast<u32>(code.size());
+void code_chunk::ensure_constant_capacity(constant_id min_cap) {
+    if (min_cap <= constant_capacity) {
+        return;
+    }
+    while (min_cap > constant_capacity) {
+        constant_capacity *= 2;
+    }
+    constant_table =
+        (value*)realloc(code, constant_capacity*sizeof(value));
 }
 
-symbol_id code_chunk::get_ns_id() {
-    return ns_id;
+void code_chunk::ensure_function_capacity(constant_id min_cap) {
+    if (min_cap <= function_capacity) {
+        return;
+    }
+    while (min_cap > function_capacity) {
+        function_capacity *= 2;
+    }
+    function_table =
+        (function_stub**)realloc(code,function_capacity*sizeof(function_stub*));
 }
 
 u8 code_chunk::read_byte(u32 where) const {
@@ -45,7 +45,8 @@ u16 code_chunk::read_short(u32 where) const {
 }
 
 void code_chunk::write_byte(u8 data) {
-    code.push_back(data);
+    ensure_code_capacity(code_size + 1);
+    code[code_size++] = data;
 }
 
 void code_chunk::write_byte(u8 data, u32 where) {
@@ -55,8 +56,8 @@ void code_chunk::write_byte(u8 data, u32 where) {
 void code_chunk::write_short(u16 data) {
     u8 lo = data & 255;
     u8 hi = (data >> 8) & 255;
-    code.push_back(lo);
-    code.push_back(hi);
+    write_byte(lo);
+    write_byte(hi);
 }
 
 void code_chunk::write_short(u16 data, u32 where) {
@@ -66,105 +67,94 @@ void code_chunk::write_short(u16 data, u32 where) {
     code[where + 1] = hi;
 }
 
-const_id code_chunk::const_num(f64 num) {
-    const_table.push_back(as_value(num));
-    return const_table.size() - 1;
+constant_id code_chunk::add_const(value v) {
+    ensure_constant_capacity(num_constants + 1);
+    constant_table[num_constants] = v;
+    return num_constants++;
 }
 
-const_id code_chunk::const_sym(symbol_id id) {
-    const_table.push_back(as_sym_value(id));
-    return const_table.size() - 1;
-}
-
-const_id code_chunk::const_string(const fn_string& s) {
-    auto p = new fn_string{s};
-    const_strings.push_back(p);
-    const_table.push_back(as_value(p));
-    return const_table.size() - 1;
-}
-
-value code_chunk::quote_helper(const fn_parse::ast_node* node) {
-    if (node->kind == fn_parse::ak_atom) {
-        auto& atom = *node->datum.atom;
-        fn_string* p;
-        switch (atom.type) {
-        case fn_parse::at_number:
-            return as_value(atom.datum.num);
-        case fn_parse::at_symbol:
-            return as_sym_value(atom.datum.sym);
-        case fn_parse::at_string:
-            p = new fn_string{*atom.datum.str};
-            const_strings.push_back(p);
-            return as_value(p);
-        default:
-            // FIXME: maybe should raise an exception?
-            return V_NIL;
-        }
-    } else if (node->kind == fn_parse::ak_list) {
-        auto tl = V_EMPTY;
-        for (i32 i = node->datum.list->size() - 1; i >= 0; --i) {
-            auto hd = quote_helper(node->datum.list->at(i));
-            auto p = new cons{hd, tl};
-            const_conses.push_back(p);
-            tl = as_value(p);
-        }
-        return tl;
-    } else {
-        // FIXME: probably should be an error
-        return V_NIL;
-    }
-}
-
-const_id code_chunk::const_quote(const fn_parse::ast_node* node) {
-    value res = quote_helper(node);
-    const_table.push_back(res);
-    return const_table.size() - 1;
-}
-
-value code_chunk::get_const(const_id id) const {
-    return const_table[id];
-}
-
-u32 code_chunk::num_consts() const {
-    return const_table.size();
+value code_chunk::get_const(constant_id id) const {
+    return constant_table[id];
 }
 
 u16 code_chunk::add_function(const vector<symbol_id>& pparams,
                              local_address req_args,
                              optional<symbol_id> vl_param,
                              optional<symbol_id> vt_param) {
-    functions.push_back(new function_stub {
-            .pos_params=pparams,
-            .req_args=req_args,
-            .vl_param=vl_param,
-            .vt_param=vt_param,
-            .chunk=this,
-            .addr=size(),
-            .num_upvals=0,
-            .upvals=vector<local_address>{},
-            .upvals_direct=vector<bool>{}});
-    return (u16) (functions.size() - 1);
+    auto s = new function_stub {
+        .pos_params=pparams,
+        .req_args=req_args,
+        .vl_param=vl_param,
+        .vt_param=vt_param,
+        .chunk=this,
+        .addr=code_size,
+        .num_upvals=0,
+        .upvals=vector<local_address>{},
+        .upvals_direct=vector<bool>{}};
+    ensure_function_capacity(num_functions + 1);
+    function_table[num_functions] = s;
+    return num_functions++;
 }
 
 function_stub* code_chunk::get_function(u16 id) {
-    return functions[id];
+    return function_table[id];
 }
 
 const function_stub* code_chunk::get_function(u16 id) const {
-    return functions[id];
+    return function_table[id];
 }
 
 void code_chunk::add_source_loc(const source_loc& s) {
-    source_info.push_back(chunk_source_info{size(), s});
+    source_info = new chunk_source_info{code_size, s, source_info};
 }
 
 source_loc code_chunk::location_of(u32 addr) {
-    for (auto x : source_info) {
-        if (x.end_addr > addr) {
-            return x.loc;
+    for (auto x = source_info; x != nullptr; x = x->prev) {
+        if (x->end_addr > addr) {
+            return x->loc;
         }
     }
-    return source_info.front().loc;
+    return source_info->loc;
+}
+
+// used to initialize the dynamic arrays
+static constexpr size_t init_array_size = 32;
+code_chunk* mk_code_chunk(symbol_id ns_id, code_chunk* dest) {
+    if (dest == nullptr) {
+        dest = new code_chunk;
+    }
+    auto source_info = new chunk_source_info{
+        .end_addr=0,
+        .loc={.filename="", .line=0, .col=0},
+        .prev=nullptr
+    };
+    return new(dest) code_chunk {
+        .ns_id = ns_id,
+        .code = new u8[init_array_size],
+        .code_size = 0,
+        .code_capacity = init_array_size,
+        .constant_table = new value[init_array_size],
+        .num_constants = 0,
+        .constant_capacity = init_array_size,
+        .function_table = new function_stub*[init_array_size],
+        .source_info = source_info
+    };
+}
+
+void free_code_chunk(code_chunk* chunk) {
+    delete chunk->code;
+    delete chunk->constant_table;
+    for (auto i = 0; i < chunk->num_functions; ++i) {
+        delete chunk->function_table[i];
+    }
+    delete chunk->function_table;
+
+    auto i = chunk->source_info;
+    while (i != nullptr) {
+        auto prev = i->prev;
+        delete i;
+        i = prev;
+    }
 }
 
 }

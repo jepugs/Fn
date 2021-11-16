@@ -58,40 +58,43 @@ typedef u8 local_address;
 // addresses in bytecode
 typedef u32 code_address;
 // used to identify constant values
-typedef u16 const_id;
+typedef u16 constant_id;
 // used to identify symbols
 typedef u32 symbol_id;
 // used to identify namespaces in the global environment
 typedef u16 namespace_id;
 
+// header for all objects managed by the garbage collector.
+struct alignas(16) gc_header {
+    u8 bits;         // bitfield holding gc information
+    i8 pin_count;    // times pinned
+    i8 global_count; // references from global variables
+};
+gc_header* mk_gc_header(u8 bits, gc_header* dest=nullptr);
+
+// Values for the gc_header bits
+constexpr u8 GC_MARK_BIT        = 0x01;
+constexpr u8 GC_IGNORE_BIT      = 0x02;
+constexpr u8 GC_GLOBAL_BIT      = 0x03;
+constexpr u8 GC_TYPE_BITMASK    = 0xf0;
+
+// GC Types
+constexpr u8 GC_TYPE_CHUNK      = 0x00;
+// NOTE: it's very important that these four line up with the type tags in
+// values.hpp
+constexpr u8 GC_TYPE_STRING     = 0x10;
+constexpr u8 GC_TYPE_CONS       = 0x20;
+constexpr u8 GC_TYPE_TABLE      = 0x30;
+constexpr u8 GC_TYPE_FUNCTION   = 0x40;
+
+
 // Used to track debugging information. An empty string for the filename
 // indicates that the bytecode was either internally generated or came from a
 // REPL.
 struct source_loc {
-    const std::shared_ptr<string> filename;
-    const int line;
-    const int col;
-
-    source_loc(const string& filename="", int line=1, int col=1)
-        : filename{new string{filename}}
-        , line{line}
-        , col{col} {
-    }
-    source_loc(const char* filename, int line=1, int col=1)
-        : filename{new string(filename)}
-        , line{line}
-        , col{col} {
-    }
-    source_loc(const std::shared_ptr<string>& filename, int line, int col)
-        : filename{filename}
-        , line{line}
-        , col{col} {
-    }
-    source_loc(const source_loc& loc)
-        : filename{loc.filename}
-        , line{loc.line}
-        , col{loc.col} {
-    }
+    string filename;
+    int line;
+    int col;
 };
 
 class fn_error : public std::exception {
@@ -106,13 +109,13 @@ public:
 
     // TODO: move this to a .cpp file so we don't need to include sstream
     fn_error(const string& subsystem, const string& message, const source_loc& origin)
-        : subsystem(subsystem)
-        , message(message)
-        , origin(origin) {
+        : subsystem{subsystem}
+        , message{message}
+        , origin{origin} {
         // build formatted error message
         std::ostringstream ss;
         ss << "[" + subsystem + "] error at line " << origin.line << ",col " << origin.col
-           << " in " << *origin.filename << ":\n\t" << message;
+           << " in " << origin.filename << ":\n\t" << message;
         formatted = new string(ss.str());
         
     }

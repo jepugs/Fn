@@ -1,162 +1,117 @@
 #include "parse.hpp"
 
+#include <cstring>
+
 namespace fn_parse {
 
 using namespace fn;
 using namespace fn_scan;
 
-ast_atom::ast_atom()
-    : type{at_number}
-    , datum{.num=0.0} {
-}
-
-ast_atom::ast_atom(const ast_atom& at)
-    : type{at.type} {
-    if (type == at_string) {
-        datum.str = new fn_string{*at.datum.str};
-    } else {
-        datum = at.datum;
+ast_form* mk_number_form(source_loc loc, f64 num, ast_form* dest) {
+    if (dest == nullptr) {
+        dest = new ast_form;
     }
+    return new(dest) ast_form{
+        .loc = loc,
+        .kind = ak_number_atom,
+        .datum = {.num=num}
+    };
 }
 
-ast_atom::ast_atom(ast_atom&& at)
-    : type{at.type}
-    , datum{at.datum} {
-    datum = at.datum;
-    // so the destructor doesn't free the string
-    at.type = at_number;
-}
-
-ast_atom& ast_atom::operator=(const ast_atom& at) {
-    if (type == at_string) {
-        delete datum.str;
+ast_form* mk_string_form(source_loc loc,
+        const fn_string& str,
+        ast_form* dest) {
+    if (dest == nullptr) {
+        dest = new ast_form;
     }
-    type = at.type;
-    if (type == at_string) {
-        datum.str = new fn_string{*at.datum.str};
-    } else {
-        datum = at.datum;
+    return new(dest) ast_form{
+        .loc = loc,
+        .kind = ak_string_atom,
+        .datum = {.str=new fn_string{str}}
+    };
+}
+
+ast_form* mk_string_form(source_loc loc,
+        fn_string&& str,
+        ast_form* dest) {
+    if (dest == nullptr) {
+        dest = new ast_form;
     }
-
-    return *this;
+    return new(dest) ast_form{
+        .loc = loc,
+        .kind = ak_string_atom,
+        .datum = {.str=new fn_string{str}}
+    };
 }
 
-ast_atom& ast_atom::operator=(ast_atom&& at) {
-    if (type == at_string) {
-        delete datum.str;
+ast_form* mk_symbol_form(source_loc loc, symbol_id sym, ast_form* dest) {
+    if (dest == nullptr) {
+        dest = new ast_form;
     }
-    type = at.type;
-    datum = at.datum;
-
-    // make sure that the associated string isn't freed
-    at.type = at_number;
-
-    return *this;
+    return new(dest) ast_form {
+        .loc = loc,
+        .kind = ak_symbol_atom,
+        .datum = {.sym=sym}
+    };
 }
 
-ast_atom make_number_atom(f64 num) {
-    ast_atom res{};
-    res.type = at_number;
-    res.datum.num = num;
-    return res;
+ast_form* mk_list_form(source_loc loc,
+        u32 length,
+        ast_form** lst,
+        ast_form* dest) {
+    return new(dest) ast_form {
+        .loc = loc,
+        .kind = ak_list,
+        .list_length = length,
+        .datum = {.list=lst}
+    };
 }
 
-ast_atom make_string_atom(const fn_string& str) {
-    ast_atom res{};
-    res.type = at_string;
-    res.datum.str = new fn_string{str};
-    return res;
-}
-
-ast_atom make_string_atom(fn_string&& str) {
-    ast_atom res{};
-    res.type = at_string;
-    res.datum.str = new fn_string{str};
-    return res;
-}
-
-ast_atom make_symbol_atom(symbol_id sym) {
-    ast_atom res{};
-    res.type = at_symbol;
-    res.datum.sym = sym;
+ast_form* mk_list_form(source_loc loc,
+        const vector<ast_form*>& lst,
+        ast_form* dest) {
+    auto sz = static_cast<u32>(lst.size());
+    auto res = mk_list_form(loc, sz, new ast_form*[sz], dest);
+    memcpy(res->datum.list, lst.data(), sz);
     return res;
 }
 
 
-ast_atom::~ast_atom() {
-    if (type == at_string) {
-        delete datum.str;
-    }
-}
+// ast_form* ast_form::copy() const {
+//     switch (kind) {
+//     case ak_number_atom:
+//         return new ast_form{ast_atom{*datum.atom}, loc};
+//     case ak_error:
+//         return new ast_node{loc};
+//     case ak_list:
+//         break;
+//     }
 
-ast_node::ast_node(const source_loc& loc)
-    : loc{loc}
-    , kind{ak_error}
-    , datum{.atom = nullptr} {
-}
-
-ast_node::ast_node(const ast_atom& at, const source_loc& loc)
-    : loc{loc}
-    , kind{ak_atom}
-    , datum{.atom = new ast_atom{at}} {
-}
-
-ast_node::ast_node(const vector<ast_node*>& list, const source_loc& loc)
-    : loc{loc}
-    , kind{ak_list}
-    , datum{.list = new vector<ast_node*>(list)} {
-}
-
-ast_node::~ast_node() {
-    switch (kind) {
-    case ak_atom:
-        delete datum.atom;
-        break;
-    case ak_error:
-        break;
-    case ak_list:
-        for (auto ptr : *datum.list) {
-            delete ptr;
-        }
-        delete datum.list;
-        break;
-    }
-}
-
-ast_node* ast_node::copy() const {
-    switch (kind) {
-    case ak_atom:
-        return new ast_node{ast_atom{*datum.atom}, loc};
-    case ak_error:
-        return new ast_node{loc};
-    case ak_list:
-        break;
-    }
-
-    // list behavior
-    vector<ast_node*> list;
-    for (auto v : *datum.list) {
-        list.push_back(v->copy());
-    }
-    return new ast_node{list, loc};
-}
+//     // list behavior
+//     vector<ast_node*> list;
+//     for (auto v : *datum.list) {
+//         list.push_back(v->copy());
+//     }
+//     return new ast_node{list, loc};
+// }
 
 static string print_grouped(const symbol_table& symtab,
-                            char open,
-                            char close,
-                            const vector<ast_node*>& list) {
+        char open,
+        char close,
+        ast_form** list,
+        size_t list_length) {
     string res{open};
-    if (list.size() == 0) {
+    if (list_length == 0) {
         return res + close;
     }
     u32 u;
-    ast_node* node;
-    for (u = 0; u < list.size() - 1; ++u) {
-        node = list[u];
-        res = res + node->as_string(symtab) + " ";
+    ast_form* form;
+    for (u = 0; u < list_length - 1; ++u) {
+        form = list[u];
+        res = res + form->as_string(symtab) + " ";
     }
-    node = list[u];
-    res = res + node->as_string(symtab) + close;
+    form = list[u];
+    res = res + form->as_string(symtab) + close;
     return res;
 }
 
@@ -203,29 +158,23 @@ string with_str_escapes(const string& src) {
     return string{buf.data(), buf.size()};
 }
 
-string ast_node::as_string(const symbol_table& symtab) const {
+string ast_form::as_string(const symbol_table& symtab) const {
     string res = "";
     switch (kind) {
-    case ak_atom:
-        switch (datum.atom->type) {
-        case at_number:
-            return std::to_string(datum.atom->datum.num);
-            break;
-        case at_string:
-            return "\""
-                + with_str_escapes(datum.atom->datum.str->as_string())
-                + "\"";
-            break;
-        case at_symbol:
-            return with_escapes(symtab[datum.atom->datum.sym]);
-            break;
-        }
+    case ak_number_atom:
+        return std::to_string(datum.num);
         break;
-
+    case ak_string_atom:
+        return "\""
+            + with_str_escapes(datum.str->as_string())
+            + "\"";
+        break;
+    case ak_symbol_atom:
+        return with_escapes(symtab[datum.sym]);
+        break;
     case ak_list:
-        res = print_grouped(symtab, '(', ')', *datum.list);
+        res = print_grouped(symtab, '(', ')', datum.list, list_length);
         break;
-
     case ak_error:
         break;
     }
@@ -233,20 +182,20 @@ string ast_node::as_string(const symbol_table& symtab) const {
     return res;
 }
 
-bool ast_node::is_symbol() const {
-    return kind == ak_atom && datum.atom->type == at_symbol;
+bool ast_form::is_symbol() const {
+    return kind == ak_symbol_atom;
 }
 
-bool ast_node::is_keyword(const symbol_table& symtab) const {
+bool ast_form::is_keyword(const symbol_table& symtab) const {
     if (!is_symbol()) {
         return false;
     }
-    auto name = symtab[datum.atom->datum.sym];
+    auto name = symtab[datum.sym];
     return name.length() > 0 && name[0] == ':';
 }
 
-symbol_id ast_node::get_symbol() const {
-    return datum.atom->datum.sym;
+symbol_id ast_form::get_symbol() const {
+    return datum.sym;
 }
 
 
@@ -255,280 +204,119 @@ symbol_id ast_node::get_symbol() const {
 
 void parse_to_delimiter(scanner& sc,
                         symbol_table& symtab,
-                        vector<ast_node*>& buf,
+                        vector<ast_form*>& buf,
                         token_kind end) {
     auto tok = sc.next_token();
     while (tok.tk != end) {
         if (tok.tk == tk_eof) {
             parse_error("Unexpected EOF searching for delimiter.", tok.loc);
         }
-        buf.push_back(parse_node(sc, symtab, std::make_optional(tok)));
+        buf.push_back(parse_form(sc, symtab, std::make_optional(tok)));
         tok = sc.next_token();
     }
 }
 
 void parse_prefix(scanner& sc,
                   symbol_table& symtab,
-                  vector<ast_node*>& buf,
+                  vector<ast_form*>& buf,
                   const string& op,
                   const source_loc& loc,
                   optional<token> t0 = std::nullopt) {
-    buf.push_back(new ast_node{make_symbol_atom(symtab.intern(op)),
-                               loc});
-    buf.push_back(parse_node(sc, symtab, t0));
+    buf.push_back(mk_symbol_form(loc, symtab.intern(op)));
+    buf.push_back(parse_form(sc, symtab, t0));
 }
 
-ast_node* parse_node(scanner& sc, symbol_table& symtab, optional<token> t0) {
+ast_form* parse_form(scanner& sc, symbol_table& symtab, optional<token> t0) {
     auto tok = t0.has_value() ? *t0 : sc.next_token();
-    ast_node* res = nullptr;
+    ast_form* res = nullptr;
     string* str = tok.datum.str;
-    vector<ast_node*> buf;
-
-    ast_atom at = make_number_atom(1.0);
+    vector<ast_form*> buf;
 
     switch (tok.tk) {
     case tk_eof:
         return nullptr;
 
     case tk_number:
-        res = new ast_node{make_number_atom(tok.datum.num), tok.loc};
+        res = mk_number_form(tok.loc, tok.datum.num);
         break;
     case tk_string:
-        // at = ast_atom(fn_string(*str));
-        // res = new ast_node(at, tok.loc);
-        res = new ast_node{make_string_atom(fn_string{*str}), tok.loc};
+        res = mk_string_form(tok.loc, fn_string{*str});
         break;
     case tk_symbol:
-        res = new ast_node{make_symbol_atom(symtab.intern(*str)), tok.loc};
+        res = mk_symbol_form(tok.loc, symtab.intern(*str));
         break;
 
     case tk_lparen:
         parse_to_delimiter(sc, symtab, buf, tk_rparen);
-        res = new ast_node{buf, tok.loc};
+        res = mk_list_form(tok.loc, buf);
         break;
     case tk_rparen:
         parse_error("Unmatched delimiter ')'.", tok.loc);
         break;
     case tk_lbrace:
-        buf.push_back(new ast_node{make_symbol_atom(symtab.intern("Table")),
-                                   tok.loc});
+        buf.push_back(mk_symbol_form(tok.loc, symtab.intern("Table")));
         parse_to_delimiter(sc, symtab, buf, tk_rbrace);
-        res = new ast_node{buf, tok.loc};
+        res = mk_list_form(tok.loc, buf);
         break;
     case tk_rbrace:
         parse_error("Unmatched delimiter '}'.", tok.loc);
         break;
     case tk_lbracket:
-        buf.push_back(new ast_node{make_symbol_atom(symtab.intern("List")),
-                                   tok.loc});
+        buf.push_back(mk_symbol_form(tok.loc, symtab.intern("List")));
         parse_to_delimiter(sc, symtab, buf, tk_rbracket);
-        res = new ast_node{buf, tok.loc};
+        res = mk_list_form(tok.loc, buf);
         break;
     case tk_rbracket:
         parse_error("Unmatched delimiter ']'.", tok.loc);
         break;
 
     case tk_dot:
-        buf.push_back(new ast_node{make_symbol_atom(symtab.intern("dot")),
-                                   tok.loc});
+        buf.push_back(mk_symbol_form(tok.loc, symtab.intern("dot")));
         for (auto s : *tok.datum.ids) {
-            buf.push_back(new ast_node{make_symbol_atom(symtab.intern(s)),
-                                       tok.loc});
+            buf.push_back(mk_symbol_form(tok.loc, symtab.intern(s)));
         }
-        res = new ast_node{buf, tok.loc};
+        res = mk_list_form(tok.loc, buf);
         break;
 
     case tk_quote:
         parse_prefix(sc, symtab, buf, "quote", tok.loc);
-        res = new ast_node{buf, tok.loc};
+        res = mk_list_form(tok.loc, buf);
         break;
     case tk_backtick:
         parse_prefix(sc, symtab, buf, "quasiquote", tok.loc);
-        res = new ast_node{buf, tok.loc};
+        res = mk_list_form(tok.loc, buf);
         break;
     case tk_comma:
         parse_prefix(sc, symtab, buf, "unquote", tok.loc);
-        res = new ast_node{buf, tok.loc};
+        res = mk_list_form(tok.loc, buf);
         break;
     case tk_comma_at:
         parse_prefix(sc, symtab, buf, "unquote-splicing", tok.loc);
-        res = new ast_node{buf, tok.loc};
+        res = mk_list_form(tok.loc, buf);
         break;
 
     case tk_dollar_backtick:
         parse_prefix(sc, symtab, buf, "dollar-fn", tok.loc,
                      token{tk_backtick, tok.loc});
-        res = new ast_node{buf, tok.loc};
+        res = mk_list_form(tok.loc, buf);
         break;
     case tk_dollar_brace:
         parse_prefix(sc, symtab, buf, "dollar-fn", tok.loc,
                      token{tk_lbrace, tok.loc});
-        res = new ast_node{buf, tok.loc};
+        res = mk_list_form(tok.loc, buf);
         break;
     case tk_dollar_bracket:
         parse_prefix(sc, symtab, buf, "dollar-fn", tok.loc,
                      token{tk_lbracket, tok.loc});
-        res = new ast_node{buf, tok.loc};
+        res = mk_list_form(tok.loc, buf);
         break;
     case tk_dollar_paren:
         parse_prefix(sc, symtab, buf, "dollar-fn", tok.loc,
                      token{tk_lparen, tok.loc});
-        res = new ast_node{buf, tok.loc};
+        res = mk_list_form(tok.loc, buf);
         break;
     }
     return res;
 }
 
-#define check_name(name) (symtab.intern(name) == sym)
-
-static bool is_legal_name(symbol_table& symtab, symbol_id sym) {
-    bool reserved =
-        (check_name("&") || check_name("and") || check_name("cond")
-         || check_name("def") || check_name("defmacro") || check_name("defn")
-         || check_name("do") || check_name("dollar-fn") || check_name("dot")
-         || check_name("fn") || check_name("if") || check_name("import")
-         || check_name("let") || check_name("letfn") || check_name("ns")
-         || check_name("or") || check_name("quasiquote") || check_name("quote")
-         || check_name("unquote") || check_name("unquote-splicing")
-         || check_name("set") || check_name("with"));
-    if (reserved) {
-        return false;
-    }
-
-    auto name = symtab[sym];
-    // keywords
-    if (name[0] == ':') { // FIXME: should check that strlen > 1?
-        return false;
-    }
-
-    return true;
 }
-
-// it's not great writing monster functions like this, but at the time of
-// writing, I don't see a shorter way to write it that can still generate
-// errors at this level of granularity.
-param_list parse_params(symbol_table& symtab, const ast_node& form) {
-    if (form.kind != ak_list) {
-        parse_error("Found atom instead of parameter list.", form.loc);
-    }
-
-    auto& list = *form.datum.list;
-    auto amp = symtab.intern("&");
-    auto kamp = symtab.intern(":&");
-
-    param_list res;
-    auto& pos = res.positional;
-    // save a list of names for duplicate detection
-    vector<symbol_id> names;
-
-    // first, get parameters without init forms (so just symbols)
-    u32 i = 0;
-    while (i < list.size()) {
-        if (list[i]->is_symbol()) {
-            auto sym = list[i]->datum.atom->datum.sym;
-            // important: check for ampersand before checking for legal name
-            if (sym == amp || sym == kamp) {
-                break;
-            }
-            if (!is_legal_name(symtab, sym)) {
-                parse_error("Illegal name in parameter list.", list[i]->loc);
-            }
-            for (auto x : names) {
-                if (x == sym) {
-                    parse_error("Duplicate name in parameter list.", list[i]->loc);
-                }
-            }
-            names.push_back(sym);
-            pos.push_back(parameter{sym});
-        } else {
-            break;
-        }
-        ++i;
-    }
-
-    // parameters with init form
-    while (i < list.size()) {
-        if (list[i]->kind == ak_list) {
-            // check syntax
-            auto& x = *list[i]->datum.list;
-            if (x.size() != 2 || !x[0]->is_symbol()) {
-                parse_error("Illegal element in parameter list.", list[i]->loc);
-            }
-            auto sym = x[0]->datum.atom->datum.sym;
-            if (!is_legal_name(symtab, sym)) {
-                parse_error("Illegal name in parameter list.", list[i]->loc);
-            }
-            for (auto x : names) {
-                if (x == sym) {
-                    parse_error("Duplicate name in parameter list.", list[i]->loc);
-                }
-            }
-            names.push_back(sym);
-            pos.push_back(parameter{sym, x[1]});
-        } else {
-            break;
-        }
-        ++i;
-    }
-
-    // check for variadic arguments
-    while (i < list.size()) {
-        if (!list[i]->is_symbol()) {
-            parse_error("Illegal element in parameter list.", list[i]->loc);
-        }
-        auto sym = list[i]->datum.atom->datum.sym;
-        if (sym == amp) {
-            if (res.var_list.has_value()) {
-                parse_error("Two occurences of & in parameter list.", list[i]->loc);
-            } else if (list.size() <= i+1) {
-                parse_error("Missing variadic parameter name.", list[i]->loc);
-            } else if (!list[i+1]->is_symbol()) {
-                parse_error("Variadic parameter name must be a symbol.", list[i+1]->loc);
-            }
-
-            res.var_list = list[i+1]->datum.atom->datum.sym;
-            if (!is_legal_name(symtab, *res.var_list)) {
-                parse_error("Illegal name in parameter list.", list[i]->loc);
-            }
-            for (auto x : names) {
-                if (x == *res.var_list) {
-                    parse_error("Duplicate name in parameter list.", list[i]->loc);
-                }
-            }
-            names.push_back(*res.var_list);
-        } else if (sym == kamp) {
-            if (res.var_table.has_value()) {
-                parse_error("Two occurences of :& in parameter list.", list[i]->loc);
-            } else if (list.size() <= i+1) {
-                parse_error("Missing variadic parameter name.", list[i]->loc);
-            } else if (!list[i+1]->is_symbol()) {
-                parse_error("Variadic parameter name must be a symbol.", list[i+1]->loc);
-            }
-
-            res.var_table = list[i+1]->datum.atom->datum.sym;
-            if (!is_legal_name(symtab, *res.var_table)) {
-                parse_error("Illegal name in parameter list.", list[i]->loc);
-            }
-            for (auto x : names) {
-                if (x == *res.var_table) {
-                    parse_error("Duplicate name in parameter list.", list[i]->loc);
-                }
-            }
-            names.push_back(*res.var_table);
-        } else {
-            parse_error("Required parameters must come at the beginning of the parameter list.",
-                        list[i]->loc);
-        }
-        // go two at a time on these
-        i += 2;
-    }
-
-    if (i < list.size()) {
-        parse_error("Illegal element in parameter list.", list[i]->loc);
-    }
-
-    return res;
-}
-
-}
-
