@@ -60,8 +60,8 @@ ast_form* mk_list_form(source_loc loc,
         const vector<ast_form*>& lst,
         ast_form* dest=nullptr);
 
+void clear_ast_form(ast_form* form, bool recursive=true);
 void free_ast_form(ast_form* form, bool recursive=true);
-
 ast_form* copy_form();
 
 // get the next form by reading tokens one at a time from the scanner. Return a

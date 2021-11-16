@@ -66,9 +66,9 @@ struct code_chunk {
     void write_short(u16 data, u32 where);
 
     // add constants. No duplication checking is done.
-    constant_id add_const(value v);
+    constant_id add_constant(value v);
     // get a constant
-    value get_const(constant_id id) const;
+    value get_constant(constant_id id) const;
 
     // add a new function and return its id. pparams is a list of parameter
     // names. req_args is number of required args.

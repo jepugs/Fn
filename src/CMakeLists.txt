@@ -3,6 +3,7 @@ add_library(fn_lib OBJECT
             base.cpp
             bytes.cpp
             #compile.cpp
+            expand.cpp
             #ffi/builtin.cpp
             #ffi/interpreter_handle.cpp
             llir.cpp

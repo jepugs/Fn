@@ -67,13 +67,13 @@ void code_chunk::write_short(u16 data, u32 where) {
     code[where + 1] = hi;
 }
 
-constant_id code_chunk::add_const(value v) {
+constant_id code_chunk::add_constant(value v) {
     ensure_constant_capacity(num_constants + 1);
     constant_table[num_constants] = v;
     return num_constants++;
 }
 
-value code_chunk::get_const(constant_id id) const {
+value code_chunk::get_constant(constant_id id) const {
     return constant_table[id];
 }
 

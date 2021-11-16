@@ -64,6 +64,8 @@ typedef u32 symbol_id;
 // used to identify namespaces in the global environment
 typedef u16 namespace_id;
 
+constexpr u64 max_local_address = 255;
+
 // header for all objects managed by the garbage collector.
 struct alignas(16) gc_header {
     u8 bits;         // bitfield holding gc information

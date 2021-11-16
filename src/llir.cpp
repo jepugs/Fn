@@ -98,12 +98,24 @@ llir_import_obj* mk_llir_import(const source_loc& origin,
     };
 }
 
-llir_set_obj* mk_llir_set(const source_loc& origin,
+llir_set_key_obj* mk_llir_set_key(const source_loc& origin,
         llir_form* target,
+        llir_form* key,
         llir_form* value) {
-    return new llir_set_obj {
-        .header={.origin=origin, .tag=llir_set},
+    return new llir_set_key_obj {
+        .header={.origin=origin, .tag=llir_set_key},
         .target=target,
+        .key=key,
+        .value=value
+    };
+}
+
+llir_set_var_obj* mk_llir_set_var(const source_loc& origin,
+        symbol_id var,
+        llir_form* value) {
+    return new llir_set_var_obj {
+        .header={.origin=origin, .tag=llir_set_var},
+        .var=var,
         .value=value
     };
 }

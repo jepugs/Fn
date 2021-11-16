@@ -46,19 +46,20 @@ value interpreter::interpret_file(const string& path) {
     auto ns_name = symtab.intern(pkg + path_obj.stem().u8string());
 
     auto chunk = alloc.add_chunk(ns_name);
-    compiler c{&symtab, &alloc, chunk};
-    vm_thread vm{&alloc, &globals, chunk};
+    // compiler c{&symtab, &alloc, chunk};
+    // vm_thread vm{&alloc, &globals, chunk};
 
-    fn_parse::ast_node* expr;
-    while ((expr = fn_parse::parse_node(sc, symtab))) {
-        // TODO: this is where macroexpansion goes
-        c.compile_expr(expr);
-        delete expr;
-        interpret_to_end(vm);
-    }
-    // TODO: check vm status
+    // fn_parse::ast_node* expr;
+    // while ((expr = fn_parse::parse_node(sc, symtab))) {
+    //     // TODO: this is where macroexpansion goes
+    //     c.compile_expr(expr);
+    //     delete expr;
+    //     interpret_to_end(vm);
+    // }
+    // // TODO: check vm status
 
-    return vm.last_pop();
+    // return vm.last_pop();
+    return V_NIL;
 }
 
 value interpreter::interpret_string(const string& src) {
@@ -72,20 +73,21 @@ value interpreter::interpret_string(const string& src) {
             **globals.get_ns(ns_name),
             **globals.get_ns(symtab.intern("fn/builtin")),
             "");
-    compiler c{&symtab, &alloc, chunk};
-    vm_thread vm{&alloc, &globals, chunk};
+    // compiler c{&symtab, &alloc, chunk};
+    // vm_thread vm{&alloc, &globals, chunk};
 
-    fn_parse::ast_node* expr;
-    while ((expr = fn_parse::parse_node(sc, symtab))) {
-        // TODO: this is where macroexpansion goes
-        c.compile_expr(expr);
-        delete expr;
-        disassemble(symtab, *chunk, std::cout);
-        interpret_to_end(vm);
-    }
-    // TODO: check vm status
+    // fn_parse::ast_node* expr;
+    // while ((expr = fn_parse::parse_node(sc, symtab))) {
+    //     // TODO: this is where macroexpansion goes
+    //     c.compile_expr(expr);
+    //     delete expr;
+    //     disassemble(symtab, *chunk, std::cout);
+    //     interpret_to_end(vm);
+    // }
+    // // TODO: check vm status
 
-    return vm.last_pop();
+    // return vm.last_pop();
+    return V_NIL;
 }
 
 ast_node* macroexpand(fn_namespace* ns, const ast_node* form) {

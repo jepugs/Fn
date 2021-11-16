@@ -4,7 +4,6 @@
 
 #include "base.hpp"
 #include "bytes.hpp"
-#include "compile.hpp"
 #include "parse.hpp"
 #include "vm.hpp"
 
@@ -47,7 +46,7 @@ public:
     value interpret_string(const string& src);
 
     // macroexpand a form in the given namespace
-    ast_node* macroexpand(fn_namespace* ns, const ast_node* form);
+    ast_form* macroexpand(symbol_id ns_id, const ast_form* form);
     
 
     // Emit a runtime error in the form of an exception
