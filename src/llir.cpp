@@ -2,28 +2,6 @@
 
 namespace fn {
 
-llir_error_form* mk_llir_error_form(const source_loc& origin,
-        const string& desc,
-        llir_error_form* dest) {
-    if (dest == nullptr) {
-        dest = new llir_error_form;
-    }
-    auto str = new char[desc.size()+1];
-    memcpy(str, desc.c_str(), desc.size());
-    str[desc.size()] = '\0';
-    return new(dest) llir_error_form {
-        .header={.origin=origin, .tag=llir_error},
-        .desc=str
-    };
-}
-void clear_llir_error_form(llir_error_form* obj) {
-    delete obj->desc;
-}
-void free_llir_error_form(llir_error_form* obj) {
-    clear_llir_error_form(obj);
-    delete obj;
-}
-
 llir_def_form* mk_llir_def_form(const source_loc& origin,
         symbol_id name,
         llir_form* value,
@@ -54,11 +32,11 @@ llir_defmacro_form* mk_llir_defmacro(const source_loc& origin,
     if (dest == nullptr) {
         dest = new llir_defmacro_form;
     }
-    (*dest) = {
+    return new(dest) llir_defmacro_form {
         .header={.origin=origin, .tag=llir_defmacro},
         .name=name,
-        .macro_fun=macro_fun};
-    return dest;
+        .macro_fun=macro_fun
+    };
 }
 
 llir_dot_form* mk_llir_dot_form(const source_loc& origin,
@@ -114,6 +92,34 @@ void free_llir_call_form(llir_call_form* obj, bool recursive) {
     clear_llir_call_form(obj, recursive);
     delete obj;
 }
+
+llir_if_form* mk_llir_if_form(const source_loc& origin,
+        llir_form* test_form,
+        llir_form* then_form,
+        llir_form* else_form,
+        llir_if_form* dest) {
+    if (dest == nullptr) {
+        dest = new llir_if_form;
+    }
+    return new(dest) llir_if_form {
+        .header={.origin=origin, .tag=llir_if},
+        .test_form=test_form,
+        .then_form=then_form,
+        .else_form=else_form
+    };
+}
+void clear_llir_if_form(llir_if_form* obj, bool recursive) {
+    if (recursive) {
+        free_llir_form(obj->test_form);
+        free_llir_form(obj->then_form);
+        free_llir_form(obj->else_form);
+    }
+}
+void free_llir_if_form(llir_if_form* obj, bool recursive) {
+    clear_llir_if_form(obj, recursive);
+    delete obj;
+}
+
 
 llir_const_form* mk_llir_const_form(const source_loc& origin,
         constant_id id,
@@ -254,9 +260,6 @@ void free_llir_with_form(llir_with_form* obj, bool recursive) {
 
 void clear_llir_form(llir_form* obj, bool recursive) {
     switch (obj->tag) {
-    case llir_error:
-        clear_llir_error_form((llir_error_form*)obj);
-        break;
     case llir_def:
         clear_llir_def_form((llir_def_form*)obj, recursive);
         break;
@@ -273,6 +276,9 @@ void clear_llir_form(llir_form* obj, bool recursive) {
         break;
     case llir_fn:
         clear_llir_fn_form((llir_fn_form*)obj, recursive);
+        break;
+    case llir_if:
+        clear_llir_if_form((llir_if_form*)obj, recursive);
         break;
     case llir_import:
         break;
@@ -292,9 +298,6 @@ void clear_llir_form(llir_form* obj, bool recursive) {
 
 void free_llir_form(llir_form* obj, bool recursive) {
     switch (obj->tag) {
-    case llir_error:
-        free_llir_error_form((llir_error_form*)obj);
-        break;
     case llir_def:
         free_llir_def_form((llir_def_form*)obj, recursive);
         break;
@@ -312,6 +315,9 @@ void free_llir_form(llir_form* obj, bool recursive) {
         break;
     case llir_fn:
         free_llir_fn_form((llir_fn_form*)obj, recursive);
+        break;
+    case llir_if:
+        free_llir_if_form((llir_if_form*)obj, recursive);
         break;
     case llir_import:
         free_llir_import_form((llir_import_form*)obj);

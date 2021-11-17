@@ -15,6 +15,10 @@ struct interpreter;
 struct expander_meta {
     // largest value dollar symbol encountered. -1 if none is encountered.
     i16 max_dollar_sym;
+    // In the event of an error, the various expand_ methods return null and set
+    // this string. (It must be freed later).
+    string error;
+    source_loc error_loc;
 };
 
 class expander {
@@ -24,8 +28,18 @@ private:
 
     bool is_macro(symbol_id sym);
 
-    // _m means including a metadata struct;
-
+    llir_form* expand_and(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+    llir_form* expand_cond(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+    llir_form* expand_def(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
     // expands a list form as if it's a function call. Assumes lst.length_length
     // >= 1.
     llir_form* expand_call(ast_form* lst, expander_meta* meta);

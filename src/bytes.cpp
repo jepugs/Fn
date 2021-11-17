@@ -2,36 +2,25 @@
 
 namespace fn {
 
+#define ensure_capacity(type, min, cap, ptr) \
+    if (min > (cap)) { \
+        do { (cap) *= 2; } while ((cap) > 2); \
+        auto __ptr = (type*)realloc(ptr, (cap)*sizeof(type));     \
+        if (!__ptr) { throw std::runtime_error("realloc failed"); } \
+        else { ptr = __ptr; } \
+    }
+    
+
 void code_chunk::ensure_code_capacity(code_address min_cap) {
-    if (min_cap <= code_capacity) {
-        return;
-    }
-    while (min_cap > code_capacity) {
-        code_capacity *= 2;
-    }
-    code = (u8*)realloc(code, code_capacity*sizeof(u8));
+    ensure_capacity(u8, min_cap, code_capacity, code);
 }
 
 void code_chunk::ensure_constant_capacity(constant_id min_cap) {
-    if (min_cap <= constant_capacity) {
-        return;
-    }
-    while (min_cap > constant_capacity) {
-        constant_capacity *= 2;
-    }
-    constant_table =
-        (value*)realloc(code, constant_capacity*sizeof(value));
+    ensure_capacity(value, min_cap, constant_capacity, constant_table);
 }
 
 void code_chunk::ensure_function_capacity(constant_id min_cap) {
-    if (min_cap <= function_capacity) {
-        return;
-    }
-    while (min_cap > function_capacity) {
-        function_capacity *= 2;
-    }
-    function_table =
-        (function_stub**)realloc(code,function_capacity*sizeof(function_stub*));
+    ensure_capacity(function_stub*, min_cap, function_capacity, function_table);
 }
 
 u8 code_chunk::read_byte(u32 where) const {

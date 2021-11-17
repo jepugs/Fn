@@ -7,8 +7,6 @@
 namespace fn {
 
 enum llir_tag {
-    // indicates illegal syntax
-    llir_error,
     // global definition
     llir_def,
     // macro definition
@@ -19,6 +17,8 @@ enum llir_tag {
     llir_call,
     // constant lookup
     llir_const,
+    // conditional
+    llir_if,
     // function creation
     llir_fn,
     // namespace import
@@ -43,20 +43,15 @@ enum llir_tag {
 // - free_* functions clear a structure and also delete the pointer. If
 //   recursive=true, then this frees all subordinate llir_form* instances.
 
+// Upon further inspection, I appear to have independently reinvented
+// inheritance below, (llir_*_form is essentially a subclass of llir_form). This
+// approach is slightly more flexible and doesn't use virtual methods, so I'll
+// leave it for now.
+
 struct llir_form {
     source_loc origin;
     llir_tag tag;
 };
-
-struct llir_error_form {
-    llir_form header;
-    char* desc;
-};
-llir_error_form* mk_llir_error_form(const source_loc& origin,
-        const string& desc,
-        llir_error_form* dest=nullptr);
-void clear_llir_error_form(llir_error_form* obj);
-void free_llir_error_form(llir_error_form* obj);
 
 struct llir_def_form {
     llir_form header;
@@ -107,6 +102,20 @@ llir_call_form* mk_llir_call_form(const source_loc& origin,
         llir_call_form* dest=nullptr);
 void clear_llir_call_form(llir_call_form* obj, bool recursive=true);
 void free_llir_call_form(llir_call_form* obj, bool recursive=true);
+
+struct llir_if_form {
+    llir_form header;
+    llir_form* test_form;
+    llir_form* then_form;
+    llir_form* else_form;
+};
+llir_if_form* mk_llir_if_form(const source_loc& origin,
+        llir_form* test_form,
+        llir_form* then_form,
+        llir_form* else_form,
+        llir_if_form* dest=nullptr);
+void clear_llir_if_form(llir_if_form* obj, bool recursive=true);
+void free_llir_if_form(llir_if_form* obj, bool recursive=true);
 
 struct llir_const_form {
     llir_form header;
@@ -210,6 +219,8 @@ void free_llir_with_form(llir_with_form* obj, bool recursive=true);
 
 void clear_llir_form(llir_form* obj, bool recursive=true);
 void free_llir_form(llir_form* obj, bool recursive=true);
+
+llir_form* copy_llir_form(llir_form* src, llir_form* dest=nullptr);
 
 }
 

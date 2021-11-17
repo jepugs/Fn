@@ -16,8 +16,7 @@ enum ast_kind {
     ak_number_atom,
     ak_string_atom,
     ak_symbol_atom,
-    ak_list,
-    ak_error
+    ak_list
 };
 
 struct ast_form {
@@ -64,12 +63,24 @@ void clear_ast_form(ast_form* form, bool recursive=true);
 void free_ast_form(ast_form* form, bool recursive=true);
 ast_form* copy_form();
 
+struct parse_error {
+    source_loc origin;
+    string message;
+};
+
 // get the next form by reading tokens one at a time from the scanner. Return a
 // null pointer on EOF. It is the responsibility of the caller to delete the
-// returned object.
+// returned object. Returns null and sets err on failure.
 ast_form* parse_form(scanner& sc,
         symbol_table& symtab,
-        optional<token> t0 = std::nullopt);
+        parse_error* err);
+// This is the same as above, but we pass in the first token directly (as
+// opposed to getting it from the scanner).
+ast_form* parse_form(scanner& sc,
+        symbol_table& symtab,
+        token t0,
+        parse_error* err);
+
 
 }
 #endif

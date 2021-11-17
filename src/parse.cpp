@@ -175,8 +175,6 @@ string ast_form::as_string(const symbol_table& symtab) const {
     case ak_list:
         res = print_grouped(symtab, '(', ')', datum.list, list_length);
         break;
-    case ak_error:
-        break;
     }
 
     return res;
@@ -199,121 +197,157 @@ symbol_id ast_form::get_symbol() const {
 }
 
 
-
-#define parse_error(msg, loc) throw fn_error("fn_parse", msg, loc)
-
-void parse_to_delimiter(scanner& sc,
-                        symbol_table& symtab,
-                        vector<ast_form*>& buf,
-                        token_kind end) {
+// on error, returns nullptr and sets err, but DOES NOT
+static ast_form* parse_to_delimiter(scanner& sc,
+        symbol_table& symtab,
+        vector<ast_form*>& buf,
+        token_kind end,
+        parse_error* err) {
     auto tok = sc.next_token();
     while (tok.tk != end) {
         if (tok.tk == tk_eof) {
-            parse_error("Unexpected EOF searching for delimiter.", tok.loc);
-        }
-        buf.push_back(parse_form(sc, symtab, std::make_optional(tok)));
-        tok = sc.next_token();
+            err->origin = tok.loc;
+            err->message = "Encountered EOF while expecting closing delimiter.";
+        };
+        return nullptr;
     }
+    return mk_list_form(tok.loc, buf);
 }
 
-void parse_prefix(scanner& sc,
-                  symbol_table& symtab,
-                  vector<ast_form*>& buf,
-                  const string& op,
-                  const source_loc& loc,
-                  optional<token> t0 = std::nullopt) {
-    buf.push_back(mk_symbol_form(loc, symtab.intern(op)));
-    buf.push_back(parse_form(sc, symtab, t0));
-}
-
-ast_form* parse_form(scanner& sc, symbol_table& symtab, optional<token> t0) {
-    auto tok = t0.has_value() ? *t0 : sc.next_token();
-    ast_form* res = nullptr;
-    string* str = tok.datum.str;
+static ast_form* parse_prefix(scanner& sc,
+        symbol_table& symtab,
+        const source_loc& loc,
+        const string& op,
+        token t0,
+        parse_error* err) {
     vector<ast_form*> buf;
+    buf.push_back(mk_symbol_form(loc, symtab.intern(op)));
+    auto x = parse_form(sc, symtab, t0, err);
+    if (!x) {
+        free_ast_form(buf[0]);
+        return nullptr;
+    }
+    
+    buf.push_back(x);
+    return mk_list_form(loc, buf);
+}
 
-    switch (tok.tk) {
+static ast_form* parse_prefix(scanner& sc,
+        symbol_table& symtab,
+        const source_loc& loc,
+        const string& op,
+        parse_error* err) {
+    auto tok = sc.next_token();
+    return parse_prefix(sc, symtab, loc, op, tok, err);
+}
+
+ast_form* parse_form(scanner& sc, symbol_table& symtab, parse_error* err) {
+    return parse_form(sc, symtab, sc.next_token(), err);
+}
+
+ast_form* parse_form(scanner& sc,
+        symbol_table& symtab,
+        token t0,
+        parse_error* err) {
+    ast_form* res = nullptr;
+    string* str = t0.datum.str;
+    vector<ast_form*> buf;
+    auto& loc = t0.loc;
+
+    switch (t0.tk) {
     case tk_eof:
+        err->origin = loc;
+        err->message = "Unexpected EOF.";
         return nullptr;
 
     case tk_number:
-        res = mk_number_form(tok.loc, tok.datum.num);
+        res = mk_number_form(loc, t0.datum.num);
         break;
     case tk_string:
-        res = mk_string_form(tok.loc, fn_string{*str});
+        res = mk_string_form(loc, fn_string{*str});
         break;
     case tk_symbol:
-        res = mk_symbol_form(tok.loc, symtab.intern(*str));
+        res = mk_symbol_form(loc, symtab.intern(*str));
         break;
 
     case tk_lparen:
-        parse_to_delimiter(sc, symtab, buf, tk_rparen);
-        res = mk_list_form(tok.loc, buf);
+        // this will give res=nullptr and set err if there's an error
+        if (!(res=parse_to_delimiter(sc, symtab, buf, tk_rparen, err))) {
+            for (auto x : buf) {
+                free_ast_form(x);
+            }
+        }
         break;
     case tk_rparen:
-        parse_error("Unmatched delimiter ')'.", tok.loc);
+        err->origin = loc;
+        err->message = "Unmatched delimiter ')'.";
+        res = nullptr;
         break;
     case tk_lbrace:
-        buf.push_back(mk_symbol_form(tok.loc, symtab.intern("Table")));
-        parse_to_delimiter(sc, symtab, buf, tk_rbrace);
-        res = mk_list_form(tok.loc, buf);
+        buf.push_back(mk_symbol_form(loc, symtab.intern("Table")));
+        if (!(res=parse_to_delimiter(sc, symtab, buf, tk_rbrace, err))) {
+            for (auto x : buf) {
+                free_ast_form(x);
+            }
+        }
         break;
     case tk_rbrace:
-        parse_error("Unmatched delimiter '}'.", tok.loc);
+        err->origin = loc;
+        err->message = "Unmatched delimiter '}'.";
+        res = nullptr;
         break;
     case tk_lbracket:
-        buf.push_back(mk_symbol_form(tok.loc, symtab.intern("List")));
-        parse_to_delimiter(sc, symtab, buf, tk_rbracket);
-        res = mk_list_form(tok.loc, buf);
+        buf.push_back(mk_symbol_form(loc, symtab.intern("List")));
+        if (!(res=parse_to_delimiter(sc, symtab, buf, tk_rbracket, err))) {
+            for (auto x : buf) {
+                free_ast_form(x);
+            }
+        }
         break;
     case tk_rbracket:
-        parse_error("Unmatched delimiter ']'.", tok.loc);
+        err->origin = loc;
+        err->message = "Unmatched delimiter '}'.";
+        res = nullptr;
         break;
 
     case tk_dot:
-        buf.push_back(mk_symbol_form(tok.loc, symtab.intern("dot")));
-        for (auto s : *tok.datum.ids) {
-            buf.push_back(mk_symbol_form(tok.loc, symtab.intern(s)));
+        buf.push_back(mk_symbol_form(loc, symtab.intern("dot")));
+        for (auto s : *t0.datum.ids) {
+            buf.push_back(mk_symbol_form(loc, symtab.intern(s)));
         }
-        res = mk_list_form(tok.loc, buf);
+        res = mk_list_form(loc, buf);
         break;
 
     case tk_quote:
-        parse_prefix(sc, symtab, buf, "quote", tok.loc);
-        res = mk_list_form(tok.loc, buf);
+        res = parse_prefix(sc, symtab, loc, "quote", err);
         break;
     case tk_backtick:
-        parse_prefix(sc, symtab, buf, "quasiquote", tok.loc);
-        res = mk_list_form(tok.loc, buf);
+        res = parse_prefix(sc, symtab, loc, "quasiquote", err);
         break;
     case tk_comma:
-        parse_prefix(sc, symtab, buf, "unquote", tok.loc);
-        res = mk_list_form(tok.loc, buf);
+        res = parse_prefix(sc, symtab, loc, "unquote", err);
         break;
     case tk_comma_at:
-        parse_prefix(sc, symtab, buf, "unquote-splicing", tok.loc);
-        res = mk_list_form(tok.loc, buf);
+        res = parse_prefix(sc, symtab, loc, "unquote-splicing", err);
         break;
-
     case tk_dollar_backtick:
-        parse_prefix(sc, symtab, buf, "dollar-fn", tok.loc,
-                     token{tk_backtick, tok.loc});
-        res = mk_list_form(tok.loc, buf);
+        res = parse_prefix(sc, symtab, loc, "dollar-fn", token{tk_backtick,loc},
+                err);
         break;
     case tk_dollar_brace:
-        parse_prefix(sc, symtab, buf, "dollar-fn", tok.loc,
-                     token{tk_lbrace, tok.loc});
-        res = mk_list_form(tok.loc, buf);
+        res = parse_prefix(sc, symtab, loc, "dollar-fn", token{tk_lbrace,loc},
+                err);
+        res = mk_list_form(loc, buf);
         break;
     case tk_dollar_bracket:
-        parse_prefix(sc, symtab, buf, "dollar-fn", tok.loc,
-                     token{tk_lbracket, tok.loc});
-        res = mk_list_form(tok.loc, buf);
+        res = parse_prefix(sc, symtab, loc, "dollar-fn", token{tk_lbracket,loc},
+                err);
+        res = mk_list_form(loc, buf);
         break;
     case tk_dollar_paren:
-        parse_prefix(sc, symtab, buf, "dollar-fn", tok.loc,
-                     token{tk_lparen, tok.loc});
-        res = mk_list_form(tok.loc, buf);
+        res = parse_prefix(sc, symtab, loc, "dollar-fn", token{tk_lparen,loc},
+                err);
+        res = mk_list_form(loc, buf);
         break;
     }
     return res;
