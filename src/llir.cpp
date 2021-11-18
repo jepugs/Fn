@@ -270,9 +270,13 @@ void clear_llir_with_form(llir_with_form* obj, bool recursive) {
             free_llir_form(obj->body[i]);
         }
     }
-    delete obj->vars;
-    delete obj->value_forms;
-    delete obj->body;
+    if (obj->num_vars > 0) {
+        delete[] obj->vars;
+        delete[] obj->value_forms;
+    }
+    if (obj->body_length > 0) {
+        delete[] obj->body;
+    }
 }
 void free_llir_with_form(llir_with_form* obj, bool recursive) {
     clear_llir_with_form(obj, recursive);
@@ -405,6 +409,13 @@ static void print_llir_offset(llir_form* form,
                 get_constant(((llir_const_form*)form)->id), &st);
         break;
     case llir_fn:
+        {
+            auto xfn = (llir_fn_form*)form;
+            out << "(FN ()\n";
+            // TODO: write out the arguments
+            print_llir_offset(xfn->body, st, chunk, offset+2, true);
+            out << ')';
+        }
         break;
     case llir_if:
         {
@@ -419,18 +430,56 @@ static void print_llir_offset(llir_form* form,
         }
         break;
     case llir_import:
+        out << "(IMPORT)";
         break;
     case llir_set_key:
         break;
     case llir_set_var:
+        out << "(SET! " << st[((llir_set_var_form*)form)->var] << '\n';
+        print_llir_offset(((llir_set_var_form*)form)->value, st, chunk,
+                offset+6, true);
+        out << ')';
         break;
     case llir_var:
-        out << v_to_string(as_sym_value(((llir_var_form*)form)->name), &st);
+        {
+            auto var = ((llir_var_form*)form)->name;
+            if (st.is_gensym(var)) {
+                out << st.gensym_name(var);
+            } else {
+                out << st[var];
+            }
+        }
         break;
     case llir_with:
         {
             auto xwith = (llir_with_form*)form;
-            out << "(WITH ()"; // TODO: print vars
+            out << "(WITH (";
+            // print vars
+            if (xwith->num_vars > 0) {
+                i64 i = 0;
+                // have to do this out here to avoid printing the last '\n'
+                auto name = st[xwith->vars[i]];
+                if (st.is_gensym(xwith->vars[i])) {
+                    name = st.gensym_name(xwith->vars[i]);
+                }
+                out << name << ' ';
+                print_llir_offset(xwith->value_forms[i], st, chunk,
+                        offset + 8 + name.size(), false);
+
+                for (i = 1; i < xwith->num_vars; ++i) {
+                    out << '\n';
+                    auto name = st[xwith->vars[i]];
+                    if (st.is_gensym(xwith->vars[i])) {
+                        name = st.gensym_name(xwith->vars[i]);
+                    }
+                    out << name << ' ';
+                    print_llir_offset(xwith->value_forms[i], st, chunk,
+                            offset + 8 + name.size(), false);
+                }
+            }
+            out << ')';
+                
+            // print body
             for (u32 i = 0; i < xwith->body_length; ++i) {
                 out << '\n';
                 print_llir_offset(xwith->body[i], st, chunk, offset+2, true);

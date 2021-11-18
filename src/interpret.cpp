@@ -98,6 +98,7 @@ value interpreter::interpret_string(const string& src) {
 
         expand_error e_err;
         auto llir = ex.expand(ast, &e_err);
+        free_ast_form(ast);
         if (llir == nullptr) {
             // TODO: throw an error
             std::cout << "err: " << e_err.message << '\n';
@@ -106,7 +107,6 @@ value interpreter::interpret_string(const string& src) {
 
         print_llir(llir, symtab, chunk);
 
-        free_ast_form(ast);
         free_llir_form(llir);
     }
 

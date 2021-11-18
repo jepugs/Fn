@@ -4,10 +4,10 @@
 #include <iostream>
 
 // access parts of the gc_header
-#define gc_mark(h) (((h).bits | GC_MARK_BIT) == GC_MARK_BIT)
-#define gc_ignore(h) (((h).bits | GC_IGNORE_BIT) == GC_IGNORE_BIT)
-#define gc_global(h) (((h).bits | GC_GLOBAL_BIT) == GC_GLOBAL_BIT)
-#define gc_type(h) (((h).bits | GC_TYPE_BITMASK))
+#define gc_mark(h) (((h).bits & GC_MARK_BIT) == GC_MARK_BIT)
+#define gc_ignore(h) (((h).bits & GC_IGNORE_BIT) == GC_IGNORE_BIT)
+#define gc_global(h) (((h).bits & GC_GLOBAL_BIT) == GC_GLOBAL_BIT)
+#define gc_type(h) (((h).bits & GC_TYPE_BITMASK))
 
 #define gc_set_mark(h) (((h).bits |= GC_MARK_BIT))
 #define gc_unset_mark(h) (((h).bits &= ~GC_MARK_BIT))
@@ -219,7 +219,7 @@ void allocator::dealloc(gc_header* o) {
     case GC_TYPE_CHUNK:
         // TODO: maybe track chunk mem_usage
         free_code_chunk((code_chunk*) o);
-        delete (code_chunk*)o;
+        break;
     case GC_TYPE_STRING:
         mem_usage -= ((fn_string*)o)->len;
         mem_usage -= sizeof(fn_string);

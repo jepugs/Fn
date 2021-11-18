@@ -91,7 +91,7 @@ void clear_ast_form(ast_form* form, bool recursive) {
                 free_ast_form(form->datum.list[i], true);
             }
         }
-        delete form->datum.list;
+        delete[] form->datum.list;
         break;
     default:
         break;

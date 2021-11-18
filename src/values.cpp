@@ -109,6 +109,10 @@ bool symbol_table::is_gensym(symbol_id sym) const {
     return sym > next_gensym;
 }
 
+string symbol_table::gensym_name(symbol_id sym) const {
+    return "#gensym:" + std::to_string((symbol_id)(-1) - sym);
+}
+
 local_address function_stub::add_upvalue(u8 addr, bool direct) {
     upvals.push_back(addr);
     upvals_direct.push_back(direct);

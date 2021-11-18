@@ -33,6 +33,8 @@ private:
 
     bool is_macro(symbol_id sym);
 
+    bool is_operator_list(const string& op_name, ast_form* form);
+
     llir_form* expand_and(const source_loc& loc,
             u32 length,
             ast_form** lst,
@@ -42,6 +44,32 @@ private:
             ast_form** lst,
             expander_meta* meta);
     llir_form* expand_def(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+
+    bool is_do_inline(ast_form* ast);
+    bool is_let(ast_form* ast);
+    // lst includes the do symbol at 0
+    void flatten_do_body(u32 length,
+            ast_form** lst,
+            vector<ast_form*>& buf,
+            expander_meta* meta);
+    // ast_body doesn't include the do symbol
+    llir_form* expand_let_in_do(u32 length,
+            ast_form** ast_body,
+            expander_meta* meta);
+    // ast_body doesn't include the do symbl
+    bool expand_do_recur(u32 length,
+            ast_form** ast_body,
+            vector<llir_form*>& buf,
+            expander_meta* meta);
+    llir_form* expand_do(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+
+    llir_form* expand_if(const source_loc& loc,
             u32 length,
             ast_form** lst,
             expander_meta* meta);

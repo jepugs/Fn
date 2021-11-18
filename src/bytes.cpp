@@ -117,7 +117,7 @@ code_chunk* mk_code_chunk(symbol_id ns_id, code_chunk* dest) {
         .loc={.filename="", .line=0, .col=0},
         .prev=nullptr
     };
-    return new(dest) code_chunk {
+    auto res = new(dest) code_chunk {
         .ns_id = ns_id,
         .code = new u8[init_array_size],
         .code_size = 0,
@@ -128,15 +128,17 @@ code_chunk* mk_code_chunk(symbol_id ns_id, code_chunk* dest) {
         .function_table = new function_stub*[init_array_size],
         .source_info = source_info
     };
+    mk_gc_header(GC_TYPE_CHUNK, &res->h);
+    return res;
 }
 
 void free_code_chunk(code_chunk* chunk) {
-    delete chunk->code;
-    delete chunk->constant_table;
+    delete[] chunk->code;
+    delete[] chunk->constant_table;
     for (auto i = 0; i < chunk->num_functions; ++i) {
         delete chunk->function_table[i];
     }
-    delete chunk->function_table;
+    delete[] chunk->function_table;
 
     auto i = chunk->source_info;
     while (i != nullptr) {
@@ -144,6 +146,8 @@ void free_code_chunk(code_chunk* chunk) {
         delete i;
         i = prev;
     }
+
+    delete chunk;
 }
 
 }
