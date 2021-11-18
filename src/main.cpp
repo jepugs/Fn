@@ -2,7 +2,7 @@
 #include "bytes.hpp"
 //#include "compile.hpp"
 //#include "ffi/builtin.hpp"
-//#include "interpret.hpp"
+#include "interpret.hpp"
 //#include "parse.hpp"
 //#include "scan.hpp"
 #include "table.hpp"
@@ -84,9 +84,9 @@ int main(int argc, char** argv) {
         interact = true;
     }
 
-    /*
+    
     interpreter inter{};
-    install_builtin(inter);
+    //install_builtin(inter);
     // TODO: use proper namespaces
     value res;
     for (auto s : evals) {
@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
         std::cout << v_to_string(res, inter.get_symtab())
                   << endl;
     }
-    */
+    
 
     return 0;
 }

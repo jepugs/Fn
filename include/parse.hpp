@@ -56,12 +56,11 @@ ast_form* mk_list_form(source_loc loc,
         ast_form* dest=nullptr);
 // make a list form by copying the contents of a vector
 ast_form* mk_list_form(source_loc loc,
-        const vector<ast_form*>& lst,
+        vector<ast_form*>& lst,
         ast_form* dest=nullptr);
 
 void clear_ast_form(ast_form* form, bool recursive=true);
 void free_ast_form(ast_form* form, bool recursive=true);
-ast_form* copy_form();
 
 struct parse_error {
     source_loc origin;

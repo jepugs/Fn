@@ -193,7 +193,7 @@ inline fn_string* vstring(value v) {
 }
 
 inline symbol_id vsymbol(value v) {
-    return static_cast<symbol_id>(v.raw >> TAG_WIDTH);
+    return (symbol_id)(v.raw >> TAG_WIDTH);
 }
 
 inline cons* vcons(value v) {
@@ -367,6 +367,8 @@ class symbol_table {
 private:
     table<string,symtab_entry> by_name;
     vector<symtab_entry> by_id;
+    // TODO: figure out why this can't be a full number :(
+    symbol_id next_gensym = (symbol_id)(-1);
 
 public:
     symbol_table() = default;
@@ -375,6 +377,9 @@ public:
     bool is_internal(const string& str) const;
     // if symbol_id does not name a valid symbol, returns the empty string
     string symbol_name(symbol_id sym) const;
+
+    symbol_id gensym();
+    bool is_gensym(symbol_id id) const;
 
     string operator[](symbol_id id) const {
         return symbol_name(id);
@@ -423,7 +428,7 @@ inline value as_value(function* ptr) {
     return { .raw = raw | TAG_FUNC };
 }
 inline value as_sym_value(symbol_id sym) {
-    return { .raw = (sym << TAG_WIDTH) | TAG_SYM };
+    return { .raw = (((u64)sym) << TAG_WIDTH) | TAG_SYM };
 }
 
 string v_to_string(value v, const symbol_table* symbols);

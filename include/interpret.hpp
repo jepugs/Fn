@@ -4,19 +4,20 @@
 
 #include "base.hpp"
 #include "bytes.hpp"
+#include "expand.hpp"
+#include "llir.hpp"
 #include "parse.hpp"
 #include "vm.hpp"
 
 namespace fn {
+
+using namespace fn_parse;
 
 struct interpreter {
 private:
     symbol_table symtab;
     global_env globals;
     allocator alloc;
-
-    // TODO: this might belong in the allocator
-    vector<code_chunk*> loaded_chunks;
 
     // ordered list of directories to search for imports
     std::list<string> search_path;

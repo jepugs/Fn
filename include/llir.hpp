@@ -2,7 +2,10 @@
 #define __FN_LLIR_HPP
 
 #include "base.hpp"
+#include "bytes.hpp"
 #include "values.hpp"
+
+#include <iostream>
 
 namespace fn {
 
@@ -208,11 +211,12 @@ struct llir_with_form {
     local_address num_vars;
     symbol_id* vars;
     llir_form** value_forms;
-    llir_form* body;
+    u32 body_length;
+    llir_form** body;
 };
 llir_with_form* mk_llir_with_form(const source_loc& origin,
         local_address num_vars,
-        llir_form* body,
+        u32 body_length,
         llir_with_form* dest=nullptr);
 void clear_llir_with_form(llir_with_form* obj, bool recursive=true);
 void free_llir_with_form(llir_with_form* obj, bool recursive=true);
@@ -221,6 +225,9 @@ void clear_llir_form(llir_form* obj, bool recursive=true);
 void free_llir_form(llir_form* obj, bool recursive=true);
 
 llir_form* copy_llir_form(llir_form* src, llir_form* dest=nullptr);
+
+// for debugging/testing
+void print_llir(llir_form* f, symbol_table& st, code_chunk* chunk);
 
 }
 

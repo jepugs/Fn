@@ -59,6 +59,9 @@ ast_form* mk_list_form(source_loc loc,
         u32 length,
         ast_form** lst,
         ast_form* dest) {
+    if (dest == nullptr) {
+        dest = new ast_form;
+    }
     return new(dest) ast_form {
         .loc = loc,
         .kind = ak_list,
@@ -68,32 +71,57 @@ ast_form* mk_list_form(source_loc loc,
 }
 
 ast_form* mk_list_form(source_loc loc,
-        const vector<ast_form*>& lst,
+        vector<ast_form*>& lst,
         ast_form* dest) {
-    auto sz = static_cast<u32>(lst.size());
-    auto res = mk_list_form(loc, sz, new ast_form*[sz], dest);
-    memcpy(res->datum.list, lst.data(), sz);
-    return res;
+    ast_form** data = new ast_form*[lst.size()];
+    for (u32 i = 0; i < lst.size(); ++i) {
+        data[i] = lst[i];
+    }
+    return mk_list_form(loc, lst.size(), data, dest);
+}
+
+void clear_ast_form(ast_form* form, bool recursive) {
+    switch (form->kind) {
+    case ak_string_atom:
+        delete form->datum.str;
+        break;
+    case ak_list:
+        if (recursive) {
+            for (u32 i = 0; i < form->list_length; ++i) {
+                free_ast_form(form->datum.list[i], true);
+            }
+        }
+        delete form->datum.list;
+        break;
+    default:
+        break;
+    }
+}
+
+void free_ast_form(ast_form* form, bool recursive) {
+    clear_ast_form(form, recursive);
+    delete form;
 }
 
 
-// ast_form* ast_form::copy() const {
-//     switch (kind) {
-//     case ak_number_atom:
-//         return new ast_form{ast_atom{*datum.atom}, loc};
-//     case ak_error:
-//         return new ast_node{loc};
-//     case ak_list:
-//         break;
-//     }
+ast_form* ast_form::copy() const {
+    switch (kind) {
+    case ak_number_atom:
+        return mk_number_form(loc, datum.num);
+    case ak_string_atom:
+        return mk_string_form(loc, *datum.str);
+    case ak_symbol_atom:
+        return mk_symbol_form(loc, datum.sym);
+    default:
+        break;
+    }
 
-//     // list behavior
-//     vector<ast_node*> list;
-//     for (auto v : *datum.list) {
-//         list.push_back(v->copy());
-//     }
-//     return new ast_node{list, loc};
-// }
+    auto res = mk_list_form(loc, list_length, new ast_form*[list_length]);
+    for (u32 i = 0; i < list_length; ++i) {
+        res->datum.list[i] = datum.list[i]->copy();
+    }
+    return res;
+}
 
 static string print_grouped(const symbol_table& symtab,
         char open,
@@ -208,9 +236,16 @@ static ast_form* parse_to_delimiter(scanner& sc,
         if (tok.tk == tk_eof) {
             err->origin = tok.loc;
             err->message = "Encountered EOF while expecting closing delimiter.";
+            return nullptr;
         };
-        return nullptr;
+        auto x = parse_form(sc, symtab, tok, err);
+        if (!x) {
+            return nullptr;
+        }
+        buf.push_back(x);
+        tok = sc.next_token();
     }
+
     return mk_list_form(tok.loc, buf);
 }
 

@@ -7,7 +7,7 @@ add_library(fn_lib OBJECT
             #ffi/builtin.cpp
             #ffi/interpreter_handle.cpp
             llir.cpp
-            #interpret.cpp
+            interpret.cpp
             namespace.cpp
             parse.cpp
             scan.cpp

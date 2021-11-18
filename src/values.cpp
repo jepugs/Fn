@@ -71,6 +71,9 @@ fn_table::fn_table() {
 }
 
 symbol_id symbol_table::intern(const string& str) {
+    if (next_gensym <= by_id.size()) {
+        throw std::runtime_error("Symbol table exhausted.");
+    }
     auto v = by_name.get(str);
     if (v.has_value()) {
         return v->id;
@@ -93,6 +96,17 @@ string symbol_table::symbol_name(symbol_id sym) const {
     } else {
         return by_id[sym].name;
     }
+}
+
+symbol_id symbol_table::gensym() {
+    if (next_gensym <= by_id.size()) {
+        throw std::runtime_error("Symbol table exhausted.");
+    }
+    return next_gensym--;
+}
+
+bool symbol_table::is_gensym(symbol_id sym) const {
+    return sym > next_gensym;
 }
 
 local_address function_stub::add_upvalue(u8 addr, bool direct) {
@@ -217,7 +231,11 @@ string v_to_string(value v, const symbol_table* symbols) {
     case TAG_EMPTY:
         return "[]";
     case TAG_SYM:
-        return "'" + symbols->symbol_name(vsymbol(v));
+        if (symbols->is_gensym(vsymbol(v))) {
+            return "'<#Gensym>";
+        } else {
+            return "'" + symbols->symbol_name(vsymbol(v));
+        }
     }
     return "<unprintable-object>";
 }

@@ -3,6 +3,7 @@
 
 #include "base.hpp"
 #include "llir.hpp"
+#include "llir.hpp"
 #include "namespace.hpp"
 #include "parse.hpp"
 
@@ -12,13 +13,17 @@ using namespace fn_parse;
 
 struct interpreter;
 
+struct expand_error {
+    source_loc origin;
+    string message;
+};
+
 struct expander_meta {
     // largest value dollar symbol encountered. -1 if none is encountered.
     i16 max_dollar_sym;
     // In the event of an error, the various expand_ methods return null and set
     // this string. (It must be freed later).
-    string error;
-    source_loc error_loc;
+    expand_error err;
 };
 
 class expander {
@@ -48,16 +53,16 @@ private:
     // assumes lst has kind ak_list
     llir_form* expand_list(ast_form* lst, expander_meta* meta);
     // no assumptions on ast
-    llir_form* expand(ast_form* ast, expander_meta* meta);
+    llir_form* expand_meta(ast_form* ast, expander_meta* meta);
+
+    symbol_id intern(const string& str);
+    symbol_id gensym();
 
 public:
     expander(interpreter* inter, code_chunk* const_chunk);
-    llir_form* expand_ast(ast_form* form);
+    llir_form* expand(ast_form* form, expand_error* err);
 };
 
-// Expand an ast_form fully into an llir_form in preparation for for
-// compilation. The chunk here is needed to hold constants
-llir_form* expand_ast(ast_form* form, interpreter* inter, code_chunk* chunk);
 }
 
 #endif

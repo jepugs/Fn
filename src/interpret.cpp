@@ -22,15 +22,27 @@ interpreter::~interpreter() {
     // TODO: there's probably something to do here...
 }
 
-void interpreter::interpret_to_end(vm_thread& vm) {
-    vm.execute();
-    while (vm.check_status() == vs_waiting_for_import) {
-        // TODO: import code here :/
-        break;
-    }
-    // all other statuses cause us to exit
-
+allocator* interpreter::get_alloc() {
+    return &alloc;
 }
+
+symbol_table* interpreter::get_symtab() {
+    return &symtab;
+}
+
+global_env* interpreter::get_global_env() {
+    return &globals;
+}
+
+// void interpreter::interpret_to_end(vm_thread& vm) {
+//     vm.execute();
+//     while (vm.check_status() == vs_waiting_for_import) {
+//         // TODO: import code here :/
+//         break;
+//     }
+//     // all other statuses cause us to exit
+
+// }
 
 value interpreter::interpret_file(const string& path) {
     // FIXME: handle errors
@@ -42,14 +54,14 @@ value interpreter::interpret_file(const string& path) {
     string pkg = "fn/user/";
 
     // namespace name
-    fs::path path_obj{path};
-    auto ns_name = symtab.intern(pkg + path_obj.stem().u8string());
+    //fs::path path_obj{path};
+    //auto ns_name = symtab.intern(pkg + path_obj.stem().u8string());
 
-    auto chunk = alloc.add_chunk(ns_name);
+    // auto chunk = alloc.add_chunk(ns_name);
     // compiler c{&symtab, &alloc, chunk};
     // vm_thread vm{&alloc, &globals, chunk};
 
-    // fn_parse::ast_node* expr;
+    // fn_parse::ast_form* expr;
     // while ((expr = fn_parse::parse_node(sc, symtab))) {
     //     // TODO: this is where macroexpansion goes
     //     c.compile_expr(expr);
@@ -73,10 +85,35 @@ value interpreter::interpret_string(const string& src) {
             **globals.get_ns(ns_name),
             **globals.get_ns(symtab.intern("fn/builtin")),
             "");
+
+    expander ex{this, chunk};
+    while (!sc.eof()) {
+        parse_error p_err;
+        auto ast = parse_form(sc, symtab, &p_err);
+        if (ast == nullptr) {
+            // TODO: throw an error
+            std::cout << "err: " << p_err.message << '\n';
+            break;
+        }
+
+        expand_error e_err;
+        auto llir = ex.expand(ast, &e_err);
+        if (llir == nullptr) {
+            // TODO: throw an error
+            std::cout << "err: " << e_err.message << '\n';
+            break;
+        }
+
+        print_llir(llir, symtab, chunk);
+
+        free_ast_form(ast);
+        free_llir_form(llir);
+    }
+
     // compiler c{&symtab, &alloc, chunk};
     // vm_thread vm{&alloc, &globals, chunk};
 
-    // fn_parse::ast_node* expr;
+    // fn_parse::ast_form* expr;
     // while ((expr = fn_parse::parse_node(sc, symtab))) {
     //     // TODO: this is where macroexpansion goes
     //     c.compile_expr(expr);
@@ -90,25 +127,14 @@ value interpreter::interpret_string(const string& src) {
     return V_NIL;
 }
 
-ast_node* macroexpand(fn_namespace* ns, const ast_node* form) {
+ast_form* interpreter::macroexpand(symbol_id ns_id, const ast_form* form) {
     auto res = form->copy();
+    return res;
 }
 
 void interpreter::runtime_error(const string& msg,
         const source_loc& loc) {
     throw fn_error("runtime", msg, loc);
-}
-
-allocator* interpreter::get_alloc() {
-    return &alloc;
-}
-
-symbol_table* interpreter::get_symtab() {
-    return &symtab;
-}
-
-global_env* interpreter::get_global_env() {
-    return &globals;
 }
 
 void interpreter::add_builtin_function(const string& name,
