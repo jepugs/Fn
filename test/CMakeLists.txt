@@ -1,4 +1,7 @@
-find_package(Boost 1.65.0 COMPONENTS unit_test_framework)
+# needed because of bug where CMAKE_CXX_COMPILER_VERSION isn't set
+set(Boost_NO_BOOST_CMAKE ON)
+
+find_package(Boost COMPONENTS unit_test_framework)
 
 function(add_fn_test SOURCE)
   # set the filename to the stem of the file
