@@ -21,7 +21,7 @@ bool expander::is_operator_list(const string& op_name, ast_form* ast) {
     if (op->kind != ak_symbol_atom) {
         return false;
     }
-    return op->datum.sym == inter->get_symtab()->intern(op_name);
+    return op->datum.sym == intern(op_name);
 }
 
 // Note: and, cond, and or expanders take advantage of the fact that they don't
@@ -152,13 +152,61 @@ llir_form* expander::expand_let_in_do(u32 length,
         return nullptr;
     }
 
-    // collect variables and init forms
-    auto len = (let_form->list_length - 1) / 2;
+    // body
+    vector<llir_form*> body_forms;
+    if (!expand_do_recur(length - 1, &ast_body[1], body_forms, meta)) {
+        return nullptr;
+    }
 
-    meta->err.origin = let_form->loc;
-    meta->err.message = "let not implemented :(";
+    auto num_vars = (let_form->list_length - 1) / 2;
+    auto res = mk_llir_with_form(let_form->loc, num_vars, body_forms.size());
+
+    // collect variables and init forms
+    for (u32 i = 0; i < num_vars; ++i) {
+        auto var = let_form->datum.list[2*i+1];
+        if (var->kind != ak_symbol_atom) {
+            meta->err.origin = var->loc;
+            meta->err.message = "Variable names must be symbols.";
+            for (u32 j = 0; j < i; ++j) {
+                free_llir_form(res->value_forms[i]);
+            }
+            for (auto x : body_forms) {
+                free_llir_form(x);
+            }
+            return nullptr;
+        }
+
+        res->vars[i] = var->datum.sym;
+        auto x = expand_meta(let_form->datum.list[2*i+2], meta);
+        if (!x) {
+            for (u32 j = 0; j < i; ++j) {
+                free_llir_form(res->value_forms[i]);
+            }
+            for (auto x : body_forms) {
+                free_llir_form(x);
+            }
+            return nullptr;
+        }
+        res->value_forms[i] = x;
+    }
+
+    for (u32 i = 0; i < body_forms.size(); ++i) {
+        res->body[i] = body_forms[i];
+    }
+
+    return (llir_form*) res;
+}
+
+llir_form* expander::expand_letfn_in_do(u32 length,
+        ast_form** ast_body,
+        expander_meta* meta) {
+    auto letfn_form = ast_body[0];
+
+    meta->err.origin = letfn_form->loc;
+    meta->err.message = "letfn not implemented :(";
     return nullptr;
 }
+
 
 // This function fills out the provided vector with llir forms that make up the
 // do body. ast_body here should point to lst[1] of the original do form.
@@ -199,17 +247,20 @@ llir_form* expander::expand_do(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length == 1) {
-        return (llir_form*)mk_llir_var_form(loc,
-                inter->get_symtab()->intern("nil"));
+        return (llir_form*)mk_llir_var_form(loc, intern("nil"));
     } else if (length == 2) {
         return expand_meta(lst[1], meta);
     }
-    // TODO: implement
-    // - flatten out do-inline forms
-    // - introduce new lexical environments with each let
-    // - execute all other expressions in order
+
     vector<ast_form*> ast_buf;
     flatten_do_body(length, lst, ast_buf, meta);
+
+    // TODO: check if first form is let or letfn
+    if (length == 0) {
+        return (llir_form*)mk_llir_var_form(loc, intern("nil"));
+    } else if (is_let(ast_buf[0])) {
+        return expand_let_in_do(ast_buf.size(), ast_buf.data(), meta);
+    }
     vector<llir_form*> llir_buf;
     if (!expand_do_recur(ast_buf.size(), ast_buf.data(), llir_buf, meta)) {
         return nullptr;
@@ -249,6 +300,14 @@ llir_form* expander::expand_if(const source_loc& loc,
     return (llir_form*)mk_llir_if_form(loc, x, y, z);
 }
 
+llir_form* expander::expand_fn(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    meta->err.origin = loc;
+    meta->err.message = "fn not supported :(";
+    return nullptr;
+}
 
 llir_form* expander::expand_call(ast_form* lst, expander_meta* meta) {
     // function call
@@ -301,8 +360,8 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
         return expand_do(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "if") {
         return expand_if(loc, lst->list_length, lst->datum.list, meta);
-    // } else if (name == "fn") {
-    //     return expand_fn(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "fn") {
+        return expand_fn(loc, lst->list_length, lst->datum.list, meta);
     // } else if (name == "let") {
     //     return expand_let(loc, lst->list_length, lst->datum.list, meta);
     // } else if (name == "or") {

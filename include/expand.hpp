@@ -60,6 +60,10 @@ private:
             ast_form** ast_body,
             expander_meta* meta);
     // ast_body doesn't include the do symbl
+    llir_form* expand_letfn_in_do(u32 length,
+            ast_form** ast_body,
+            expander_meta* meta);
+    // ast_body doesn't include the do symbl
     bool expand_do_recur(u32 length,
             ast_form** ast_body,
             vector<llir_form*>& buf,
@@ -70,6 +74,10 @@ private:
             expander_meta* meta);
 
     llir_form* expand_if(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+    llir_form* expand_fn(const source_loc& loc,
             u32 length,
             ast_form** lst,
             expander_meta* meta);

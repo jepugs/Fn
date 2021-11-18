@@ -202,7 +202,11 @@ string v_to_string(value v, const symbol_table* symbols) {
     // TODO: add escaping to strings/characters
     switch(tag) {
     case TAG_NUM:
-        return std::to_string(vnumber(v));
+        {
+            std::ostringstream os;
+            os << std::noshowpoint << vnumber(v);
+            return os.str();
+        }
     case TAG_CONS:
         res = "[ ";
         for (value x = v; v_tag(x) == TAG_CONS; x = vcons(x)->tail) {
@@ -236,9 +240,9 @@ string v_to_string(value v, const symbol_table* symbols) {
         return "[]";
     case TAG_SYM:
         if (symbols->is_gensym(vsymbol(v))) {
-            return "'<#Gensym>";
+            return "#gensym:" +std::to_string(vsymbol(v)) + "";
         } else {
-            return "'" + symbols->symbol_name(vsymbol(v));
+            return symbols->symbol_name(vsymbol(v));
         }
     }
     return "<unprintable-object>";

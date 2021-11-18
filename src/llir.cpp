@@ -95,7 +95,7 @@ void clear_llir_call_form(llir_call_form* obj, bool recursive) {
             free_llir_form(obj->args[i]);
         }
     }
-    delete obj->args;
+    delete[] obj->args;
 }
 void free_llir_call_form(llir_call_form* obj, bool recursive) {
     clear_llir_call_form(obj, recursive);
@@ -396,11 +396,27 @@ static void print_llir_offset(llir_form* form,
         {
             auto xcall = (llir_call_form*)form;
             out << '(';
-            print_llir_offset(xcall->callee, st, chunk, offset+1, false);
-            for (int i = 0; i < xcall->num_args; ++i) {
-                out << '\n';
-                print_llir_offset(xcall->args[i], st, chunk, offset+1, true);
+            int i = 0;
+            int noffset = offset+2;
+            if (xcall->callee->tag == llir_var) {
+                auto sym = ((llir_var_form*)xcall->callee)->name;
+                auto str = v_to_string(as_sym_value(sym), &st);
+                noffset += str.size();
+                out << str << ' ';
+                if (xcall->num_args > 0) {
+                    print_llir_offset(xcall->args[0], st, chunk, noffset, false);
+                }
+
+                // skip first arg since we already did it
+                i = 1;
+            } else {
+                print_llir_offset(xcall->callee, st, chunk, noffset, false);
             }
+            for (; i < xcall->num_args; ++i) {
+                out << '\n';
+                print_llir_offset(xcall->args[i], st, chunk, noffset, true);
+            }
+
         out << ')';
         }
         break;
@@ -472,6 +488,7 @@ static void print_llir_offset(llir_form* form,
                     if (st.is_gensym(xwith->vars[i])) {
                         name = st.gensym_name(xwith->vars[i]);
                     }
+                    write_indent(out, offset + 7);
                     out << name << ' ';
                     print_llir_offset(xwith->value_forms[i], st, chunk,
                             offset + 8 + name.size(), false);
