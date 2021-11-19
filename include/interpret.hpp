@@ -4,6 +4,7 @@
 
 #include "base.hpp"
 #include "bytes.hpp"
+#include "compile.hpp"
 #include "expand.hpp"
 #include "llir.hpp"
 #include "parse.hpp"

@@ -4,9 +4,9 @@ namespace fn {
 
 #define ensure_capacity(type, min, cap, ptr) \
     if (min > (cap)) { \
-        do { (cap) *= 2; } while ((cap) > 2); \
+        do { (cap) *= 2; } while (min > (cap)); \
         auto __ptr = (type*)realloc(ptr, (cap)*sizeof(type));     \
-        if (!__ptr) { throw std::runtime_error("realloc failed"); } \
+        if (__ptr == nullptr) { throw std::runtime_error("realloc failed"); } \
         else { ptr = __ptr; } \
     }
     
@@ -117,15 +117,18 @@ code_chunk* mk_code_chunk(symbol_id ns_id, code_chunk* dest) {
         .loc={.filename="", .line=0, .col=0},
         .prev=nullptr
     };
+    // gotta use malloc here for portability since we use realloc to resize
+    // arrays.
     auto res = new(dest) code_chunk {
         .ns_id = ns_id,
-        .code = new u8[init_array_size],
+        .code=(u8*)malloc(sizeof(u8)*init_array_size),
         .code_size = 0,
         .code_capacity = init_array_size,
-        .constant_table = new value[init_array_size],
+        .constant_table=(value*)malloc(sizeof(value)*(init_array_size)),
         .num_constants = 0,
         .constant_capacity = init_array_size,
-        .function_table = new function_stub*[init_array_size],
+        .function_table = (function_stub**)malloc(
+                sizeof(function_stub*)*init_array_size),
         .source_info = source_info
     };
     mk_gc_header(GC_TYPE_CHUNK, &res->h);
@@ -133,12 +136,12 @@ code_chunk* mk_code_chunk(symbol_id ns_id, code_chunk* dest) {
 }
 
 void free_code_chunk(code_chunk* chunk) {
-    delete[] chunk->code;
-    delete[] chunk->constant_table;
+    free(chunk->code);
+    free(chunk->constant_table);
     for (auto i = 0; i < chunk->num_functions; ++i) {
         delete chunk->function_table[i];
     }
-    delete[] chunk->function_table;
+    free(chunk->function_table);
 
     auto i = chunk->source_info;
     while (i != nullptr) {

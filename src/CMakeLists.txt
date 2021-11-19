@@ -2,7 +2,7 @@ add_library(fn_lib OBJECT
             allocator.cpp
             base.cpp
             bytes.cpp
-            #compile.cpp
+            compile.cpp
             expand.cpp
             #ffi/builtin.cpp
             #ffi/interpreter_handle.cpp
@@ -12,7 +12,7 @@ add_library(fn_lib OBJECT
             parse.cpp
             scan.cpp
             values.cpp
-            #vm.cpp
+            vm.cpp
             )
 
 target_include_directories(fn_lib PUBLIC

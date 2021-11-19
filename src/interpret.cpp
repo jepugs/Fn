@@ -34,15 +34,15 @@ global_env* interpreter::get_global_env() {
     return &globals;
 }
 
-// void interpreter::interpret_to_end(vm_thread& vm) {
-//     vm.execute();
-//     while (vm.check_status() == vs_waiting_for_import) {
-//         // TODO: import code here :/
-//         break;
-//     }
-//     // all other statuses cause us to exit
+void interpreter::interpret_to_end(vm_thread& vm) {
+    vm.execute();
+    while (vm.check_status() == vs_waiting_for_import) {
+        // TODO: import code here :/
+        break;
+    }
+    // all other statuses cause us to exit
 
-// }
+}
 
 value interpreter::interpret_file(const string& path) {
     // FIXME: handle errors
@@ -107,23 +107,23 @@ value interpreter::interpret_string(const string& src) {
 
         print_llir(llir, symtab, chunk);
 
+        compiler c{&symtab, &alloc, chunk};
+        compile_error c_err;
+        c_err.has_error = false;
+        c.compile(llir, &c_err);
+        if (c_err.has_error) {
+            std::cout << "compile err: " << c_err.message << '\n';
+            break;
+        }
+        disassemble(symtab, *chunk, std::cout);
+
+        vm_thread vm{&alloc, &globals, chunk};
+        interpret_to_end(vm);
+
         free_llir_form(llir);
+        return vm.last_pop();
     }
 
-    // compiler c{&symtab, &alloc, chunk};
-    // vm_thread vm{&alloc, &globals, chunk};
-
-    // fn_parse::ast_form* expr;
-    // while ((expr = fn_parse::parse_node(sc, symtab))) {
-    //     // TODO: this is where macroexpansion goes
-    //     c.compile_expr(expr);
-    //     delete expr;
-    //     disassemble(symtab, *chunk, std::cout);
-    //     interpret_to_end(vm);
-    // }
-    // // TODO: check vm status
-
-    // return vm.last_pop();
     return V_NIL;
 }
 

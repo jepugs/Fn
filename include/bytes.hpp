@@ -124,7 +124,6 @@ constexpr u8 OP_CLOSE = 0x08;
 // global; get a global variable based on a string on top of the stack
 constexpr u8 OP_GLOBAL = 0x10;
 // set-global; set a global variable. stack arguments ->[value] symbol ...
-// note: leaves the symbol on the stack
 constexpr u8 OP_SET_GLOBAL = 0x11;
 // obj-get;  stack arguments ->[key] obj; get the value of a property.
 constexpr u8 OP_OBJ_GET = 0x12;
