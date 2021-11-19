@@ -156,7 +156,7 @@ constexpr u8 OP_JUMP = 0x30;
 constexpr u8 OP_CJUMP = 0x31;
 // call BYTE; perform a function call. Uses BYTE+2 elements on the stack,
 // one for the function, one for each positional argument, and one for the
-// keyword table
+// keyword table. -> [func] kw-table pos-arg-n ... pos-arg-1
 constexpr u8 OP_CALL = 0x32;
 // tcall BYTE; perform a tail call
 constexpr u8 OP_TCALL = 0x33;

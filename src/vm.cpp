@@ -122,6 +122,7 @@ void vm_thread::pop() {
     if (frame->bp >= stack->get_pointer()) {
         runtime_error("pop on empty call frame");
     }
+    stack->pop();
 }
 
 value vm_thread::pop_to_ws(working_set* ws) {
@@ -129,7 +130,7 @@ value vm_thread::pop_to_ws(working_set* ws) {
         runtime_error("pop on empty call frame");
     }
     auto res = ws->pin_value(peek());
-    pop();
+    stack->pop();
     return res;
 }
 
@@ -168,10 +169,10 @@ void vm_thread::set_local(local_address i, value v) {
 // very bottom we expect the callee, followed by num_args positional arguments,
 // and finally a table containing keyword arguments.
 code_address vm_thread::call(working_set* ws, local_address num_args) {
-    // the function to call should be at the bottom
-    auto callee = peek(num_args + 1);
+    // the function to call should be on top
+    auto callee = pop_to_ws(ws);
     auto kw_tab = pop_to_ws(ws); // keyword arguments
-    if (!kw_tab.is_table()) {
+    if (v_tag(kw_tab) != TAG_TABLE) {
         runtime_error("Error on call instruction: malformed keyword table.");
     }
     if (v_tag(callee) != TAG_FUNC) {
@@ -186,11 +187,9 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
             runtime_error("Foreign functions don't accept keyword arguments.");
         }
         auto ws2 = alloc->add_working_set();
-        for (i32 i = num_args - 1; i >= 0; --i) {
-            args[i] = pop_to_ws(&ws2);
+        for (i32 i = num_args; i > 0; --i) {
+            args[i-1] = pop_to_ws(&ws2);
         }
-        // pop the foreign function itself
-        pop_to_ws(&ws2);
         interpreter_handle handle{.inter=this, .ws=&ws2, .func_name="<ffi call>"};
         push(func->foreign_func(&handle, num_args, args));
         return ip + 2;
@@ -495,8 +494,8 @@ void vm_thread::step() {
         addr = frame->ret_addr;
 
         num_args = frame->num_args;
-        // bp-1 to get rid of the caller
-        stack->close(frame->bp-1);
+        // close to base pointer
+        stack->close(frame->bp);
         tmp = frame;
         // TODO: restore stack pointer
         frame = tmp->prev;

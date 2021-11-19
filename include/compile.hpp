@@ -60,6 +60,12 @@ private:
     void write_short(u16 u);
     void patch_short(code_address where, u16 u);
 
+    void compile_llir(const llir_call_form* llir,
+            lexical_env* lex,
+            compile_error* err);
+    void compile_llir(const llir_const_form* llir,
+            lexical_env* lex,
+            compile_error* err);
     void compile_llir(const llir_def_form* llir,
             lexical_env* lex,
             compile_error* err);
@@ -67,12 +73,6 @@ private:
             lexical_env* lex,
             compile_error* err);
     void compile_llir(const llir_dot_form* llir,
-            lexical_env* lex,
-            compile_error* err);
-    void compile_llir(const llir_call_form* llir,
-            lexical_env* lex,
-            compile_error* err);
-    void compile_llir(const llir_const_form* llir,
             lexical_env* lex,
             compile_error* err);
     void compile_llir(const llir_if_form* llir,

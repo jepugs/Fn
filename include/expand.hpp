@@ -94,7 +94,10 @@ private:
 
     // expands a list form as if it's a function call. Assumes lst.length_length
     // >= 1.
-    llir_form* expand_call(ast_form* lst, expander_meta* meta);
+    llir_form* expand_call(const source_loc& loc,
+            u32 len,
+            ast_form** lst,
+            expander_meta* meta);
     // assumes lst[0] is a symbol
     llir_form* expand_symbol_list(ast_form* lst, expander_meta* meta);
     // assumes lst has kind ak_list
@@ -104,6 +107,7 @@ private:
 
     symbol_id intern(const string& str);
     symbol_id gensym();
+    bool is_keyword(symbol_id sym) const;
 
 public:
     expander(interpreter* inter, code_chunk* const_chunk);

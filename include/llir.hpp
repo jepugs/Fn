@@ -91,15 +91,22 @@ llir_dot_form* mk_llir_dot_form(const source_loc& origin,
 void clear_llir_dot_form(llir_dot_form* obj, bool recursive=true);
 void free_llir_dot_form(llir_dot_form* obj, bool recursive=true);
 
+struct llir_kw_arg {
+    symbol_id nonkw_name;
+    llir_form* value_form;
+};
 struct llir_call_form {
     llir_form header;
     llir_form* callee;
-    local_address num_args;
-    llir_form** args;
+    local_address num_pos_args;
+    llir_form** pos_args;
+    local_address num_kw_args;
+    llir_kw_arg* kw_args;
 };
 llir_call_form* mk_llir_call_form(const source_loc& origin,
         llir_form* callee,
-        local_address num_args,
+        local_address num_pos_args,
+        local_address num_kw_args,
         llir_call_form* dest=nullptr);
 void clear_llir_call_form(llir_call_form* obj, bool recursive=true);
 void free_llir_call_form(llir_call_form* obj, bool recursive=true);

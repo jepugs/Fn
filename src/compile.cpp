@@ -75,6 +75,32 @@ void compiler::patch_short(code_address where, u16 u) {
     dest->write_short(u, where);
 }
 
+void compiler::compile_llir(const llir_call_form* llir,
+        lexical_env* lex,
+        compile_error* err) {
+    // compile positional arguments in ascending order
+    for (u32 i = 0; i < llir->num_pos_args; ++i) {
+        compile_llir_generic(llir->pos_args[i], lex, err);
+        return_on_err;
+    }
+    // TODO: compile keyword table
+    write_byte(OP_TABLE);
+    ++lex->sp;
+
+    // compile callee
+    compile_llir_generic(llir->callee, lex, err);
+    write_byte(OP_CALL);
+    write_byte(llir->num_pos_args);
+}
+
+void compiler::compile_llir(const llir_const_form* llir,
+        lexical_env* lex,
+        compile_error* err) {
+    write_byte(OP_CONST);
+    write_short(llir->id);
+    ++lex->sp;
+}
+
 void compiler::compile_llir(const llir_def_form* llir,
         lexical_env* lex,
         compile_error* err) {
@@ -89,14 +115,6 @@ void compiler::compile_llir(const llir_def_form* llir,
     return_on_err;
     write_byte(OP_SET_GLOBAL);
     lex->sp -= 2;
-}
-
-void compiler::compile_llir(const llir_const_form* llir,
-        lexical_env* lex,
-        compile_error* err) {
-    write_byte(OP_CONST);
-    write_short(llir->id);
-    ++lex->sp;
 }
 
 void compiler::compile_llir(const llir_if_form* llir,
@@ -124,6 +142,14 @@ void compiler::compile_llir(const llir_if_form* llir,
     patch_short(addr2 + 1, end_addr - addr2 - 3);
     // minus three since jump is relative to the end of the 3 byte instruction
 }
+
+void compiler::compile_llir(const llir_fn_form* llir,
+        lexical_env* lex,
+        compile_error* err) {
+    err->origin = llir->header.origin;
+    err->message = "compiling fn unsupported";
+}
+
 
 void compiler::compile_llir(const llir_var_form* llir,
         lexical_env* lex,
@@ -167,7 +193,7 @@ void compiler::compile_llir_generic(const llir_form* llir,
         //compile_llir((llir_dot_form*)llir, lex, err);
         break;
     case llir_call:
-        //compile_llir((llir_call_form*)llir, lex, err);
+        compile_llir((llir_call_form*)llir, lex, err);
         break;
     case llir_const:
         compile_llir((llir_const_form*)llir, lex, err);

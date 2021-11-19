@@ -4,8 +4,8 @@ add_library(fn_lib OBJECT
             bytes.cpp
             compile.cpp
             expand.cpp
-            #ffi/builtin.cpp
-            #ffi/interpreter_handle.cpp
+            ffi/builtin.cpp
+            ffi/interpreter_handle.cpp
             llir.cpp
             interpret.cpp
             namespace.cpp

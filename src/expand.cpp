@@ -496,32 +496,54 @@ llir_form* expander::expand_or(const source_loc& loc,
     return (llir_form*)res;
 }
 
+llir_form* expander::expand_call(const source_loc& loc,
+        u32 len,
+        ast_form** lst,
+        expander_meta* meta) {
+    vector<llir_form*> pos_args;
+    vector<llir_kw_arg> kw_args;
+    u32 i;
+    bool failed = false;
+    for (i = 1; i < len; ++i) {
+        if (lst[i]->kind == ak_symbol_atom
+                && is_keyword(lst[i]->datum.sym)) {
+            if (i + 1 >= len) {
+                meta->err.origin = lst[i]->loc;
+                meta->err.message = "Keyword without any argument.";
+                failed = true;
+                break;
+            }
+            auto x = expand_meta(lst[i+1], meta);
+            if (!x) {
+                failed = true;
+                break;
+            }
+            auto name = inter->get_symtab()->symbol_name(lst[i]->datum.sym);
+            kw_args.push_back(llir_kw_arg{intern(name.substr(1)),x});
+        } else { // positional argument
+            auto x = expand_meta(lst[i], meta);
+            if (!x) {
+                failed = true;
+                break;
+            }
+            pos_args.push_back(x);
+        }
+    }
 
-llir_form* expander::expand_call(ast_form* lst, expander_meta* meta) {
-    // function call
-    auto op = lst->datum.list[0];
-    auto& loc = lst->loc;
-
-    auto callee = expand_meta(op, meta);
-    if (!callee) {
+    auto callee = expand_meta(lst[0], meta);
+    if (!callee || failed) {
+        for (auto x : kw_args) {
+            free_llir_form(x.value_form);
+        }
+        for (auto x : pos_args) {
+            free_llir_form(x);
+        }
         return nullptr;
     }
-    auto res = mk_llir_call_form(loc, callee, lst->list_length-1);
-    for (auto i = 0; i < res->num_args; ++i) {
-        auto arg = expand_meta(lst->datum.list[i+1], meta);
-        if (!arg) { // error
-            // clean up
-            for (auto j = 0; j < i; ++j) {
-                free_llir_form(res->args[j]);
-            }
-            free_llir_call_form(res, false);
-            free_llir_form(callee);
+    auto res = mk_llir_call_form(loc, callee, pos_args.size(), kw_args.size());
+    memcpy(res->pos_args, pos_args.data(), pos_args.size()*sizeof(llir_form*));
+    memcpy(res->kw_args, kw_args.data(), kw_args.size()*sizeof(llir_kw_arg));
 
-            res = nullptr;
-            break;
-        }
-        res->args[i] = arg;
-    }
     return (llir_form*)res;
 }
 
@@ -559,7 +581,7 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
     }
 
     // function calls
-    return expand_call(lst, meta);
+    return expand_call(lst->loc, lst->list_length, lst->datum.list, meta);
 }
 
 llir_form* expander::expand_list(ast_form* lst, expander_meta* meta) {
@@ -586,7 +608,7 @@ llir_form* expander::expand_list(ast_form* lst, expander_meta* meta) {
         break;
     }
 
-    return expand_call(lst, meta);
+    return expand_call(lst->loc, lst->list_length, lst->datum.list, meta);
 }
 
 // used to update expander_meta. This checks if symbol_id is a dollar-symbol and
@@ -647,6 +669,11 @@ symbol_id expander::intern(const string& str) {
 
 symbol_id expander::gensym() {
     return inter->get_symtab()->gensym();
+}
+
+bool expander::is_keyword(symbol_id sym) const {
+    auto name = inter->get_symtab()->symbol_name(sym);
+    return name[0] == ':';
 }
 
 expander::expander(interpreter* inter, code_chunk* const_chunk)

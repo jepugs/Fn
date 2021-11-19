@@ -1,13 +1,9 @@
 #include "base.hpp"
 #include "bytes.hpp"
-//#include "compile.hpp"
-//#include "ffi/builtin.hpp"
+#include "ffi/builtin.hpp"
 #include "interpret.hpp"
-//#include "parse.hpp"
-//#include "scan.hpp"
 #include "table.hpp"
-//#include "values.hpp"
-//#include "vm.hpp"
+#include "values.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -86,7 +82,7 @@ int main(int argc, char** argv) {
 
     
     interpreter inter{};
-    //install_builtin(inter);
+    install_builtin(inter);
     // TODO: use proper namespaces
     value res;
     for (auto s : evals) {

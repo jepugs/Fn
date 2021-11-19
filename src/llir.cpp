@@ -76,7 +76,8 @@ void free_llir_dot_form(llir_dot_form* obj, bool recursive) {
 
 llir_call_form* mk_llir_call_form(const source_loc& origin,
         llir_form* callee,
-        local_address num_args,
+        local_address num_pos_args,
+        local_address num_kw_args,
         llir_call_form* dest) {
     if (dest == nullptr) {
         dest = new llir_call_form;
@@ -84,18 +85,27 @@ llir_call_form* mk_llir_call_form(const source_loc& origin,
     return new (dest) llir_call_form {
         .header={.origin=origin, .tag=llir_call},
         .callee=callee,
-        .num_args=num_args,
-        .args=new llir_form*[num_args]
+        .num_pos_args=num_pos_args,
+        .pos_args=new llir_form*[num_pos_args],
+        .num_kw_args=num_kw_args,
+        .kw_args=new llir_kw_arg[num_kw_args],
     };
 }
 void clear_llir_call_form(llir_call_form* obj, bool recursive) {
     if (recursive) {
         free_llir_form(obj->callee);
-        for (int i = 0; i < obj->num_args; ++i) {
-            free_llir_form(obj->args[i]);
+        for (int i = 0; i < obj->num_pos_args; ++i) {
+            free_llir_form(obj->pos_args[i]);
+        }
+        for (int i = 0; i < obj->num_kw_args; ++i) {
+            free_llir_form(obj->kw_args[i].value_form);
         }
     }
-    delete[] obj->args;
+    if (obj->num_pos_args != 0) {
+        delete[] obj->pos_args;
+    }    if (obj->num_kw_args != 0) {
+        delete[] obj->kw_args;
+    }
 }
 void free_llir_call_form(llir_call_form* obj, bool recursive) {
     clear_llir_call_form(obj, recursive);
@@ -387,20 +397,31 @@ static void print_llir_offset(llir_form* form,
             if (xcall->callee->tag == llir_var) {
                 auto sym = ((llir_var_form*)xcall->callee)->name;
                 auto str = v_to_string(as_sym_value(sym), &st);
-                noffset += str.size();
                 out << str << ' ';
-                if (xcall->num_args > 0) {
-                    print_llir_offset(xcall->args[0], st, chunk, noffset, false);
-                }
+                noffset += str.size();
 
-                // skip first arg since we already did it
+                if (xcall->num_pos_args > 0) {
+                    print_llir_offset(xcall->pos_args[0], st, chunk, noffset,
+                            false);
+                }
                 i = 1;
             } else {
                 print_llir_offset(xcall->callee, st, chunk, noffset, false);
             }
-            for (; i < xcall->num_args; ++i) {
+            for (; i < xcall->num_pos_args; ++i) {
                 out << '\n';
-                print_llir_offset(xcall->args[i], st, chunk, noffset, true);
+                print_llir_offset(xcall->pos_args[i], st, chunk, noffset, true);
+            }
+
+            if (xcall->num_kw_args > 0) {
+                out << '\n';
+                write_indent(out, noffset);
+                out << ":kw { ";
+                // TODO: print keyword too
+                print_llir_offset(xcall->kw_args[0].value_form, st, chunk,
+                        noffset + 6, false);
+                out << '}';
+                    
             }
 
         out << ')';
