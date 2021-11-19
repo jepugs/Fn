@@ -69,7 +69,7 @@ capture doesn't affect any of the concepts discussed in the rest of this section
 ~let~ is the most elementary way to create a local variable. It defines one or
 more new variables in the current lexical environment.
 
-#+BEGIN_SRC fn  ;; let binds one or more variables to the given values
+#+BEGIN_SRC fn
 ;; let binds variables to the given values
 (let x 'symbol)
 ;; multiple definitions can be made in a single let
@@ -448,7 +448,7 @@ automatically performed.
 
 After a namespace has been imported once, its bindings can be referenced even
 without importing it explicitly. This is done by using symbols whose names are
-structured like with ~#:<namespace>:<symbol>~. For example, ~#:fn/builtin:map~
+structured like with ~/<namespace>:<symbol>~. For example, ~/fn/builtin:map~
 refers to the function ~map~ in the ~fn/builtin~ namespace.
 
 
@@ -479,7 +479,7 @@ program ::= expr* expr ::= immediate
 Syntax:
 #+begin_src
 immediate ::= boolean 
-          | null
+          | nil
           | number
           | string
 variable ::= non-special-symbol
@@ -489,7 +489,7 @@ An immediate expression is a literal representing a constant value. On
 evaluation, immediate expressions immediately return the value they represent.
 
 Variables are represented by non-special symbols, (where special symbols are
-those naming special forms, boolean values, or null). If there exists a binding
+those naming special forms, boolean values, or nil). If there exists a binding
 in the current environment for the provided symbol, then its value is returned.
 Otherwise an exception is raised.
 
@@ -522,7 +522,7 @@ For each cond-case, the following is done:
   expression
 - otherwise, proceed to the next cond-case.
 
-If the end of the list is reached, returns ~null~.
+If the end of the list is reached, returns ~nil~.
 *** def
 Syntax:
 #+begin_src
@@ -673,7 +673,6 @@ existing variables with the same name.
 Returns null.
 
 *** TODO letfn
-*** TODO namespace
 *** or
 Syntax:
 #+begin_src
@@ -1045,3 +1044,181 @@ All of these are non-destructive.
 - any? (test seq)
 
 
+
+
+* Future Extensions
+
+The version of Fn described in this document is version 0.1. The language *will*
+change before version 1.0. In particular, I have to, *have to*, add pattern
+matching.
+
+Items marked with (Proposed) below are things that might not make it into the
+final language.
+
+** Pattern Destructuring in ~def~ and ~let~
+
+Once pattern matching is added to Fn, ~let~ and ~def~ will be able to do
+automatic destructuring on the pattern to bind variables. For instance,
+#+BEGIN_SRC fn
+(def [x y] [1 2])
+#+END_SRC
+binds ~x~ to ~1~ and ~y~ to ~2~.
+
+When matching fails, an error will be raised.
+
+
+** (Proposed) ~#~-Syntax for Collections
+
+So, we turn ~#~ into a syntax character and give ~#()~, ~#[]~, ~#{}~, etc. syntactic
+meanings.
+
+There are a couple of options for how to do this:
+- ~#()~ could expand to ~(values)~ (if we implement multiple values as proposed), or
+  to a set or tuple type.
+- ~${}~ could expand to ~(Set)~ or ~(Vector)~, or if we add typed tables, ~#{type ...}~
+  could be used to construct types (e.g. ~(construct type ...)~).
+- ~#[]~ could expand to ~(Vector)~ or ~(values)~.
+- Alternatively, if we lean into lazy data structures, then the ~#~ structures
+  could be the respective lazy equivalents
+
+I'm most likely to set ~#[]~ to ~(Vector ...)~. Using ~#{}~ for ~(Set ...)~ would also
+make sense, but if typed tables get added, those will be more important for
+sets. If multiple values get added, then the ~#()~ syntax should really be used
+for that.
+
+Drawbacks: this would make hash into a special character as opposed to just a
+symbol constituent.
+
+
+** Global Names for Definitions
+
+A global variable name consists of a forward slash, the full namespace name, a
+colon, and an identifier in that namespace, in that order. For example:
+#+BEGIN_SRC fn
+/fn/builtin:+
+#+END_SRC
+is the global name for the builtin ~+~ function.
+
+This is implemented as follows:
+- make it illegal to name namespaces beginning with a slash
+- make it illegal to create variables whose names contain colons.
+  (Alternatively, can make it illegal to create variables whose names start with
+  a slash).
+- variable names that have this syntax are evaluated a little differently
+
+To get the global name of a symbol, we'll provide a builtin function called
+~global-name~, e.g. ~(global-name '+)~ is ~'/fn/builtin:+~.
+
+
+** (Proposed) ~,:~-Syntax for Global Names in Quasiquote
+
+The syntax ~,:var~ expands ~(unquote (global-name 'var))~. This will be necessary
+for all non-builtin functions included in macro expansions, (and should be used
+for builtin functions too).
+
+
+** (Proposed) Multiple Return Values
+
+Idk, these are useful in Matlab and Haskell has this sort of thing going on with
+its tuples.
+
+So we create a multiple values object with ~(values x y ...)~. These objects are
+tricky; as soon as they get used they collapse to a single value (in this case
+the result of expression ~x~).
+
+However, when a multiple values object is returned to a ~let~ or ~def~, then we can
+use destructuring to access the additional values. For example:
+#+BEGIN_SRC fn
+(defn my-fun () (values 1 2 3))
+(def x (my-fun)) ; sets x = 1
+(def (values y z) ; sets y = 1, z = 2
+(def (values y z w) ; sets y = 1, z = 2, w = 3
+#+END_SRC
+
+Together with #-syntax for values, this might be a very useful feature. It would
+look like this:
+#+BEGIN_SRC fn
+(def #(y z) (my-fun)) ; sets y = 1, z = 2
+(def (values y z w) (my-fun)) ; sets y = 1, z = 2, w = 3
+#+END_SRC
+
+
+** Schemas, Metatables, and Table Calls
+
+Tables are gonna get a metatable like in Lua. This will simply be a second,
+invisible table, accessible via a ~metatable~ builtin function.
+
+The ~metatable~ may contain these two things (more may be added):
+- an *on-call function*. If set, this allows the table to be called like a
+  function by invoking the on-call function on the given arguments.
+- a *schema* for the table
+
+The on-call function is self-explanatory:
+#+BEGIN_SRC fn
+(def tab { 'value 27 })
+(set! (get (metatable tab) 'on-call) 
+      (fn (x) (+ x tab.value)))
+(tab 42) ;=> 69
+#+END_SRC
+
+Schemas are objects describing the following information:
+- a schema name that can be used to do pattern matching on this kind of object
+- optional type annotations for values in the table
+- pattern matching functions
+- (Proposed) protocols implemented by the table. (Note: this may belong directly
+  in the metatable?)
+
+So, giving a table a schema provides:
+- data validation
+- accessors
+- pattern matching
+All of this with very little overhead.
+
+So giving a table a schema is a big deal. It basically promotes the the object
+from a table to a more complex type. For this reason, we call tables with
+non-nil schemas *structures*. It is intended that structures will be used
+extensively in Fn as the main way to organize data.
+
+Through use of variable capture, functions contained in a table may access or
+mutate that table. This makes it possible to implement full, stateful
+object-oriented programming using structures containing functions, although I
+don't know why you'd want to.
+
+However, we functional programmers still benefit from structures containing
+functions. In particular, this is a handy way to simultaneously save typing and
+avoid namespace pollution. For instance, consider:
+#+BEGIN_SRC fn
+;; database structure has a send function
+(my-db.query my-query)
+;; vs. a global function to do it
+(db-query my-db my-query)
+#+END_SRC
+Moreover, we see this gives us something Python calls "duck typing". Any
+table with an appropriate query function will work in the first expression
+above. I think that's pretty neat.
+
+You could even implement ADTs a la Haskell using schemas, but I don't expect
+they'd be nearly as useful without that sweet, sweet type system.
+
+
+** (Proposed) Table Immutability Rules
+
+It would be really great to have some guarantee of a table's immutability.
+
+Mutable tables are great for initialization and certain types of imperative
+algorithms. However, immutable tables are better for functional programming, and
+we like that.
+
+I propose the following changes:
+- tables are immutable by default
+- mutable tables may be created via ~(M-Table ...)~, and have mutable metatables
+- builtin functions are provided to copy mutable tables to immutable ones and
+  vice versa
+
+In addition, it may be possible to allow mutable tables to be made immutable in
+certain situations, in order to save the copying operation. In order to prevent
+this from wreaking havoc, it might be best to provide some builtin function that
+exposes this functionality. E.g. ~(build-table x)~ where x is a function that
+takes a mutable table, mutates it, and returns it at the end. Provided the
+return value is the same table as was put in, it is then converted to a mutable
+table directly, with no copying.
