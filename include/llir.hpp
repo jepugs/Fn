@@ -156,6 +156,11 @@ llir_fn_form* mk_llir_fn_form(const source_loc& origin,
         local_address req_args,
         llir_form* body,
         llir_fn_form* dest=nullptr);
+// note: this takes ownership of the pointers in params
+llir_fn_form* mk_llir_fn_form(const source_loc& origin,
+        llir_fn_params params,
+        llir_form* body,
+        llir_fn_form* dest=nullptr);
 void clear_llir_fn_form(llir_fn_form* obj, bool recursive=true);
 void free_llir_fn_form(llir_fn_form* obj, bool recursive=true);
 

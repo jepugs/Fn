@@ -113,6 +113,14 @@ string symbol_table::gensym_name(symbol_id sym) const {
     return "#gensym:" + std::to_string((symbol_id)(-1) - sym);
 }
 
+string symbol_table::nice_name(symbol_id sym) const {
+    if (is_gensym(sym)) {
+        return gensym_name(sym);
+    } else {
+        return symbol_name(sym);
+    }
+}
+
 local_address function_stub::add_upvalue(u8 addr, bool direct) {
     upvals.push_back(addr);
     upvals_direct.push_back(direct);

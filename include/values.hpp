@@ -383,6 +383,9 @@ public:
     // not a true symbol name, but a useful symbolic name for a gensym
     string gensym_name(symbol_id sym) const;
 
+    // acts like gensym_name for gensyms, symbol_name otherwise
+    string nice_name(symbol_id sym) const;
+
     string operator[](symbol_id id) const {
         return symbol_name(id);
     }

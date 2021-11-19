@@ -161,6 +161,20 @@ llir_fn_form* mk_llir_fn_form(const source_loc& origin,
         .body=body
     };
 }
+llir_fn_form* mk_llir_fn_form(const source_loc& origin,
+        llir_fn_params params,
+        llir_form* body,
+        llir_fn_form* dest) {
+    if (dest == nullptr) {
+        dest = new llir_fn_form;
+    }
+    return new(dest) llir_fn_form {
+        .header={.origin=origin, .tag=llir_fn},
+        .params=params,
+        .body=body
+    };
+
+}
 void clear_llir_fn_form(llir_fn_form* obj, bool recursive) {
     if (recursive) {
         auto m = obj->params.num_pos_args - obj->params.req_args;
@@ -427,8 +441,23 @@ static void print_llir_offset(llir_form* form,
     case llir_fn:
         {
             auto xfn = (llir_fn_form*)form;
-            out << "(FN ()\n";
-            // TODO: write out the arguments
+            out << "(FN (";
+            // params
+            auto& params = xfn->params;
+            for (u32 i = 0; i < params.req_args; ++i) {
+                out << st.nice_name(params.pos_args[i]) << ' ';
+            }
+            for (u32 i = params.req_args; i < params.num_pos_args; ++i) {
+                out << '(' << st.nice_name(params.pos_args[i]) << ") ";
+            }
+            if (params.has_var_list_arg) {
+                out << "& " << st.nice_name(params.var_list_arg) << ' ';
+            }
+            if (params.has_var_table_arg) {
+                out << ":& " << st.nice_name(params.var_table_arg) << ' ';
+            }
+            out << ")\n";
+            // body
             print_llir_offset(xfn->body, st, chunk, offset+2, true);
             out << ')';
         }

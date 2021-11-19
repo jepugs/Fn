@@ -300,13 +300,165 @@ llir_form* expander::expand_if(const source_loc& loc,
     return (llir_form*)mk_llir_if_form(loc, x, y, z);
 }
 
+bool expander::expand_params(const source_loc& loc,
+        ast_form* ast,
+        llir_fn_params* params,
+        expander_meta* meta) {
+    if (ast->kind != ak_list) {
+        meta->err.origin = loc;
+        meta->err.message = "fn requires a parameter list.";
+        return false;
+    }
+
+    auto len = ast->list_length;
+    auto amp_sym = intern("&");
+    auto colamp_sym = intern(":&");
+    auto& lst = ast->datum.list;
+
+    vector<symbol_id> positional;
+    u32 num_pos;
+    vector<llir_form*> init_forms;
+    // positional/required
+    for (num_pos = 0; num_pos < len; ++num_pos) {
+        auto& x = lst[num_pos];
+        if (!x->is_symbol()) {
+            break;
+        }
+        auto& sym = x->datum.sym;
+        if (sym == amp_sym || sym == colamp_sym) {
+            break;
+        }
+        positional.push_back(sym);
+    }
+    u32 num_req = num_pos;
+
+    // positional/optional
+    for (; num_pos < len; ++num_pos) {
+        auto& x = lst[num_pos];
+        if (x->kind != ak_list) {
+            break;
+        } else if (x->list_length != 2 || !x->datum.list[0]->is_symbol()) {
+            // clean up
+            for (auto x : init_forms) {
+                free_llir_form(x);
+            }
+            meta->err.origin = x->loc;
+            meta->err.message = "Malformed optional parameter in parameter list.";
+            return false;
+        }
+        auto y = expand_meta(x->datum.list[1], meta);
+        if (!y) {
+            for (auto x : init_forms) {
+                free_llir_form(x);
+            }
+            return false;
+        }
+        init_forms.push_back(y);
+        positional.push_back(x->datum.list[0]->datum.sym);
+    }
+
+    // var args
+
+    // this was a doozy to write. I tried to avoid backtracking or
+    // doublechecking as much as possible. That's why the code is so explicit
+    // and gross. Plz lmk if there's a much better way to accomplish this kind
+    // of control flow. -- Jack
+    bool malformed = false;
+    if (num_pos < len) {
+        auto x = lst[num_pos];
+        if (x->is_symbol()
+                && (x->datum.sym == amp_sym || x->datum.sym == colamp_sym)
+                && (len == 2 + num_pos || len == 4 + num_pos)) {
+            for (u32 i = num_pos; i + 1 < len; ++i) {
+                if (!lst[i]->is_symbol()) {
+                    malformed = true;
+                    break;
+                }
+            }
+
+            if (malformed) {
+                // do nothing
+            } else if (len == 2 + num_pos) {
+                auto var = lst[num_pos+1]->datum.sym;
+                if (x->datum.sym == amp_sym) {
+                    params->has_var_list_arg = true;
+                    params->has_var_table_arg = false;
+                    params->var_list_arg = var;
+                } else if (x->datum.sym == colamp_sym) {
+                    params->has_var_list_arg = false;
+                    params->has_var_table_arg = true;
+                    params->var_table_arg = var;
+                } else {
+                    malformed = true;
+                }
+            } else if (len == 4 + num_pos) {
+                auto var1 = lst[num_pos+1]->datum.sym;
+                auto var2 = lst[num_pos+3]->datum.sym;
+                if (x->datum.sym == amp_sym
+                        && lst[num_pos+2]->datum.sym == colamp_sym) {
+                    params->has_var_list_arg = true;
+                    params->has_var_table_arg = true;
+                    params->var_list_arg = var1;
+                    params->var_table_arg = var2;
+                } else if (x->datum.sym == colamp_sym
+                        && lst[num_pos+2]->datum.sym == amp_sym) {
+                    params->has_var_list_arg = true;
+                    params->has_var_table_arg = true;
+                    params->var_list_arg = var2;
+                    params->var_table_arg = var1;
+                } else {
+                    malformed = true;
+                }
+            }
+        } else {
+            malformed = true;
+        }
+    }
+
+    if (malformed) {
+        for (auto x : init_forms) {
+            free_llir_form(x);
+        }
+        meta->err.origin = loc;
+        meta->err.message = "Malformed parameter list.";
+        return false;
+    }
+
+    // TODO: check if we exceed maximum arguments
+    params->num_pos_args = num_pos;
+    params->pos_args = new symbol_id[num_pos];
+    params->req_args = num_req;
+    params->init_forms = new llir_form*[num_pos - num_req];
+    for (u32 i = 0; i < positional.size(); ++i) {
+        params->pos_args[i] = positional[i];
+    }
+    for (u32 i = 0; i < init_forms.size(); ++i) {
+        params->init_forms[i] = init_forms[i];
+    }
+    return true;
+}
+        
 llir_form* expander::expand_fn(const source_loc& loc,
         u32 length,
         ast_form** lst,
         expander_meta* meta) {
-    meta->err.origin = loc;
-    meta->err.message = "fn not supported :(";
-    return nullptr;
+    if (length == 1) {
+        meta->err.origin = loc;
+        meta->err.message = "fn requires a parameter list.";
+        return nullptr;
+    }
+    llir_fn_params params;
+    if (!expand_params(loc, lst[1], &params, meta)) {
+        return nullptr;
+    }
+
+    llir_form* body;
+    if (length == 2) {
+        body = (llir_form*)mk_llir_var_form(loc, intern("nil"));
+    } else {
+        body = (llir_form*)expand_do(loc, length-1, &lst[1], meta);
+    }
+    return (llir_form*)mk_llir_fn_form(loc, params, body);
 }
 
 llir_form* expander::expand_call(ast_form* lst, expander_meta* meta) {
