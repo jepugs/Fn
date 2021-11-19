@@ -73,9 +73,14 @@ struct code_chunk {
     // add a new function and return its id. pparams is a list of parameter
     // names. req_args is number of required args.
     u16 add_function(const vector<symbol_id>& pparams,
-                     local_address req_args,
-                     optional<symbol_id> vl_param,
-                     optional<symbol_id> vt_param);
+            local_address req_args,
+            optional<symbol_id> vl_param,
+            optional<symbol_id> vt_param);
+    u16 add_function(local_address num_pos,
+            symbol_id* pos_params,
+            local_address req_args,
+            optional<symbol_id> vl_param,
+            optional<symbol_id> vt_param);
     function_stub* get_function(u16 id);
     const function_stub* get_function(u16 id) const;
 
@@ -132,10 +137,10 @@ constexpr u8 OP_OBJ_GET = 0x12;
 constexpr u8 OP_OBJ_SET = 0x13;
 // macro-get; get the function associated to a symbol, raising an error if there
 // is none. stack arguments ->[symbol]
-constexpr u8 OP_MACRO_GET = 0x14;
+constexpr u8 OP_MACRO = 0x14;
 // macro-set; set the macro function associated to a symbol. stack arguments:
 // ->[function] symbol.
-constexpr u8 OP_MACRO_SET = 0x15;
+constexpr u8 OP_SET_MACRO = 0x15;
 
 
 // const SHORT; push a constant, identified by its 16-bit id
@@ -183,8 +188,8 @@ inline u8 instr_width(u8 instr) {
     case OP_RETURN:
     case OP_OBJ_GET:
     case OP_OBJ_SET:
-    case OP_MACRO_GET:
-    case OP_MACRO_SET:
+    case OP_MACRO:
+    case OP_SET_MACRO:
     case OP_IMPORT:
     case OP_TABLE:
         return 1;

@@ -58,7 +58,7 @@ private:
 
     void write_byte(u8 byte);
     void write_short(u16 u);
-    void patch_short(code_address where, u16 u);
+    void patch_short(u16 u, code_address where);
 
     void compile_llir(const llir_call_form* llir,
             lexical_env* lex,

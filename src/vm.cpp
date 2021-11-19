@@ -214,23 +214,29 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
         }
     }
 
+    // push nil values to the stack to fill out remaining positional args
+    for (auto i = num_args; i < num_pos; ++m) {
+        push(V_NIL);
+    }
+
     // validate keyword table
     value var_tab = ws->add_table();
     auto& kw = vtable(kw_tab)->contents;
-    table<symbol_id,value> pos; // holds additional positional parameters
+    u32 total_pos_args = num_args;
     for (auto k : kw.keys()) {
         auto id = vsymbol(k);
         // first, check if this is a positional argument we still need
         bool found_pos = false;
         for (auto i = num_args; i < num_pos; ++i) {
             if(stub->pos_params[i] == id) {
-                pos.insert(id, *kw.get(k));
+                set_local
                 found_pos = true;
+                ++total_pos_args;
                 break;
             }
         }
         if (found_pos) {
-            break;
+            continue;
         }
 
         if (!stub->vt_param.has_value()) {
@@ -279,7 +285,8 @@ void vm_thread::init_function(working_set* ws, function* f) {
     // Add init values
     // DANGER! Init vals are popped right off the stack, so they better be there
     // when this function gets initialized!
-    for (auto i = stub->req_args; i < stub->pos_params.size(); ++i) {
+    auto len = stub->pos_params.size() - stub->req_args;
+    for (u32 i = 0; i < len; ++i) {
         f->init_vals[i] = pop_to_ws(ws);
     }
 
@@ -585,11 +592,11 @@ void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& ou
     case OP_OBJ_SET:
         out << "obj-set";
         break;
-    case OP_MACRO_GET:
-        out << "macro-get";
+    case OP_MACRO:
+        out << "macro";
         break;
-    case OP_MACRO_SET:
-        out << "macro-set";
+    case OP_SET_MACRO:
+        out << "set-macro";
         break;
     case OP_IMPORT:
         out << "import";

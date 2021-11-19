@@ -359,6 +359,8 @@ bool expander::expand_params(const source_loc& loc,
     }
 
     // var args
+    params->has_var_list_arg = false;
+    params->has_var_table_arg = false;
 
     // this was a doozy to write. I tried to avoid backtracking or
     // doublechecking as much as possible. That's why the code is so explicit
@@ -438,7 +440,7 @@ bool expander::expand_params(const source_loc& loc,
     }
     return true;
 }
-        
+
 llir_form* expander::expand_fn(const source_loc& loc,
         u32 length,
         ast_form** lst,
@@ -520,6 +522,7 @@ llir_form* expander::expand_call(const source_loc& loc,
             }
             auto name = inter->get_symtab()->symbol_name(lst[i]->datum.sym);
             kw_args.push_back(llir_kw_arg{intern(name.substr(1)),x});
+            ++i;
         } else { // positional argument
             auto x = expand_meta(lst[i], meta);
             if (!x) {
@@ -566,18 +569,43 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
         return expand_cond(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "def") {
         return expand_def(loc, lst->list_length, lst->datum.list, meta);
+    // } else if (name == "defmacro") {
+    //     return expand_defmacro(loc, lst->list_length, lst->datum.list, meta);
+    // } else if (name == "defn") {
+    //     return expand_defn(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "do") {
         return expand_do(loc, lst->list_length, lst->datum.list, meta);
+    // } else if (name == "do-inline") {
+    //     return expand_do_inline(loc, lst->list_length, lst->datum.list, meta);
+    // } else if (name == "dot") {
+    //     return expand_dot(loc, lst->list_length, lst->datum.list, meta);
+    // } else if (name == "dollar-fn") {
+    //     return expand_dollar_fn(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "if") {
         return expand_if(loc, lst->list_length, lst->datum.list, meta);
+    // } else if (name == "import") {
+    //     return expand_import(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "fn") {
         return expand_fn(loc, lst->list_length, lst->datum.list, meta);
     // } else if (name == "let") {
     //     return expand_let(loc, lst->list_length, lst->datum.list, meta);
+    // } else if (name == "letfn") {
+    //     return expand_letfn(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "or") {
         return expand_or(loc, lst->list_length, lst->datum.list, meta);
+    // } else if (name == "quasiquote") {
+    //     return expand_quasiquote(loc, lst->list_length, lst->datum.list, meta);
+    // } else if (name == "quote") {
+    //     return expand_quote(loc, lst->list_length, lst->datum.list, meta);
+    // } else if (name == "unquote") {
+    //     return expand_unquote(loc, lst->list_length, lst->datum.list, meta);
+    // } else if (name == "unquote-splicing") {
+    //     return expand_unquote_splicing(loc, lst->list_length,
+    //             lst->datum.list, meta);
     // } else if (name == "set!") {
     //     return expand_set(loc, lst->list_length, lst->datum.list, meta);
+    // } else if (name == "with") {
+    //     return expand_with(loc, lst->list_length, lst->datum.list, meta);
     }
 
     // function calls

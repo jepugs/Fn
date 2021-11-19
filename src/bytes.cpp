@@ -85,6 +85,30 @@ u16 code_chunk::add_function(const vector<symbol_id>& pparams,
     return num_functions++;
 }
 
+u16 code_chunk::add_function(local_address num_pos,
+        symbol_id* pos_params,
+        local_address req_args,
+        optional<symbol_id> vl_param,
+        optional<symbol_id> vt_param) {
+    auto s = new function_stub {
+        .pos_params=vector<symbol_id>{},
+        .req_args=req_args,
+        .vl_param=vl_param,
+        .vt_param=vt_param,
+        .chunk=this,
+        .addr=code_size,
+        .num_upvals=0,
+        .upvals=vector<local_address>{},
+        .upvals_direct=vector<bool>{}};
+    for (u32 i = 0; i < num_pos; ++i) {
+        s->pos_params.push_back(pos_params[i]);
+    }
+    ensure_function_capacity(num_functions + 1);
+    function_table[num_functions] = s;
+    return num_functions++;
+}
+
+
 function_stub* code_chunk::get_function(u16 id) {
     return function_table[id];
 }
@@ -129,6 +153,8 @@ code_chunk* mk_code_chunk(symbol_id ns_id, code_chunk* dest) {
         .constant_capacity = init_array_size,
         .function_table = (function_stub**)malloc(
                 sizeof(function_stub*)*init_array_size),
+        .num_functions = 0,
+        .function_capacity = init_array_size,
         .source_info = source_info
     };
     mk_gc_header(GC_TYPE_CHUNK, &res->h);

@@ -15,6 +15,7 @@ lexical_env extend_lex_env(lexical_env* parent, function_stub* new_func) {
         sp = parent->sp;
         bp = parent->bp;
     }
+
     return lexical_env{
         .parent=parent,
         .is_call_frame=(new_func != nullptr),
@@ -71,7 +72,7 @@ void compiler::write_byte(u8 byte) {
 void compiler::write_short(u16 u) {
     dest->write_short(u);
 }
-void compiler::patch_short(code_address where, u16 u) {
+void compiler::patch_short(u16 u, code_address where) {
     dest->write_short(u, where);
 }
 
@@ -89,6 +90,7 @@ void compiler::compile_llir(const llir_call_form* llir,
 
     // compile callee
     compile_llir_generic(llir->callee, lex, err);
+    return_on_err;
     write_byte(OP_CALL);
     write_byte(llir->num_pos_args);
 }
@@ -114,6 +116,22 @@ void compiler::compile_llir(const llir_def_form* llir,
     compile_llir_generic(llir->value, lex, err);
     return_on_err;
     write_byte(OP_SET_GLOBAL);
+    lex->sp -= 2;
+}
+
+void compiler::compile_llir(const llir_defmacro_form* llir,
+        lexical_env* lex,
+        compile_error* err) {
+    // TODO: check legal variable name
+    write_byte(OP_CONST);
+    write_short(dest->add_constant(as_sym_value(llir->name)));
+    write_byte(OP_COPY);
+    write_byte(0);
+    lex->sp += 2;
+
+    compile_llir_generic(llir->macro_fun, lex, err);
+    return_on_err;
+    write_byte(OP_SET_MACRO);
     lex->sp -= 2;
 }
 
@@ -146,10 +164,65 @@ void compiler::compile_llir(const llir_if_form* llir,
 void compiler::compile_llir(const llir_fn_form* llir,
         lexical_env* lex,
         compile_error* err) {
-    err->origin = llir->header.origin;
-    err->message = "compiling fn unsupported";
-}
+    // write jump
+    auto start = dest->code_size;
+    write_byte(OP_JUMP);
+    write_short(0);
 
+    // set up new lexical environment
+    auto& params = llir->params;
+    optional<symbol_id> var_list = std::nullopt;
+    if (params.has_var_list_arg) {
+        var_list = params.var_list_arg;
+    }
+    optional<symbol_id> var_table = std::nullopt;
+    if (params.has_var_table_arg) {
+        var_table = params.var_table_arg;
+    }
+    auto func_id = dest->add_function(params.num_pos_args,
+            params.pos_args,
+            params.req_args,
+            var_list,
+            var_table);
+    auto stub = dest->get_function(func_id);
+    auto lex2 = extend_lex_env(lex, stub);
+    // compile function body with a new lexical environment
+    for (u32 i = 0; i < params.num_pos_args; ++i) {
+        lex2.vars.insert(params.pos_args[i], i);
+    }
+    lex2.sp = params.num_pos_args;
+    // var list comes before var table, but there may be var table without var list
+    if (params.has_var_list_arg) {
+        lex2.vars.insert(params.var_list_arg, params.num_pos_args);
+        ++lex2.sp;
+        if (params.has_var_table_arg) {
+            lex2.vars.insert(params.var_table_arg, params.num_pos_args+1);
+            ++lex2.sp;
+        }
+    } else if (params.has_var_table_arg) {
+        ++lex2.sp;
+        lex2.vars.insert(params.var_table_arg, params.num_pos_args);
+    }
+
+    compile_llir_generic(llir->body, &lex2, err);
+    return_on_err;
+    write_byte(OP_RETURN);
+
+    // jump over the function body
+    patch_short(dest->code_size - start - 3, start+1);
+
+    // TODO compile init forms
+    auto len = params.num_pos_args - params.req_args;
+    for (auto i = 0; i < len; ++i) {
+        compile_llir_generic(params.init_forms[i], lex, err);
+        return_on_err;
+    }
+
+    // write closure command
+    write_byte(OP_CLOSURE);
+    write_short(func_id);
+    ++lex->sp;
+}
 
 void compiler::compile_llir(const llir_var_form* llir,
         lexical_env* lex,
@@ -202,6 +275,8 @@ void compiler::compile_llir_generic(const llir_form* llir,
         compile_llir((llir_if_form*)llir, lex, err);
         break;
     case llir_fn:
+        compile_llir((llir_fn_form*)llir, lex, err);
+        break;
     case llir_import:
     case llir_set:
     case llir_var:
