@@ -26,10 +26,8 @@ enum llir_tag {
     llir_fn,
     // namespace import
     llir_import,
-    // table mutation
-    llir_set_key,
-    // local var mutation
-    llir_set_var,
+    // mutation
+    llir_set,
     // variable lookup
     llir_var,
     // sequence of expressions in a new lexical environment, returning last
@@ -176,31 +174,17 @@ llir_import_form* mk_llir_import_form(const source_loc& origin,
         llir_import_form* dest=nullptr);
 void free_llir_import_form(llir_import_form* obj);
 
-struct llir_set_key_form {
+struct llir_set_form {
     llir_form header;
     llir_form* target;
-    llir_form* key;
     llir_form* value;
 };
-llir_set_key_form* mk_llir_set_key_form(const source_loc& origin,
+llir_set_form* mk_llir_set_form(const source_loc& origin,
         llir_form* target,
-        llir_form* key,
         llir_form* value,
-        llir_set_key_form* dest=nullptr);
-void clear_llir_set_key_form(llir_set_key_form* obj, bool recursive=true);
-void free_llir_set_key_form(llir_set_key_form* obj, bool recursive=true);
-
-struct llir_set_var_form {
-    llir_form header;
-    symbol_id var;
-    llir_form* value;
-};
-llir_set_var_form* mk_llir_set_var_form(const source_loc& origin,
-        symbol_id var,
-        llir_form* value,
-        llir_set_var_form* dest=nullptr);
-void clear_llir_set_var_form(llir_set_var_form* obj, bool recursive=true);
-void free_llir_set_var_form(llir_set_var_form* obj, bool recursive=true);
+        llir_set_form* dest=nullptr);
+void clear_llir_set_form(llir_set_form* obj, bool recursive=true);
+void free_llir_set_form(llir_set_form* obj, bool recursive=true);
 
 struct llir_var_form {
     llir_form header;

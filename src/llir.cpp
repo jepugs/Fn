@@ -202,45 +202,23 @@ void free_llir_import_form(llir_import_form* obj) {
     delete obj;
 }
 
-llir_set_key_form* mk_llir_set_key_form(const source_loc& origin,
+llir_set_form* mk_llir_set_form(const source_loc& origin,
         llir_form* target,
-        llir_form* key,
         llir_form* value) {
-    return new llir_set_key_form {
-        .header={.origin=origin, .tag=llir_set_key},
+    return new llir_set_form {
+        .header={.origin=origin, .tag=llir_set},
         .target=target,
-        .key=key,
         .value=value
     };
 }
-void clear_llir_set_key_form(llir_set_key_form* obj, bool recursive) {
+void clear_llir_set_form(llir_set_form* obj, bool recursive) {
     if (recursive) {
         free_llir_form(obj->target);
-        free_llir_form(obj->key);
         free_llir_form(obj->value);
     }
 }
-void free_llir_set_key_form(llir_set_key_form* obj, bool recursive) {
-    clear_llir_set_key_form(obj, recursive);
-    delete obj;
-}
-
-llir_set_var_form* mk_llir_set_var_form(const source_loc& origin,
-        symbol_id var,
-        llir_form* value) {
-    return new llir_set_var_form {
-        .header={.origin=origin, .tag=llir_set_var},
-        .var=var,
-        .value=value
-    };
-}
-void clear_llir_set_var_form(llir_set_var_form* obj, bool recursive) {
-    if (recursive) {
-        free_llir_form(obj->value);
-    }
-}
-void free_llir_set_var_form(llir_set_var_form* obj, bool recursive) {
-    clear_llir_set_var_form(obj, recursive);
+void free_llir_set_form(llir_set_form* obj, bool recursive) {
+    clear_llir_set_form(obj, recursive);
     delete obj;
 }
 
@@ -321,11 +299,8 @@ void clear_llir_form(llir_form* obj, bool recursive) {
         break;
     case llir_import:
         break;
-    case llir_set_key:
-        clear_llir_set_key_form((llir_set_key_form*)obj, recursive);
-        break;
-    case llir_set_var:
-        clear_llir_set_var_form((llir_set_var_form*)obj, recursive);
+    case llir_set:
+        clear_llir_set_form((llir_set_form*)obj, recursive);
         break;
     case llir_var:
         break;
@@ -361,11 +336,8 @@ void free_llir_form(llir_form* obj, bool recursive) {
     case llir_import:
         free_llir_import_form((llir_import_form*)obj);
         break;
-    case llir_set_key:
-        free_llir_set_key_form((llir_set_key_form*)obj, recursive);
-        break;
-    case llir_set_var:
-        free_llir_set_var_form((llir_set_var_form*)obj, recursive);
+    case llir_set:
+        free_llir_set_form((llir_set_form*)obj, recursive);
         break;
     case llir_var:
         free_llir_var_form((llir_var_form*)obj);
@@ -477,13 +449,7 @@ static void print_llir_offset(llir_form* form,
     case llir_import:
         out << "(IMPORT)";
         break;
-    case llir_set_key:
-        break;
-    case llir_set_var:
-        out << "(SET! " << st[((llir_set_var_form*)form)->var] << '\n';
-        print_llir_offset(((llir_set_var_form*)form)->value, st, chunk,
-                offset+6, true);
-        out << ')';
+    case llir_set:
         break;
     case llir_var:
         {

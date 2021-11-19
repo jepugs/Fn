@@ -41,6 +41,7 @@ llir_form* expander::expand_and(const source_loc& loc,
     if (!x) {
         return nullptr;
     }
+    // All this recursion! Someone should go back to Lisp >:(    i'm trying
     auto y = expand_and(loc, length - 1, &lst[1], meta);
     if (!y) {
         free_llir_form(x);
@@ -461,6 +462,41 @@ llir_form* expander::expand_fn(const source_loc& loc,
     return (llir_form*)mk_llir_fn_form(loc, params, body);
 }
 
+llir_form* expander::expand_or(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    if (length == 1) {
+        return (llir_form*)mk_llir_var_form(loc, intern("false"));
+    } else if (length == 2) {
+        return expand_meta(lst[1], meta);
+    }
+
+    auto x = expand_meta(lst[1], meta);
+    if (!x) {
+        return nullptr;
+    }
+    auto y = expand_and(loc, length - 1, &lst[1], meta);
+    if (!y) {
+        free_llir_form(x);
+        return nullptr;
+    }
+
+    // this symbol will hold the value of x
+    auto sym = gensym();
+    auto sym_form = (llir_form*)mk_llir_var_form(loc, sym);
+    auto sym_form2 = (llir_form*)mk_llir_var_form(loc, sym);
+    auto conditional= mk_llir_if_form(loc, sym_form, sym_form2, y);
+
+    auto res = mk_llir_with_form(loc, 1, 1);
+    res->body[0] = (llir_form*)conditional;
+    // assign sym to the value of x
+    res->vars[0] = sym;
+    res->value_forms[0] = x;
+    return (llir_form*)res;
+}
+
+
 llir_form* expander::expand_call(ast_form* lst, expander_meta* meta) {
     // function call
     auto op = lst->datum.list[0];
@@ -516,8 +552,8 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
         return expand_fn(loc, lst->list_length, lst->datum.list, meta);
     // } else if (name == "let") {
     //     return expand_let(loc, lst->list_length, lst->datum.list, meta);
-    // } else if (name == "or") {
-    //     return expand_or(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "or") {
+        return expand_or(loc, lst->list_length, lst->datum.list, meta);
     // } else if (name == "set!") {
     //     return expand_set(loc, lst->list_length, lst->datum.list, meta);
     }
