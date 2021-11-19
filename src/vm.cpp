@@ -118,11 +118,19 @@ void vm_thread::push(value v) {
     stack->push(v);
 }
 
-value vm_thread::pop() {
+void vm_thread::pop() {
     if (frame->bp >= stack->get_pointer()) {
         runtime_error("pop on empty call frame");
     }
-    return stack->pop();
+}
+
+value vm_thread::pop_to_ws(working_set* ws) {
+    if (frame->bp >= stack->get_pointer()) {
+        runtime_error("pop on empty call frame");
+    }
+    auto res = ws->pin_value(peek());
+    pop();
+    return res;
 }
 
 void vm_thread::pop_times(stack_address n) {
@@ -155,56 +163,14 @@ void vm_thread::set_local(local_address i, value v) {
     stack->set(pos, v);
 }
 
-code_address vm_thread::apply(working_set& use_ws, local_address num_args) {
-    // last argument is table, second to last is list
-    auto arg_tab = pop();
-    auto arg_list = pop();
-
-    auto tag = v_tag(arg_list);
-    if (tag != TAG_EMPTY && tag != TAG_CONS) {
-        runtime_error("2nd-to-last argument to apply must be a list.");
-    }
-    tag = v_tag(arg_tab);
-    if (tag != TAG_TABLE) {
-        runtime_error("Last argument to apply must be a table.");
-    }
-
-    forward_list<value> stack_vals;
-    for (u32 i = 0; i < num_args; ++i) {
-        stack_vals.push_front(pop());
-    }
-
-    // now the function is at the top of the stack
-
-    // push arguments
-    push(arg_tab);
-    for (auto v : stack_vals) {
-        push(v);
-    }
-    // count variadic arguments
-    u32 vlen = 0;
-    auto tl = arg_list;
-    while (tl.is_cons()) {
-        push(vcons(tl)->head);
-        tl = vcons(tl)->tail;
-        ++vlen;
-    }
- 
-    // TODO: use a maxargs constant
-    if (vlen + num_args > 255) {
-        runtime_error("Too many arguments for function call in apply.");
-    }
-
-    return call(use_ws, static_cast<local_address>(vlen + num_args));
-}
 
 // Calling convention: a call uses num_args + 2 elements on the stack. At the
 // very bottom we expect the callee, followed by num_args positional arguments,
 // and finally a table containing keyword arguments.
-code_address vm_thread::call(working_set& use_ws, local_address num_args) {
+code_address vm_thread::call(working_set* ws, local_address num_args) {
     // the function to call should be at the bottom
     auto callee = peek(num_args + 1);
-    auto kw_tab = use_ws.pin_value(pop()); // keyword arguments
+    auto kw_tab = pop_to_ws(ws); // keyword arguments
     if (!kw_tab.is_table()) {
         runtime_error("Error on call instruction: malformed keyword table.");
     }
@@ -221,10 +187,10 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
         }
         auto ws2 = alloc->add_working_set();
         for (i32 i = num_args - 1; i >= 0; --i) {
-            args[i] = ws2.pin_value(pop());
+            args[i] = pop_to_ws(&ws2);
         }
         // pop the foreign function itself
-        ws2.pin_value(pop());
+        pop_to_ws(&ws2);
         interpreter_handle handle{.inter=this, .ws=&ws2, .func_name="<ffi call>"};
         push(func->foreign_func(&handle, num_args, args));
         return ip + 2;
@@ -245,12 +211,12 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
         i32 m = num_args - num_pos;
         for (auto i = 0; i < m; ++i) {
             // this builds the list in the correct order
-            var_list = use_ws.add_cons(pop(), var_list);
+            var_list = ws->add_cons(pop_to_ws(ws), var_list);
         }
     }
 
     // validate keyword table
-    value var_tab = use_ws.add_table();
+    value var_tab = ws->add_table();
     auto& kw = vtable(kw_tab)->contents;
     table<symbol_id,value> pos; // holds additional positional parameters
     for (auto k : kw.keys()) {
@@ -308,14 +274,14 @@ code_address vm_thread::call(working_set& use_ws, local_address num_args) {
 }
 
 
-void vm_thread::init_function(function* f) {
+void vm_thread::init_function(working_set* ws, function* f) {
     auto stub = f->stub;
 
     // Add init values
     // DANGER! Init vals are popped right off the stack, so they better be there
     // when this function gets initialized!
     for (auto i = stub->req_args; i < stub->pos_params.size(); ++i) {
-        f->init_vals[i] = stack->pop();
+        f->init_vals[i] = pop_to_ws(ws);
     }
 
     // set upvalues
@@ -365,7 +331,7 @@ void vm_thread::step() {
     case OP_NOP:
         break;
     case OP_POP:
-        lp = pop();
+        lp = pop_to_ws(&ws);
         break;
     case OP_COPY:
         v1 = peek(cur_chunk()->read_byte(ip+1));
@@ -378,7 +344,7 @@ void vm_thread::step() {
         ++ip;
         break;
     case OP_SET_LOCAL:
-        v1 = pop();
+        v1 = pop_to_ws(&ws);
         set_local(cur_chunk()->read_byte(ip+1), v1);
         ++ip;
         break;
@@ -403,10 +369,10 @@ void vm_thread::step() {
         // TODO: check upvalue exists
         u = frame->caller->upvals[l];
         if (u->closed) {
-            u->closed_value = pop();
+            u->closed_value = pop_to_ws(&ws);
         } else {
             auto pos = frame->caller->stub->upvals[l] + frame->bp;
-            stack->set(pos, pop());
+            stack->set(pos, pop_to_ws(&ws));
         }
         ++ip;
         break;
@@ -415,7 +381,7 @@ void vm_thread::step() {
         id = cur_chunk()->read_short(ip+1);
         stub = cur_chunk()->get_function(cur_chunk()->read_short(ip+1));
         v1 = ws.add_function(stub);
-        init_function(vfunction(v1));
+        init_function(&ws, vfunction(v1));
         push(v1);
         ip += 2;
         break;
@@ -428,17 +394,17 @@ void vm_thread::step() {
         break;
 
     case OP_GLOBAL:
-        v1 = pop();
+        v1 = pop_to_ws(&ws);
         if (v_tag(v1) != TAG_SYM) {
             runtime_error("OP_GLOBAL name operand is not a symbol.");
         }
         push(get_global(v1));
         break;
     case OP_SET_GLOBAL:
-        v1 = pop(); // value
-        // FIXME: potential optimization: make the second pop() here a peek()
+        v1 = pop_to_ws(&ws); // value
+        // FIXME: potential optimization: make the second pop_to_ws(&ws) here a peek()
         // instead and leave the symbol on the stack
-        v2 = pop(); // name
+        v2 = pop_to_ws(&ws); // name
         if (v_tag(v2) != TAG_SYM) {
             runtime_error("OP_SET_GLOBAL name operand is not a symbol.");
         }
@@ -466,9 +432,9 @@ void vm_thread::step() {
 
     case OP_OBJ_GET:
         // key
-        v1 = pop();
+        v1 = pop_to_ws(&ws);
         // object
-        v2 = pop();
+        v2 = pop_to_ws(&ws);
         if (v_tag(v2) == TAG_TABLE) {
             push(*vtable(v2)->contents.get(v1));
             break;
@@ -478,11 +444,11 @@ void vm_thread::step() {
 
     case OP_OBJ_SET:
         // new-value
-        v3 = pop();
+        v3 = pop_to_ws(&ws);
         // key
-        v1 = pop();
+        v1 = pop_to_ws(&ws);
         // object
-        v2 = pop();
+        v2 = pop_to_ws(&ws);
         if (v_tag(v2) != TAG_TABLE) {
             runtime_error("obj-set operand not a table");
         }
@@ -502,7 +468,7 @@ void vm_thread::step() {
 
     case OP_CJUMP:
         // jump on false
-        if (!v_truthy(pop())) {
+        if (!v_truthy(pop_to_ws(&ws))) {
             jump = true;
             addr = ip + 3 + static_cast<i16>(cur_chunk()->read_short(ip+1));
         } else {
@@ -513,7 +479,7 @@ void vm_thread::step() {
     case OP_CALL:
         num_args = cur_chunk()->read_byte(ip+1);
         jump = true;
-        addr = call(ws, num_args);
+        addr = call(&ws, num_args);
         break;
 
     case OP_RETURN:
@@ -522,7 +488,7 @@ void vm_thread::step() {
             runtime_error("return instruction at top level.");
         }
         // get return value
-        v1 = ws.pin_value(pop());
+        v1 = pop_to_ws(&ws);
 
         // jump to return address
         jump = true;

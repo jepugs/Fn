@@ -107,17 +107,19 @@ private:
     void do_import();
 
     // stack operations
-    value pop();
+    void pop();
+    // this pins the top of the stack through the given working_set before
+    // popping it
+    value pop_to_ws(working_set* ws);
     void pop_times(stack_address n);
     void push(value v);
 
     // returns the next addr to go to
-    code_address call(working_set& use_ws, local_address num_args);
-    code_address apply(working_set& use_ws, local_address num_args);
+    code_address call(working_set* use_ws, local_address num_args);
 
     // set up a newly created function (including taking init values off the
     // stack)
-    void init_function(function* obj);
+    void init_function(working_set* ws, function* obj);
 
 public:
     // initialize the virtual machine
