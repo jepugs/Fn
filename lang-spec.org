@@ -382,9 +382,128 @@ Functions are created using ~fn~.
 A short syntax is also provided for creating functions via the dollar sign,
 which expands into a ~dollar-fn~ special form.
 
+For example:
+#+BEGIN_SRC fn
+(fn (x) (* x x))
+$(* $ $)
+(dollar-fn (* $ $))
+#+END_SRC
+
+All three of the above take in a single argument and square it. Note that
+dollar-fn uses ~$~ (or equivalently, ~$0~) for the name of the first parameter.
+(Other positional parameters can be accessed with ~$1~, ~$2~, and so on). See
+subsection [[dollar-fn]] for more details.
+
+~fn~ on the other hand has an explicit parameter list. The syntax for parameter
+lists is this:
+#+BEGIN_SRC
+param-list      ::=  '(' <req-param>* <opt-param>* <var-params>? ')'
+req-param       ::= <identifier>
+opt-param       ::= (<identifier> <init-form>)
+var-params      ::= <var-list-param> <var-table-param>?
+                  | <var-table-param> <var-list-param>?
+var-list-param  ::= '&' <identifier>
+var-table-param ::= ':&' <identifier>
+#+END_SRC
+
+In other words, parameter lists consist of zero or more required parameters,
+zero or more optional parameters, and optionally end with variadic table and
+list arguments.
+
+Each of these parameters has an associated identifier (i.e. a symbol that is a
+legal name). In the function's body, the respective arguments are bound to these
+names. See subsection [[Function Calls]] for information about how argument lists
+are processed during functino calls.
+
+
+*** Function Calls
+
+Fn allows arguments to be named in function calls very similarly to Python.
+Named arguments are passed using keywords, which are simply symbols whose names
+begin with ~:~. These symbols are not legal identifiers, so their appearance in
+function calls is unambiguous. We also place the restriction that positional
+arguments may not follow named ones. (Believe me, I tried to make it work
+without that, and it's a mess at every level).
+
+First we will deal with the case where there are no variadic parameters. See the
+following example.
+#+BEGIN_SRC fn
+;; this function has 3 positional parameters, the last of which is optional
+(defn arg-demo (x y (z 2))
+  (* z (+ x y)))
+
+;; here are a couple of ways we could call this function
+(arg-demo 2 3)            ; x = 2, y = 3, z = 2, result = 10
+(arg-demo 2 3 4)          ; x = 2, y = 3, z = 4, result = 20
+(arg-demo :x 2 :y 3)      ; x = 2, y = 3, z = 2, result = 10
+(arg-demo :z 2 :y 3 :x 2) ; x = 2, y = 3, z = 2, result = 10
+(arg-demo :z 3 1 2)       ; error! positional argument following named argument
+#+END_SRC
+
+To be precise, function parameters (still considering the case where there are
+no variadic parameters) are bound using the following procedure:
+- the unnamed arguments are bound to positional parameters in order
+- the named arguments are bound to their respective parameters, raising an error
+  if any duplicates or unrecognized names are found
+- unbound optional parameters are set to their default values. If any required
+  parameters remain unbound, an error is raised
+
+Now, variadic arguments change some of the rules. We have two types of variadic
+parameters in Fn: variadic tables, and variadic lists.
+
+For tables, the semantics are very simple. Functions with a variadic table
+parameter can accept any named argument, not just the names corresponding to
+their functions (duplicated names are still not allowed). Moreover, it's now
+possible for a named argument to have the same name as a positional argument.
+#+BEGIN_SRC fn
+;; demo function ignores first arg and returns table
+(def var-tab-demo ((x nil) :& tab) ; variadic table arguments denoted with :&
+  tab)
+
+(var-tab-demo 0)         ; result = {}
+(var-tab-demo :y 2 :x 1) ; result = {'y 1}
+(var-tab-demo 1 :x 2)    ; result = {'x 2}
+#+END_SRC
+
+As can be seen above, the variadic table is constructed by taking all
+unrecognized named arguments and inserting them into the table as key-value
+pairs. Moreover, if a named argument is recognized, but was already provided as
+a positional argument, then that goes to the variadic table as well.
+
+Variadic lists are analogous to variadic tables, but where those act on trailing
+named arguments, variadic lists act on trailing positional arguments. As such,
+it is impossible to use named arguments while at the same time passing a
+non-empty variadic list argument, except in the case where there is also a
+variadic table parameter to catch the trailing arguments.
+#+BEGIN_SRC fn
+;; demo function ignores first arg and returns list
+(def var-lst-demo (x & list) ; variadic lists denoted with &
+  list)
+
+(var-lst-demo 0 1 2)  ;=> [1 2]
+(var-lst-demo 0)      ;=> []
+(var-lst-demo 0 :x 2) ;=> syntax error
+(var-lst-demo :x 0)   ;=> []
+(var-lst-demo :x 0 1) ;=> syntax error
+
+;; demo function using both variadic parameters
+(def var-mixed-demo (x & list :& table)
+  [list table])
+
+;; names not explicitly in the parameter list get sent to the variadic table
+(var-mixed-demo :x 4 :y 2) ;=> [[] {'y 2}]
+;; with a variadic table argument, duplicate names are allowed if one is a 
+;; positional arg:
+(var-mixed-demo 'a 'b :x 4 :y 2) ;=> [['b] {'x 4 'y 2}]
+;; as always, keywords cannot precede positional arguments
+(var-mixed-demo :x 4 :y 2 'a 'b) ;=> syntax error
+#+END_SRC
+
 
 *** Variable Capture
 
+
+*** dollar-fn
 
 ** TODO Namespaces and Import
 
