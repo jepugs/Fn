@@ -76,6 +76,12 @@ void compiler::patch_short(u16 u, code_address where) {
     dest->write_short(u, where);
 }
 
+void compiler::compile_symbol(symbol_id sym) {
+    auto id = dest->add_constant(as_sym_value(sym));
+    write_byte(OP_CONST);
+    write_short(id);
+}
+
 void compiler::compile_llir(const llir_call_form* llir,
         lexical_env* lex,
         compile_error* err) {
@@ -86,6 +92,17 @@ void compiler::compile_llir(const llir_call_form* llir,
     }
     // TODO: compile keyword table
     write_byte(OP_TABLE);
+    for (u32 i = 0; i < llir->num_kw_args; ++i) {
+        // copy the table for the set command
+        write_byte(OP_COPY);
+        write_byte(0);
+        auto& k = llir->kw_args[i];
+        compile_symbol(k.nonkw_name);
+        ++lex->sp;
+        compile_llir_generic(k.value_form, lex, err);
+        write_byte(OP_OBJ_SET);
+        return_on_err;
+    }
     ++lex->sp;
 
     // compile callee

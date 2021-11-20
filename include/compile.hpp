@@ -60,6 +60,10 @@ private:
     void write_short(u16 u);
     void patch_short(u16 u, code_address where);
 
+    // add a symbol as a constant and compile it. Unlike other compilation
+    // functions, this does not affect the stack pointer.
+    void compile_symbol(symbol_id sym);
+
     void compile_llir(const llir_call_form* llir,
             lexical_env* lex,
             compile_error* err);

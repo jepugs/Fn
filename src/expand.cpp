@@ -509,6 +509,20 @@ llir_form* expander::expand_call(const source_loc& loc,
     for (i = 1; i < len; ++i) {
         if (lst[i]->kind == ak_symbol_atom
                 && is_keyword(lst[i]->datum.sym)) {
+            // first keyword
+            break;
+        } else { // positional argument
+            auto x = expand_meta(lst[i], meta);
+            if (!x) {
+                failed = true;
+                break;
+            }
+            pos_args.push_back(x);
+        }
+    }
+    for (; i < len; i += 2) {
+        if (lst[i]->kind == ak_symbol_atom
+                && is_keyword(lst[i]->datum.sym)) {
             if (i + 1 >= len) {
                 meta->err.origin = lst[i]->loc;
                 meta->err.message = "Keyword without any argument.";
@@ -521,20 +535,29 @@ llir_form* expander::expand_call(const source_loc& loc,
                 break;
             }
             auto name = inter->get_symtab()->symbol_name(lst[i]->datum.sym);
-            kw_args.push_back(llir_kw_arg{intern(name.substr(1)),x});
-            ++i;
-        } else { // positional argument
-            auto x = expand_meta(lst[i], meta);
-            if (!x) {
-                failed = true;
-                break;
+            auto sym = intern(name.substr(1));
+            // check for duplicates
+            for (auto k : kw_args) {
+                if (k.nonkw_name == sym) {
+                    meta->err.origin = lst[i]->loc;
+                    meta->err.message = "Duplicate keyword argument.";
+                    failed = true;
+                    break;
+                }
             }
-            pos_args.push_back(x);
+            kw_args.push_back(llir_kw_arg{sym,x});
+        } else {
+            meta->err.origin = lst[i]->loc;
+            meta->err.message = "Positional arguments cannot follow keyword "
+                    "arguments.";
+            failed = true;
+            break;
         }
     }
 
-    auto callee = expand_meta(lst[0], meta);
-    if (!callee || failed) {
+    llir_form* callee;
+    // carefully crafted conditional so expand_meta is only called if !failed
+    if (failed || !(callee = expand_meta(lst[0], meta))) {
         for (auto x : kw_args) {
             free_llir_form(x.value_form);
         }

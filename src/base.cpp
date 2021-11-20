@@ -13,4 +13,9 @@ gc_header* mk_gc_header(u8 bits, gc_header* dest) {
     };
 }
 
+template<>
+u32 hash<u8>(const u8& v) {
+    return v;
+}
+
 }

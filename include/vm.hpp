@@ -92,6 +92,8 @@ private:
     value local(local_address l) const;
     // set a local_address value
     void set_local(local_address l, value v);
+    // set a stack value from the top (cannot exceed current frame)
+    void set_from_top(local_address l, value v);
 
     // internalize a symbol by name
     value get_symbol(const string& name);

@@ -164,6 +164,15 @@ void vm_thread::set_local(local_address i, value v) {
     stack->set(pos, v);
 }
 
+void vm_thread::set_from_top(local_address i, value v) {
+    stack_address pos = stack->get_pointer() - i;
+    if (pos < frame->bp) {
+        runtime_error("out of stack bounds on set-local.");
+    }
+    stack->set(pos, v);
+}
+
+
 
 // Calling convention: a call uses num_args + 2 elements on the stack. At the
 // very bottom we expect the callee, followed by num_args positional arguments,
@@ -214,24 +223,18 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
         }
     }
 
-    // push nil values to the stack to fill out remaining positional args
-    for (auto i = num_args; i < num_pos; ++m) {
-        push(V_NIL);
-    }
-
     // validate keyword table
     value var_tab = ws->add_table();
     auto& kw = vtable(kw_tab)->contents;
-    u32 total_pos_args = num_args;
+    table<local_address,value> extra_pos;
     for (auto k : kw.keys()) {
         auto id = vsymbol(k);
         // first, check if this is a positional argument we still need
         bool found_pos = false;
         for (auto i = num_args; i < num_pos; ++i) {
             if(stub->pos_params[i] == id) {
-                set_local
+                extra_pos.insert(i, *kw.get(k));
                 found_pos = true;
-                ++total_pos_args;
                 break;
             }
         }
@@ -241,21 +244,26 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
 
         if (!stub->vt_param.has_value()) {
             // if there's no variadic table argument, we have an error here
-            runtime_error("Unrecognized keyword argument in call.");
+            runtime_error("Unrecognized or duplicate keyword in call.");
         } else {
             vtable(var_tab)->contents.insert(k, *kw.get(k));
         }
     }
 
-    // finish placing positional parameters on the stack
-    for (u32 i = num_args; i < num_pos; ++i) {
-        auto v = pos.get(stub->pos_params[i]);
-        if (v.has_value()) {
-            push(*v);
-        } else if (i >= stub->req_args) {
-            push(vfunction(callee)->init_vals[i-stub->req_args]);
+    u32 i;
+    for (i = num_args; i < stub->req_args; ++i) {
+        auto x = extra_pos.get(i);
+        if (!x.has_value()) {
+            runtime_error("Missing required argument in call.");
+        }
+        push(*x);
+    }
+    for (; i < num_pos; ++i) {
+        auto x = extra_pos.get(i);
+        if (!x.has_value()) {
+            push(func->init_vals[i - stub->req_args]);
         } else {
-            runtime_error("Missing non-optional argument.");
+            push(*x);
         }
     }
 

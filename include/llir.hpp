@@ -148,7 +148,6 @@ struct llir_fn_params {
     // init forms for optional args
     llir_form** init_forms;
 };
-
 struct llir_fn_form {
     llir_form header;
     llir_fn_params params;
