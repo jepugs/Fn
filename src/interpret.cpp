@@ -132,6 +132,31 @@ ast_form* interpreter::macroexpand(symbol_id ns_id, const ast_form* form) {
     return res;
 }
 
+value interpreter::ast_to_value(working_set* ws, const ast_form* form) {
+    switch (form->kind) {
+    case ak_number_atom:
+        return as_value(form->datum.num);
+    case ak_string_atom:
+        return ws->add_string(*form->datum.str);
+    case ak_symbol_atom:
+        return as_sym_value(form->datum.sym);
+    case ak_list:
+        if (form->list_length == 0) {
+            return V_EMPTY;
+        } else {
+            auto lst = form->datum.list;
+            auto res = ws->add_cons(ast_to_value(ws, lst[0]), V_EMPTY);
+            auto hd = res;
+            for (u32 i = 1; i < form->list_length; ++i) {
+                vcons(hd)->tail = ws->add_cons(ast_to_value(ws, lst[i]), V_EMPTY);
+                hd = vcons(hd)->tail;
+            }
+            return res;
+        }
+    }
+    return V_NIL; // unreachable, but g++ was whining
+}
+
 void interpreter::runtime_error(const string& msg,
         const source_loc& loc) {
     throw fn_error("runtime", msg, loc);

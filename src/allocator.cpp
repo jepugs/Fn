@@ -165,6 +165,15 @@ value working_set::add_string(const string& s) {
     return v;
 }
 
+value working_set::add_string(const fn_string& s) {
+    alloc->collect();
+    alloc->mem_usage += sizeof(fn_string) + s.len;
+    ++alloc->count;
+    auto v = as_value(new fn_string{s});
+    new_objects.push_front(v);
+    return v;
+}
+
 value working_set::add_table() {
     alloc->collect();
     alloc->mem_usage += sizeof(fn_table);
@@ -357,7 +366,11 @@ void allocator::mark() {
     for (auto k : globals->ns_table.keys()) {
         auto ns = *globals->get_ns(k);
         // iterate over bindings
-        for (auto k2 : ns->contents.keys()) {
+        for (auto k2 : ns->names()) {
+            auto h = ns->get(k2)->header();
+            mark_descend(*h);
+        }
+        for (auto k2 : ns->macro_names()) {
             auto h = ns->get(k2)->header();
             mark_descend(*h);
         }

@@ -126,6 +126,8 @@ constexpr u8 OP_CLOSURE = 0x07;
 // process
 constexpr u8 OP_CLOSE = 0x08;
 
+// NOTE: might be better if set_macro, set_global had argument orders switched
+
 // global; get a global variable based on a string on top of the stack
 constexpr u8 OP_GLOBAL = 0x10;
 // set-global; set a global variable. stack arguments ->[value] symbol ...

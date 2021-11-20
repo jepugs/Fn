@@ -101,6 +101,7 @@ public:
 
     value add_cons(value hd, value tl);
     value add_string(const string& s);
+    value add_string(const fn_string& s);
     value add_table();
     // Create a function. The caller is responsible for correctly setting
     // upvalues and init values.

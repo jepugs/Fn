@@ -53,19 +53,12 @@ value vm_thread::last_pop() const {
 }
 
 void vm_thread::add_global(value name, value v) {
-    if (!name.is_symbol()) {
-        runtime_error("Global name is not a symbol.");
-    }
     auto ns_id = cur_chunk()->ns_id;
     auto ns = *globals->get_ns(ns_id);
     ns->set(vsymbol(name), v);
 }
 
 value vm_thread::get_global(value name) {
-    if (!name.is_symbol()) {
-        runtime_error("Global name is not a symbol.");
-    }
-
     auto ns_id = cur_chunk()->ns_id;
     auto ns = *globals->get_ns(ns_id);
     auto res = ns->get(vsymbol(name));
@@ -76,6 +69,25 @@ value vm_thread::get_global(value name) {
     }
     return *res;
 }
+
+void vm_thread::add_macro(value name, value v) {
+    auto ns_id = cur_chunk()->ns_id;
+    auto ns = *globals->get_ns(ns_id);
+    ns->set_macro(vsymbol(name), v);
+}
+
+value vm_thread::get_macro(value name) {
+    auto ns_id = cur_chunk()->ns_id;
+    auto ns = *globals->get_ns(ns_id);
+    auto res = ns->get_macro(vsymbol(name));
+
+    if (!res.has_value()) {
+        runtime_error("Attempt to access unbound global variable "
+                + v_to_string(name, get_symtab()));
+    }
+    return *res;
+}
+
 
 
 optional<value> vm_thread::try_import(symbol_id ns_id) {
@@ -433,13 +445,26 @@ void vm_thread::step() {
         break;
     case OP_SET_GLOBAL:
         v1 = pop_to_ws(&ws); // value
-        // FIXME: potential optimization: make the second pop_to_ws(&ws) here a peek()
-        // instead and leave the symbol on the stack
         v2 = pop_to_ws(&ws); // name
         if (v_tag(v2) != TAG_SYM) {
             runtime_error("OP_SET_GLOBAL name operand is not a symbol.");
         }
         add_global(v2, v1);
+        break;
+    case OP_MACRO:
+        v1 = pop_to_ws(&ws);
+        if (v_tag(v1) != TAG_SYM) {
+            runtime_error("OP_MACRO name operand is not a symbol.");
+        }
+        push(get_macro(v1));
+        break;
+    case OP_SET_MACRO:
+        v1 = pop_to_ws(&ws);
+        v2 = pop_to_ws(&ws);
+        if (v_tag(v2) != TAG_SYM) {
+            runtime_error("OP_SET_MACRO name operand is not a symbol.");
+        }
+        add_macro(v2, v1);
         break;
 
     case OP_CONST:
@@ -467,7 +492,11 @@ void vm_thread::step() {
         // object
         v2 = pop_to_ws(&ws);
         if (v_tag(v2) == TAG_TABLE) {
-            push(*vtable(v2)->contents.get(v1));
+            if (vtable(v2)->contents.has_key(v1)) {
+                push(*vtable(v2)->contents.get(v1));
+            } else {
+                push(V_NIL);
+            }
             break;
         } 
         runtime_error("obj-get operand not a table");

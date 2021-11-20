@@ -100,6 +100,8 @@ private:
 
     void add_global(value name, value v);
     value get_global(value name);
+    void add_macro(value name, value v);
+    value get_macro(value name);
 
     // attempt an import without escaping to interpreter
     optional<value> try_import(symbol_id ns_id);

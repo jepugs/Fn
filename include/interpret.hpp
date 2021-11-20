@@ -49,6 +49,7 @@ public:
 
     // macroexpand a form in the given namespace
     ast_form* macroexpand(symbol_id ns_id, const ast_form* form);
+    value ast_to_value(working_set* ws, const ast_form* form);
     
 
     // Emit a runtime error in the form of an exception

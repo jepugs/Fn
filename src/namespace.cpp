@@ -6,12 +6,28 @@ fn_namespace::fn_namespace(symbol_id name)
     : name{name} {
 }
 
-optional<value> fn_namespace::get(symbol_id sym) {
-    return contents.get(sym);
+optional<value> fn_namespace::get(symbol_id sym) const {
+    return defs.get(sym);
 }
 
 void fn_namespace::set(symbol_id sym, const value& v) {
-    contents.insert(sym, v);
+    defs.insert(sym, v);
+}
+
+forward_list<symbol_id> fn_namespace::names() const {
+    return defs.keys();
+}
+
+optional<value> fn_namespace::get_macro(symbol_id sym) const {
+    return macros.get(sym);
+}
+
+void fn_namespace::set_macro(symbol_id sym, const value& v) {
+    macros.insert(sym, v);
+}
+
+forward_list<symbol_id> fn_namespace::macro_names() const {
+    return macros.keys();
 }
 
 
@@ -45,9 +61,13 @@ fn_namespace* global_env::create_ns(symbol_id name) {
 
 void do_import(symbol_table& symtab, fn_namespace& dest, fn_namespace& src,
         const string& prefix) {
-    for (auto k : src.contents.keys()) {
+    for (auto k : src.names()) {
         auto name = symtab.intern(prefix + symtab[k]);
         dest.set(name, *src.get(k));
+    }
+    for (auto k : src.macro_names()) {
+        auto name = symtab.intern(prefix + symtab[k]);
+        dest.set_macro(name, *src.get(k));
     }
 }
 

@@ -247,9 +247,9 @@ struct alignas(32) fn_string {
     const char* data;
 
     // these constructors copy data
-    fn_string(const string& src);
+    explicit fn_string(const string& src);
     // src must be null terminated
-    fn_string(const char* src);
+    explicit fn_string(const char* src);
     fn_string(const fn_string& src);
     ~fn_string();
 

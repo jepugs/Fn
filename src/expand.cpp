@@ -623,6 +623,7 @@ llir_form* expander::expand_if(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length != 4) {
+        meta->err.origin = loc;
         meta->err.message = "if requires exactly 3 arguments.";
         return nullptr;
     }
@@ -694,6 +695,42 @@ llir_form* expander::expand_or(const source_loc& loc,
     res->vars[0] = sym;
     res->value_forms[0] = x;
     return (llir_form*)res;
+}
+
+llir_form* expander::expand_quote(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    if (length != 2) {
+        meta->err.origin = loc;
+        meta->err.message = "quote requires exactly 1 argument.";
+        return nullptr;
+    }
+    auto ws = inter->get_alloc()->add_working_set();
+    auto v = inter->ast_to_value(&ws, lst[1]);
+    auto id = chunk->add_constant(v);
+    return (llir_form*)mk_llir_const_form(loc, id);
+}
+
+llir_form* expander::expand_set(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    if (length != 3) {
+        meta->err.origin = loc;
+        meta->err.message = "set! requires exactly 2 argument.";
+        return nullptr;
+    }
+    auto tar = expand_meta(lst[1], meta);
+    if (!tar) {
+        return nullptr;
+    }
+    auto val = expand_meta(lst[2], meta);
+    if (!val) {
+        return nullptr;
+    }
+
+    return (llir_form*)mk_llir_set_form(loc, tar, val);
 }
 
 llir_form* expander::expand_call(const source_loc& loc,
@@ -816,15 +853,15 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
         return expand_or(loc, lst->list_length, lst->datum.list, meta);
     // } else if (name == "quasiquote") {
     //     return expand_quasiquote(loc, lst->list_length, lst->datum.list, meta);
-    // } else if (name == "quote") {
-    //     return expand_quote(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "quote") {
+        return expand_quote(loc, lst->list_length, lst->datum.list, meta);
     // } else if (name == "unquote") {
     //     return expand_unquote(loc, lst->list_length, lst->datum.list, meta);
     // } else if (name == "unquote-splicing") {
     //     return expand_unquote_splicing(loc, lst->list_length,
     //             lst->datum.list, meta);
-    // } else if (name == "set!") {
-    //     return expand_set(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "set!") {
+        return expand_set(loc, lst->list_length, lst->datum.list, meta);
     // } else if (name == "with") {
     //     return expand_with(loc, lst->list_length, lst->datum.list, meta);
     }

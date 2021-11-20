@@ -9,16 +9,18 @@ namespace fn {
 // namespaces are key-value stores used to hold global variables and imports
 struct alignas(32) fn_namespace {
     symbol_id name;
-    table<symbol_id,value> contents;
+    table<symbol_id,value> defs;
+    table<symbol_id,value> macros;
 
     fn_namespace(symbol_id name);
-    optional<value> get(symbol_id name);
+
+    optional<value> get(symbol_id name) const;
     void set(symbol_id name, const value& v);
+    forward_list<symbol_id> names() const;
 
-    // unimplemented
-    optional<value> get_macro(symbol_id name);
+    optional<value> get_macro(symbol_id name) const;
     void set_macro(symbol_id name, const value& v);
-
+    forward_list<symbol_id> macro_names() const;
 };
 
 

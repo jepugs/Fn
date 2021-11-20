@@ -116,6 +116,14 @@ private:
             u32 length,
             ast_form** lst,
             expander_meta* meta);
+    llir_form* expand_quote(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+    llir_form* expand_set(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
 
     // expands a list form as if it's a function call. Assumes lst.length_length
     // >= 1.
