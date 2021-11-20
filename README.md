@@ -36,9 +36,8 @@ Fn has the following primary goals:
   Windows, and I'm even gonna try to get it going on bare metal (on some ARM
   MCUs)!
   
-Anyway, for all the marketing copy above, I'm really just making this
-programming language for myself. It's a weird language. It'd be crazy if anyone
-else wanted to use it.
+Anyway, for all the marketing copy above, I'm really just making a programming
+language for myself. It'd be cool if someone else liked it though!
 
 
 ## A Brief Example
@@ -107,16 +106,27 @@ consumption.
 This is a one man show, and I have a busy life. Progress happens at
 unpredictable intervals.
 
-The big goal right now is to get the entire core language implemented. It's
-actually already *mostly* implemented, but I've decided to rewrite the entire
-compiler, because I think a different architecture would better accommodate
-macros. I'm also improving the error handling and tidying up the parser while I
-go. This is happening in the llir-rewrite branch.
+The big goal right now is to get the entire core language implemented. I'm
+really close to this. I just rewrote the compiler and interpreter pipeline to
+incorporate macroexpansion and accommodate the more difficult special forms. In
+particular, I've already implemented `dollar-fn`, which I expected to be the
+most difficult of the special forms.
 
-I can't give reliable time estimates, but the rewritten compiler is nearly in a
-functional state (albeit one that only supports a subset of Fn). The virtual
-machine and allocator are pretty much done, so once I get the compiler sorted
-out I'll just be on to the standard library.
+The missing pieces right now are:
+- a good frontend
+- a couple of special forms
+- the import system
+- a few details around macroexpansion
+- a proper installation procedure in the CMake files
+- standard library (gotta rework the FFI one more time)
+- test suites for most parts of the interpreter
+
+This will bring us up to an 0.1 release candidate. Once I'm done with this
+stuff, I'll probably get straight to work on pattern matching and data structure
+features for Fn, since those are very important. Other priorities include coming
+up with a good format to serialize Fn bytecode, adding more I/O stuff to the
+standard library, and separating the virtual machine into a separate program so
+I can try to force it into microcontroller RAM. We'll see how that goes :p.
 
 
 ## Building Fn
