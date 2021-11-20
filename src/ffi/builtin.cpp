@@ -1,9 +1,14 @@
 #include "ffi/builtin.hpp"
 
-#define fn_fun(name) static value fn__ ## name( \
+#define fn_fun(name, namestr, args) \
+    const char* fn_args__ ## name = args; \
+    const char* fn_name__ ## name = namestr; \
+    static value fn__ ## name( \
             interpreter_handle* handle, \
             local_address argc, \
             value* argv)
+#define fn_add_builtin(inter, name) \
+    (inter).add_builtin_function( fn_name__ ## name, fn__ ## name );
 
 #define assert_args_eq(n) if (argc != n) { \
         handle->runtime_error("Wrong number of arguments."); \
@@ -11,7 +16,29 @@
 
 namespace fn {
 
-fn_fun(add) {
+// hypothetical list processing macro for ffi code
+#define fn_for_list(var, lst) \
+    for (auto var = lst; vtag(var) != TAG_EMPTY; var = v_tail(var))
+
+fn_fun(add, "+", "(& args)") {
+    // // theoretical code for when i update ffi again
+    // f64 res = 0;
+    // // can always safely iterate over lists like this. Could be a macro?
+    // handle->assert_list(args[0]);
+    // for (auto tl = args[0]; vtag(tl) != TAG_EMPTY; tl = v_tail(tl)) {
+    //     auto hd = v_head(tl);
+    //     handle->assert_type(TAG_NUM, hd);
+    //     res += vnum(hd);
+    // }
+    // return as_value(res);
+
+    // same for loop above, but with a macro
+    // fn_for_list(x, args[0]) {
+    //     auto hd = v_head(tl);
+    //     handle->assert_type(TAG_NUM, hd);
+    //     res += vnum(hd);
+    // }
+    
     f64 res = 0;
     for (int i = 0; i < argc; ++i) {
         handle->assert_type(TAG_NUM, argv[i]);
@@ -20,7 +47,7 @@ fn_fun(add) {
     return as_value(res);
 }
 
-fn_fun(sub) {
+fn_fun(sub, "-", "(& args)") {
     f64 res = 0;
     if (argc == 0) {
         return as_value(res);
@@ -34,7 +61,7 @@ fn_fun(sub) {
     return as_value(res);
 }
 
-fn_fun(mul) {
+fn_fun(mul, "*", "(& args)") {
     f64 res = 1;
     for (int i = 0; i < argc; ++i) {
         handle->assert_type(TAG_NUM, argv[i]);
@@ -43,7 +70,7 @@ fn_fun(mul) {
     return as_value(res);
 }
 
-fn_fun(div) {
+fn_fun(div, "/", "(& args)") {
     f64 res = 0;
     if (argc == 0) {
         return as_value(res);
@@ -57,46 +84,46 @@ fn_fun(div) {
     return as_value(res);
 }
 
-fn_fun(abs) {
+fn_fun(abs, "abs", "(x)") {
     if (argc != 1) {
         handle->runtime_error("Wrong number of arguments.");
     }
     return handle->v_abs(argv[0]);
 }
 
-fn_fun(mod) {
+fn_fun(mod, "mod", "(x y)") {
     if (argc != 2) {
         handle->runtime_error("Wrong number of arguments.");
     }
     return handle->v_mod(argv[0], argv[1]);
 }
 
-fn_fun(pow) {
+fn_fun(pow, "**", "(x y)") {
     if (argc != 2) {
         handle->runtime_error("Wrong number of arguments.");
     }
     return handle->v_pow(argv[0], argv[1]);
 }
 
-fn_fun(exp) {
+fn_fun(exp, "exp", "(x)") {
     if (argc != 1) {
         handle->runtime_error("Wrong number of arguments.");
     }
     return handle->v_exp(argv[0]);
 }
 
-fn_fun(log) {
+fn_fun(log, "log", "(x)") {
     if (argc != 1) {
         handle->runtime_error("Wrong number of arguments.");
     }
     return handle->v_log(argv[0]);
 }
 
-fn_fun(number_q) {
+fn_fun(number_q, "number?", "(x)") {
     return argv[0].is_num() ? V_TRUE : V_FALSE;
 }
 
-fn_fun(integer_q) {
+fn_fun(integer_q, "integer?", "(x)") {
     if (!argv[0].is_num()) {
         return V_FALSE;
     }
@@ -104,7 +131,7 @@ fn_fun(integer_q) {
     return (num == (i64) num) ? V_TRUE : V_FALSE;
 }
 
-fn_fun(eq) {
+fn_fun(eq, "=", "(& args)") {
     if (argc <= 1) {
         return V_TRUE;
     }
@@ -117,7 +144,7 @@ fn_fun(eq) {
     return V_TRUE;
 }
 
-fn_fun(List) {
+fn_fun(List, "List", "(& args)") {
     auto res = V_EMPTY;
     for (int i = argc-1; i >= 0; --i) {
         res = handle->ws->add_cons(argv[i], res);
@@ -125,12 +152,12 @@ fn_fun(List) {
     return res;
 }
 
-fn_fun(cons) {
+fn_fun(cons, "cons", "(hd tl)") {
     assert_args_eq(2);
     return handle->v_cons(argv[0], argv[1]);
 }
 
-fn_fun(nth) {
+fn_fun(nth, "nth", "(n list)") {
     assert_args_eq(2);
     handle->assert_type(TAG_NUM, argv[0]);
     auto num = vnumber(argv[0]);
@@ -140,7 +167,7 @@ fn_fun(nth) {
     return handle->v_nth(i64(num), argv[1]);
 }
 
-fn_fun(list_q) {
+fn_fun(list_q, "list?", "(x)") {
     return argv[0].is_empty() || argv[0].is_cons() ? V_TRUE : V_FALSE;    
 }
 
@@ -148,45 +175,56 @@ fn_fun(list_q) {
 //     return argv[0].is_empty() ? V_TRUE : V_FALSE;    
 // }
 
+fn_fun(Table, "Table", "(& args)") {
+    if (argc % 2 != 0) {
+        handle->runtime_error("Table requires an even number of arguments.");
+    }
+    auto res = handle->ws->add_table();
+    for (u32 i = 0; i < argc; i += 2) {
+        vtable(res)->contents.insert(argv[i], argv[i+1]);
+    }
+    return res;
+}
+
 void install_builtin(interpreter& inter) {
-    inter.add_builtin_function("+", fn__add);
-    inter.add_builtin_function("-", fn__sub);
-    inter.add_builtin_function("*", fn__mul);
-    inter.add_builtin_function("/", fn__div);
-    inter.add_builtin_function("abs", fn__abs);
-    inter.add_builtin_function("mod", fn__mod);
-    inter.add_builtin_function("**", fn__pow);
-    inter.add_builtin_function("exp", fn__exp);
-    inter.add_builtin_function("log", fn__log);
-    inter.add_builtin_function("number?", fn__number_q);
-    inter.add_builtin_function("integer?", fn__integer_q);
+    fn_add_builtin(inter, add);
+    fn_add_builtin(inter, sub);
+    fn_add_builtin(inter, mul);
+    fn_add_builtin(inter, div);
+    fn_add_builtin(inter, abs);
+    fn_add_builtin(inter, mod);
+    fn_add_builtin(inter, pow);
+    fn_add_builtin(inter, exp);
+    fn_add_builtin(inter, log);
+    fn_add_builtin(inter, number_q);
+    fn_add_builtin(inter, integer_q);
 
-    // inter.add_builtin_function("boolean?", fn__boolean_q);
-    // inter.add_builtin_function("symbol?", fn__boolean_q);
+    // fn_add_builtin(inter, boolean_q);
+    // fn_add_builtin(inter, boolean_q);
 
-    inter.add_builtin_function("=", fn__eq);
-    // inter.add_builtin_function(">", fn__gt);
-    // inter.add_builtin_function("<", fn__lt);
-    // inter.add_builtin_function(">=", fn__geq);
-    // inter.add_builtin_function("<=", fn__leq);
+    fn_add_builtin(inter, eq);
+    // fn_add_builtin(inter, gt);
+    // fn_add_builtin(inter, lt);
+    // fn_add_builtin(inter, geq);
+    // fn_add_builtin(inter, leq);
 
-    inter.add_builtin_function("List", fn__List);
-    inter.add_builtin_function("list?", fn__list_q);
-    inter.add_builtin_function("cons", fn__cons);
-    inter.add_builtin_function("nth", fn__nth);
-    // inter.add_builtin_function("concat", fn__concat);
+    fn_add_builtin(inter, List);
+    fn_add_builtin(inter, list_q);
+    fn_add_builtin(inter, cons);
+    fn_add_builtin(inter, nth);
+    // fn_add_builtin(inter, concat);
 
-    // inter.add_builtin_function("Table", fn__Table);
-    // inter.add_builtin_function("table?", fn__Table);
-    // inter.add_builtin_function("get", fn__get);
-    // inter.add_builtin_function("table-keys", fn__get);
+    fn_add_builtin(inter, Table);
+    // fn_add_builtin(inter, Table);
+    // fn_add_builtin(inter, get);
+    // fn_add_builtin(inter, table_keys);
 
-    // inter.add_builtin_function("String", fn__String);
-    // inter.add_builtin_function("string?", fn__String);
-    // inter.add_builtin_function("substring", fn__substring);
+    // fn_add_builtin(inter, String);
+    // fn_add_builtin(inter, String);
+    // fn_add_builtin(inter, substring);
 
-    // inter.add_builtin_function("empty?", fn__empty_q);
-    // inter.add_builtin_function("length", fn__length);
+    // fn_add_builtin(inter, empty_q);
+    // fn_add_builtin(inter, length);
 
     // import into repl namespace
     auto& st = *inter.get_symtab();

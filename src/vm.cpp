@@ -172,7 +172,91 @@ void vm_thread::set_from_top(local_address i, value v) {
     stack->set(pos, v);
 }
 
+table<local_address,value> vm_thread::process_kw_table(function_stub* stub,
+        local_address num_args,
+        value kw_tab,
+        value var_table) {
+    auto& kw = vtable(kw_tab)->contents;
+    table<local_address,value> res;
+    for (auto k : kw.keys()) {
+        auto id = vsymbol(k);
+        // first, check if this is a positional argument we still need
+        bool found_pos = false;
+        for (auto i = num_args; i < stub->pos_params.size(); ++i) {
+            if(stub->pos_params[i] == id) {
+                res.insert(i, *kw.get(k));
+                found_pos = true;
+                break;
+            }
+        }
+        if (found_pos) {
+            continue;
+        }
+        if (!stub->vt_param.has_value()) {
+            // if there's no variadic table argument, we have an error here
+            runtime_error("Unrecognized or redundant keyword in call.");
+        } else {
+            vtable(var_table)->contents.insert(k, *kw.get(k));
+        }
+    }
+    return res;
+}
 
+void vm_thread::arrange_call_stack(working_set* ws,
+        function* func,
+        local_address num_args) {
+    auto num_pos_args = func->stub->pos_params.size();
+    auto has_vl = func->stub->vl_param.has_value();
+    auto has_vt = func->stub->vt_param.has_value();
+    auto req_args = func->stub->req_args;
+
+    auto kw_tab = pop_to_ws(ws); // keyword argument table
+    if (v_tag(kw_tab) != TAG_TABLE) {
+        runtime_error("Error on call instruction: malformed keyword table.");
+    }
+
+    // For the most part, positional arguments can get left where they are.
+    // Extra positional arguments go to the variadic list parameter
+    value var_list = V_EMPTY;
+    if (num_pos_args < num_args) {
+        if (has_vl) {
+            runtime_error("Too many positional arguments to function.");
+        }
+        i32 m = num_args - num_pos_args;
+        for (auto i = 0; i < m; ++i) {
+            // this builds the list in the correct order
+            var_list = ws->add_cons(pop_to_ws(ws), var_list);
+        }
+    }
+
+    // handle the keyword table
+    value var_tab = ws->add_table();
+    table<local_address,value> extra_pos =
+        process_kw_table(func->stub, num_args, kw_tab, var_tab);
+    // put positional args in place
+    for (u32 i = num_args; i < req_args; ++i) {
+        auto x = extra_pos.get(i);
+        if (!x.has_value()) {
+            runtime_error("Missing required argument in call.");
+        }
+        push(*x);
+    }
+    for (u32 i = req_args; i < num_pos_args; ++i) {
+        auto x = extra_pos.get(i);
+        if (!x.has_value()) {
+            push(func->init_vals[i - req_args]);
+        } else {
+            push(*x);
+        }
+    }
+    // put variadic args
+    if (has_vl) {
+        push(var_list);
+    }
+    if (has_vt) {
+        push(var_tab);
+    }
+}
 
 // Calling convention: a call uses num_args + 2 elements on the stack. At the
 // very bottom we expect the callee, followed by num_args positional arguments,
@@ -180,10 +264,6 @@ void vm_thread::set_from_top(local_address i, value v) {
 code_address vm_thread::call(working_set* ws, local_address num_args) {
     // the function to call should be on top
     auto callee = pop_to_ws(ws);
-    auto kw_tab = pop_to_ws(ws); // keyword arguments
-    if (v_tag(kw_tab) != TAG_TABLE) {
-        runtime_error("Error on call instruction: malformed keyword table.");
-    }
     if (v_tag(callee) != TAG_FUNC) {
         runtime_error("Error on call instruction: callee is not a function");
         return ip + 2;
@@ -191,7 +271,10 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
 
     auto func = vfunction(callee);
     if (func->foreign_func) {
+        // note: in the near future, foreign funcs will use same call stack
+        // structure as native ones.
         auto args = new value[num_args];
+        auto kw_tab = pop_to_ws(ws);
         if (!vtable(kw_tab)->contents.keys().empty()) {
             runtime_error("Foreign functions don't accept keyword arguments.");
         }
@@ -206,79 +289,12 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
     }
 
     // native function call
-
-    auto stub = func->stub;
-    auto num_pos = stub->pos_params.size();
-
-    // For the most part, positional arguments can get left where they are.
-    // Extra positional arguments go to the variadic list parameter
-    value var_list = V_EMPTY;
-    if (num_pos < num_args) {
-        if (!stub->vl_param.has_value()) {
-            runtime_error("Too many positional arguments to function.");
-        }
-        i32 m = num_args - num_pos;
-        for (auto i = 0; i < m; ++i) {
-            // this builds the list in the correct order
-            var_list = ws->add_cons(pop_to_ws(ws), var_list);
-        }
-    }
-
-    // validate keyword table
-    value var_tab = ws->add_table();
-    auto& kw = vtable(kw_tab)->contents;
-    table<local_address,value> extra_pos;
-    for (auto k : kw.keys()) {
-        auto id = vsymbol(k);
-        // first, check if this is a positional argument we still need
-        bool found_pos = false;
-        for (auto i = num_args; i < num_pos; ++i) {
-            if(stub->pos_params[i] == id) {
-                extra_pos.insert(i, *kw.get(k));
-                found_pos = true;
-                break;
-            }
-        }
-        if (found_pos) {
-            continue;
-        }
-
-        if (!stub->vt_param.has_value()) {
-            // if there's no variadic table argument, we have an error here
-            runtime_error("Unrecognized or duplicate keyword in call.");
-        } else {
-            vtable(var_tab)->contents.insert(k, *kw.get(k));
-        }
-    }
-
-    u32 i;
-    for (i = num_args; i < stub->req_args; ++i) {
-        auto x = extra_pos.get(i);
-        if (!x.has_value()) {
-            runtime_error("Missing required argument in call.");
-        }
-        push(*x);
-    }
-    for (; i < num_pos; ++i) {
-        auto x = extra_pos.get(i);
-        if (!x.has_value()) {
-            push(func->init_vals[i - stub->req_args]);
-        } else {
-            push(*x);
-        }
-    }
-
-    // push variadic list and table parameters 
-    if (stub->vl_param.has_value()) {
-        push(var_list);
-    }
-    if (stub->vt_param.has_value()) {
-        push(var_tab);
-    }
+    arrange_call_stack(ws, func, num_args);
 
     // extend the call frame
     // stack pointer for the new frame
-    u8 sp = static_cast<u8>(num_pos
+    auto stub = func->stub;
+    u8 sp = static_cast<u8>(stub->pos_params.size()
             + stub->vl_param.has_value()
             + stub->vt_param.has_value());
     u32 bp = stack->get_pointer() - sp;

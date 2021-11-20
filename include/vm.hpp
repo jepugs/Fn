@@ -116,8 +116,23 @@ private:
     void pop_times(stack_address n);
     void push(value v);
 
+    // helper for arrange_call_stack. Takes the keyword table from the stack,
+    // kw_tab, and returns a table matching call stack positions to values from
+    // the table. num_args is number of arguments in the call. The var_table
+    // argument will be used to hold unrecognized/duplicate arguments if the
+    // provided function_stub supports a variadic table argument. (Otherwise
+    // such arguments cause a runtime error).
+    table<local_address,value> process_kw_table(function_stub* stub,
+            local_address num_args,
+            value kw_tab,
+            value var_table);
+    // helper for call. This arranges the arguments on the stack after a
+    // function call. It expects the call arguments to be on top of the stack.
+    void arrange_call_stack(working_set* ws,
+            function* func,
+            local_address num_args);
     // returns the next addr to go to
-    code_address call(working_set* use_ws, local_address num_args);
+    code_address call(working_set* ws, local_address num_args);
 
     // set up a newly created function (including taking init values off the
     // stack)

@@ -320,7 +320,7 @@ void compiler::compile_llir_generic(const llir_form* llir,
         compile_llir((llir_def_form*)llir, lex, err);
         break;
     case llir_defmacro:
-        //compile_llir((llir_defmacro_form*)llir, lex, err);
+        compile_llir((llir_defmacro_form*)llir, lex, err);
         break;
     case llir_dot:
         //compile_llir((llir_dot_form*)llir, lex, err);
@@ -338,10 +338,10 @@ void compiler::compile_llir_generic(const llir_form* llir,
         compile_llir((llir_fn_form*)llir, lex, err);
         break;
     case llir_import:
-        //compile_llir((llir_defmacro_form*)llir, lex, err);
+        //compile_llir((llir_import_form*)llir, lex, err);
         break;
     case llir_set:
-        //compile_llir((llir_defmacro_form*)llir, lex, err);
+        // compile_llir((llir_set_form*)llir, lex, err);
         break;
     case llir_var:
         compile_llir((llir_var_form*)llir, lex, err);
