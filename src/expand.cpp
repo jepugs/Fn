@@ -903,7 +903,7 @@ static void update_dollar_syms(symbol_table* st,
         symbol_id sym,
         expander_meta* meta) {
     auto name = (*st)[sym];
-    i16 value;
+    i16 value = -1;
     if (name.size() == 0 || name[0] != '$') {
         value = -1;
     } else if (name.size() == 1) {
