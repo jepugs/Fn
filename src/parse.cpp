@@ -372,17 +372,14 @@ ast_form* parse_form(scanner& sc,
     case tk_dollar_brace:
         res = parse_prefix(sc, symtab, loc, "dollar-fn", token{tk_lbrace,loc},
                 err);
-        res = mk_list_form(loc, buf);
         break;
     case tk_dollar_bracket:
         res = parse_prefix(sc, symtab, loc, "dollar-fn", token{tk_lbracket,loc},
                 err);
-        res = mk_list_form(loc, buf);
         break;
     case tk_dollar_paren:
         res = parse_prefix(sc, symtab, loc, "dollar-fn", token{tk_lparen,loc},
                 err);
-        res = mk_list_form(loc, buf);
         break;
     }
     return res;

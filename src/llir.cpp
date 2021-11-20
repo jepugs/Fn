@@ -101,11 +101,8 @@ void clear_llir_call_form(llir_call_form* obj, bool recursive) {
             free_llir_form(obj->kw_args[i].value_form);
         }
     }
-    if (obj->num_pos_args != 0) {
-        delete[] obj->pos_args;
-    }    if (obj->num_kw_args != 0) {
-        delete[] obj->kw_args;
-    }
+    delete[] obj->pos_args;
+    delete[] obj->kw_args;
 }
 void free_llir_call_form(llir_call_form* obj, bool recursive) {
     clear_llir_call_form(obj, recursive);
@@ -157,8 +154,12 @@ llir_fn_form* mk_llir_fn_form(const source_loc& origin,
         bool has_var_list_arg,
         bool has_var_table_arg,
         local_address req_args,
-        llir_form* body) {
-    return new llir_fn_form {
+        llir_form* body,
+        llir_fn_form* dest) {
+    if (dest == nullptr) {
+        dest = new llir_fn_form;
+    }
+    return new(dest) llir_fn_form {
         .header={.origin=origin, .tag=llir_fn},
         .params={
             .num_pos_args=num_pos_args,
@@ -172,7 +173,7 @@ llir_fn_form* mk_llir_fn_form(const source_loc& origin,
     };
 }
 llir_fn_form* mk_llir_fn_form(const source_loc& origin,
-        llir_fn_params params,
+        const llir_fn_params& params,
         llir_form* body,
         llir_fn_form* dest) {
     if (dest == nullptr) {
@@ -202,8 +203,12 @@ void free_llir_fn_form(llir_fn_form* obj, bool recursive) {
 }
 
 llir_import_form* mk_llir_import_form(const source_loc& origin,
-        symbol_id target) {
-    return new llir_import_form {
+        symbol_id target,
+        llir_import_form* dest) {
+    if (dest == nullptr) {
+        dest = new llir_import_form;
+    }
+    return new(dest) llir_import_form {
         .header={.origin=origin, .tag=llir_import},
         .target=target
     };
@@ -214,8 +219,12 @@ void free_llir_import_form(llir_import_form* obj) {
 
 llir_set_form* mk_llir_set_form(const source_loc& origin,
         llir_form* target,
-        llir_form* value) {
-    return new llir_set_form {
+        llir_form* value,
+        llir_set_form* dest) {
+    if (dest == nullptr) {
+        dest = new llir_set_form;
+    }
+    return new(dest) llir_set_form {
         .header={.origin=origin, .tag=llir_set},
         .target=target,
         .value=value
@@ -272,13 +281,9 @@ void clear_llir_with_form(llir_with_form* obj, bool recursive) {
             free_llir_form(obj->body[i]);
         }
     }
-    if (obj->num_vars > 0) {
-        delete[] obj->vars;
-        delete[] obj->value_forms;
-    }
-    if (obj->body_length > 0) {
-        delete[] obj->body;
-    }
+    delete[] obj->vars;
+    delete[] obj->value_forms;
+    delete[] obj->body;
 }
 void free_llir_with_form(llir_with_form* obj, bool recursive) {
     clear_llir_with_form(obj, recursive);
@@ -385,8 +390,26 @@ static void print_llir_offset(llir_form* form,
         }
         break;
     case llir_defmacro:
+        {
+            auto xdefm = (llir_defmacro_form*)form;
+            out << "(DEFMACRO " << st[xdefm->name] << '\n';
+            print_llir_offset(xdefm->macro_fun, st, chunk, offset + 2,
+                    true);
+            out << ')';
+        }
         break;
     case llir_dot:
+        {
+            auto xdot = (llir_dot_form*) form;
+            out << "(DOT ";
+            print_llir_offset(xdot->obj, st, chunk, offset + 5, false);
+            out << '\n';
+            write_indent(out, offset+4);
+            for (u32 i = 0; i < xdot->num_keys; ++i) {
+                out << ' ' << st[xdot->keys[i]];
+            }
+            out << ')';
+        }
         break;
     case llir_call:
         {
@@ -468,9 +491,20 @@ static void print_llir_offset(llir_form* form,
         }
         break;
     case llir_import:
-        out << "(IMPORT)";
+        // TODO: support for alias, unqualified imports
+        out << "(IMPORT "
+            << st[((llir_import_form*)form)->target]
+            << ')';
         break;
     case llir_set:
+        {
+            auto xset = (llir_set_form*)form;
+            out << "(SET! ";
+            print_llir_offset(xset->target, st, chunk, offset + 6, false);
+            out << '\n';
+            print_llir_offset(xset->value, st, chunk, offset + 6, true);
+            out << ')';
+        }
         break;
     case llir_var:
         {

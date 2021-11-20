@@ -118,12 +118,79 @@ llir_form* expander::expand_def(const source_loc& loc,
     return (llir_form*)mk_llir_def_form(loc, lst[1]->datum.sym, x);
 }
 
+// see comments for expand_defn
+llir_form* expander::expand_defmacro(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    if (length < 3) {
+        meta->err.origin = loc;
+        meta->err.message = "defmacro requires at least 2 arguments.";
+        return nullptr;
+    } else if (!lst[1]->is_symbol()) {
+        meta->err.origin = loc;
+        meta->err.message = "First argument to defmacro must be a symbol.";
+        return nullptr;
+    }
+
+    auto body = expand_do(loc, length-2, &lst[2], meta);
+    if(!body) {
+        return nullptr;
+    }
+
+    llir_fn_params params;
+    if(!expand_params(loc, lst[2], &params, meta)) {
+        free_llir_form(body);
+        return nullptr;
+    }
+
+    auto value = (llir_form*)mk_llir_fn_form(loc, params, body);
+    auto res = mk_llir_defmacro_form(loc, lst[1]->datum.sym, value);
+    return (llir_form*)res;
+}
+
+llir_form* expander::expand_defn(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    if (length < 3) {
+        meta->err.origin = loc;
+        meta->err.message = "defn requires at least 2 arguments.";
+        return nullptr;
+    } else if (!lst[1]->is_symbol()) {
+        meta->err.origin = loc;
+        meta->err.message = "First argument to defn must be a symbol.";
+        return nullptr;
+    }
+
+    // do expects the first element to an operator, so we put &lst[2] since we
+    // have the first body expression at &lst[3]
+    auto body = expand_do(loc, length-2, &lst[2], meta);
+    if(!body) {
+        return nullptr;
+    }
+
+    llir_fn_params params;
+    if(!expand_params(loc, lst[2], &params, meta)) {
+        free_llir_form(body);
+        return nullptr;
+    }
+
+    auto value = (llir_form*)mk_llir_fn_form(loc, params, body);
+    auto res = mk_llir_def_form(loc, lst[1]->datum.sym, value);
+    return (llir_form*)res;
+}
+
 bool expander::is_do_inline(ast_form* ast) {
     return is_operator_list("do-inline", ast);
 }
 
 bool expander::is_let(ast_form* ast) {
     return is_operator_list("let", ast);
+}
+
+bool expander::is_letfn(ast_form* ast) {
+    return is_operator_list("letfn", ast);
 }
 
 void expander::flatten_do_body(u32 length,
@@ -201,11 +268,45 @@ llir_form* expander::expand_let_in_do(u32 length,
 llir_form* expander::expand_letfn_in_do(u32 length,
         ast_form** ast_body,
         expander_meta* meta) {
-    auto letfn_form = ast_body[0];
+    auto letfn_lst = ast_body[0]->datum.list;
+    auto letfn_len = ast_body[0]->list_length;
+    auto& loc = ast_body[0]->loc;
+    if (letfn_len < 3) {
+        meta->err.origin = loc;
+        meta->err.message = "letfn requires at least two arguments.";
+        return nullptr;
+    } else if (!letfn_lst[1]->is_symbol()) {
+        meta->err.origin = loc;
+        meta->err.message = "letfn name must be a symbol.";
+        return nullptr;
+    }
 
-    meta->err.origin = letfn_form->loc;
-    meta->err.message = "letfn not implemented :(";
-    return nullptr;
+    // generate llir for the new function
+    auto sym = letfn_lst[1]->datum.sym;
+    llir_fn_params params;
+    if (!expand_params(loc, letfn_lst[2], &params, meta)) {
+        return nullptr;
+    }
+    auto fn_body = expand_do(loc, letfn_len-2, &letfn_lst[2],meta);
+    if (!fn_body) {
+        return nullptr;
+    }
+    auto fn_llir = (llir_form*)mk_llir_fn_form(loc, params, fn_body);
+
+    // generate llir for the with body
+    vector<llir_form*> body_forms;
+    if (!expand_do_recur(length - 1, &ast_body[1], body_forms, meta)) {
+        free_llir_form(fn_llir);
+        return nullptr;
+    }
+    auto res = mk_llir_with_form(loc, 1, body_forms.size());
+    res->vars[0] = sym;
+    res->value_forms[0] = fn_llir;
+    for (u32 i = 0; i < body_forms.size(); ++i) {
+        res->body[i] = body_forms[i];
+    }
+
+    return (llir_form*) res;
 }
 
 
@@ -221,6 +322,16 @@ bool expander::expand_do_recur(u32 length,
         auto ast = ast_body[i];
         if (is_let(ast)) {
             auto body = expand_let_in_do(length-i, &ast_body[i], meta);
+            if (!body) {
+                for (auto y : buf) {
+                    free_llir_form(y);
+                }
+                return false;
+            }
+            buf.push_back(body);
+            return true;
+        } else if (is_letfn(ast)) {
+            auto body = expand_letfn_in_do(length-i, &ast_body[i], meta);
             if (!body) {
                 for (auto y : buf) {
                     free_llir_form(y);
@@ -273,12 +384,55 @@ llir_form* expander::expand_do(const source_loc& loc,
     return (llir_form*)res;
 }
 
-llir_form* expander::expand_if(const source_loc& loc,
+llir_form* expander::expand_do_inline(const source_loc& loc,
         u32 length,
         ast_form** lst,
         expander_meta* meta) {
-    if (length != 4) {
-        meta->err.message = "if requires exactly 3 arguments.";
+    // if this hasn't been automatically inlined, just treat it as a normal do.
+    return expand_do(loc, length, lst, meta);
+}
+
+llir_form* expander::expand_dollar_fn(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    if (length != 2) {
+        meta->err.origin = loc;
+        meta->err.message = "dollar-fn requires exactly 1 argument.";
+        return nullptr;
+    }
+
+    expander_meta meta2 = {.max_dollar_sym=-1};
+    auto body = expand_meta(lst[1], &meta2);
+    if (!body) {
+        meta->err = meta2.err;
+        return nullptr;
+    }
+
+    auto m = meta2.max_dollar_sym;
+    if (m >= 0) {
+        auto body2 = mk_llir_with_form(body->origin, 1, 1);
+        body2->vars[0] = intern("$");
+        body2->value_forms[0] = (llir_form*)mk_llir_var_form(loc, intern("$0"));
+        body2->body[0] = body;
+        body = (llir_form*) body2;
+    }
+
+    auto res = mk_llir_fn_form(loc, m+1, false, false, m+1, body);
+    for (i32 i = 0; i <= m+1; ++i) {
+        res->params.pos_args[i] = intern("$" + std::to_string(i));
+    }
+
+    return (llir_form*) res;
+}
+
+llir_form* expander::expand_dot(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    if (length < 3) {
+        meta->err.origin = loc;
+        meta->err.message = "dot requires at least 2 arguments.";
         return nullptr;
     }
 
@@ -286,19 +440,19 @@ llir_form* expander::expand_if(const source_loc& loc,
     if (!x) {
         return nullptr;
     }
-    auto y = expand_meta(lst[2], meta);
-    if (!y) {
-        free_llir_form(x);
-        return nullptr;
-    }
-    auto z = expand_meta(lst[3], meta);
-    if (!z) {
-        free_llir_form(y);
-        free_llir_form(x);
-        return nullptr;
-    }
 
-    return (llir_form*)mk_llir_if_form(loc, x, y, z);
+    auto res = mk_llir_dot_form(loc, x, length - 2);
+    for (u32 i = 0; i + 2 < length; ++i) {
+        if (!lst[i+2]->is_symbol()) {
+            meta->err.origin = loc;
+            meta->err.message = "dot keys must be symbols.";
+            free_llir_dot_form(res);
+            return nullptr;
+        } else {
+            res->keys[i] = lst[i+2]->datum.sym;
+        }
+    }
+    return (llir_form*) res;
 }
 
 bool expander::expand_params(const source_loc& loc,
@@ -464,6 +618,50 @@ llir_form* expander::expand_fn(const source_loc& loc,
     return (llir_form*)mk_llir_fn_form(loc, params, body);
 }
 
+llir_form* expander::expand_if(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    if (length != 4) {
+        meta->err.message = "if requires exactly 3 arguments.";
+        return nullptr;
+    }
+
+    auto x = expand_meta(lst[1], meta);
+    if (!x) {
+        return nullptr;
+    }
+    auto y = expand_meta(lst[2], meta);
+    if (!y) {
+        free_llir_form(x);
+        return nullptr;
+    }
+    auto z = expand_meta(lst[3], meta);
+    if (!z) {
+        free_llir_form(y);
+        free_llir_form(x);
+        return nullptr;
+    }
+
+    return (llir_form*)mk_llir_if_form(loc, x, y, z);
+}
+
+llir_form* expander::expand_import(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    if (length != 2) {
+        meta->err.origin = loc;
+        meta->err.message = "import requires exactly 1 argument.";
+        return nullptr;
+    } else if (lst[1]->kind != ak_symbol_atom) {
+        meta->err.origin = loc;
+        meta->err.message = "import argument must be a symbol.";
+        return nullptr;
+    }
+    return (llir_form*)mk_llir_import_form(loc, lst[1]->datum.sym);
+}
+
 llir_form* expander::expand_or(const source_loc& loc,
         u32 length,
         ast_form** lst,
@@ -592,22 +790,22 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
         return expand_cond(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "def") {
         return expand_def(loc, lst->list_length, lst->datum.list, meta);
-    // } else if (name == "defmacro") {
-    //     return expand_defmacro(loc, lst->list_length, lst->datum.list, meta);
-    // } else if (name == "defn") {
-    //     return expand_defn(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "defmacro") {
+        return expand_defmacro(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "defn") {
+        return expand_defn(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "do") {
         return expand_do(loc, lst->list_length, lst->datum.list, meta);
-    // } else if (name == "do-inline") {
-    //     return expand_do_inline(loc, lst->list_length, lst->datum.list, meta);
-    // } else if (name == "dot") {
-    //     return expand_dot(loc, lst->list_length, lst->datum.list, meta);
-    // } else if (name == "dollar-fn") {
-    //     return expand_dollar_fn(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "do-inline") {
+        return expand_do_inline(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "dot") {
+        return expand_dot(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "dollar-fn") {
+        return expand_dollar_fn(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "if") {
         return expand_if(loc, lst->list_length, lst->datum.list, meta);
-    // } else if (name == "import") {
-    //     return expand_import(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "import") {
+        return expand_import(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "fn") {
         return expand_fn(loc, lst->list_length, lst->datum.list, meta);
     // } else if (name == "let") {

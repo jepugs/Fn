@@ -201,6 +201,7 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
         }
         interpreter_handle handle{.inter=this, .ws=&ws2, .func_name="<ffi call>"};
         push(func->foreign_func(&handle, num_args, args));
+        delete[] args;
         return ip + 2;
     }
 

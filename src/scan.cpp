@@ -156,7 +156,7 @@ token scanner::next_token() {
             // IMPLNOTE: unlike the case for unquote, EOF here could still
             // result in a syntactically valid (albeit probably dumb) program
             if (eof()) {
-                scan_atom(c);
+                return scan_atom(c);
                 break;
             }
             c = peek_char();
@@ -173,6 +173,8 @@ token scanner::next_token() {
             case '(':
                 get_char();
                 return make_token(tk_dollar_paren);
+            default:
+                return scan_atom('$');
             }
             break;
 

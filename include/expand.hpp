@@ -47,9 +47,18 @@ private:
             u32 length,
             ast_form** lst,
             expander_meta* meta);
+    llir_form* expand_defmacro(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+    llir_form* expand_defn(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
 
     bool is_do_inline(ast_form* ast);
     bool is_let(ast_form* ast);
+    bool is_letfn(ast_form* ast);
     // lst includes the do symbol at 0
     void flatten_do_body(u32 length,
             ast_form** lst,
@@ -72,8 +81,16 @@ private:
             u32 length,
             ast_form** lst,
             expander_meta* meta);
+    llir_form* expand_do_inline(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
 
-    llir_form* expand_if(const source_loc& loc,
+    llir_form* expand_dollar_fn(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+    llir_form* expand_dot(const source_loc& loc,
             u32 length,
             ast_form** lst,
             expander_meta* meta);
@@ -87,6 +104,14 @@ private:
             ast_form** lst,
             expander_meta* meta);
 
+    llir_form* expand_if(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+    llir_form* expand_import(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
     llir_form* expand_or(const source_loc& loc,
             u32 length,
             ast_form** lst,
