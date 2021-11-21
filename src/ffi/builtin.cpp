@@ -184,6 +184,7 @@ fn_fun(empty_q, "empty?", "(x)") {
         return vtable(argv[0])->contents.get_size() == 0 ? V_TRUE : V_FALSE;
     default:
         handle->runtime_error("empty? argument must be a list or a table.");
+        return V_NIL;
     }
 }
 
