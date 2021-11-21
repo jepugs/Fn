@@ -110,4 +110,25 @@ value interpreter_handle::v_nth(i64 n, value lst) {
     return vcons(lst)->head;
 }
 
+value interpreter_handle::v_length(value x) {
+    switch (v_tag(x)) {
+    case TAG_CONS:
+        {
+            i64 i = 1;
+            auto c = vcons(x)->tail;
+            for (; c != V_EMPTY; c = vcons(c)->tail) {
+                ++i;
+            }
+            return as_value(i);
+        }
+    case TAG_EMPTY:
+        return as_value(0);
+    case TAG_TABLE:
+        return as_value((i64)vtable(x)->contents.get_size());
+    default:
+        runtime_error("Can only compute length for lists and tables.");
+    }
+    return V_NIL;
+}
+
 }

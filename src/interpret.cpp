@@ -15,11 +15,17 @@ interpreter::interpreter()
     search_path.push_back(fs::current_path().u8string());
 
     globals.create_ns(symtab.intern("fn/builtin"));
-    globals.create_ns(symtab.intern("fn/repl"));
+    globals.create_ns(symtab.intern("fn/user"));
 }
 
 interpreter::~interpreter() {
     // TODO: there's probably something to do here...
+}
+
+void interpreter::configure_logging(bool log_llir_forms,
+        bool log_disassembly) {
+    log_llir = log_llir_forms;
+    log_dis = log_disassembly;
 }
 
 allocator* interpreter::get_alloc() {
@@ -44,74 +50,58 @@ void interpreter::interpret_to_end(vm_thread& vm) {
 
 }
 
-value interpreter::interpret_file(const string& path) {
+value interpreter::interpret_file(const string& path, bool* error) {
     // FIXME: handle errors
     std::ifstream in{path};
     fn_scan::scanner sc{&in};
+    parse_error p_err;
+    auto forms = parse_input(&sc, &symtab, &p_err);
+    if (forms.size() == 0) {
+        if (error != nullptr) {
+            *error = true;
+        }
+        std::cout << "Parser error: " << p_err.message << '\n';
+        return V_NIL;
+    }
 
-    // TODO: check for package declaration and use it to generate correct
-    // namespace name.
-    string pkg = "fn/user/";
-
-    // namespace name
-    //fs::path path_obj{path};
-    //auto ns_name = symtab.intern(pkg + path_obj.stem().u8string());
-
-    // auto chunk = alloc.add_chunk(ns_name);
-    // compiler c{&symtab, &alloc, chunk};
-    // vm_thread vm{&alloc, &globals, chunk};
-
-    // fn_parse::ast_form* expr;
-    // while ((expr = fn_parse::parse_node(sc, symtab))) {
-    //     // TODO: this is where macroexpansion goes
-    //     c.compile_expr(expr);
-    //     delete expr;
-    //     interpret_to_end(vm);
-    // }
-    // // TODO: check vm status
-
-    // return vm.last_pop();
-    return V_NIL;
-}
-
-value interpreter::interpret_string(const string& src) {
-    // FIXME: handle errors! >:(
-    std::istringstream in{src};
-    fn_scan::scanner sc{&in};
-
-    auto ns_name = symtab.intern("fn/repl");
+    auto ns_name = symtab.intern("fn/user");
     auto chunk = alloc.add_chunk(ns_name);
 
-    expander ex{this, chunk};
-    while (!sc.eof()) {
-        parse_error p_err;
-        auto ast = parse_input(&sc, &symtab, &p_err);
-        if (ast == nullptr) {
-            // TODO: throw an error
-            std::cout << "err: " << p_err.message << '\n';
-            break;
-        }
-
+    for (auto ast : forms) {
         expand_error e_err;
+        expander ex{this, chunk};
         auto llir = ex.expand(ast, &e_err);
         free_ast_form(ast);
+
         if (llir == nullptr) {
-            // TODO: throw an error
-            std::cout << "err: " << e_err.message << '\n';
+            if (error != nullptr) {
+                *error = true;
+            }
+            std::cout << "Expansion error: " << e_err.message << '\n';
             break;
         }
 
-        print_llir(llir, symtab, chunk);
+        if (log_llir) {
+            std::cout << "LLIR: \n";
+            print_llir(llir, symtab, chunk);
+        }
 
         compiler c{&symtab, &alloc, chunk};
         compile_error c_err;
         c_err.has_error = false;
         c.compile(llir, &c_err);
         if (c_err.has_error) {
-            std::cout << "compile err: " << c_err.message << '\n';
+            if (error != nullptr) {
+                *error = true;
+            }
+            std::cout << "Compile error: " << c_err.message << '\n';
             break;
         }
-        disassemble(symtab, *chunk, std::cout);
+
+        if (log_dis) {
+            std::cout << "Disassembled bytecode: \n";
+            disassemble(symtab, *chunk, std::cout);
+        }
 
         vm_thread vm{&alloc, &globals, chunk};
         interpret_to_end(vm);
@@ -121,6 +111,12 @@ value interpreter::interpret_string(const string& src) {
     }
 
     return V_NIL;
+}
+
+value interpreter::interpret_string(const string& src) {
+    auto ws = alloc.add_working_set();
+    u32 bytes_used;
+    return partial_interpret_string(src, &ws, &bytes_used);
 }
 
 value interpreter::partial_interpret_string(const string& src,
@@ -138,7 +134,7 @@ value interpreter::partial_interpret_string(const string& src,
         }
     }
 
-    auto ns_name = symtab.intern("fn/repl");
+    auto ns_name = symtab.intern("fn/user");
     auto chunk = alloc.add_chunk(ns_name);
 
     for (auto ast : forms) {
@@ -153,17 +149,24 @@ value interpreter::partial_interpret_string(const string& src,
             break;
         }
 
-        print_llir(llir, symtab, chunk);
+        if (log_llir) {
+            std::cout << "LLIR: \n";
+            print_llir(llir, symtab, chunk);
+        }
 
         compiler c{&symtab, &alloc, chunk};
         compile_error c_err;
         c_err.has_error = false;
         c.compile(llir, &c_err);
         if (c_err.has_error) {
-            std::cout << "compile err: " << c_err.message << '\n';
+            std::cout << "Compile error: " << c_err.message << '\n';
             break;
         }
-        disassemble(symtab, *chunk, std::cout);
+
+        if (log_dis) {
+            std::cout << "Disassembled bytecode: \n";
+            disassemble(symtab, *chunk, std::cout);
+        }
 
         vm_thread vm{&alloc, &globals, chunk};
         interpret_to_end(vm);

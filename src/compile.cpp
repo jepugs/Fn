@@ -187,8 +187,8 @@ void compiler::compile_llir(const llir_if_form* llir,
     return_on_err;
 
     auto end_addr = dest->code_size;
-    patch_short(addr1 + 1, addr2 - addr1);
-    patch_short(addr2 + 1, end_addr - addr2 - 3);
+    patch_short(addr2 - addr1, addr1 + 1);
+    patch_short(end_addr - addr2 - 3, addr2 + 1);
     // minus three since jump is relative to the end of the 3 byte instruction
 }
 

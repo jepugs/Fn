@@ -240,7 +240,7 @@ static ast_form* parse_to_delimiter(scanner* sc,
             err->resumable = true;
             return nullptr;
         };
-        auto x = parse_input(sc, symtab, tok, err);
+        auto x = parse_next_form(sc, symtab, tok, err);
         if (!x) {
             return nullptr;
         }
@@ -259,7 +259,7 @@ static ast_form* parse_prefix(scanner* sc,
         parse_error* err) {
     vector<ast_form*> buf;
     buf.push_back(mk_symbol_form(loc, symtab->intern(op)));
-    auto x = parse_input(sc, symtab, t0, err);
+    auto x = parse_next_form(sc, symtab, t0, err);
     if (!x) {
         free_ast_form(buf[0]);
         return nullptr;
@@ -278,11 +278,11 @@ static ast_form* parse_prefix(scanner* sc,
     return parse_prefix(sc, symtab, loc, op, tok, err);
 }
 
-ast_form* parse_input(scanner* sc, symbol_table* symtab, parse_error* err) {
-    return parse_input(sc, symtab, sc->next_token(), err);
+ast_form* parse_next_form(scanner* sc, symbol_table* symtab, parse_error* err) {
+    return parse_next_form(sc, symtab, sc->next_token(), err);
 }
 
-ast_form* parse_input(scanner* sc,
+ast_form* parse_next_form(scanner* sc,
         symbol_table* symtab,
         token t0,
         parse_error* err) {
@@ -400,7 +400,7 @@ vector<ast_form*> parse_string(const string& src,
     vector<ast_form*> res;
     auto pos = in.tellg();
     ast_form* a;
-    while ((a = parse_input(&sc, symtab, err))) {
+    while ((a = parse_next_form(&sc, symtab, err))) {
         // pos holds the position after last successful read
         pos = in.tellg();
         res.push_back(a);
@@ -413,5 +413,17 @@ vector<ast_form*> parse_string(const string& src,
     *bytes_used = pos;
     return res;
 }
+
+vector<ast_form*> parse_input(scanner* sc,
+        symbol_table* symtab,
+        parse_error* err) {
+    vector<ast_form*> res;
+    ast_form* a;
+    while ((a = parse_next_form(sc, symtab, err))) {
+        res.push_back(a);
+    }
+    return res;
+}
+
 
 }

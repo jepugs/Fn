@@ -52,6 +52,9 @@ struct interpreter_handle {
     // table functions
     value v_get(value tab, value k);
     value v_set(value tab, value k, value v);
+
+    // collection functions
+    value v_length(value x);
 };
 
 }

@@ -367,11 +367,13 @@ llir_form* expander::expand_do(const source_loc& loc,
     vector<ast_form*> ast_buf;
     flatten_do_body(length, lst, ast_buf, meta);
 
-    // TODO: check if first form is let or letfn
+    // check if first form is let or letfn to avoid wrapping with an empty with
     if (length == 0) {
         return (llir_form*)mk_llir_var_form(loc, intern("nil"));
     } else if (is_let(ast_buf[0])) {
         return expand_let_in_do(ast_buf.size(), ast_buf.data(), meta);
+    } else if (is_letfn(ast_buf[0])) {
+        return expand_letfn_in_do(ast_buf.size(), ast_buf.data(), meta);
     }
     vector<llir_form*> llir_buf;
     if (!expand_do_recur(ast_buf.size(), ast_buf.data(), llir_buf, meta)) {

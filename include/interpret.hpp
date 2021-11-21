@@ -20,6 +20,10 @@ private:
     global_env globals;
     allocator alloc;
 
+    // logging settings. For now these just go to cout.
+    bool log_llir = false;
+    bool log_dis = false;
+
     // ordered list of directories to search for imports
     std::list<string> search_path;
 
@@ -29,6 +33,8 @@ public:
     // Initializes the allocator and virtual machine, and starts an empty chunk.
     interpreter();
     ~interpreter();
+
+    void configure_logging(bool log_llir_forms, bool log_disassembly);
 
     // Accessors
     allocator* get_alloc();
@@ -42,7 +48,7 @@ public:
     
     // Evaluate a source file in an empty chunk. Returns the value from the last
     // expression (or null for an empty file).
-    value interpret_file(const string& path);
+    value interpret_file(const string& path, bool* error);
     // Evaluate a string in an empty chunk. Returns the value from the last
     // expression (or null).
     value interpret_string(const string& src);

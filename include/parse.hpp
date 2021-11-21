@@ -71,12 +71,12 @@ struct parse_error {
 // get the next form by reading tokens one at a time from the scanner. Return a
 // null pointer on EOF. It is the responsibility of the caller to delete the
 // returned object. Returns null and sets err on failure.
-ast_form* parse_input(scanner* sc,
+ast_form* parse_next_form(scanner* sc,
         symbol_table* symtab,
         parse_error* err);
 // This is the same as above, but we pass in the first token directly (as
 // opposed to getting it from the scanner).
-ast_form* parse_input(scanner* sc,
+ast_form* parse_next_form(scanner* sc,
         symbol_table* symtab,
         token t0,
         parse_error* err);
@@ -86,6 +86,11 @@ ast_form* parse_input(scanner* sc,
 vector<ast_form*> parse_string(const string& src,
         symbol_table* symtab,
         u32* bytes_used,
+        parse_error* err);
+
+// parse ast forms from sc until an error is encountered
+vector<ast_form*> parse_input(scanner* sc,
+        symbol_table* symtab,
         parse_error* err);
 
 }

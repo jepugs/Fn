@@ -18,7 +18,7 @@ namespace fn {
 
 // hypothetical list processing macro for ffi code
 #define fn_for_list(var, lst) \
-    for (auto var = lst; vtag(var) != TAG_EMPTY; var = v_tail(var))
+    for (auto var = lst; v_tag(var) != TAG_EMPTY; var = v_tail(var))
 
 fn_fun(add, "+", "(& args)") {
     // // theoretical code for when i update ffi again
@@ -171,9 +171,28 @@ fn_fun(list_q, "list?", "(x)") {
     return argv[0].is_empty() || argv[0].is_cons() ? V_TRUE : V_FALSE;    
 }
 
-// fn_fun(empty_q) {
-//     return argv[0].is_empty() ? V_TRUE : V_FALSE;    
-// }
+fn_fun(empty_q, "empty?", "(x)") {
+    if (argc != 1) {
+        handle->runtime_error("empty? requires exactly one argument");
+    }
+    switch (v_tag(argv[0])) {
+    case TAG_CONS:
+        return V_FALSE;
+    case TAG_EMPTY:
+        return V_TRUE;
+    case TAG_TABLE:
+        return vtable(argv[0])->contents.get_size() == 0 ? V_TRUE : V_FALSE;
+    default:
+        handle->runtime_error("empty? argument must be a list or a table.");
+    }
+}
+
+fn_fun(length, "length", "(x)") {
+    if (argc != 1) {
+        handle->runtime_error("length requires exactly one argument");
+    }
+    return handle->v_length(argv[0]);
+}
 
 fn_fun(Table, "Table", "(& args)") {
     if (argc % 2 != 0) {
@@ -182,6 +201,37 @@ fn_fun(Table, "Table", "(& args)") {
     auto res = handle->ws->add_table();
     for (u32 i = 0; i < argc; i += 2) {
         vtable(res)->contents.insert(argv[i], argv[i+1]);
+    }
+    return res;
+}
+
+fn_fun(get, "get", "(obj & keys)") {
+    if (argc < 1) {
+        handle->runtime_error("get requires at least one argument");
+    }
+
+    value res = argv[0];
+    for (u32 i = 1; i < argc; ++i) {
+        handle->assert_type(TAG_TABLE, res);
+        auto x = vtable(res)->contents.get(argv[i]);
+        if (!x.has_value()) {
+            res = V_NIL;
+        } else {
+            res = *x;
+        }
+    }
+    return res;
+}
+
+fn_fun(table_keys, "table-keys", "(table)") {
+    if (argc != 1) {
+        handle->runtime_error("table-keys requires exactly one argument");
+    }
+    handle->assert_type(TAG_TABLE, argv[0]);
+    auto keys = vtable(argv[0])->contents.keys();
+    auto res = V_EMPTY;
+    for (auto k : keys) {
+        res = handle->ws->add_cons(k, res);
     }
     return res;
 }
@@ -215,22 +265,21 @@ void install_builtin(interpreter& inter) {
     // fn_add_builtin(inter, concat);
 
     fn_add_builtin(inter, Table);
-    // fn_add_builtin(inter, Table);
-    // fn_add_builtin(inter, get);
-    // fn_add_builtin(inter, table_keys);
+    fn_add_builtin(inter, get);
+    fn_add_builtin(inter, table_keys);
 
     // fn_add_builtin(inter, String);
     // fn_add_builtin(inter, String);
     // fn_add_builtin(inter, substring);
 
-    // fn_add_builtin(inter, empty_q);
-    // fn_add_builtin(inter, length);
+    fn_add_builtin(inter, empty_q);
+    fn_add_builtin(inter, length);
 
     // import into repl namespace
     auto& st = *inter.get_symtab();
     auto& glob = *inter.get_global_env();
     do_import(st,
-            **glob.get_ns(st.intern("fn/repl")),
+            **glob.get_ns(st.intern("fn/user")),
             **glob.get_ns(st.intern("fn/builtin")),
             "");
 }
