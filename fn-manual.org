@@ -557,10 +557,13 @@ We also have the concept of a *subpackage*. In the above examples,
 
 *** Namespace Determination
 
+The rules for namespace/package determination are explained in more detail in
+section [[Command Line Interface]]. This section just covers the most common
+configuration.
+
 When a file is interpreted, the short name of the namespace is set to the stem
-of the filename. There is no way to change this. The package, however, may be
-anything at all, and is specified by putting a ~package~ declaration at the top of
-the file:
+of the filename. The package may be any symbol, and is specified by putting a
+~package~ declaration at the top of the file:
 
 #+BEGIN_SRC fn
 (package myproject/util)
@@ -578,13 +581,37 @@ uses the namespace ~fn/repl~.
 
 *** Importing Namespaces
 
-Importing a namespace means taking its bindings into the current namespace.
+Importing a namespace means taking its bindings into the current namespace. This
+is done by way of the ~import~ command:
+#+BEGIN_SRC fn
+(import package/namespace)
+#+END_SRC
+
+This creates bindings of the form ~namespace:var-name~. That's /short name, colon,
+var name/. Since colons are prohibited from user-defined identifiers, this is
+guaranteed not to cause any collisions, provided only one namespace with the
+given short name is imported. Although, using aliases (see below), one can work
+around even this problem.
+
+If the requested namespace was already imported, then import copies in the
+bindings and goes on its merry way. However, if the namespace was not imported,
+then we have to go out and find it. The details of this are discussed in Section
+[[Command Line Interface]], particularly in Subsection [[Import Search]].
+
+~import~ also lets you define an alias for a namespace, or drop the prefix
+altogether and perform an unqualified import. The syntax for these respective
+operations is shown below.
+#+BEGIN_SRC fn
+(import package/namespace :alias ns)          ; ns:var-name
+(import package/namespace :unqualified true)  ; var-name
+#+END_SRC
 
 
 *** Builtin Namespace
 
 When a new namespace is created, an unqualified import of ~fn/builtin~ is
-automatically performed.
+automatically performed. This namespace contains essential functions for
+interacting with Fn's builtin data structures.
 
 
 *** Global Names
@@ -603,6 +630,7 @@ refers to the function ~map~ in the ~fn/builtin~ namespace.
 
 *** Variable Capture and ~gensym~
 
+
 * Command Line Interface
 
 All functionality is accessed via that ~fn~ command line program.
@@ -611,15 +639,17 @@ All functionality is accessed via that ~fn~ command line program.
 
 The fn command line tool has the following interface:
 #+begin_src
-fn [options] sources ...
+fn [options] [file | --eval string | - ] ARGS
 #+end_src
 
 When invoked without any arguments, a repl is started in namespace fn/user.
 
 The main options are:
 - ~-r~ :: Start a REPL after evaluating all sources.
-- ~--repl-ns <namespace>~ :: Use the specified namespace for the repl, (as opposed
-  to the default ~fn/user~).
+- ~--ns <namespace>~ :: Use the specified namespace for evaluation. This also sets
+  the namespace for the REPL (which otherwise defaults to fn/user).
+- ~--no-rel-imports~ :: Prevents ~import~ from searching for paths relative to the
+  filename. See subsection [[Import Search]] for details.
 - ~-h~ :: Show help and exit.
 There are also two more options that are unlikely to be useful for a typical
 user:
@@ -627,22 +657,64 @@ user:
 - ~-l~ :: Print LLIR (low-level intermediate representation) before compiling each
   expression.
 
-The sources are files and strings to evaluate. The types of source arguments
-are:
-- ~<filename>~ :: Evaluate and load an entire file. The package and namespace are
-  determined automatically (see below).
-- ~--eval <string>~ :: Evaluate a string in the default namespace, fn/user.
-- ~--eval-in <namespace> <string>~ :: Evaluate a string in the given namespace.
-- ~--eval-file <namespace> <string>~ :: Evaluate an entire file in the given
-  namespace. Note that this overrides the file's package declaration and treats
-  it as just a sequence of expressions.
+When an ~--ns~ option is used with a file, that file's namespace name is
+overridden by the specified namespace. The file then just acts as a series of
+expressions to evaluate. This also prevents import from searching relative to
+the file path.
 
-When the filename option above is used, package and namespace are determined
-based on the file's name and package declaration. The namespace name is set to
-the stem of the filename, and the package is set to the one specified in the
-file's package declaration. If the file contains no package declaration, it
-defaults to using ~fn/user~ as the package (e.g. ~foo.fn~ without a package
-declaration will have namespace ~fn/user/foo~).
+In the absence of an ~--ns~ option, the namespace of a file is determined by the
+filename and contents. In particular, the filename stem is used as the short
+name. If the file specifies a package, then that package is used, otherwise the
+default package ~fn/user~ is used, e.g. a file ~foo.fn~ with no package declaration
+would be evaluated in the namespace ~fn/user/foo~.
+
+
+** Import Search
+
+When the interpreter encounters an import form, it must locate and load the
+relevant source file (unless the namespace has already been created, as is the
+case for the builtin namespace, or for those namespaces already imported by
+another component).
+
+The interpreter has two ways to search for imports. The first way is to use the
+package and directory of a file to locate other components, while the second is
+to simply use a search path. The search path approach is pretty straightforward;
+it can be set using the ~FN_SEARCH_PATH~ environment variable, but by default it
+will simply check the Fn library directory on the system (something like
+~/usr/lib/Fn/ns~) before giving up.
+
+The first search method mentioned is called relative import search. This is how
+it works:
+- The interpreter has a notion of a /working directory/. When evaluating a file,
+  this is set to the directory containing the file. Otherwise it is the
+  directory from which the interpreter was launched.
+- The interpreter associates the package of the code being evaluated to the
+  working directory. This package is saved by the interpreter as the /root
+  package/.
+- When an import is performed on any subpackage of the root package (including
+  the root package itself), the interpreter will search for import files
+  relative to the working directory based on the import name. (It will fall
+  back to the search path if this fails).
+
+The specifics of the search algorithm are best explained by example. Suppose I
+evaluate a file ~bar.fn~ with package ~baz/foo~. The namespace for the file is
+~baz/foo/bar~ and the working directory is the directory of ~bar.fn~, which we'll
+write as ~${BAR_DIR}~.
+
+Let's see how imports work in this scenario:
+- ~(import baz/foo/oof)~ will cause the interpreter to look for a file
+  ~${BAR_DIR}/oof.fn~. This is because the directory ~${BAR_DIR}~ is associated to
+  the package ~baz/foo~.
+- Similarly, ~(import baz/foo/boom/grop)~ looks for the file
+  ~${BAR_DIR}/boom/grop.fn~.
+- However, ~(import baz/dop)~ will *not* look for a file named ~${BAR_DIR}/../dop.fn~,
+  because ~baz~ is not a subpackage of ~baz/foo~.
+
+Lastly, we make one important notes about imports. Even if a file is located, it
+will not be used if it has a package declaration which doesn't match up with the
+requested one. In the above example, if we find ~${BAR_DIR}/oof.fn~, but it has a
+package declaration placing it somewhere other than ~baz/foo~, then the import
+will fail (and we'll end up using the search path).
 
 
 ** REPL
