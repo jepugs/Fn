@@ -8,7 +8,7 @@ using namespace fn_parse;
 
 lexical_env extend_lex_env(lexical_env* parent, function_stub* new_func) {
     u8 bp;
-    u8 sp;
+    u8 sp = 0;
     if (new_func != nullptr) {
         bp = parent->sp;
     } else {
