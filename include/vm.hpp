@@ -83,9 +83,6 @@ private:
     call_frame* frame;
     root_stack* stack;
 
-    // last pop; used to access the result of the last expression
-    value lp;
-
     // peek relative to the top of the stack
     value peek(stack_address offset=0) const;
     // get a local value from the current call frame

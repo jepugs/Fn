@@ -30,6 +30,7 @@ private:
     // open upvalues in descending order by stack position
     std::list<upvalue_cell*> upvals;
     bool dead; // if true, stack will be deleted when garbage is collected
+    value last_pop; // the last value popped off the stack
 
 public:
     // no copying! These cannot be moved around in memory or else
@@ -45,7 +46,10 @@ public:
 
     value peek(u32 offset=0) const;
     value peek_bottom(u32 offset=0) const;
+    // FIXME: this should actually pop to a working set if you're gonna use the
+    // value
     value pop();
+    value get_last_pop();
     void pop_times(u32 n);
     void push(value v);
     // set a value, indexed so 0 is the bottom

@@ -1,5 +1,6 @@
 #include "parse.hpp"
 
+#include <sstream>
 #include <cstring>
 
 namespace fn_parse {
@@ -123,7 +124,7 @@ ast_form* ast_form::copy() const {
     return res;
 }
 
-static string print_grouped(const symbol_table& symtab,
+static string print_grouped(const symbol_table* symtab,
         char open,
         char close,
         ast_form** list,
@@ -186,7 +187,7 @@ string with_str_escapes(const string& src) {
     return string{buf.data(), buf.size()};
 }
 
-string ast_form::as_string(const symbol_table& symtab) const {
+string ast_form::as_string(const symbol_table* symtab) const {
     string res = "";
     switch (kind) {
     case ak_number_atom:
@@ -198,7 +199,7 @@ string ast_form::as_string(const symbol_table& symtab) const {
             + "\"";
         break;
     case ak_symbol_atom:
-        return with_escapes(symtab[datum.sym]);
+        return with_escapes((*symtab)[datum.sym]);
         break;
     case ak_list:
         res = print_grouped(symtab, '(', ')', datum.list, list_length);
@@ -212,11 +213,11 @@ bool ast_form::is_symbol() const {
     return kind == ak_symbol_atom;
 }
 
-bool ast_form::is_keyword(const symbol_table& symtab) const {
+bool ast_form::is_keyword(const symbol_table* symtab) const {
     if (!is_symbol()) {
         return false;
     }
-    auto name = symtab[datum.sym];
+    auto name = (*symtab)[datum.sym];
     return name.length() > 0 && name[0] == ':';
 }
 
@@ -226,38 +227,39 @@ symbol_id ast_form::get_symbol() const {
 
 
 // on error, returns nullptr and sets err, but DOES NOT
-static ast_form* parse_to_delimiter(scanner& sc,
-        symbol_table& symtab,
+static ast_form* parse_to_delimiter(scanner* sc,
+        symbol_table* symtab,
         vector<ast_form*>& buf,
         token_kind end,
         parse_error* err) {
-    auto tok = sc.next_token();
+    auto tok = sc->next_token();
     while (tok.tk != end) {
         if (tok.tk == tk_eof) {
             err->origin = tok.loc;
             err->message = "Encountered EOF while expecting closing delimiter.";
+            err->resumable = true;
             return nullptr;
         };
-        auto x = parse_form(sc, symtab, tok, err);
+        auto x = parse_input(sc, symtab, tok, err);
         if (!x) {
             return nullptr;
         }
         buf.push_back(x);
-        tok = sc.next_token();
+        tok = sc->next_token();
     }
 
     return mk_list_form(tok.loc, buf);
 }
 
-static ast_form* parse_prefix(scanner& sc,
-        symbol_table& symtab,
+static ast_form* parse_prefix(scanner* sc,
+        symbol_table* symtab,
         const source_loc& loc,
         const string& op,
         token t0,
         parse_error* err) {
     vector<ast_form*> buf;
-    buf.push_back(mk_symbol_form(loc, symtab.intern(op)));
-    auto x = parse_form(sc, symtab, t0, err);
+    buf.push_back(mk_symbol_form(loc, symtab->intern(op)));
+    auto x = parse_input(sc, symtab, t0, err);
     if (!x) {
         free_ast_form(buf[0]);
         return nullptr;
@@ -267,21 +269,21 @@ static ast_form* parse_prefix(scanner& sc,
     return mk_list_form(loc, buf);
 }
 
-static ast_form* parse_prefix(scanner& sc,
-        symbol_table& symtab,
+static ast_form* parse_prefix(scanner* sc,
+        symbol_table* symtab,
         const source_loc& loc,
         const string& op,
         parse_error* err) {
-    auto tok = sc.next_token();
+    auto tok = sc->next_token();
     return parse_prefix(sc, symtab, loc, op, tok, err);
 }
 
-ast_form* parse_form(scanner& sc, symbol_table& symtab, parse_error* err) {
-    return parse_form(sc, symtab, sc.next_token(), err);
+ast_form* parse_input(scanner* sc, symbol_table* symtab, parse_error* err) {
+    return parse_input(sc, symtab, sc->next_token(), err);
 }
 
-ast_form* parse_form(scanner& sc,
-        symbol_table& symtab,
+ast_form* parse_input(scanner* sc,
+        symbol_table* symtab,
         token t0,
         parse_error* err) {
     ast_form* res = nullptr;
@@ -293,6 +295,7 @@ ast_form* parse_form(scanner& sc,
     case tk_eof:
         err->origin = loc;
         err->message = "Unexpected EOF.";
+        err->resumable = true;
         return nullptr;
 
     case tk_number:
@@ -302,7 +305,7 @@ ast_form* parse_form(scanner& sc,
         res = mk_string_form(loc, fn_string{*str});
         break;
     case tk_symbol:
-        res = mk_symbol_form(loc, symtab.intern(*str));
+        res = mk_symbol_form(loc, symtab->intern(*str));
         break;
 
     case tk_lparen:
@@ -316,10 +319,11 @@ ast_form* parse_form(scanner& sc,
     case tk_rparen:
         err->origin = loc;
         err->message = "Unmatched delimiter ')'.";
+        err->resumable = false;
         res = nullptr;
         break;
     case tk_lbrace:
-        buf.push_back(mk_symbol_form(loc, symtab.intern("Table")));
+        buf.push_back(mk_symbol_form(loc, symtab->intern("Table")));
         if (!(res=parse_to_delimiter(sc, symtab, buf, tk_rbrace, err))) {
             for (auto x : buf) {
                 free_ast_form(x);
@@ -329,10 +333,11 @@ ast_form* parse_form(scanner& sc,
     case tk_rbrace:
         err->origin = loc;
         err->message = "Unmatched delimiter '}'.";
+        err->resumable = false;
         res = nullptr;
         break;
     case tk_lbracket:
-        buf.push_back(mk_symbol_form(loc, symtab.intern("List")));
+        buf.push_back(mk_symbol_form(loc, symtab->intern("List")));
         if (!(res=parse_to_delimiter(sc, symtab, buf, tk_rbracket, err))) {
             for (auto x : buf) {
                 free_ast_form(x);
@@ -342,13 +347,14 @@ ast_form* parse_form(scanner& sc,
     case tk_rbracket:
         err->origin = loc;
         err->message = "Unmatched delimiter '}'.";
+        err->resumable = false;
         res = nullptr;
         break;
 
     case tk_dot:
-        buf.push_back(mk_symbol_form(loc, symtab.intern("dot")));
+        buf.push_back(mk_symbol_form(loc, symtab->intern("dot")));
         for (auto s : *t0.datum.ids) {
-            buf.push_back(mk_symbol_form(loc, symtab.intern(s)));
+            buf.push_back(mk_symbol_form(loc, symtab->intern(s)));
         }
         res = mk_list_form(loc, buf);
         break;
@@ -382,6 +388,29 @@ ast_form* parse_form(scanner& sc,
                 err);
         break;
     }
+    return res;
+}
+
+vector<ast_form*> parse_string(const string& src,
+        symbol_table* symtab,
+        u32* bytes_used,
+        parse_error* err) {
+    std::istringstream in{src};
+    scanner sc{&in};
+    vector<ast_form*> res;
+    auto pos = in.tellg();
+    ast_form* a;
+    while ((a = parse_input(&sc, symtab, err))) {
+        // pos holds the position after last successful read
+        pos = in.tellg();
+        res.push_back(a);
+    }
+    if (!err->resumable) {
+        // if we can't resume from this error, just throw away the rest of the
+        // string.
+        pos = src.size();
+    }
+    *bytes_used = pos;
     return res;
 }
 

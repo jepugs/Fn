@@ -47,6 +47,15 @@ public:
     // expression (or null).
     value interpret_string(const string& src);
 
+    // Evaluate as much of a string as we can. Returns the number of bytes used.
+    // Here's how this works: we try to parse ast_forms from src, and execute
+    // them one at a time until we get an error. If it's a resumable error (i.e.
+    // it might not be an error if there were more text), we roll back the
+    // number of bytes consumed to right before that parse attempt. Otherwise,
+    // we leave the number of bytes after the parse error.
+    value partial_interpret_string(const string& src, working_set* ws,
+            u32* bytes_used);
+
     // macroexpand a form in the given namespace
     ast_form* macroexpand(symbol_id ns_id, const ast_form* form);
     value ast_to_value(working_set* ws, const ast_form* form);

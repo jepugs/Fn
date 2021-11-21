@@ -25,7 +25,8 @@ static constexpr u32 COLLECT_TH = 4096;
 
 root_stack::root_stack()
     : pointer{0}
-    , dead{false} {
+    , dead{false}
+    , last_pop{V_NIL} {
 }
 
 root_stack::~root_stack() {
@@ -46,14 +47,21 @@ value root_stack::peek_bottom(u32 offset) const {
 
 value root_stack::pop() {
     --pointer;
-    auto res = contents.back();
+    last_pop = contents.back();
     contents.pop_back();
-    return res;
+    return last_pop;
 }
 
 void root_stack::pop_times(u32 n) {
-    pointer -= n;
-    contents.resize(pointer);
+    if (n >= 0) {
+        pointer -= n;
+        last_pop = contents[pointer];
+        contents.resize(pointer);
+    }
+}
+
+value root_stack::get_last_pop() {
+    return last_pop;
 }
 
 void root_stack::push(value v) {
@@ -346,6 +354,10 @@ void allocator::mark() {
                 if (h.has_value()) {
                     mark_descend(*h);
                 }
+            }
+            auto h = (*it)->last_pop.header();
+            if (h.has_value()) {
+                mark_descend(*h);
             }
         }
     }

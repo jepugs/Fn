@@ -21,8 +21,7 @@ vm_thread::vm_thread(allocator* use_alloc, global_env* use_globals,
     , alloc{use_alloc}
     , toplevel_chunk{use_chunk}
     , ip{0}
-    , frame{new call_frame(nullptr, 0, 0, nullptr)}
-    , lp{V_NIL} {
+    , frame{new call_frame(nullptr, 0, 0, nullptr)} {
     stack = alloc->add_root_stack();
 }
 
@@ -49,7 +48,7 @@ u32 vm_thread::get_ip() const {
 }
 
 value vm_thread::last_pop() const {
-    return lp;
+    return stack->get_last_pop();
 }
 
 void vm_thread::add_global(value name, value v) {
@@ -374,7 +373,7 @@ void vm_thread::step() {
     case OP_NOP:
         break;
     case OP_POP:
-        lp = pop_to_ws(&ws);
+        pop();
         break;
     case OP_COPY:
         v1 = peek(cur_chunk()->read_byte(ip+1));

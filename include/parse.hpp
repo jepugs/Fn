@@ -33,10 +33,10 @@ struct ast_form {
     // make a deep copy. Must be deleted later
     ast_form* copy() const;
 
-    string as_string(const symbol_table& symtab) const;
+    string as_string(const symbol_table* symtab) const;
 
     bool is_symbol() const;
-    bool is_keyword(const symbol_table& symtab) const;
+    bool is_keyword(const symbol_table* symtab) const;
     symbol_id get_symbol() const;
 };
 
@@ -64,22 +64,29 @@ void free_ast_form(ast_form* form, bool recursive=true);
 
 struct parse_error {
     source_loc origin;
+    bool resumable = false;
     string message;
 };
 
 // get the next form by reading tokens one at a time from the scanner. Return a
 // null pointer on EOF. It is the responsibility of the caller to delete the
 // returned object. Returns null and sets err on failure.
-ast_form* parse_form(scanner& sc,
-        symbol_table& symtab,
+ast_form* parse_input(scanner* sc,
+        symbol_table* symtab,
         parse_error* err);
 // This is the same as above, but we pass in the first token directly (as
 // opposed to getting it from the scanner).
-ast_form* parse_form(scanner& sc,
-        symbol_table& symtab,
+ast_form* parse_input(scanner* sc,
+        symbol_table* symtab,
         token t0,
         parse_error* err);
 
+// attempt to parse as many ast_forms as possible from the given string. The
+// parse_error* structure is set to the first error encountered.
+vector<ast_form*> parse_string(const string& src,
+        symbol_table* symtab,
+        u32* bytes_used,
+        parse_error* err);
 
 }
 #endif

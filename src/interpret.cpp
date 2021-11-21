@@ -81,15 +81,11 @@ value interpreter::interpret_string(const string& src) {
 
     auto ns_name = symtab.intern("fn/repl");
     auto chunk = alloc.add_chunk(ns_name);
-    do_import(symtab,
-            **globals.get_ns(ns_name),
-            **globals.get_ns(symtab.intern("fn/builtin")),
-            "");
 
     expander ex{this, chunk};
     while (!sc.eof()) {
         parse_error p_err;
-        auto ast = parse_form(sc, symtab, &p_err);
+        auto ast = parse_input(&sc, &symtab, &p_err);
         if (ast == nullptr) {
             // TODO: throw an error
             std::cout << "err: " << p_err.message << '\n';
@@ -102,6 +98,58 @@ value interpreter::interpret_string(const string& src) {
         if (llir == nullptr) {
             // TODO: throw an error
             std::cout << "err: " << e_err.message << '\n';
+            break;
+        }
+
+        print_llir(llir, symtab, chunk);
+
+        compiler c{&symtab, &alloc, chunk};
+        compile_error c_err;
+        c_err.has_error = false;
+        c.compile(llir, &c_err);
+        if (c_err.has_error) {
+            std::cout << "compile err: " << c_err.message << '\n';
+            break;
+        }
+        disassemble(symtab, *chunk, std::cout);
+
+        vm_thread vm{&alloc, &globals, chunk};
+        interpret_to_end(vm);
+
+        free_llir_form(llir);
+        return vm.last_pop();
+    }
+
+    return V_NIL;
+}
+
+value interpreter::partial_interpret_string(const string& src,
+        working_set* ws,
+        u32* bytes_used) {
+    parse_error p_err;
+    auto forms = parse_string(src, &symtab, bytes_used, &p_err);
+    if (forms.size() == 0) {
+        if (!p_err.resumable) {
+            // TODO: we can do better than this for error handling
+            std::cout << "Parse error: " << p_err.message << '\n';
+            return V_NIL;
+        } else {
+            return V_NIL;
+        }
+    }
+
+    auto ns_name = symtab.intern("fn/repl");
+    auto chunk = alloc.add_chunk(ns_name);
+
+    for (auto ast : forms) {
+        expand_error e_err;
+        expander ex{this, chunk};
+        auto llir = ex.expand(ast, &e_err);
+        free_ast_form(ast);
+
+        if (llir == nullptr) {
+            // TODO: throw an error
+            std::cout << "Expansion error: " << e_err.message << '\n';
             break;
         }
 

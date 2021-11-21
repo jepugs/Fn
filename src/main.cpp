@@ -82,6 +82,7 @@ int main(int argc, char** argv) {
 
     
     interpreter inter{};
+    auto ws = inter.get_alloc()->add_working_set();
     install_builtin(inter);
     // TODO: use proper namespaces
     value res;
@@ -95,14 +96,38 @@ int main(int argc, char** argv) {
 
     // run the repl if necessary
     if (interact) {
-        string line;
+        string buf;
+        u32 pos = 0;
+        bool still_reading = false;
         while (!std::cin.eof()) {
-            std::cout << "fn> ";
+            string line;
             std::getline(std::cin, line);
-            res = inter.interpret_string(line);
-            // print value
-            std::cout << v_to_string(res, inter.get_symtab())
-                      << endl;
+            if (still_reading) {
+                std::cout << " >> ";
+                // getline doesn't append the '\n', so we add it back here to
+                // put whitespace between the strings
+                buf += '\n' + line;
+            } else {
+                std::cout << "fn> ";
+                buf = line;
+                // TODO: check for keywords for repl commands
+                //if(line[0] == ':')
+            }
+
+
+            res = inter.partial_interpret_string(buf, &ws, &pos);
+
+            // note that this doesn't account for trailing whitespace
+            if (pos < buf.size() && buf != "\n") {
+                buf = buf.substr(pos);
+                still_reading = true;
+            } else {
+                buf = "";
+                // print value
+                std::cout << v_to_string(res, inter.get_symtab())
+                          << endl;
+                still_reading = false;
+            }
         }
     } else {
         std::cout << v_to_string(res, inter.get_symtab())
