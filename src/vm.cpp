@@ -19,9 +19,9 @@ vm_thread::vm_thread(allocator* use_alloc, global_env* use_globals,
     : symtab{use_globals->get_symtab()}
     , globals{use_globals}
     , alloc{use_alloc}
-    , toplevel_chunk{use_chunk}
+    , chunk{use_chunk}
     , ip{0}
-    , frame{new call_frame(nullptr, 0, 0, nullptr)} {
+    , frame{new call_frame{nullptr, 0, use_chunk, 0, nullptr}} {
     stack = alloc->add_root_stack();
 }
 
@@ -104,11 +104,11 @@ code_chunk* vm_thread::cur_chunk() const {
     if (frame->caller) {
         return frame->caller->stub->chunk;
     } else {
-        return toplevel_chunk;
+        return chunk;
     }
 }
-code_chunk* vm_thread::get_toplevel_chunk() {
-    return toplevel_chunk;
+code_chunk* vm_thread::get_chunk() {
+    return chunk;
 }
 allocator* vm_thread::get_alloc() {
     return alloc;
@@ -310,13 +310,16 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
             + stub->vt_param.has_value());
     u32 bp = stack->get_pointer() - sp;
 
-    frame = new call_frame{frame, ip+2, bp, func, (u8)stub->pos_params.size()};
+    frame = new call_frame{frame, ip+2, chunk, bp, func, (u8)stub->pos_params.size()};
+    chunk = stub->chunk;
     return stub->addr;
 }
 
 
 void vm_thread::init_function(working_set* ws, function* f) {
     auto stub = f->stub;
+
+    f->foreign_func = nullptr;
 
     // Add init values
     // DANGER! Init vals are popped right off the stack, so they better be there
@@ -552,6 +555,7 @@ void vm_thread::step() {
         // jump to return address
         jump = true;
         addr = frame->ret_addr;
+        chunk = frame->ret_chunk;
 
         num_args = frame->num_args;
         // close to base pointer

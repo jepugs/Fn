@@ -59,6 +59,11 @@ private:
     void write_byte(u8 byte);
     void write_short(u16 u);
     void patch_short(u16 u, code_address where);
+    // patch in a jump address.
+    void patch_jump(i64 offset,
+            code_address where,
+            const source_loc& origin,
+            compile_error* err);
 
     // add a symbol as a constant and compile it. Unlike other compilation
     // functions, this does not affect the stack pointer.

@@ -318,6 +318,7 @@ forward_list<gc_header*> allocator::accessible(gc_header* o) {
             for (u32 i = 0; i < num_opt; ++i) {
                 add_value_header(f->init_vals[i], res);
             }
+            res.push_front((gc_header*)f->stub->chunk);
         }
         break;
     }

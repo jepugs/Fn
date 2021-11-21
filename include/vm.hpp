@@ -26,6 +26,8 @@ struct call_frame {
     call_frame* prev;
     // return address
     code_address ret_addr;
+    // chunk to return to
+    code_chunk* ret_chunk;
     // base pointer (i.e. offset from the true bottom of the stack)
     u32 bp;
     // the function we're in. nullptr on the top level.
@@ -34,15 +36,17 @@ struct call_frame {
     local_address num_args;
 
     call_frame(call_frame* prev,
-            code_address ret_addr,
-            u32 bp,
-            function* caller,
-            local_address num_args=0)
-        : prev(prev)
-        , ret_addr(ret_addr)
-        , bp(bp)
-        , caller(caller)
-        , num_args(num_args) {
+               code_address ret_addr,
+               code_chunk* ret_chunk,
+               u32 bp,
+               function* caller,
+               local_address num_args=0)
+        : prev{prev}
+        , ret_addr{ret_addr}
+        , ret_chunk{ret_chunk}
+        , bp{bp}
+        , caller{caller}
+        , num_args{num_args} {
     }
 };
 
@@ -69,7 +73,7 @@ private:
     symbol_table* symtab;
     global_env* globals;
     allocator* alloc;
-    code_chunk* toplevel_chunk;
+    code_chunk* chunk;
 
     // current execution status
     vm_status status;
@@ -158,7 +162,7 @@ public:
     value last_pop() const;
 
     code_chunk* cur_chunk() const;
-    code_chunk* get_toplevel_chunk();
+    code_chunk* get_chunk();
     allocator* get_alloc();
     symbol_table* get_symtab();
 

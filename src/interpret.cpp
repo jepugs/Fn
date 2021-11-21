@@ -51,10 +51,10 @@ void interpreter::interpret_to_end(vm_thread& vm) {
 }
 
 value interpreter::interpret_file(const string& path, bool* error) {
-    // FIXME: handle errors
     std::ifstream in{path};
     fn_scan::scanner sc{&in};
     parse_error p_err;
+
     auto forms = parse_input(&sc, &symtab, &p_err);
     if (forms.size() == 0) {
         if (error != nullptr) {
@@ -66,7 +66,9 @@ value interpreter::interpret_file(const string& path, bool* error) {
 
     auto ns_name = symtab.intern("fn/user");
     auto chunk = alloc.add_chunk(ns_name);
+    value res = V_NIL;
 
+    *error = false;
     for (auto ast : forms) {
         expand_error e_err;
         expander ex{this, chunk};
@@ -107,10 +109,10 @@ value interpreter::interpret_file(const string& path, bool* error) {
         interpret_to_end(vm);
 
         free_llir_form(llir);
-        return vm.last_pop();
+        res = vm.last_pop();
     }
 
-    return V_NIL;
+    return res;
 }
 
 value interpreter::interpret_string(const string& src) {

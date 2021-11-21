@@ -170,6 +170,7 @@ constexpr u8 OP_TCALL = 0x33;
 // return; return from the current function
 constexpr u8 OP_RETURN = 0x34;
 
+
 // import; stack arguments ->[ns_id]; perform an import using the given
 // namespace id (symbol).
 constexpr u8 OP_IMPORT = 0x40;

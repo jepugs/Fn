@@ -92,8 +92,11 @@ int main(int argc, char** argv) {
     value res = V_NIL;
     bool err;
     for (auto s : evals) {
+        err = false;
         if (s[0] == 's') {
+            std::cout << "started string \n";
             res = inter.interpret_string(s.substr(1));
+            std::cout << "finished string \n";
         } else {
             res = inter.interpret_file(s.substr(1), &err);
             if (err) {
@@ -103,7 +106,7 @@ int main(int argc, char** argv) {
             }
         }
     }
-
+    
     // run the repl if necessary
     if (interact) {
         string buf;

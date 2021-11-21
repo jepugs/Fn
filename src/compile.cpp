@@ -1,5 +1,7 @@
 #include "compile.hpp"
 
+#include <climits>
+
 namespace fn {
 
 using namespace fn_parse;
@@ -74,6 +76,19 @@ void compiler::write_short(u16 u) {
 }
 void compiler::patch_short(u16 u, code_address where) {
     dest->write_short(u, where);
+}
+void compiler::patch_jump(i64 offset,
+        code_address where,
+        const source_loc& origin,
+        compile_error* err) {
+    if (offset < SHRT_MIN || offset > SHRT_MAX) {
+        err->has_error = true;
+        err->origin = origin;
+        err->message = "jmp distance won't fit in 16 bits";
+        return;
+    }
+    i16 jmp_dist = (i16)offset;
+    patch_short(static_cast<u16>(jmp_dist), where);
 }
 
 void compiler::compile_symbol(symbol_id sym) {
@@ -172,31 +187,33 @@ void compiler::compile_llir(const llir_if_form* llir,
     compile_llir_generic(llir->test_form, lex, err);
     return_on_err;
 
-    auto addr1 = dest->code_size;
+    i64 addr1 = dest->code_size;
     write_byte(OP_CJUMP);
     write_short(0);
 
     compile_llir_generic(llir->then_form, lex, err);
     return_on_err;
 
-    auto addr2 = dest->code_size;
+    i64 addr2 = dest->code_size;
     write_byte(OP_JUMP);
     write_short(0);
 
     compile_llir_generic(llir->else_form, lex, err);
     return_on_err;
 
-    auto end_addr = dest->code_size;
-    patch_short(addr2 - addr1, addr1 + 1);
-    patch_short(end_addr - addr2 - 3, addr2 + 1);
+    i64 end_addr = dest->code_size;
+    patch_jump(addr2 - addr1, addr1 + 1, llir->header.origin, err);
+    return_on_err;
+    patch_jump(end_addr - addr2 - 3, addr2 + 1, llir->header.origin, err);
     // minus three since jump is relative to the end of the 3 byte instruction
+    return_on_err;
 }
 
 void compiler::compile_llir(const llir_fn_form* llir,
         lexical_env* lex,
         compile_error* err) {
     // write jump
-    auto start = dest->code_size;
+    i64 start = dest->code_size;
     write_byte(OP_JUMP);
     write_short(0);
 
@@ -240,7 +257,10 @@ void compiler::compile_llir(const llir_fn_form* llir,
     write_byte(OP_RETURN);
 
     // jump over the function body
-    patch_short(dest->code_size - start - 3, start+1);
+    i64 end_addr = dest->code_size;
+    patch_jump(end_addr - start - 3, start + 1, llir->header.origin, err);
+    return_on_err;
+
 
     // TODO compile init forms
     auto len = params.num_pos_args - params.req_args;

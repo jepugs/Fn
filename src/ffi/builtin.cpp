@@ -157,6 +157,30 @@ fn_fun(cons, "cons", "(hd tl)") {
     return handle->v_cons(argv[0], argv[1]);
 }
 
+fn_fun(head, "head", "(x)") {
+    if (argc != 1) {
+        handle->runtime_error("empty? requires exactly one argument");
+    }
+    if (argv[0] == V_EMPTY) {
+        return V_NIL;
+    } else {
+        handle->assert_type(TAG_CONS, argv[0]);
+        return vcons(argv[0])->head;
+    }
+}
+
+fn_fun(tail, "tail", "(x)") {
+    if (argc != 1) {
+        handle->runtime_error("empty? requires exactly one argument");
+    }
+    if (argv[0] == V_EMPTY) {
+        return V_NIL;
+    } else {
+        handle->assert_type(TAG_CONS, argv[0]);
+        return vcons(argv[0])->tail;
+    }
+}
+
 fn_fun(nth, "nth", "(n list)") {
     assert_args_eq(2);
     handle->assert_type(TAG_NUM, argv[0]);
@@ -262,6 +286,8 @@ void install_builtin(interpreter& inter) {
     fn_add_builtin(inter, List);
     fn_add_builtin(inter, list_q);
     fn_add_builtin(inter, cons);
+    fn_add_builtin(inter, head);
+    fn_add_builtin(inter, tail);
     fn_add_builtin(inter, nth);
     // fn_add_builtin(inter, concat);
 
