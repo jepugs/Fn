@@ -230,7 +230,7 @@ void vm_thread::arrange_call_stack(working_set* ws,
     // Extra positional arguments go to the variadic list parameter
     value var_list = V_EMPTY;
     if (num_pos_args < num_args) {
-        if (has_vl) {
+        if (!has_vl) {
             runtime_error("Too many positional arguments to function.");
         }
         i32 m = num_args - num_pos_args;
