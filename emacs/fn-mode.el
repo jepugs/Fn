@@ -189,10 +189,7 @@ given context."
        0 font-lock-builtin-face)
       ("\\_<&\\_>" . font-lock-builtin-face)
       ;; variable and function names
-      (,(concat "([[:space:]]*\\_<\\(def\\|let\\)\\_>[[:space:]]+"
-                "\\(\\_<" fn-symbol-regexp "+\\_>\\)")
-       2 font-lock-variable-name-face)
-      (,(concat "([[:space:]]*\\_<\\(defn\\|letmacro\\|letfn\\)\\_>[[:space:]]+"
+      (,(concat "([[:space:]]*\\_<\\(defn\\|defmacro\\|letfn\\)\\_>[[:space:]]+"
                 "\\(\\_<" fn-symbol-regexp "+\\_>\\)")
        (2 font-lock-function-name-face))
       ;; special operators
