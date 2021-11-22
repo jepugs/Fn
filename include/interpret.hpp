@@ -10,6 +10,7 @@
 #include "parse.hpp"
 #include "vm.hpp"
 
+
 namespace fn {
 
 using namespace fn_parse;
@@ -52,6 +53,11 @@ public:
     // Evaluate a string in an empty chunk. Returns the value from the last
     // expression (or null).
     value interpret_string(const string& src);
+    // Evaluate all input from an istream. Note that this will not terminate
+    // until EOF is encountered in the stream.
+    value interpret_istream(std::istream* in,
+            const string& src_name,
+            bool* error);
 
     // Evaluate as much of a string as we can. Returns the number of bytes used.
     // Here's how this works: we try to parse ast_forms from src, and execute

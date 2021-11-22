@@ -633,21 +633,21 @@ refers to the function ~map~ in the ~fn/builtin~ namespace.
 
 * Command Line Interface
 
-All functionality is accessed via that ~fn~ command line program.
+All functionality is accessed via the ~fn~ command line program.
 
-** Invocation
+** Invocation and Namespace Determination
 
 The fn command line tool has the following interface:
 #+begin_src
 fn [options] [file | --eval string | - ] ARGS
 #+end_src
 
-When invoked without any arguments, a repl is started in namespace fn/user.
+When invoked without any arguments, a repl is started in namespace ~fn/user~.
 
 The main options are:
 - ~-r~ :: Start a REPL after evaluating all sources.
 - ~--ns <namespace>~ :: Use the specified namespace for evaluation. This also sets
-  the namespace for the REPL (which otherwise defaults to fn/user).
+  the namespace for the REPL (which otherwise defaults to ~fn/user~).
 - ~--no-rel-imports~ :: Prevents ~import~ from searching for paths relative to the
   filename. See subsection [[Import Search]] for details.
 - ~-h~ :: Show help and exit.
@@ -719,17 +719,27 @@ will fail (and we'll end up using the search path).
 
 ** REPL
 
-In addition to running code, additional functionality can be accessed by typing
-keywords (i.e. symbols whose names begin with ":"). The available REPL keywords
-are:
+Fn's REPL allows interactive evaluation of code. It supports multi-line
+expressions. Optional GNU readline support is planned, but for now, it is highly
+recommended that you run the REPL in a wrapper that has command history, such as
+rlwrap or Emacs shell-mode.
 
-- ~:quit~ :: quit the interpreter
-- ~:ns <namespace>~ :: Switch to the given namespace.
+Additional functionality can be accessed by typing keywords (i.e. symbols whose
+names begin with ":"). The available REPL keywords are:
+
+- ~:help~ :: List these options.
+- ~:quit~ :: Quit the interpreter. Can also be done by sending EOF with ctrl-d.
 - ~:load <filename>~ :: Evaluate a file in the current namespace.
 - ~:reimport <namespace>~ :: Redo a namespace import as if it was for the first
-  time. Be warned that references to the old namespace are not deleted, so the
-  two instances of the namespace can get out of sync and cause errors.
+  time. Be warned that this will not overwrite the old functions if they've
+  already been compiled into a new one.
+- ~:ns <namespace>~ :: Switch to the given namespace.
 
+To be interpreted as REPL commands, these cannot be preceded by any whitespace.
+
+At the time of writing, these are not actually implemented in the codebase, but
+you can try your luck because there's a chance that this document is out of sync
+with my progress.
 
 * TODO Builtin Functions
 

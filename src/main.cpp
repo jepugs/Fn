@@ -7,7 +7,6 @@
 
 #include <filesystem>
 #include <iostream>
-#include <unistd.h>
 
 using namespace fn;
 
@@ -16,99 +15,181 @@ using std::endl;
 
 void show_usage() {
     std::cout <<
-        "Usage: fn [options] [-e string | file] ...\n"
+        "Usage: fn [options] [--expr string | file | -] ARGS ...\n"
         "Description:\n"
-        "  Fn programming language interpreter and repl.\n"
-        "Options:\n"
-        // "  -D dir      Set the working directory for the interpreter.\n"
-        // "  --no-wd     Exclude the working directory from namespace searches.\n"
-        // "  --no-home   Exclude the home directory from namespace searches.\n"
-        // "  --sys-only  Equivalent to \"--no-wd --no-home\".\n"
-        "  -d            Output disassembled bytecode before interpreting each\n"
-        "                 each expression.\n"
-        "  -l            Print low-level intermediate representation before\n"
-        "                 compiling each expression.\n"
-        "  -e string     Evaluate the Fn expressions in the string,\n"
-        "                 printing the result. Multiple -e options and\n"
-        "                 filenames can be mixed, in which case they are\n"
-        "                 evaluated in the order provided.\n"
-        "  -h            Show this help message and exit.\n"
-        "  -i            Start a repl (after running provided strings and files)\n"
-        "Running with no options starts a repl.\n"
+        "  Fn programming language interpreter and REPL.\n"
+        "Options/Arguments:\n"
+        "  -h           Show this help message and exit.\n"
+        "  -r           Start the REPL (after finishing evaluation).\n"
+        "  -l           Print LLIR (low level intermediate rep) before\n"
+        "                compiling each expression.\n"
+        "  -d           Print disassembled bytecode before evaluating\n"
+        "                each expression.\n"
+        "  -            Take input directly from STDIN.\n"
+        "  --ns namespace   Specify the namespace for evaluation. In\n"
+        "                    the case of file evaluation, this will\n"
+        "                    override the file's package & namespace.\n"
+        "                    The default namespace is fn/user.\n"
+        "  --expr string    Evaluate a string (instead of a file).\n"
+        "  ARGS ...         These are passed to the interpreter as\n"
+        "                    command line arguments.\n"
+        "Running with no options starts REPL in namespace fn/user. When\n"
+        "evaluating a file, the package and namespace are determined by\n"
+        "the filename and package declaration, if present. Refer to the\n"
+        "Fn manual for more information.\n"
         ;
 }
 
-int main(int argc, char** argv) {
-    int opt;
-    // this contains filenames and strings to evaluate. the first character of each entry indicates
-    // whether it is a filename ('f') or a string ('s').
-    vector<string> evals;
-    // -d flag
-    bool dis = false;
-    // -i flag
-    bool interact = false;
-    // -l flag
-    bool show_llir = false;
+// specifies where the Fn source code comes from
+enum eval_mode {
+    em_file,
+    em_string,
+    em_stdin,
+    em_none
+};
 
-    // this depends on GNU getopt
-    while ((opt = getopt(argc, argv, "-D:e:dhil")) != -1) {
-        switch (opt) {
-        case 'd':
-            dis = true;
+struct interpreter_options {
+    // where to get source code
+    eval_mode mode = em_none;
+    // holds filename or string to evaluate depending on mode
+    string src = "";
+    // namespace if one is set
+    string ns = "fn/user";
+    // the start of program arguments in argv
+    int args_start = 1;
+    // if true, should just show help and exit. In this case, other fields of
+    // the struct are not guaranteed to be initialized
+    bool help = false;
+    // whether to start a repl
+    bool repl = false;
+    // whether to print bytecode
+    bool dis = false;
+    // whether to print llir
+    bool llir = false;
+
+    // if true, the argument list was malformed and the other fields are not
+    // guaranteed to be properly initialized
+    bool err = false;
+    string message = "";
+};
+
+// create an interpreter_options object based on CLI options. Returns false on
+// malformed command line arguments.
+void process_args(int argc, char** argv, interpreter_options* opt) {
+    if (argc == 1) {
+        opt->repl = true;
+        return;
+    }
+    // process options first
+    int i;
+    for (i = 1; i < argc; ++i) {
+        string s{argv[i]};
+        if (s == string{"-"} || s == string{"--expr"} || s[0] != '-') {
             break;
-        case 'l':
-            show_llir = true;
+        } else if (s == "--ns") {
+            if (i + 1 == argc) {
+                opt->err = true;
+                opt->message = "--ns must be followed by a namespace name.";
+                return;
+            } else if (opt->message.size() != 0) {
+                opt->err = true;
+                opt->message = "Multiple --ns options.";
+                return;
+            } else {
+                opt->ns = argv[++i];
+            }
+        } else if (s[0] == '-') {
+            for (u32 j = 1; j < s.size(); ++j) {
+                switch(s[j]) {
+                case 'r':
+                    opt->repl = true;
+                    break;
+                case 'd':
+                    opt->dis = true;
+                    break;
+                case 'l':
+                    opt->llir = true;
+                    break;
+                case 'h':
+                    opt->help = true;
+                    // no sense doing further processing at this point
+                    return;
+                default:
+                    opt->err = true;
+                    opt->message = "Unrecognized option in"
+                        + string{s[j]} + ".";
+                    return;
+                }
+            }
+        } else {
             break;
-        case 'e':
-            evals.push_back("s" + string{optarg});
-            break;
-        case 'h':
-            show_usage();
-            return 0;
-        case 'i':
-            interact = true;
-            break;
-        case 1:
-            // non-arguments are filenames
-            evals.push_back("f" + string{optarg});
-            break;
-        default:
-            std::cerr << "error: unrecognized option\n";
+        }
+    }
+
+    // process source
+    string src{argv[i]};
+    if (src == string{"--expr"}) {
+        if(i == argc) {
+            opt->err = true;
+            opt->message = "--expr must be followd by a string to evaluate.";
+            return;
+        }
+        opt->src = argv[++i];
+        opt->mode = em_string;
+    } else if (src == string{"-"}) {
+        opt->mode = em_stdin;
+    } else {
+        opt->src = src;
+        opt->mode = em_file;
+    }
+    opt->args_start = i+1;
+}
+
+int main(int argc, char** argv) {
+    interpreter_options opt;
+    process_args(argc, argv, &opt);
+    if (opt.help) {
+        show_usage();
+        return 0;
+    } else if (opt.err) {
+        std::cout << "Error processing command line arguments:\n"
+                  << opt.message << '\n';
+        return -1;
+    }
+
+    interpreter inter{};
+    inter.configure_logging(opt.llir, opt.dis);
+    install_builtin(inter);
+    auto ws = inter.get_alloc()->add_working_set();
+
+    // evaluate
+    // FIXME: use --ns arg when applicable
+    bool i_err;
+    value res;
+    switch (opt.mode) {
+    case em_file:
+        res = inter.interpret_file(opt.src, &i_err);
+        if (i_err) {
+            std::cout << "Error occurred while interpreting file.\n";
             return -1;
         }
-    }
-
-    // check for no arguments
-    if (evals.size() == 0) {
-        interact = true;
-    }
-    
-    interpreter inter{};
-    auto ws = inter.get_alloc()->add_working_set();
-    install_builtin(inter);
-    inter.configure_logging(show_llir, dis);
-
-    // TODO: use proper namespaces
-    value res = V_NIL;
-    bool err;
-    for (auto s : evals) {
-        err = false;
-        if (s[0] == 's') {
-            std::cout << "started string \n";
-            res = inter.interpret_string(s.substr(1));
-            std::cout << "finished string \n";
-        } else {
-            res = inter.interpret_file(s.substr(1), &err);
-            if (err) {
-                std::cout << "Error occurred while interpreting file "
-                          << s.substr(1) << '\n';
-                return -1;
-            }
+        break;
+    case em_string:
+        res = inter.interpret_string(opt.src);
+        break;
+    case em_stdin:
+        res = inter.interpret_istream(&std::cin, "STDIN", &i_err);
+        if (i_err) {
+            std::cout << "Error occurred while interpreting STDIN.\n";
+            return -1;
         }
+        break;
+    case em_none:
+        break;
     }
     
     // run the repl if necessary
-    if (interact) {
+    if (opt.repl) {
         string buf;
         u32 pos = 0;
         bool still_reading = false;

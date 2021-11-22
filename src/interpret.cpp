@@ -47,72 +47,11 @@ void interpreter::interpret_to_end(vm_thread& vm) {
         break;
     }
     // all other statuses cause us to exit
-
 }
 
 value interpreter::interpret_file(const string& path, bool* error) {
     std::ifstream in{path};
-    fn_scan::scanner sc{&in};
-    parse_error p_err;
-
-    auto forms = parse_input(&sc, &symtab, &p_err);
-    if (forms.size() == 0) {
-        if (error != nullptr) {
-            *error = true;
-        }
-        std::cout << "Parser error: " << p_err.message << '\n';
-        return V_NIL;
-    }
-
-    auto ns_name = symtab.intern("fn/user");
-    auto chunk = alloc.add_chunk(ns_name);
-    value res = V_NIL;
-
-    *error = false;
-    for (auto ast : forms) {
-        expand_error e_err;
-        expander ex{this, chunk};
-        auto llir = ex.expand(ast, &e_err);
-        free_ast_form(ast);
-
-        if (llir == nullptr) {
-            if (error != nullptr) {
-                *error = true;
-            }
-            std::cout << "Expansion error: " << e_err.message << '\n';
-            break;
-        }
-
-        if (log_llir) {
-            std::cout << "LLIR: \n";
-            print_llir(llir, symtab, chunk);
-        }
-
-        compiler c{&symtab, &alloc, chunk};
-        compile_error c_err;
-        c_err.has_error = false;
-        c.compile(llir, &c_err);
-        if (c_err.has_error) {
-            if (error != nullptr) {
-                *error = true;
-            }
-            std::cout << "Compile error: " << c_err.message << '\n';
-            break;
-        }
-
-        if (log_dis) {
-            std::cout << "Disassembled bytecode: \n";
-            disassemble(symtab, *chunk, std::cout);
-        }
-
-        vm_thread vm{&alloc, &globals, chunk};
-        interpret_to_end(vm);
-
-        free_llir_form(llir);
-        res = vm.last_pop();
-    }
-
-    return res;
+    return interpret_istream(&in, path, error);
 }
 
 value interpreter::interpret_string(const string& src) {
@@ -179,6 +118,73 @@ value interpreter::partial_interpret_string(const string& src,
 
     return V_NIL;
 }
+
+value interpreter::interpret_istream(std::istream* in,
+        const string& src_name,
+        bool* error) {
+    fn_scan::scanner sc{in, src_name};
+    parse_error p_err;
+
+    auto forms = parse_input(&sc, &symtab, &p_err);
+    if (forms.size() == 0) {
+        if (error != nullptr) {
+            *error = true;
+        }
+        std::cout << "Parser error: " << p_err.message << '\n';
+        return V_NIL;
+    }
+
+    auto ns_name = symtab.intern("fn/user");
+    auto chunk = alloc.add_chunk(ns_name);
+    value res = V_NIL;
+
+    *error = false;
+    for (auto ast : forms) {
+        expand_error e_err;
+        expander ex{this, chunk};
+        auto llir = ex.expand(ast, &e_err);
+        free_ast_form(ast);
+
+        if (llir == nullptr) {
+            if (error != nullptr) {
+                *error = true;
+            }
+            std::cout << "Expansion error: " << e_err.message << '\n';
+            break;
+        }
+
+        if (log_llir) {
+            std::cout << "LLIR: \n";
+            print_llir(llir, symtab, chunk);
+        }
+
+        compiler c{&symtab, &alloc, chunk};
+        compile_error c_err;
+        c_err.has_error = false;
+        c.compile(llir, &c_err);
+        if (c_err.has_error) {
+            if (error != nullptr) {
+                *error = true;
+            }
+            std::cout << "Compile error: " << c_err.message << '\n';
+            break;
+        }
+
+        if (log_dis) {
+            std::cout << "Disassembled bytecode: \n";
+            disassemble(symtab, *chunk, std::cout);
+        }
+
+        vm_thread vm{&alloc, &globals, chunk};
+        interpret_to_end(vm);
+
+        free_llir_form(llir);
+        res = vm.last_pop();
+    }
+
+    return res;
+}
+
 
 ast_form* interpreter::macroexpand(symbol_id ns_id, const ast_form* form) {
     auto res = form->copy();
