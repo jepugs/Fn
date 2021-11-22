@@ -19,7 +19,9 @@ interpreter::interpreter()
 }
 
 interpreter::~interpreter() {
-    // TODO: there's probably something to do here...
+    for (auto s : ffi_stubs) {
+        delete s;
+    }
 }
 
 void interpreter::configure_logging(bool log_llir_forms,
@@ -223,11 +225,84 @@ void interpreter::runtime_error(const string& msg,
 }
 
 void interpreter::add_builtin_function(const string& name,
-        value (*foreign_func)(interpreter_handle*, local_address, value*)) {
-    auto ws = alloc.add_working_set();
-    auto f = vfunction(ws.add_function(nullptr));
-    f->foreign_func = foreign_func;
+        const string& params,
+        value (*foreign_func)(interpreter_handle*, value*)) {
+    // Have to extract the params manually, as the expander method could execute
+    // code if it encounters an initform that has a macro in it.
+    parse_error err;
+    u32 bytes_used;
+    auto forms = parse_string(params, &symtab, &bytes_used, &err);
+    if (forms.size() != 1
+            || bytes_used != params.size()
+            || forms[0]->kind != ak_list) {
+        throw std::runtime_error{
+            "Malformed parameter string for add_builtin_function."
+        };
+    }
 
+    auto lst = forms[0]->datum.list;
+    auto len = forms[0]->list_length;
+    vector<symbol_id> pos_params;
+    optional<symbol_id> vl = std::nullopt;
+    optional<symbol_id> vt = std::nullopt;
+
+    symbol_id amp = symtab.intern("&");
+    symbol_id colamp = symtab.intern(":&");
+
+    u32 i;
+    for (i = 0; i < len; ++i) {
+        if (!lst[i]->is_symbol()) {
+            throw std::runtime_error{
+                "Malformed parameter string for add_builtin_function."
+            };
+        }
+        auto sym = lst[i]->datum.sym;
+        if (sym == amp || sym == colamp) {
+            break;
+        } else {
+            pos_params.push_back(sym);
+        }
+    }
+
+    // varargs. Unfortunately I don't think there's a better way to do this.
+    if (i < len) {
+        // must have lst[i] == amp or colamp
+        if (lst[i]->datum.sym == amp) {
+            if (len - i == 2) {
+                vl = lst[i+1]->datum.sym;
+            } else if (len - i == 4 && lst[i+2]->datum.sym == colamp) {
+                vt = lst[i+3]->datum.sym;
+            } else {
+                throw std::runtime_error{
+                    "Malformed parameter string for add_builtin_function."
+                };
+            }
+        } else if (lst[i]->datum.sym == colamp) {
+            if (len - i == 2) {
+                vt = lst[i+1]->datum.sym;
+            } else if (len - i == 4 && lst[i+2]->datum.sym == amp) {
+                vl = lst[i+3]->datum.sym;
+            } else {
+                throw std::runtime_error{
+                    "Malformed parameter string for add_builtin_function."
+                };
+            }
+        }
+    }
+
+    // FIXME: check that the param list isn't too long
+    auto stub = new function_stub{
+        .pos_params = pos_params,
+        .req_args = (u8)pos_params.size(),
+        .vl_param = vl,
+        .vt_param = vt,
+        .foreign = foreign_func
+        // no other values are used by foreign functions
+    };
+    ffi_stubs.push_back(stub);
+
+    auto ws = alloc.add_working_set();
+    auto f = vfunction(ws.add_function(stub));
     auto builtin = *globals.get_ns(symtab.intern("fn/builtin"));
     builtin->set(symtab.intern(name), as_value(f));
 }

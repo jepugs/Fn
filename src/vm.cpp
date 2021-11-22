@@ -279,47 +279,44 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
         runtime_error("Error on call instruction: callee is not a function");
         return ip + 2;
     }
-
     auto func = vfunction(callee);
-    if (func->foreign_func) {
-        // note: in the near future, foreign funcs will use same call stack
-        // structure as native ones.
-        auto args = new value[num_args];
-        auto kw_tab = pop_to_ws(ws);
-        if (!vtable(kw_tab)->contents.keys().empty()) {
-            runtime_error("Foreign functions don't accept keyword arguments.");
-        }
-        auto ws2 = alloc->add_working_set();
-        for (i32 i = num_args; i > 0; --i) {
-            args[i-1] = pop_to_ws(&ws2);
-        }
-        interpreter_handle handle{.inter=this, .ws=&ws2, .func_name="<ffi call>"};
-        push(func->foreign_func(&handle, num_args, args));
-        delete[] args;
-        return ip + 2;
-    }
 
-    // native function call
+    // set the arguments
     arrange_call_stack(ws, func, num_args);
 
-    // extend the call frame
-    // stack pointer for the new frame
     auto stub = func->stub;
+
+    // stack pointer (equal to number of parameter variables)
     u8 sp = static_cast<u8>(stub->pos_params.size()
             + stub->vl_param.has_value()
             + stub->vt_param.has_value());
-    u32 bp = stack->get_pointer() - sp;
-
-    frame = new call_frame{frame, ip+2, chunk, bp, func, (u8)stub->pos_params.size()};
-    chunk = stub->chunk;
-    return stub->addr;
+    if (stub->foreign != nullptr) { // foreign function call
+        interpreter_handle handle{.inter=this, .ws=ws,
+            .func_name="<ffi call>"};
+        auto args = new value[sp];
+        for (i32 i = sp; i > 0; --i) {
+            args[i-1] = pop_to_ws(ws);
+        }
+        push(stub->foreign(&handle, args));
+        delete[] args;
+        return ip + 2;
+    } else { // native function call
+        // base pointer
+        u32 bp = stack->get_pointer() - sp;
+        // extend the call frame
+        frame = new call_frame{frame, ip+2, chunk, bp, func, sp};
+        chunk = stub->chunk;
+        return stub->addr;
+    }
 }
 
 
 void vm_thread::init_function(working_set* ws, function* f) {
     auto stub = f->stub;
-
-    f->foreign_func = nullptr;
+    if (stub->foreign != nullptr) {
+        // no init to do here
+        return;
+    }
 
     // Add init values
     // DANGER! Init vals are popped right off the stack, so they better be there

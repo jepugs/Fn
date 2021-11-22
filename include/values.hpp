@@ -269,6 +269,7 @@ struct alignas(32) fn_table {
 // forward declarations for function_stub
 struct code_chunk;
 struct working_set;
+struct interpreter_handle;
 
 // a stub describing a function. these go in the bytecode object
 struct function_stub {
@@ -276,6 +277,10 @@ struct function_stub {
     local_address req_args;        // # of required arguments
     optional<symbol_id> vl_param;  // variadic list parameter
     optional<symbol_id> vt_param;  // variadic table parameter
+
+    // if foreign != nullptr, then all following fields are ignored, and calling
+    // this function will be deferred to this
+    value (*foreign)(interpreter_handle*,value*);
 
     code_chunk* chunk;             // chunk containing the function
     code_address addr;             // function address in its chunk
@@ -323,13 +328,9 @@ struct upvalue_cell {
     }
 };
 
-struct interpreter_handle;
 struct alignas(32) function {
     gc_header h;
     function_stub* stub;
-    // If foreign_func != nullptr, addr and upvalue fields are ignored, and the
-    // function is evaluated by calling foreign_func instead of jumping
-    value (*foreign_func)(interpreter_handle*,local_address,value*);
     upvalue_cell** upvals;
     value* init_vals;
 

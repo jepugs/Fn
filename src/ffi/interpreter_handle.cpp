@@ -16,6 +16,11 @@ void interpreter_handle::assert_type(u64 tag, value v) {
         runtime_error("Value does not have asserted type.");
     }
 }
+void interpreter_handle::assert_list(value v) {
+    if (v_tag(v) != TAG_CONS && v_tag(v) != TAG_EMPTY) {
+        runtime_error("Value is not a list.");
+    }
+}
 
 value interpreter_handle::v_add(value a, value b) {
     assert_type(TAG_NUM, a);

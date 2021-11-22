@@ -15,6 +15,13 @@ optional<gc_header*> value::header() const {
     return { };
 }
 
+value v_head(value x) {
+    return vcons(x)->head;
+}
+value v_tail(value x) {
+    return vcons(x)->tail;
+}
+
 cons::cons(value head, value tail)
     : head{head}
     , tail{tail} {

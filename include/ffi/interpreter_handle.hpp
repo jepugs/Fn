@@ -15,6 +15,8 @@ struct interpreter_handle {
 
     void runtime_error(const string& msg);
     void assert_type(u64 tag, value v);
+    // assert that a value is a list
+    void assert_list(value v);
 
     // Type-checked utility functions. These emit runtime errors when
     // appropriate.

@@ -75,6 +75,8 @@ u16 code_chunk::add_function(const vector<symbol_id>& pparams,
         .req_args=req_args,
         .vl_param=vl_param,
         .vt_param=vt_param,
+        // important! if foreign != nullptr it screws everything up
+        .foreign=nullptr,
         .chunk=this,
         .addr=code_size,
         .num_upvals=0,
