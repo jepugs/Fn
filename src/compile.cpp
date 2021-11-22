@@ -108,18 +108,20 @@ void compiler::compile_llir(const llir_call_form* llir,
     }
     // TODO: compile keyword table
     write_byte(OP_TABLE);
+    ++lex->sp;
     for (u32 i = 0; i < llir->num_kw_args; ++i) {
         // copy the table for the set command
         write_byte(OP_COPY);
         write_byte(0);
+        ++lex->sp;
         auto& k = llir->kw_args[i];
         compile_symbol(k.nonkw_name);
         ++lex->sp;
         compile_llir_generic(k.value_form, lex, err);
         write_byte(OP_OBJ_SET);
         return_on_err;
+        lex->sp -= 3;
     }
-    ++lex->sp;
 
     // compile callee
     compile_llir_generic(llir->callee, lex, err);
@@ -197,7 +199,9 @@ void compiler::compile_llir(const llir_if_form* llir,
     i64 addr2 = dest->code_size;
     write_byte(OP_JUMP);
     write_short(0);
+    --lex->sp;
 
+    --lex->sp; // if we're running this one, we didn't run the other
     compile_llir_generic(llir->else_form, lex, err);
     return_on_err;
 
@@ -318,17 +322,17 @@ void compiler::compile_llir(const llir_set_form* llir,
         return_on_err;
         // iterate over the key forms, compiling as we go
         i32 i;
-        for (i = 1; i < call_form->num_pos_args - 1; ++i) {
+        for (i = 1; i+1 < call_form->num_pos_args; ++i) {
             compile_llir_generic(call_form->pos_args[i], lex, err);
             return_on_err;
             // all but last call will be OBJ_GET
             write_byte(OP_OBJ_GET);
+            --lex->sp;
         }
         compile_llir_generic(call_form->pos_args[i], lex, err);
         return_on_err;
         compile_llir_generic(llir->value, lex, err);
         return_on_err;
-        write_byte(OP_OBJ_SET);
     } else if (llir->target->tag == llir_dot) { // (set! (dot ...) v)
         // this is like the previous case, but easier since our keys are just
         // symbols
@@ -346,14 +350,14 @@ void compiler::compile_llir(const llir_set_form* llir,
         ++lex->sp;
         compile_llir_generic(llir->value, lex, err);
         return_on_err;
-        write_byte(OP_OBJ_SET);
     } else {
         err->has_error = true;
         err->origin = llir->target->origin;
         err->message = "Malformed 1st argument to set!.";
     }
+    write_byte(OP_OBJ_SET);
     write_byte(OP_NIL);
-    ++lex->sp;
+    lex->sp -= 2;
 }
 
 void compiler::compile_llir(const llir_var_form* llir,

@@ -78,6 +78,7 @@ value interpreter::partial_interpret_string(const string& src,
     auto ns_name = symtab.intern("fn/user");
     auto chunk = alloc.add_chunk(ns_name);
 
+    auto res = V_NIL;
     for (auto ast : forms) {
         expand_error e_err;
         expander ex{this, chunk};
@@ -113,10 +114,10 @@ value interpreter::partial_interpret_string(const string& src,
         interpret_to_end(vm);
 
         free_llir_form(llir);
-        return vm.last_pop();
+        res = vm.last_pop();
     }
 
-    return V_NIL;
+    return res;
 }
 
 value interpreter::interpret_istream(std::istream* in,

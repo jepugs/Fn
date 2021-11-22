@@ -862,8 +862,8 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
     // } else if (name == "unquote-splicing") {
     //     return expand_unquote_splicing(loc, lst->list_length,
     //             lst->datum.list, meta);
-    // } else if (name == "set!") {
-    //     return expand_set(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "set!") {
+        return expand_set(loc, lst->list_length, lst->datum.list, meta);
     // } else if (name == "with") {
     //     return expand_with(loc, lst->list_length, lst->datum.list, meta);
     }
