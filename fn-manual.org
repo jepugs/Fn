@@ -548,7 +548,11 @@ project/subsystem/parser
 The slashes above are delimiters. In particular, everything to the left of the
 last slash is called the *package name*, and the part to the right is called the
 *short name*. For instance the namespace ~project/subsystem/parser~ has package
-~project/subsystem~ and short name ~parser~.
+~project/subsystem~ and short name ~parser~. Similarly, we call ~package/subsystem~
+the *full name*.
+
+For the sake of brevity we will often call the short name or full name just the
+*name*. Hopefully this isn't confusing anywhere.
 
 We also have the concept of a *subpackage*. In the above examples,
 ~project/subsystem~ is a subpackage of ~project~. That is, the subpackages of a
