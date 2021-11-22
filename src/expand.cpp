@@ -68,7 +68,7 @@ llir_form* expander::expand_cond(const source_loc& loc,
         u32 length,
         ast_form** lst,
         expander_meta* meta) {
-    if (length % 2 != 1) {
+    if ((length & 1) != 1) {
         meta->err.message = "Odd number of arguments to cond.";
         meta->err.origin = loc;
         return nullptr;
@@ -139,7 +139,7 @@ llir_form* expander::expand_defmacro(const source_loc& loc,
     }
 
     llir_fn_params params;
-    if(!expand_params(loc, lst[2], &params, meta)) {
+    if(!expand_params(lst[2], &params, meta)) {
         free_llir_form(body);
         return nullptr;
     }
@@ -171,7 +171,7 @@ llir_form* expander::expand_defn(const source_loc& loc,
     }
 
     llir_fn_params params;
-    if(!expand_params(loc, lst[2], &params, meta)) {
+    if(!expand_params(lst[2], &params, meta)) {
         free_llir_form(body);
         return nullptr;
     }
@@ -214,7 +214,7 @@ llir_form* expander::expand_let_in_do(u32 length,
     if (let_form->list_length == 0) {
         return (llir_form*)mk_llir_var_form(let_form->loc,
                 inter->get_symtab()->intern("nil"));
-    } else if (let_form->list_length % 2 != 1) {
+    } else if ((let_form->list_length & 1) != 1) {
         meta->err.origin = let_form->loc;
         meta->err.message = "Odd number of arguments to let.";
         return nullptr;
@@ -234,7 +234,7 @@ llir_form* expander::expand_let_in_do(u32 length,
         auto var = let_form->datum.list[2*i+1];
         if (var->kind != ak_symbol_atom) {
             meta->err.origin = var->loc;
-            meta->err.message = "Variable names must be symbols.";
+            meta->err.message = "let binding names must be symbols.";
             for (u32 j = 0; j < i; ++j) {
                 free_llir_form(res->value_forms[i]);
             }
@@ -284,7 +284,7 @@ llir_form* expander::expand_letfn_in_do(u32 length,
     // generate llir for the new function
     auto sym = letfn_lst[1]->datum.sym;
     llir_fn_params params;
-    if (!expand_params(loc, letfn_lst[2], &params, meta)) {
+    if (!expand_params(letfn_lst[2], &params, meta)) {
         return nullptr;
     }
     auto fn_body = expand_do(loc, letfn_len-2, &letfn_lst[2],meta);
@@ -457,10 +457,10 @@ llir_form* expander::expand_dot(const source_loc& loc,
     return (llir_form*) res;
 }
 
-bool expander::expand_params(const source_loc& loc,
-        ast_form* ast,
+bool expander::expand_params(ast_form* ast,
         llir_fn_params* params,
         expander_meta* meta) {
+    const auto& loc = ast->loc;
     if (ast->kind != ak_list) {
         meta->err.origin = loc;
         meta->err.message = "fn requires a parameter list.";
@@ -607,7 +607,7 @@ llir_form* expander::expand_fn(const source_loc& loc,
         return nullptr;
     }
     llir_fn_params params;
-    if (!expand_params(loc, lst[1], &params, meta)) {
+    if (!expand_params(lst[1], &params, meta)) {
         return nullptr;
     }
 
@@ -663,6 +663,61 @@ llir_form* expander::expand_import(const source_loc& loc,
         return nullptr;
     }
     return (llir_form*)mk_llir_import_form(loc, lst[1]->datum.sym);
+}
+
+llir_form* expander::expand_let(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    if ((length & 1) != 1) {
+        meta->err.origin = loc;
+        meta->err.message = "Odd number of arguments to let.";
+        return nullptr;
+    }
+    // unlike letfn, we actually have to evaluate code in case there are
+    // side-effects.
+    for (u32 i = 1; i < length; i += 2) {
+    }
+    auto num_vars = (length - 1) / 2;
+    auto res = mk_llir_with_form(loc, num_vars, 0);
+
+    // collect variables and init forms
+    for (u32 i = 0; i < num_vars; ++i) {
+        auto var = lst[2*i+1];
+        if (var->kind != ak_symbol_atom) {
+            meta->err.origin = var->loc;
+            meta->err.message = "let binding names must be symbols.";
+            for (u32 j = 0; j < i; ++j) {
+                free_llir_form(res->value_forms[i]);
+            }
+            return nullptr;
+        }
+
+        res->vars[i] = var->datum.sym;
+        auto x = expand_meta(lst[2*i+2], meta);
+        if (!x) {
+            for (u32 j = 0; j < i; ++j) {
+                free_llir_form(res->value_forms[i]);
+            }
+            return nullptr;
+        }
+        res->value_forms[i] = x;
+    }
+    return (llir_form*)res;
+}
+
+llir_form* expander::expand_letfn(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    if (length < 3) {
+        meta->err.origin = loc;
+        meta->err.message = "letfn requires at least 2 arguments.";
+        return nullptr;
+    }
+    // There's no way for the created function to leave the letfn, so this means
+    // we can actually skip everything and just return nil
+    return (llir_form*)mk_llir_var_form(loc, intern("nil"));
 }
 
 llir_form* expander::expand_or(const source_loc& loc,
@@ -733,6 +788,77 @@ llir_form* expander::expand_set(const source_loc& loc,
     }
 
     return (llir_form*)mk_llir_set_form(loc, tar, val);
+}
+
+llir_form* expander::expand_unquote(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    meta->err.origin = loc;
+    meta->err.message = "unquote outside of quasiquote.";
+    return nullptr;
+}
+
+llir_form* expander::expand_unquote_splicing(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    meta->err.origin = loc;
+    meta->err.message = "unquote-splicing outside of quasiquote.";
+    return nullptr;
+}
+
+llir_form* expander::expand_with(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    if (lst[1]->kind != ak_list) {
+        meta->err.origin = loc;
+        meta->err.message = "with binding form must be a list.";
+        return nullptr;
+    } else if ((lst[1]->list_length & 1) != 0) {
+        meta->err.origin = loc;
+        meta->err.message = "Odd number of items in with binding form.";
+        return nullptr;
+    }
+
+    auto lst2 = lst[1]->datum.list;
+    u8 num_vars = (u8)(lst[1]->list_length/2);
+    auto res = mk_llir_with_form(loc, num_vars, length - 2);
+
+    // bindings
+    for (u32 i = 0; i < num_vars; ++i) {
+        if (!lst2[2*i]->is_symbol()) {
+            meta->err.origin = loc;
+            meta->err.message = "with binding names must be symbols.";
+            return nullptr;
+        }
+
+        res->vars[i] = lst2[2*i]->datum.sym;
+        auto x = expand_meta(lst2[2*i + 1], meta);
+        if (x == nullptr) {
+            for (u32 j = 0; j < i; ++ j) {
+                free_llir_form(res->value_forms[i]);
+            }
+            return nullptr;
+        }
+
+        res->value_forms[i] = x;
+    }
+
+    // body
+    for (u32 i = 2; i < length; ++i) {
+        auto x = expand_meta(lst[i], meta);
+        if (x == nullptr) {
+            for (u32 j = 2; j < i; ++ j) {
+                free_llir_form(res->body[j]);
+            }
+            return nullptr;
+        }
+        res->body[i-2] = x;
+    }
+
+    return (llir_form*) res;
 }
 
 llir_form* expander::expand_call(const source_loc& loc,
@@ -847,25 +973,25 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
         return expand_import(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "fn") {
         return expand_fn(loc, lst->list_length, lst->datum.list, meta);
-    // } else if (name == "let") {
-    //     return expand_let(loc, lst->list_length, lst->datum.list, meta);
-    // } else if (name == "letfn") {
-    //     return expand_letfn(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "let") {
+        return expand_let(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "letfn") {
+        return expand_letfn(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "or") {
         return expand_or(loc, lst->list_length, lst->datum.list, meta);
     // } else if (name == "quasiquote") {
     //     return expand_quasiquote(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "quote") {
         return expand_quote(loc, lst->list_length, lst->datum.list, meta);
-    // } else if (name == "unquote") {
-    //     return expand_unquote(loc, lst->list_length, lst->datum.list, meta);
-    // } else if (name == "unquote-splicing") {
-    //     return expand_unquote_splicing(loc, lst->list_length,
-    //             lst->datum.list, meta);
+    } else if (name == "unquote") {
+        return expand_unquote(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "unquote-splicing") {
+        return expand_unquote_splicing(loc, lst->list_length,
+                lst->datum.list, meta);
     } else if (name == "set!") {
         return expand_set(loc, lst->list_length, lst->datum.list, meta);
-    // } else if (name == "with") {
-    //     return expand_with(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "with") {
+        return expand_with(loc, lst->list_length, lst->datum.list, meta);
     }
 
     // function calls

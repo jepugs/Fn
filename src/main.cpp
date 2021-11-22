@@ -15,7 +15,7 @@ using std::endl;
 
 void show_usage() {
     std::cout <<
-        "Usage: fn [options] [--expr string | file | -] ARGS ...\n"
+        "Usage: fn [options] [--eval string | file | -] ARGS ...\n"
         "Description:\n"
         "  Fn programming language interpreter and REPL.\n"
         "Options/Arguments:\n"
@@ -30,7 +30,7 @@ void show_usage() {
         "                    the case of file evaluation, this will\n"
         "                    override the file's package & namespace.\n"
         "                    The default namespace is fn/user.\n"
-        "  --expr string    Evaluate a string (instead of a file).\n"
+        "  --eval string    Evaluate a string (instead of a file).\n"
         "  ARGS ...         These are passed to the interpreter as\n"
         "                    command line arguments.\n"
         "Running with no options starts REPL in namespace fn/user. When\n"
@@ -84,7 +84,7 @@ void process_args(int argc, char** argv, interpreter_options* opt) {
     int i;
     for (i = 1; i < argc; ++i) {
         string s{argv[i]};
-        if (s == string{"-"} || s == string{"--expr"} || s[0] != '-') {
+        if (s == string{"-"} || s == string{"--eval"} || s[0] != '-') {
             break;
         } else if (s == "--ns") {
             if (i + 1 == argc) {
@@ -128,10 +128,10 @@ void process_args(int argc, char** argv, interpreter_options* opt) {
 
     // process source
     string src{argv[i]};
-    if (src == string{"--expr"}) {
+    if (src == string{"--eval"}) {
         if(i == argc) {
             opt->err = true;
-            opt->message = "--expr must be followd by a string to evaluate.";
+            opt->message = "--eval must be followd by a string to evaluate.";
             return;
         }
         opt->src = argv[++i];

@@ -21,6 +21,10 @@ private:
     global_env globals;
     allocator alloc;
 
+    // Since these don't rightfully belong to any chunks, we save them right
+    // here in the interpreter.
+    vector<function_stub*> ffi_stubs;
+
     // logging settings. For now these just go to cout.
     bool log_llir = false;
     bool log_dis = false;
@@ -45,6 +49,9 @@ public:
     // Init
     // adds a foreign function to fn/builtin
     void add_builtin_function(const string& name,
+            value (*foreign_func)(interpreter_handle*,local_address,value*));
+    void add_builtin_function(const string& name,
+            const string& args,
             value (*foreign_func)(interpreter_handle*,local_address,value*));
     
     // Evaluate a source file in an empty chunk. Returns the value from the last
@@ -71,7 +78,6 @@ public:
     // macroexpand a form in the given namespace
     ast_form* macroexpand(symbol_id ns_id, const ast_form* form);
     value ast_to_value(working_set* ws, const ast_form* form);
-    
 
     // Emit a runtime error in the form of an exception
     void runtime_error(const string& msg, const source_loc& src);

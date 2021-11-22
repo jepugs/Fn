@@ -95,10 +95,6 @@ private:
             ast_form** lst,
             expander_meta* meta);
 
-    bool expand_params(const source_loc& loc,
-            ast_form* ast,
-            llir_fn_params* params,
-            expander_meta* meta);
     llir_form* expand_fn(const source_loc& loc,
             u32 length,
             ast_form** lst,
@@ -109,6 +105,14 @@ private:
             ast_form** lst,
             expander_meta* meta);
     llir_form* expand_import(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+    llir_form* expand_let(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+    llir_form* expand_letfn(const source_loc& loc,
             u32 length,
             ast_form** lst,
             expander_meta* meta);
@@ -124,9 +128,20 @@ private:
             u32 length,
             ast_form** lst,
             expander_meta* meta);
+    llir_form* expand_unquote(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+    llir_form* expand_unquote_splicing(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+    llir_form* expand_with(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
 
-    // expands a list form as if it's a function call. Assumes lst.length_length
-    // >= 1.
+    // expands a list form as if it's a function call. Assumes len >= 1.
     llir_form* expand_call(const source_loc& loc,
             u32 len,
             ast_form** lst,
@@ -144,7 +159,13 @@ private:
 
 public:
     expander(interpreter* inter, code_chunk* const_chunk);
+    // expand an ast_form into llir
     llir_form* expand(ast_form* form, expand_error* err);
+    // Attempt to populate params to the parameter list represented by ast.
+    // Returns false on error.
+    bool expand_params(ast_form* ast,
+            llir_fn_params* params,
+            expander_meta* meta);
 };
 
 }

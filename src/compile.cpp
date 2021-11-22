@@ -409,6 +409,7 @@ void compiler::compile_llir(const llir_with_form* llir,
 
     if (llir->body_length == 0) {
         write_byte(OP_NIL);
+        ++lex2.sp;
     } else {
         u32 i = 0;
         for(i = 0; i+1 < llir->body_length; ++i) {
