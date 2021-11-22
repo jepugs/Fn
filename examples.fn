@@ -1,0 +1,136 @@
+(defn reverse (list)
+  (letfn iter (acc rem)
+    (if (empty? rem)
+        acc
+        (iter (cons (head rem) acc) (tail rem))))
+  (iter [] list))
+
+(defn map (f list)
+  (reverse (maprev f list)))
+
+; map, but returns reversed list. This is faster than map
+(defn maprev (f list)
+  (letfn iter (acc rem)
+    (if (empty? rem)
+        acc
+        (iter (cons (f (head rem)) acc)
+              (tail rem))))
+  (iter [] list))
+
+; map, but rather than creating a list, just returns nil
+(defn mapnil (f list)
+  (if (empty? list)
+      nil
+      (do
+        (f (head list))
+        (mapnil f (tail list)))))
+
+
+(defn filter (pred list)
+  (letfn iter (acc rem)
+    (cond
+      (empty? rem) (reverse acc)
+      (pred (head rem)) (iter (cons (head rem) acc)
+                              (tail rem))
+      true (iter acc (tail rem))))
+  (iter [] list))
+
+(defn concat (& lists)
+  (letfn cat2 (l1 l2)
+    (letfn a2-iter (acc rem)
+      (if (empty? rem)
+          acc
+          (a2-iter (cons (head rem) acc)
+                   (tail rem))))
+    (a2-iter l2 (reverse l1)))
+  (letfn iter (acc rem)
+    (if (empty? rem)
+        acc
+        (iter (cat2 acc (head rem))
+              (tail rem))))
+  (iter [] lists))
+
+(defn foldl (f init list)
+  (letfn iter (acc rem)
+    (if (empty? rem)
+        acc
+        (iter (f acc (head rem)) (tail rem))))
+  (iter init list))
+
+(defn foldr (f init list)
+  (letfn iter (acc rem)
+    (if (empty? rem)
+        acc
+        (iter (f (head rem) acc) (tail rem))))
+  (iter init (reverse list)))
+
+(defn replace-at (list pos new)
+  (if (= pos 0)
+      (cons new (tail list))
+      (cons (head list)
+            (replace-at (tail list) (- pos 1) new))))
+
+(defn range (start stop (step 1))
+  ; this actually builds the range in reverse
+  (def cmp (if (< step 0) < >)) ; comparison depends on sign of step
+  (defn iter (acc i)
+    (if (cmp i start)
+        acc
+        (iter (cons i acc) (- i step))))
+  (iter [] start))
+
+
+;; 4x4 sudoku solver
+
+; a, b, c, d should be 1-4 or nil
+(def sudoku-board-1
+  [[nil nil nil   1]
+   [nil nil nil   4]
+   [  4 nil nil nil]
+   [  2 nil nil nil]])
+(def board-1-solved
+ [[3 4 2 1]
+  [1 2 3 4]
+  [4 3 1 2]
+  [2 1 4 3]])
+(def sudoku-board-2
+  [[nil   2 nil   1]
+   [nil nil nil nil]
+   [nil nil nil nil]
+   [  1 nil   3 nil]])
+(def board-2-solved
+ [[3 2 4 1]
+  [4 1 2 3]
+  [2 3 1 4]
+  [1 4 3 2]])
+
+(defn update-board (board row col val)
+  (replace-at board row
+              (replace-at (nth row board) col val)))
+
+; makeshift set type. It's a table where all the values are true.
+(defn Set (& args)
+  (let res {})
+  (mapnil $(set! (get res $) true) args)
+  res)
+
+(defn sudoku-check (board)
+  (letfn s (row col)
+    (nth col (nth row board)))
+  (letfn r (row)
+    (Set (s row 0) (s row 1) (s row 2) (s row 3)))
+  (letfn c (col)
+    (Set (s 0 col) (s 1 col) (s 2 col) (s 3 col)))
+  (let box1 (Set (s 0 0) (s 0 1) (s 1 0) (s 1 1))
+       box2 (Set (s 0 2) (s 0 3) (s 1 2) (s 1 3))
+       box3 (Set (s 2 0) (s 2 1) (s 3 0) (s 3 1))
+       box4 (Set (s 2 2) (s 2 3) (s 3 2) (s 3 3)))
+  (let key (Set 1 2 3 4))
+  (= key
+     box1 box2 box3 box4
+     (r 0) (r 1) (r 2) (r 3)
+     (c 0) (c 1) (c 2) (c 3)))
+
+;(defn sudoku-solve (board))
+
+
