@@ -255,14 +255,11 @@ void allocator::dealloc(gc_header* o) {
         {
             auto f = (function*)o;
 
-            if (f->stub != nullptr) {
-                // delete dead upvalues
-                for (int i = 0; i < f->stub->num_upvals; ++i) {
-                    auto cell = f->upvals[i];
-                    cell->dereference();
-                    if (cell->dead()) {
-                        delete cell;
-                    }
+            for (int i = 0; i < f->num_upvals; ++i) {
+                auto cell = f->upvals[i];
+                cell->dereference();
+                if (cell->dead()) {
+                    delete cell;
                 }
             }
 
@@ -307,7 +304,7 @@ forward_list<gc_header*> allocator::accessible(gc_header* o) {
     case GC_TYPE_FUNCTION:
         {
             auto f = (function*)o;
-            auto m = f->stub->num_upvals;
+            auto m = f->num_upvals;
             for (local_address i = 0; i < m; ++i) {
                 auto cell = f->upvals[i];
                 if (cell->closed) {

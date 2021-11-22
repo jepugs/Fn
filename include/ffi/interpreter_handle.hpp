@@ -37,6 +37,7 @@ struct interpreter_handle {
     value v_substr(value a, u32 start);
     value v_substr(value a, u32 start, u32 len);
     string v_string_as_string(value a);
+    value string_concat(value l, value r);
 
     // symbol functions
     value v_symname(value a);
@@ -50,10 +51,12 @@ struct interpreter_handle {
     value v_cons(value hd, value tl);
     // lst must be a list and n must be in bounds
     value v_nth(i64 n, value lst);
+    value list_concat(value l, value r);
 
     // table functions
     value v_get(value tab, value k);
     value v_set(value tab, value k, value v);
+    value table_join(value l, value r);
 
     // collection functions
     value v_length(value x);

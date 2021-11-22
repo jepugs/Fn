@@ -235,6 +235,9 @@ void interpreter::add_builtin_function(const string& name,
     if (forms.size() != 1
             || bytes_used != params.size()
             || forms[0]->kind != ak_list) {
+        for (auto f : forms) {
+            free_ast_form(f);
+        }
         throw std::runtime_error{
             "Malformed parameter string for add_builtin_function."
         };
@@ -252,6 +255,9 @@ void interpreter::add_builtin_function(const string& name,
     u32 i;
     for (i = 0; i < len; ++i) {
         if (!lst[i]->is_symbol()) {
+            for (auto f : forms) {
+                free_ast_form(f);
+            }
             throw std::runtime_error{
                 "Malformed parameter string for add_builtin_function."
             };
@@ -273,6 +279,9 @@ void interpreter::add_builtin_function(const string& name,
             } else if (len - i == 4 && lst[i+2]->datum.sym == colamp) {
                 vt = lst[i+3]->datum.sym;
             } else {
+                for (auto f : forms) {
+                    free_ast_form(f);
+                }
                 throw std::runtime_error{
                     "Malformed parameter string for add_builtin_function."
                 };
@@ -283,11 +292,19 @@ void interpreter::add_builtin_function(const string& name,
             } else if (len - i == 4 && lst[i+2]->datum.sym == amp) {
                 vl = lst[i+3]->datum.sym;
             } else {
+                for (auto f : forms) {
+                    free_ast_form(f);
+                }
                 throw std::runtime_error{
                     "Malformed parameter string for add_builtin_function."
                 };
             }
         }
+    }
+
+    // don't need these any more
+    for (auto f : forms) {
+        free_ast_form(f);
     }
 
     // FIXME: check that the param list isn't too long

@@ -135,12 +135,17 @@ local_address function_stub::add_upvalue(u8 addr, bool direct) {
 }
 
 function::function(function_stub* stub)
-    : stub{stub} {
+    : stub{stub}
+    , num_upvals{0}
+    , upvals{nullptr}
+    , init_vals{nullptr} {
     mk_gc_header(GC_TYPE_FUNCTION, &h);
-    if (stub == nullptr) {
+    if (stub->foreign != nullptr) {
         return;
     }
-    upvals = new upvalue_cell*[stub->num_upvals];
+
+    num_upvals = stub->num_upvals;
+    upvals = new upvalue_cell*[num_upvals];
     if (stub->req_args < stub->pos_params.size()) {
         init_vals = new value[stub->pos_params.size() - stub->req_args];
     }
@@ -148,11 +153,10 @@ function::function(function_stub* stub)
 
 // TODO: use refcount on upvalues
 function::~function() {
-    if (stub == nullptr) {
-        return;
+    if (upvals != nullptr) {
+        delete[] upvals;
     }
-    delete[] upvals;
-    if (stub->req_args < stub->pos_params.size()) {
+    if (init_vals != nullptr) {
         delete[] init_vals;
     }
 }

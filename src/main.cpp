@@ -229,7 +229,6 @@ int main(int argc, char** argv) {
         std::cout << v_to_string(res, inter.get_symtab())
                   << endl;
     }
-    
 
     return 0;
 }

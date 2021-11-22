@@ -79,6 +79,24 @@ value interpreter_handle::v_log(value a) {
     return as_value(log(a.num));
 }
 
+value interpreter_handle::v_strlen(value a) {
+    assert_type(TAG_STRING, a);
+    return as_value((f64)vstring(a)->len);
+}
+
+value interpreter_handle::v_substr(value a, u32 start) {
+    assert_type(TAG_STRING, a);
+    auto s = vstring(a)->as_string().substr(start);
+    return ws->add_string(s);
+}
+
+value interpreter_handle::string_concat(value l, value r) {
+    assert_type(TAG_STRING, l);
+    assert_type(TAG_STRING, r);
+    auto s = vstring(l)->as_string() + vstring(r)->as_string();
+    return ws->add_string(s);
+}
+
 value interpreter_handle::v_head(value a) {
     assert_type(TAG_CONS, a);
     return vcons(a)->head;
@@ -115,6 +133,24 @@ value interpreter_handle::v_nth(i64 n, value lst) {
     return vcons(lst)->head;
 }
 
+value interpreter_handle::list_concat(value l, value r) {
+    assert_list(l);
+    assert_list(r);
+    if (l == V_EMPTY) {
+        return r;
+    }
+
+    auto res = ws->add_cons(v_head(l), V_EMPTY);
+    auto end = res;
+    for (auto it = v_tail(l); it != V_EMPTY; it = v_tail(it)) {
+        auto next = ws->add_cons(v_head(it), V_EMPTY);
+        vcons(end)->tail = next;
+        end = next;
+    }
+    vcons(end)->tail = r;
+    return res;
+}
+
 value interpreter_handle::v_length(value x) {
     switch (v_tag(x)) {
     case TAG_CONS:
@@ -127,9 +163,11 @@ value interpreter_handle::v_length(value x) {
             return as_value(i);
         }
     case TAG_EMPTY:
-        return as_value(0);
+        return as_value(0.0);
     case TAG_TABLE:
         return as_value((i64)vtable(x)->contents.get_size());
+    case TAG_STRING:
+        return as_value(vstring(x)->len);
     default:
         runtime_error("Can only compute length for lists and tables.");
     }

@@ -331,6 +331,11 @@ struct upvalue_cell {
 struct alignas(32) function {
     gc_header h;
     function_stub* stub;
+    local_address num_upvals;
+    // it is important that these pointers get set to null for foreign
+    // functions. Since the function stub is not necessarily available at the
+    // time when the function is deleted, this acts as a flag as to whether
+    // these fields need to be deleted.
     upvalue_cell** upvals;
     value* init_vals;
 
@@ -395,23 +400,6 @@ public:
 /// as_value functions to create values
 inline value as_value(f64 num) {
     value res = { .num=num };
-    // make the first four bits 0
-    res.raw &= (~TAG_MASK);
-    res.raw |= TAG_NUM;
-    return res;
-}
-inline value as_value(bool b) {
-    return b ? V_TRUE : V_FALSE;
-}
-inline value as_value(int num) {
-    value res = { .num=(f64)num };
-    // make the first four bits 0
-    res.raw &= (~TAG_MASK);
-    res.raw |= TAG_NUM;
-    return res;
-}
-inline value as_value(i64 num) {
-    value res = { .num=(f64)num };
     // make the first four bits 0
     res.raw &= (~TAG_MASK);
     res.raw |= TAG_NUM;
