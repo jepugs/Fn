@@ -62,15 +62,12 @@ struct code_chunk {
 
     // add a new function and return its id. pparams is a list of parameter
     // names. req_args is number of required args.
-    u16 add_function(const vector<symbol_id>& pparams,
-            local_address req_args,
-            optional<symbol_id> vl_param,
-            optional<symbol_id> vt_param);
     u16 add_function(local_address num_pos,
             symbol_id* pos_params,
             local_address req_args,
             optional<symbol_id> vl_param,
-            optional<symbol_id> vt_param);
+            optional<symbol_id> vt_param,
+            const string& name);
     function_stub* get_function(u16 id);
     const function_stub* get_function(u16 id) const;
 

@@ -119,7 +119,11 @@ symbol_table* vm_thread::get_symtab() {
 
 void vm_thread::runtime_error(const string& msg) const {
     auto p = cur_chunk()->location_of(ip);
-    throw fn_error("runtime", "(ip = " + std::to_string(ip) + ") " + msg, p);
+    string pre = "(ip:" + std::to_string(ip) + ") ";
+    if (frame->caller->stub->name.size() > 0) {
+        pre = pre + "{In function: " + frame->caller->stub->name + "} ";
+    }
+    throw fn_error("runtime", pre + msg, p);
 }
 
 void vm_thread::push(value v) {
@@ -248,8 +252,7 @@ void vm_thread::arrange_call_stack(working_set* ws,
     for (u32 i = num_args; i < req_args; ++i) {
         auto x = extra_pos.get(i);
         if (!x.has_value()) {
-            std::cout << "name is " << (*symtab)[func->stub->pos_params[i]] << '\n';
-            runtime_error("Missing required argument in call.");
+            runtime_error("Missing required argument in function call or apply.");
         }
         push(*x);
     }
@@ -365,7 +368,8 @@ code_address vm_thread::apply(working_set* ws, local_address num_args) {
     // put these back where we found them
     push(kw_tab);
     push(callee);
-    return call(ws, num_args + list_len);
+    auto res = call(ws, num_args + list_len);
+    return res;
 }
 
 

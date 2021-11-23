@@ -69,6 +69,7 @@ private:
     // functions, this does not affect the stack pointer.
     void compile_symbol(symbol_id sym);
 
+    // FIXME: this was a terrible idea wtf. no more overloading :'(
     void compile_llir(const llir_apply* llir,
             lexical_env* lex,
             compile_error* err);
@@ -88,6 +89,10 @@ private:
             lexical_env* lex,
             compile_error* err);
     void compile_llir(const llir_if* llir,
+            lexical_env* lex,
+            compile_error* err);
+    void compile_llir_fn(const llir_fn* llir,
+            const string& name,
             lexical_env* lex,
             compile_error* err);
     void compile_llir(const llir_fn* llir,

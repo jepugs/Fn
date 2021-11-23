@@ -169,6 +169,7 @@ llir_fn* mk_llir_fn(const source_loc& origin,
         bool has_var_list_arg,
         bool has_var_table_arg,
         local_address req_args,
+        const string& name,
         llir_form* body,
         llir_fn* dest) {
     if (dest == nullptr) {
@@ -184,11 +185,13 @@ llir_fn* mk_llir_fn(const source_loc& origin,
             .req_args=req_args,
             .inits=new llir_form*[num_pos_args-req_args]
         },
+        .name=name,
         .body=body
     };
 }
 llir_fn* mk_llir_fn(const source_loc& origin,
         const llir_fn_params& params,
+        const string& name,
         llir_form* body,
         llir_fn* dest) {
     if (dest == nullptr) {
@@ -197,6 +200,7 @@ llir_fn* mk_llir_fn(const source_loc& origin,
     return new(dest) llir_fn {
         .header={.origin=origin, .tag=lt_fn},
         .params=params,
+        .name=name,
         .body=body
     };
 

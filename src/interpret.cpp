@@ -424,7 +424,8 @@ void interpreter::add_builtin_function(const string& name,
         .req_args = (u8)pos_params.size(),
         .vl_param = vl,
         .vt_param = vt,
-        .foreign = foreign_func
+        .foreign = foreign_func,
+        .name = name
         // no other values are used by foreign functions
     };
     ffi_stubs.push_back(stub);

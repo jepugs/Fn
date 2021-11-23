@@ -167,6 +167,7 @@ struct llir_fn_params {
 struct llir_fn {
     llir_form header;
     llir_fn_params params;
+    string name;
     llir_form* body;
 };
 llir_fn* mk_llir_fn(const source_loc& origin,
@@ -174,11 +175,13 @@ llir_fn* mk_llir_fn(const source_loc& origin,
         bool has_var_list_arg,
         bool has_var_table_arg,
         local_address req_args,
+        const string& name,
         llir_form* body,
         llir_fn* dest=nullptr);
 // note: this takes ownership of the pointers in params
 llir_fn* mk_llir_fn(const source_loc& origin,
         const llir_fn_params& params,
+        const string& name,
         llir_form* body,
         llir_fn* dest=nullptr);
 void clear_llir_fn(llir_fn* obj);

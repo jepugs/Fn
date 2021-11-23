@@ -184,6 +184,7 @@ private:
 
     symbol_id intern(const string& str);
     symbol_id gensym();
+    string symbol_name(symbol_id name);
     bool is_keyword(symbol_id sym) const;
 
 public:

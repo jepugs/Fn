@@ -43,36 +43,19 @@ value code_chunk::get_constant(constant_id id) const {
     return constant_arr[id];
 }
 
-u16 code_chunk::add_function(const vector<symbol_id>& pparams,
-                             local_address req_args,
-                             optional<symbol_id> vl_param,
-                             optional<symbol_id> vt_param) {
-    auto s = new function_stub {
-        .pos_params=pparams,
-        .req_args=req_args,
-        .vl_param=vl_param,
-        .vt_param=vt_param,
-        // important! if foreign != nullptr it screws everything up
-        .foreign=nullptr,
-        .chunk=this,
-        .addr=code.size,
-        .num_upvals=0,
-        .upvals=vector<local_address>{},
-        .upvals_direct=vector<bool>{}};
-    function_arr.push_back(s);
-    return function_arr.size - 1;
-}
-
 u16 code_chunk::add_function(local_address num_pos,
         symbol_id* pos_params,
         local_address req_args,
         optional<symbol_id> vl_param,
-        optional<symbol_id> vt_param) {
+        optional<symbol_id> vt_param,
+        const string& name) {
     auto s = new function_stub {
         .pos_params=vector<symbol_id>{},
         .req_args=req_args,
         .vl_param=vl_param,
         .vt_param=vt_param,
+        .foreign=nullptr,
+        .name=name,
         .chunk=this,
         .addr=code.size,
         .num_upvals=0,

@@ -183,7 +183,8 @@ llir_form* expander::expand_defmacro(const source_loc& loc,
         return nullptr;
     }
 
-    auto value = (llir_form*)mk_llir_fn(loc, params, body);
+    auto value = (llir_form*)mk_llir_fn(loc, params,
+            symbol_name(lst[1]->datum.sym), body);
     auto res = mk_llir_defmacro(loc, lst[1]->datum.sym, value);
     return (llir_form*)res;
 }
@@ -215,7 +216,8 @@ llir_form* expander::expand_defn(const source_loc& loc,
         return nullptr;
     }
 
-    auto value = (llir_form*)mk_llir_fn(loc, params, body);
+    auto value = (llir_form*)mk_llir_fn(loc, params,
+            symbol_name(lst[1]->datum.sym), body);
     auto res = mk_llir_def(loc, lst[1]->datum.sym, value);
     return (llir_form*)res;
 }
@@ -330,7 +332,10 @@ llir_form* expander::expand_letfn_in_do(u32 length,
     if (!fn_body) {
         return nullptr;
     }
-    auto fn_llir = (llir_form*)mk_llir_fn(loc, params, fn_body);
+    // FIXME: function names should reflect surrounding functions. Should also
+    // do this for other types of functions (even anonymous ones)
+    auto fn_llir = (llir_form*)mk_llir_fn(loc, params,
+            ":"+symbol_name(sym), fn_body);
 
     // generate llir for the with body
     vector<llir_form*> bodys;
@@ -459,7 +464,7 @@ llir_form* expander::expand_dollar_fn(const source_loc& loc,
         body = (llir_form*) body2;
     }
 
-    auto res = mk_llir_fn(loc, m+1, false, false, m+1, body);
+    auto res = mk_llir_fn(loc, m+1, false, false, m+1, "", body);
     for (i32 i = 0; i <= m+1; ++i) {
         res->params.pos_args[i] = intern("$" + std::to_string(i));
     }
@@ -656,7 +661,7 @@ llir_form* expander::expand_fn(const source_loc& loc,
     } else {
         body = (llir_form*)expand_do(loc, length-1, &lst[1], meta);
     }
-    return (llir_form*)mk_llir_fn(loc, params, body);
+    return (llir_form*)mk_llir_fn(loc, params, "", body);
 }
 
 llir_form* expander::expand_if(const source_loc& loc,
@@ -1257,6 +1262,10 @@ symbol_id expander::intern(const string& str) {
 
 symbol_id expander::gensym() {
     return inter->get_symtab()->gensym();
+}
+
+string expander::symbol_name(symbol_id name) {
+    return inter->get_symtab()->symbol_name(name);
 }
 
 bool expander::is_keyword(symbol_id sym) const {

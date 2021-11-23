@@ -256,7 +256,8 @@ void compiler::compile_llir(const llir_fn* llir,
             params.pos_args,
             params.req_args,
             var_list,
-            var_table);
+            var_table,
+            llir->name);
     auto stub = dest->get_function(func_id);
     auto lex2 = extend_lex_env(lex, stub);
     // compile function body with a new lexical environment
