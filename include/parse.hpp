@@ -56,7 +56,7 @@ ast_form* mk_list_form(source_loc loc,
         ast_form* dest=nullptr);
 // make a list form by copying the contents of a vector
 ast_form* mk_list_form(source_loc loc,
-        vector<ast_form*>& lst,
+        dyn_array<ast_form*>* lst,
         ast_form* dest=nullptr);
 
 void clear_ast_form(ast_form* form, bool recursive=true);
@@ -83,13 +83,13 @@ ast_form* parse_next_form(scanner* sc,
 
 // attempt to parse as many ast_forms as possible from the given string. The
 // parse_error* structure is set to the first error encountered.
-vector<ast_form*> parse_string(const string& src,
+dyn_array<ast_form*> parse_string(const string& src,
         symbol_table* symtab,
         u32* bytes_used,
         parse_error* err);
 
 // parse ast forms from sc until an error is encountered
-vector<ast_form*> parse_input(scanner* sc,
+dyn_array<ast_form*> parse_input(scanner* sc,
         symbol_table* symtab,
         parse_error* err);
 

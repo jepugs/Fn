@@ -11,7 +11,6 @@
 #include <stdexcept>
 #include <sstream>
 #include <string>
-#include <vector>
 #include <iostream>
 
 namespace fn {
@@ -19,7 +18,6 @@ namespace fn {
 /// aliases imported from std
 template<class T> using forward_list = std::forward_list<T>;
 template<class T> using optional = std::optional<T>;
-template<class T> using vector = std::vector<T>;
 using string = std::string;
 
 template<class T> using shared_ptr = std::shared_ptr<T>;

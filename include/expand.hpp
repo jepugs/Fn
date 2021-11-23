@@ -66,7 +66,7 @@ private:
     // lst includes the do symbol at 0
     void flatten_do_body(u32 length,
             ast_form** lst,
-            vector<ast_form*>& buf,
+            dyn_array<ast_form*>* buf,
             expander_meta* meta);
     // ast_body doesn't include the do symbol
     llir_form* expand_let_in_do(u32 length,
@@ -79,7 +79,7 @@ private:
     // ast_body doesn't include the do symbl
     bool expand_do_recur(u32 length,
             ast_form** ast_body,
-            vector<llir_form*>& buf,
+            dyn_array<llir_form*>* buf,
             expander_meta* meta);
     llir_form* expand_do(const source_loc& loc,
             u32 length,

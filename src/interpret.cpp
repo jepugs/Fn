@@ -117,7 +117,7 @@ value interpreter::partial_interpret_string(const string& src,
         u32* bytes_used) {
     parse_error p_err;
     auto forms = parse_string(src, &symtab, bytes_used, &p_err);
-    if (forms.size() == 0) {
+    if (forms.size == 0) {
         if (!p_err.resumable) {
             // TODO: we can do better than this for error handling
             std::cout << "Parse error: " << p_err.message << '\n';
@@ -148,6 +148,7 @@ value interpreter::partial_interpret_string(const string& src,
             print_llir(llir, symtab, chunk);
         }
 
+
         compiler c{&symtab, &alloc, chunk};
         compile_error c_err;
         c_err.has_error = false;
@@ -168,6 +169,7 @@ value interpreter::partial_interpret_string(const string& src,
         free_llir_form(llir);
         res = vm.last_pop();
     }
+    //delete chunk;
 
     return res;
 }
@@ -179,7 +181,7 @@ value interpreter::interpret_istream(std::istream* in,
     parse_error p_err;
 
     auto forms = parse_input(&sc, &symtab, &p_err);
-    if (forms.size() == 0) {
+    if (forms.size == 0) {
         if (error != nullptr) {
             *error = true;
         }
@@ -307,16 +309,16 @@ ast_form* interpreter::value_to_ast(value v, const source_loc& loc) {
 
     // list code
     if (v == V_EMPTY) {
-        vector<ast_form*> lst;
+        dyn_array<ast_form*> lst;
         lst.push_back(mk_symbol_form(loc, symtab.intern("List")));
-        return mk_list_form(loc, lst);
+        return mk_list_form(loc, &lst);
     }
 
     if (v_tag(v) != TAG_CONS) {
         return nullptr;
     }
 
-    vector<ast_form*> lst;
+    dyn_array<ast_form*> lst;
     for (auto it = v; it != V_EMPTY; it = v_tail(it)) {
         auto x = value_to_ast(v_head(it), loc);
         if (!x) {
@@ -327,7 +329,7 @@ ast_form* interpreter::value_to_ast(value v, const source_loc& loc) {
         }
         lst.push_back(x);
     }
-    return mk_list_form(loc, lst);
+    return mk_list_form(loc, &lst);
 }
 
 void interpreter::runtime_error(const string& msg,
@@ -343,7 +345,7 @@ void interpreter::add_builtin_function(const string& name,
     parse_error err;
     u32 bytes_used;
     auto forms = parse_string(params, &symtab, &bytes_used, &err);
-    if (forms.size() != 1
+    if (forms.size != 1
             || bytes_used != params.size()
             || forms[0]->kind != ak_list) {
         for (auto f : forms) {
@@ -356,7 +358,7 @@ void interpreter::add_builtin_function(const string& name,
 
     auto lst = forms[0]->datum.list;
     auto len = forms[0]->list_length;
-    vector<symbol_id> pos_params;
+    dyn_array<symbol_id> pos_params;
     optional<symbol_id> vl = std::nullopt;
     optional<symbol_id> vt = std::nullopt;
 
@@ -421,7 +423,7 @@ void interpreter::add_builtin_function(const string& name,
     // FIXME: check that the param list isn't too long
     auto stub = new function_stub{
         .pos_params = pos_params,
-        .req_args = (u8)pos_params.size(),
+        .req_args = (u8)pos_params.size,
         .vl_param = vl,
         .vt_param = vt,
         .foreign = foreign_func,

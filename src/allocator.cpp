@@ -47,8 +47,8 @@ value root_stack::peek_bottom(u32 offset) const {
 
 value root_stack::pop() {
     --pointer;
-    last_pop = contents.back();
-    contents.pop_back();
+    last_pop = contents[contents.size-1];
+    contents.resize(contents.size-1);
     return last_pop;
 }
 
@@ -223,11 +223,11 @@ allocator::allocator(global_env* use_globals)
 }
 
 allocator::~allocator() {
-    for (auto o : objects) {
-        dealloc(o);
-    }
     for (auto s : root_stacks) {
         delete s;
+    }
+    for (auto o : objects) {
+        dealloc(o);
     }
 }
 
@@ -311,7 +311,7 @@ forward_list<gc_header*> allocator::accessible(gc_header* o) {
                     add_value_header(cell->closed_value, res);
                 }
             }
-            auto num_opt = f->stub->pos_params.size() - f->stub->req_args;
+            auto num_opt = f->stub->pos_params.size - f->stub->req_args;
             for (u32 i = 0; i < num_opt; ++i) {
                 add_value_header(f->init_vals[i], res);
             }
@@ -489,8 +489,15 @@ code_chunk* allocator::add_chunk(symbol_id ns_id) {
     if (!x.has_value()) {
         globals->create_ns(ns_id);
     }
-    auto res = mk_code_chunk(ns_id);
+    auto res = new code_chunk{ns_id};
     objects.push_back((gc_header*)res);
+    auto source_info = new chunk_source_info{
+        .end_addr=0,
+        .loc={.line=0, .col=0},
+        .prev=nullptr
+    };
+    res->source_info = source_info;
+
     return res;
 }
 

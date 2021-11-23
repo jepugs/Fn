@@ -26,7 +26,7 @@ private:
     // only the allocator is allowed to construct these
     root_stack();
     u32 pointer;
-    vector<value> contents;
+    dyn_array<value> contents;
     // open upvalues in descending order by stack position
     std::list<upvalue_cell*> upvals;
     bool dead; // if true, stack will be deleted when garbage is collected
@@ -143,7 +143,7 @@ private:
     u32 count;
 
     // roots for the mark and sweep algorithm
-    vector<value> root_objects;
+    dyn_array<value> root_objects;
     // variable-size stacks of root objects. Used for vm stacks.
     std::list<root_stack*> root_stacks;
     // pins are temporary root objects which are added and managed by

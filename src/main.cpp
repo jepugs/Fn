@@ -126,6 +126,7 @@ void process_args(int argc, char** argv, interpreter_options* opt) {
         }
     }
 
+
     // process source
     string src{argv[i]};
     if (src == string{"--eval"}) {

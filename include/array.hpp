@@ -14,59 +14,55 @@
 
 namespace fn {
 
+// Dynamic array type. This is used as a lightweight alternative to std::vector.
+// It saves us tens of kilobytes of executable size.
 template<typename t>
 struct dyn_array {
     u32 capacity;
     u32 size;
-    t* contents;
+    t* data;
 
     dyn_array()
-        : capacity{32}
+        : capacity{16}
         , size{0}
-        , contents{(t*)malloc(sizeof(t)*capacity)} {
+        , data{(t*)malloc(sizeof(t)*capacity)} {
     }
     dyn_array(const dyn_array<t>& other)
         : capacity{other.capacity}
         , size{other.size}
-        , contents{(t*)malloc(size*sizeof(t))} {
+        , data{(t*)malloc(size*sizeof(t))} {
         for (u32 i = 0; i < size; ++i) {
-            new(&contents[i]) t{other[i]};
+            new(&data[i]) t{other[i]};
         }
     }
     dyn_array(dyn_array<t>&& other)
         : capacity{other.capacity}
         , size{other.size}
-        , contents{other.contents} {
+        , data{other.data} {
         other.capacity = 0;
         other.size = 0;
-        other.contents = (t*)malloc(0);
+        other.data = (t*)malloc(0);
     }
     ~dyn_array() {
         for (u32 i = 0; i < size; ++i) {
-            contents[i].~t();
+            data[i].~t();
         }
-        free(contents);
+        free(data);
     }
     dyn_array& operator= (const dyn_array<t>& other) {
         this->~dyn_array();
         capacity = other.capacity;
         size = other.size;
-        contents = (t*)malloc(size*sizeof(t));
+        data = (t*)malloc(size*sizeof(t));
         for (u32 i = 0; i < size; ++i) {
-            new(&contents[i]) t{other[i]};
+            new(&data[i]) t{other[i]};
         }
         return *this;
     }
     dyn_array& operator= (dyn_array<t>&& other) {
-        auto tmpcap = capacity;
         capacity = other.capacity;
-        other.capacity = tmpcap;
-        auto tmpsz = size;
         size = other.size;
-        other.size = tmpsz;
-        auto tmpc = contents;
-        contents = other.contents;
-        other.contents = tmpc;
+        data = other.data;
         return *this;
     }
 
@@ -78,25 +74,42 @@ struct dyn_array {
         while (new_cap < min_cap) {
             new_cap *= 2;
         }
-        contents = (t*)realloc(contents, new_cap*sizeof(t));
+        if (std::is_trivially_copyable<t>::value) {
+            data = (t*)realloc(data, new_cap*sizeof(t));
+        } else {
+            auto old_data = data;
+            data = (t*)malloc(new_cap*sizeof(t));
+            for (u32 i = 0; i < size; ++i) {
+                new(&data[i]) t{std::move(old_data[i])};
+            }
+            free(old_data);
+        }
         capacity = new_cap;
     }
     void push_back(const t& item) {
         ensure_capacity(size + 1);
-        new(&contents[size]) t{item};
+        new(&data[size]) t{item};
         ++size;
     }
     void push_back(t&& item) {
         ensure_capacity(size + 1);
-        new(&contents[size]) t{item};
+        new(&data[size]) t{item};
         ++size;
     }
 
+    void resize(u32 new_size) {
+        ensure_capacity(new_size);
+        for (u32 i = size; i < new_size; ++i) {
+            new(&data[i]) t;
+        }
+        size = new_size;
+    }
+
     inline t& operator[](u32 i) {
-        return contents[i];
+        return data[i];
     }
     inline const t& operator[](u32 i) const {
-        return contents[i];
+        return data[i];
     }
 
     struct iterator {
@@ -124,62 +137,62 @@ struct dyn_array {
 template<typename t>
 struct static_array {
     u32 size;
-    t* contents;
+    t* data;
 
     static_array()
         : size{0}
-        , contents{new t[size]} {
+        , data{new t[size]} {
     }
     // only valid when t has a default constructor and = operator
     static_array(u32 size)
         : size{size}
-        , contents{new t[size]} {
+        , data{new t[size]} {
         for (u32 i = 0; i < size; ++i) {
-            new(&contents[i]) t;
+            new(&data[i]) t;
         }
     }
     // only valid when t has an = operator
     static_array(u32 size, const t& init)
         : size{size}
-        , contents{new t[size]} {
+        , data{new t[size]} {
         for (u32 i = 0; i < size; ++i) {
-            new(&contents[i]) t{init};
+            new(&data[i]) t{init};
         }
     }
     static_array(const static_array& other) {
         size = other.size;
-        contents = new t[size];
+        data = new t[size];
         for (u32 i = 0; i < size; ++i) {
-            contents[i] = other.contents[i];
+            data[i] = other.data[i];
         }
     }
     static_array(const static_array&& other)
         : size{other.size}
-        , contents{other.contents} {
+        , data{other.data} {
         other.size = 0;
-        other.contents = new t[0];
+        other.data = new t[0];
     }
     ~static_array() {
         for (u32 i = 0; i < size; ++i) {
-            contents[i].~t();
+            data[i].~t();
         }
-        delete[] contents;
+        delete[] data;
     }
 
     inline t& operator[](u32 i) {
-        return contents[i];
+        return data[i];
     }
     inline const t& operator[](u32 i) const {
-        return contents[i];
+        return data[i];
     }
 
     static_array<t> operator=(const static_array<t>& other) {
         this->~static_array();
 
         size = other.size;
-        contents = new t[size];
+        data = new t[size];
         for (u32 i = 0; i < size; ++i) {
-            new(&contents[i]) t{other.contents[i]};
+            new(&data[i]) t{other.data[i]};
         }
         return *this;
     }
@@ -189,9 +202,9 @@ struct static_array {
         auto tmps = size;
         size = other.size;
         other.size = tmps;
-        auto tmpc = contents;
-        contents = other.contents;
-        other.contents = tmpc;
+        auto tmpc = data;
+        data = other.data;
+        other.data = tmpc;
         return *this;
     }
 

@@ -79,7 +79,7 @@ struct code_chunk {
 
 // Initialize a new code chunk at location dest. If dest=nullptr, then a new
 // code_chunk is allocated. Returns a pointer to the created object.
-code_chunk* mk_code_chunk(symbol_id ns_id, code_chunk* dest=nullptr);
+code_chunk* mk_code_chunk(symbol_id ns_id);
 
 // TODO: due to progress made since originally writing this, we should probably
 // just use a destructor instead of this function.

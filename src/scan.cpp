@@ -100,7 +100,7 @@ token scanner::make_token(token_kind tk, const string& str) const {
 token scanner::make_token(token_kind tk, double num) const {
     return token{tk, source_loc{filename, line, col}, num};
 }
-token scanner::make_token(token_kind tk, const vector<string>& ids) const {
+token scanner::make_token(token_kind tk, const dyn_array<string*>& ids) const {
     return token{tk, source_loc{filename, line, col}, ids};
 }
 
@@ -191,14 +191,14 @@ token scanner::next_token() {
     return make_token(tk_eof);
 }
 
-void scanner::scan_to_dot(vector<char>& buf) {
+void scanner::scan_to_dot(dyn_array<char>& buf) {
     if (eof()) {
         return;
     }
 
     // check if the last character was an escape
-    if (buf.size() > 0 && buf.back() == '\\') {
-        buf.pop_back(); // get rid of the escape char
+    if (buf.size > 0 && buf[buf.size-1] == '\\') {
+        buf.resize(buf.size-1); // get rid of the escape char
         buf.push_back(get_char());
         if (eof()) {
             return;
@@ -222,22 +222,22 @@ void scanner::scan_to_dot(vector<char>& buf) {
 }
 
 token scanner::scan_atom(char first) {
-    vector<char> buf;
+    dyn_array<char> buf;
     buf.push_back(first);
 
     auto num = try_scan_num(buf, first);
     if (num.has_value()) {
         return make_token(tk_number, *num);
     } else if (eof() || !is_sym_char(peek_char())) {
-        return make_token(tk_symbol, string{buf.data(), buf.size()});
+        return make_token(tk_symbol, string{buf.data, buf.size});
     }
 
-    vector<string> ids;
+    dyn_array<string*> ids;
     scan_to_dot(buf);
 
     while (true) {
-        ids.push_back(string{buf.data(), buf.size()});
-        buf.clear();
+        ids.push_back(new string{buf.data, buf.size});
+        buf.resize(0);
         if (eof()) {
             break;
         }
@@ -255,14 +255,18 @@ token scanner::scan_atom(char first) {
         scan_to_dot(buf);
     }
 
-    if (ids.size() == 1) {
-        return make_token(tk_symbol, ids[0]);
+    // we don't actually want to delete these
+    if (ids.size == 1) {
+        auto res = make_token(tk_symbol, *ids[0]);
+        // in this case it gets copied
+        delete ids[0];
+        return res;
     } else {
         return make_token(tk_dot, ids);
     }
 }
 
-optional<f64> scanner::try_scan_num(vector<char>& buf, char first) {
+optional<f64> scanner::try_scan_num(dyn_array<char>& buf, char first) {
     char ch;
     int sign = 1;
 
@@ -336,7 +340,7 @@ inline f64 apply_exp(f64 num, i32 exp, u32 base=10) {
     return num;
 }
 
-optional<f64> scanner::try_scan_digits(vector<char>& buf,
+optional<f64> scanner::try_scan_digits(dyn_array<char>& buf,
                                        char first,
                                        int sign,
                                        u32 base) {
@@ -398,7 +402,7 @@ optional<f64> scanner::try_scan_digits(vector<char>& buf,
     return (f64)total*sign;
 }
 
-optional<f64> scanner::try_scan_frac(vector <char>& buf, i32* exp, u32 base) {
+optional<f64> scanner::try_scan_frac(dyn_array <char>& buf, i32* exp, u32 base) {
     // error on EOF (desired behavior)
     char ch = peek_char();
     f64 total = 0;
@@ -438,7 +442,7 @@ optional<f64> scanner::try_scan_frac(vector <char>& buf, i32* exp, u32 base) {
     return total;
 }
 
-optional<i32> scanner::try_scan_exp(vector<char>& buf) {
+optional<i32> scanner::try_scan_exp(dyn_array<char>& buf) {
     if (eof()) {
         return std::nullopt;
     }
@@ -481,7 +485,7 @@ optional<i32> scanner::try_scan_exp(vector<char>& buf) {
 
 token scanner::scan_string_literal() {
     char c = get_char();
-    vector<char> buf;
+    dyn_array<char> buf;
 
     while (c != '"') {
         if (c == '\\') {
@@ -492,10 +496,10 @@ token scanner::scan_string_literal() {
         c = get_char();
     }
 
-    return make_token(tk_string, string(buf.data(),buf.size()));
+    return make_token(tk_string, string(buf.data,buf.size));
 }
 
-void scanner::hex_digits_to_bytes(vector<char>& buf, u32 num_bytes) {
+void scanner::hex_digits_to_bytes(dyn_array<char>& buf, u32 num_bytes) {
     for (u32 i = 0; i < num_bytes; ++i) {
         char ch1;
         char ch2;
@@ -511,7 +515,7 @@ void scanner::hex_digits_to_bytes(vector<char>& buf, u32 num_bytes) {
 }
 
 // read (up to 3) octal digits and write a byte.
-void scanner::octal_to_byte(vector<char>& buf, u8 first) {
+void scanner::octal_to_byte(dyn_array<char>& buf, u8 first) {
     u8 total = first;
     // read up to 2 more digits
     for (int i = 0; i < 2; ++i) {
@@ -526,7 +530,7 @@ void scanner::octal_to_byte(vector<char>& buf, u8 first) {
     buf.push_back((char)total);
 }
 
-void scanner::get_string_escape_char(vector<char>& buf) {
+void scanner::get_string_escape_char(dyn_array<char>& buf) {
     // TODO: implement multi-character escape sequences
     char ch = get_char();
     switch (ch) {

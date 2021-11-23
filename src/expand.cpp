@@ -236,14 +236,14 @@ bool expander::is_letfn(ast_form* ast) {
 
 void expander::flatten_do_body(u32 length,
         ast_form** lst,
-        vector<ast_form*>& buf,
+        dyn_array<ast_form*>* buf,
         expander_meta* meta) {
     for (u32 i = 1; i < length; ++i) {
         if (is_do_inline(lst[i])) {
             // this will just splice in the other forms
             flatten_do_body(lst[i]->list_length, lst[i]->datum.list, buf, meta);
         } else {
-            buf.push_back(lst[i]);
+            buf->push_back(lst[i]);
         }
     }
 }
@@ -262,13 +262,13 @@ llir_form* expander::expand_let_in_do(u32 length,
     }
 
     // body
-    vector<llir_form*> bodys;
-    if (!expand_do_recur(length - 1, &ast_body[1], bodys, meta)) {
+    dyn_array<llir_form*> bodys;
+    if (!expand_do_recur(length - 1, &ast_body[1], &bodys, meta)) {
         return nullptr;
     }
 
     auto num_vars = (let->list_length - 1) / 2;
-    auto res = mk_llir_with(let->loc, num_vars, bodys.size());
+    auto res = mk_llir_with(let->loc, num_vars, bodys.size);
 
     // collect variables and init forms
     for (u32 i = 0; i < num_vars; ++i) {
@@ -299,7 +299,7 @@ llir_form* expander::expand_let_in_do(u32 length,
         res->values[i] = x;
     }
 
-    for (u32 i = 0; i < bodys.size(); ++i) {
+    for (u32 i = 0; i < bodys.size; ++i) {
         res->body[i] = bodys[i];
     }
 
@@ -338,15 +338,15 @@ llir_form* expander::expand_letfn_in_do(u32 length,
             ":"+symbol_name(sym), fn_body);
 
     // generate llir for the with body
-    vector<llir_form*> bodys;
-    if (!expand_do_recur(length - 1, &ast_body[1], bodys, meta)) {
+    dyn_array<llir_form*> bodys;
+    if (!expand_do_recur(length - 1, &ast_body[1], &bodys, meta)) {
         free_llir_form(fn_llir);
         return nullptr;
     }
-    auto res = mk_llir_with(loc, 1, bodys.size());
+    auto res = mk_llir_with(loc, 1, bodys.size);
     res->vars[0] = sym;
     res->values[0] = fn_llir;
-    for (u32 i = 0; i < bodys.size(); ++i) {
+    for (u32 i = 0; i < bodys.size; ++i) {
         res->body[i] = bodys[i];
     }
 
@@ -360,39 +360,39 @@ llir_form* expander::expand_letfn_in_do(u32 length,
 // if passing in a nonempty buffer, your llir_form*s will get deleted on error.
 bool expander::expand_do_recur(u32 length,
         ast_form** ast_body,
-        vector<llir_form*>& buf,
+        dyn_array<llir_form*>* buf,
         expander_meta* meta) {
     for (u32 i = 0; i < length; ++i) {
         auto ast = ast_body[i];
         if (is_let(ast)) {
             auto body = expand_let_in_do(length-i, &ast_body[i], meta);
             if (!body) {
-                for (auto y : buf) {
+                for (auto y : *buf) {
                     free_llir_form(y);
                 }
                 return false;
             }
-            buf.push_back(body);
+            buf->push_back(body);
             return true;
         } else if (is_letfn(ast)) {
             auto body = expand_letfn_in_do(length-i, &ast_body[i], meta);
             if (!body) {
-                for (auto y : buf) {
+                for (auto y : *buf) {
                     free_llir_form(y);
                 }
                 return false;
             }
-            buf.push_back(body);
+            buf->push_back(body);
             return true;
         } else {
             auto x = expand_meta(ast, meta);
             if (!x) {
-                for (auto y : buf) {
+                for (auto y : *buf) {
                     free_llir_form(y);
                 }
                 return false;
             }
-            buf.push_back(x);
+            buf->push_back(x);
         }
     }
     return true;
@@ -408,23 +408,23 @@ llir_form* expander::expand_do(const source_loc& loc,
         return expand_meta(lst[1], meta);
     }
 
-    vector<ast_form*> ast_buf;
-    flatten_do_body(length, lst, ast_buf, meta);
+    dyn_array<ast_form*> ast_buf;
+    flatten_do_body(length, lst, &ast_buf, meta);
 
     // check if first form is let or letfn to avoid wrapping with an empty with
     if (length == 0) {
         return (llir_form*)mk_llir_var(loc, intern("nil"));
     } else if (is_let(ast_buf[0])) {
-        return expand_let_in_do(ast_buf.size(), ast_buf.data(), meta);
+        return expand_let_in_do(ast_buf.size, ast_buf.data, meta);
     } else if (is_letfn(ast_buf[0])) {
-        return expand_letfn_in_do(ast_buf.size(), ast_buf.data(), meta);
+        return expand_letfn_in_do(ast_buf.size, ast_buf.data, meta);
     }
-    vector<llir_form*> llir_buf;
-    if (!expand_do_recur(ast_buf.size(), ast_buf.data(), llir_buf, meta)) {
+    dyn_array<llir_form*> llir_buf;
+    if (!expand_do_recur(ast_buf.size, ast_buf.data, &llir_buf, meta)) {
         return nullptr;
     }
-    auto res = mk_llir_with(loc, 0, llir_buf.size());
-    for (u32 i = 0; i < llir_buf.size(); ++i) {
+    auto res = mk_llir_with(loc, 0, llir_buf.size);
+    for (u32 i = 0; i < llir_buf.size; ++i) {
         res->body[i] = llir_buf[i];
     }
     return (llir_form*)res;
@@ -516,9 +516,9 @@ bool expander::expand_params(ast_form* ast,
     auto colamp_sym = intern(":&");
     auto& lst = ast->datum.list;
 
-    vector<symbol_id> positional;
+    dyn_array<symbol_id> positional;
     u32 num_pos;
-    vector<llir_form*> inits;
+    dyn_array<llir_form*> inits;
     // positional/required
     for (num_pos = 0; num_pos < len; ++num_pos) {
         auto& x = lst[num_pos];
@@ -632,10 +632,10 @@ bool expander::expand_params(ast_form* ast,
     params->pos_args = new symbol_id[num_pos];
     params->req_args = num_req;
     params->inits = new llir_form*[num_pos - num_req];
-    for (u32 i = 0; i < positional.size(); ++i) {
+    for (u32 i = 0; i < positional.size; ++i) {
         params->pos_args[i] = positional[i];
     }
-    for (u32 i = 0; i < inits.size(); ++i) {
+    for (u32 i = 0; i < inits.size; ++i) {
         params->inits[i] = inits[i];
     }
     return true;
@@ -1036,8 +1036,8 @@ llir_form* expander::expand_call(const source_loc& loc,
         u32 len,
         ast_form** lst,
         expander_meta* meta) {
-    vector<llir_form*> pos_args;
-    vector<llir_kw_arg> kw_args;
+    dyn_array<llir_form*> pos_args;
+    dyn_array<llir_kw_arg> kw_args;
     u32 i;
     bool failed = false;
     for (i = 1; i < len; ++i) {
@@ -1100,9 +1100,9 @@ llir_form* expander::expand_call(const source_loc& loc,
         }
         return nullptr;
     }
-    auto res = mk_llir_call(loc, callee, pos_args.size(), kw_args.size());
-    memcpy(res->pos_args, pos_args.data(), pos_args.size()*sizeof(llir_form*));
-    memcpy(res->kw_args, kw_args.data(), kw_args.size()*sizeof(llir_kw_arg));
+    auto res = mk_llir_call(loc, callee, pos_args.size, kw_args.size);
+    memcpy(res->pos_args, pos_args.data, pos_args.size*sizeof(llir_form*));
+    memcpy(res->kw_args, kw_args.data, kw_args.size*sizeof(llir_kw_arg));
 
     return (llir_form*)res;
 }

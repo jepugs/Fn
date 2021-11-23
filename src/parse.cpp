@@ -72,13 +72,13 @@ ast_form* mk_list_form(source_loc loc,
 }
 
 ast_form* mk_list_form(source_loc loc,
-        vector<ast_form*>& lst,
+        dyn_array<ast_form*>* lst,
         ast_form* dest) {
-    ast_form** data = new ast_form*[lst.size()];
-    for (u32 i = 0; i < lst.size(); ++i) {
-        data[i] = lst[i];
+    ast_form** data = new ast_form*[lst->size];
+    for (u32 i = 0; i < lst->size; ++i) {
+        data[i] = (*lst)[i];
     }
-    return mk_list_form(loc, lst.size(), data, dest);
+    return mk_list_form(loc, lst->size, data, dest);
 }
 
 void clear_ast_form(ast_form* form, bool recursive) {
@@ -145,7 +145,7 @@ static string print_grouped(const symbol_table* symtab,
 }
 
 string with_escapes(const string& src) {
-    vector<char> buf;
+    dyn_array<char> buf;
     for (u32 u = 0; u < src.length(); ++u) {
         auto ch = src.at(u);
         switch (ch) {
@@ -169,11 +169,11 @@ string with_escapes(const string& src) {
         }
         buf.push_back(ch);
     }
-    return string{buf.data(), buf.size()};
+    return string{buf.data, buf.size};
 }
 
 string with_str_escapes(const string& src) {
-    vector<char> buf;
+    dyn_array<char> buf;
     for (u32 u = 0; u < src.length(); ++u) {
         auto ch = src.at(u);
         switch (ch) {
@@ -184,7 +184,7 @@ string with_str_escapes(const string& src) {
         }
         buf.push_back(ch);
     }
-    return string{buf.data(), buf.size()};
+    return string{buf.data, buf.size};
 }
 
 string ast_form::as_string(const symbol_table* symtab) const {
@@ -229,7 +229,7 @@ symbol_id ast_form::get_symbol() const {
 // on error, returns nullptr and sets err, but DOES NOT
 static ast_form* parse_to_delimiter(scanner* sc,
         symbol_table* symtab,
-        vector<ast_form*>& buf,
+        dyn_array<ast_form*>* buf,
         token_kind end,
         parse_error* err) {
     auto tok = sc->next_token();
@@ -244,7 +244,7 @@ static ast_form* parse_to_delimiter(scanner* sc,
         if (!x) {
             return nullptr;
         }
-        buf.push_back(x);
+        buf->push_back(x);
         tok = sc->next_token();
     }
 
@@ -257,16 +257,16 @@ static ast_form* parse_prefix(scanner* sc,
         const string& op,
         token t0,
         parse_error* err) {
-    vector<ast_form*> buf;
+    dyn_array<ast_form*> buf;
     buf.push_back(mk_symbol_form(loc, symtab->intern(op)));
     auto x = parse_next_form(sc, symtab, t0, err);
     if (!x) {
         free_ast_form(buf[0]);
         return nullptr;
     }
-    
+
     buf.push_back(x);
-    return mk_list_form(loc, buf);
+    return mk_list_form(loc, &buf);
 }
 
 static ast_form* parse_prefix(scanner* sc,
@@ -288,7 +288,7 @@ ast_form* parse_next_form(scanner* sc,
         parse_error* err) {
     ast_form* res = nullptr;
     string* str = t0.datum.str;
-    vector<ast_form*> buf;
+    dyn_array<ast_form*> buf;
     auto& loc = t0.loc;
 
     switch (t0.tk) {
@@ -310,7 +310,7 @@ ast_form* parse_next_form(scanner* sc,
 
     case tk_lparen:
         // this will give res=nullptr and set err if there's an error
-        if (!(res=parse_to_delimiter(sc, symtab, buf, tk_rparen, err))) {
+        if (!(res=parse_to_delimiter(sc, symtab, &buf, tk_rparen, err))) {
             for (auto x : buf) {
                 free_ast_form(x);
             }
@@ -324,7 +324,7 @@ ast_form* parse_next_form(scanner* sc,
         break;
     case tk_lbrace:
         buf.push_back(mk_symbol_form(loc, symtab->intern("Table")));
-        if (!(res=parse_to_delimiter(sc, symtab, buf, tk_rbrace, err))) {
+        if (!(res=parse_to_delimiter(sc, symtab, &buf, tk_rbrace, err))) {
             for (auto x : buf) {
                 free_ast_form(x);
             }
@@ -338,7 +338,7 @@ ast_form* parse_next_form(scanner* sc,
         break;
     case tk_lbracket:
         buf.push_back(mk_symbol_form(loc, symtab->intern("List")));
-        if (!(res=parse_to_delimiter(sc, symtab, buf, tk_rbracket, err))) {
+        if (!(res=parse_to_delimiter(sc, symtab, &buf, tk_rbracket, err))) {
             for (auto x : buf) {
                 free_ast_form(x);
             }
@@ -354,9 +354,9 @@ ast_form* parse_next_form(scanner* sc,
     case tk_dot:
         buf.push_back(mk_symbol_form(loc, symtab->intern("dot")));
         for (auto s : *t0.datum.ids) {
-            buf.push_back(mk_symbol_form(loc, symtab->intern(s)));
+            buf.push_back(mk_symbol_form(loc, symtab->intern(*s)));
         }
-        res = mk_list_form(loc, buf);
+        res = mk_list_form(loc, &buf);
         break;
 
     case tk_quote:
@@ -391,13 +391,13 @@ ast_form* parse_next_form(scanner* sc,
     return res;
 }
 
-vector<ast_form*> parse_string(const string& src,
+dyn_array<ast_form*> parse_string(const string& src,
         symbol_table* symtab,
         u32* bytes_used,
         parse_error* err) {
     std::istringstream in{src};
     scanner sc{&in};
-    vector<ast_form*> res;
+    dyn_array<ast_form*> res;
     auto pos = in.tellg();
     ast_form* a;
     while ((a = parse_next_form(&sc, symtab, err))) {
@@ -414,10 +414,10 @@ vector<ast_form*> parse_string(const string& src,
     return res;
 }
 
-vector<ast_form*> parse_input(scanner* sc,
+dyn_array<ast_form*> parse_input(scanner* sc,
         symbol_table* symtab,
         parse_error* err) {
-    vector<ast_form*> res;
+    dyn_array<ast_form*> res;
     ast_form* a;
     while ((a = parse_next_form(sc, symtab, err))) {
         res.push_back(a);

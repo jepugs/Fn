@@ -77,16 +77,22 @@ fn_table::fn_table() {
     mk_gc_header(GC_TYPE_TABLE, &h);
 }
 
+symbol_table::~symbol_table() {
+    for (auto x : by_id) {
+        delete x.name;
+    }
+}
+
 symbol_id symbol_table::intern(const string& str) {
-    if (next_gensym <= by_id.size()) {
+    if (next_gensym <= by_id.size) {
         throw std::runtime_error("Symbol table exhausted.");
     }
     auto v = by_name.get(str);
     if (v.has_value()) {
         return v->id;
     } else {
-        u32 id = by_id.size();
-        symtab_entry s{ .id=id, .name=str };
+        u32 id = by_id.size;
+        symtab_entry s{id, new string{str}};
         by_id.push_back(s);
         by_name.insert(str,s);
         return id;
@@ -98,15 +104,15 @@ bool symbol_table::is_internal(const string& str) const {
 }
 
 string symbol_table::symbol_name(symbol_id sym) const {
-    if (sym >= by_id.size()) {
+    if (sym >= by_id.size) {
         return "";
     } else {
-        return by_id[sym].name;
+        return *by_id[sym].name;
     }
 }
 
 symbol_id symbol_table::gensym() {
-    if (next_gensym <= by_id.size()) {
+    if (next_gensym <= by_id.size) {
         throw std::runtime_error("Symbol table exhausted.");
     }
     return next_gensym--;
@@ -148,8 +154,8 @@ function::function(function_stub* stub)
     }
 
     upvals = new upvalue_cell*[num_upvals];
-    if (stub->req_args < stub->pos_params.size()) {
-        init_vals = new value[stub->pos_params.size() - stub->req_args];
+    if (stub->req_args < stub->pos_params.size) {
+        init_vals = new value[stub->pos_params.size - stub->req_args];
     }
 }
 

@@ -23,7 +23,7 @@ private:
 
     // Since these don't rightfully belong to any chunks, we save them right
     // here in the interpreter.
-    vector<function_stub*> ffi_stubs;
+    dyn_array<function_stub*> ffi_stubs;
 
     // logging settings. For now these just go to cout.
     bool log_llir = false;

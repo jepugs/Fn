@@ -120,7 +120,7 @@ symbol_table* vm_thread::get_symtab() {
 void vm_thread::runtime_error(const string& msg) const {
     auto p = cur_chunk()->location_of(ip);
     string pre = "(ip:" + std::to_string(ip) + ") ";
-    if (frame->caller->stub->name.size() > 0) {
+    if (frame->caller && frame->caller->stub->name.size() > 0) {
         pre = pre + "{In function: " + frame->caller->stub->name + "} ";
     }
     throw fn_error("runtime", pre + msg, p);
@@ -197,7 +197,7 @@ table<local_address,value> vm_thread::process_kw_table(function_stub* stub,
         auto id = vsymbol(k);
         // first, check if this is a positional argument we still need
         bool found_pos = false;
-        for (auto i = num_args; i < stub->pos_params.size(); ++i) {
+        for (auto i = num_args; i < stub->pos_params.size; ++i) {
             if(stub->pos_params[i] == id) {
                 res.insert(i, *kw.get(k));
                 found_pos = true;
@@ -220,7 +220,7 @@ table<local_address,value> vm_thread::process_kw_table(function_stub* stub,
 void vm_thread::arrange_call_stack(working_set* ws,
         function* func,
         local_address num_args) {
-    auto num_pos_args = func->stub->pos_params.size();
+    auto num_pos_args = func->stub->pos_params.size;
     auto has_vl = func->stub->vl_param.has_value();
     auto has_vt = func->stub->vt_param.has_value();
     auto req_args = func->stub->req_args;
@@ -291,7 +291,7 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
     auto stub = func->stub;
 
     // stack pointer (equal to number of parameter variables)
-    u8 sp = static_cast<u8>(stub->pos_params.size()
+    u8 sp = static_cast<u8>(stub->pos_params.size
             + stub->vl_param.has_value()
             + stub->vt_param.has_value());
     if (stub->foreign != nullptr) { // foreign function call
@@ -339,7 +339,7 @@ code_address vm_thread::tcall(working_set* ws, local_address num_args) {
 
     // update the frame
     auto stub = func->stub;
-    u8 sp = static_cast<u8>(stub->pos_params.size()
+    u8 sp = static_cast<u8>(stub->pos_params.size
             + stub->vl_param.has_value()
             + stub->vt_param.has_value());
     frame->num_args = sp;
@@ -384,7 +384,7 @@ void vm_thread::init_function(working_set* ws, function* f) {
     // Add init values
     // DANGER! Init vals are popped right off the stack, so they better be there
     // when this function gets initialized!
-    auto len = stub->pos_params.size() - stub->req_args;
+    auto len = stub->pos_params.size - stub->req_args;
     for (u32 i = 0; i < len; ++i) {
         f->init_vals[i] = pop_to_ws(ws);
     }

@@ -3,6 +3,7 @@
 #ifndef __FN_VALUES_HPP
 #define __FN_VALUES_HPP
 
+#include "array.hpp"
 #include "base.hpp"
 #include "table.hpp"
 
@@ -273,7 +274,7 @@ struct interpreter_handle;
 
 // a stub describing a function. these go in the bytecode object
 struct function_stub {
-    vector<symbol_id> pos_params;  // positional params
+    dyn_array<symbol_id> pos_params;  // positional params
     local_address req_args;        // # of required arguments
     optional<symbol_id> vl_param;  // variadic list parameter
     optional<symbol_id> vt_param;  // variadic table parameter
@@ -288,8 +289,8 @@ struct function_stub {
 
     local_address num_upvals;
     // upvalues are identified by addresses in the surrounding call frame
-    vector<u8> upvals;
-    vector<bool> upvals_direct;
+    dyn_array<u8> upvals;
+    dyn_array<bool> upvals_direct;
     // if the corresponding entry of upvals_direct = false, then it means this
     // upvalue corresponds to an upvalue in the surrounding frame. Otherwise
     // it's a stack value.
@@ -365,7 +366,9 @@ struct virtual_machine;
 // symbols in fn are represented by a 32-bit unsigned ids
 struct symtab_entry {
     symbol_id id;
-    string name;
+    // pointer here b/c string itself is not trivially copyable, hence not
+    // appropriate for a dynamic array.
+    string* name;
 };
 
 // the point of the symbol table is to have fast two-way lookup going from a symbol's name to its id
@@ -373,12 +376,13 @@ struct symtab_entry {
 class symbol_table {
 private:
     table<string,symtab_entry> by_name;
-    vector<symtab_entry> by_id;
+    dyn_array<symtab_entry> by_id;
     // TODO: figure out why this can't be a full number :(
     symbol_id next_gensym = (symbol_id)(-1);
 
 public:
     symbol_table() = default;
+    ~symbol_table();
 
     symbol_id intern(const string& str);
     bool is_internal(const string& str) const;

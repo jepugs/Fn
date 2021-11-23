@@ -1,6 +1,7 @@
 #ifndef __FN_SCAN_HPP
 #define __FN_SCAN_HPP
 
+#include "array.hpp"
 #include "base.hpp"
 
 #include <iostream>
@@ -49,7 +50,7 @@ union token_datum {
     // used for string literals and symbol names
     string* str;
     // used for dots
-    vector<string>* ids;
+    dyn_array<string*>* ids;
     // placeholder null pointer for other token types
     void *nothing;
 };
@@ -75,10 +76,10 @@ struct token {
         , loc{loc}
         , datum{.str = new string{str}} {
     }
-    token(token_kind tk, source_loc loc, const vector<string>& ids)
+    token(token_kind tk, source_loc loc, const dyn_array<string*>& ids)
         : tk{tk}
         , loc{loc}
-        , datum{.ids = new vector<string>{ids}} {
+        , datum{.ids = new dyn_array<string*>{ids}} {
     }
 
     token(const token& tok)
@@ -87,7 +88,7 @@ struct token {
         if (tk == tk_string || tk == tk_symbol) {
             datum.str = new string{*tok.datum.str};
         } else if (tk == tk_dot) {
-            datum.ids = new vector<string>{*tok.datum.ids};
+            datum.ids = new dyn_array<string*>{*tok.datum.ids};
         } else {
             datum = tok.datum;
         }
@@ -99,6 +100,9 @@ struct token {
         if (tk == tk_string || tk == tk_symbol) {
             delete datum.str;
         } else if (tk == tk_dot) {
+            for (auto x : *datum.ids) {
+                delete x;
+            }
             delete datum.ids;
         }
 
@@ -107,7 +111,7 @@ struct token {
         if (tk == tk_string || tk == tk_symbol) {
             datum.str = new string(*tok.datum.str);
         } else if (tk == tk_dot) {
-            datum.ids = new vector<string>(*tok.datum.ids);
+            datum.ids = new dyn_array<string*>(*tok.datum.ids);
         } else {
             this->datum = tok.datum;
         }
@@ -119,6 +123,9 @@ struct token {
         if (tk == tk_string || tk == tk_symbol) {
             delete datum.str;
         } else if (tk == tk_dot) {
+            for (auto x : *datum.ids) {
+                delete x;
+            }
             delete datum.ids;
         }
     }
@@ -164,12 +171,12 @@ struct token {
             return *(this->datum.str);
         case tk_dot:
             {
-                auto res = (*(this->datum.ids))[0];
+                auto res = *(*(this->datum.ids))[0];
 
                 u32 u;
                 for (u = 1; u < res.size(); ++u) {
-                    auto s = (*(this->datum.ids))[u];
-                    res = res + "." + res;
+                    auto s = *(*(this->datum.ids))[u];
+                    res = res + "." + s;
                 }
 
                 return res;
@@ -224,17 +231,17 @@ private:
     token make_token(token_kind tk) const;
     token make_token(token_kind tk, const string& str) const;
     token make_token(token_kind tk, double num) const;
-    token make_token(token_kind tk, const vector<string>& ids) const;
+    token make_token(token_kind tk, const dyn_array<string*>& ids) const;
 
     // methods to scan variable-length tokens
 
     // scan a string literal
     token scan_string_literal();
     // scan a string escape sequence, writing the generated characters to buf
-    void get_string_escape_char(vector<char>& buf);
+    void get_string_escape_char(dyn_array<char>& buf);
     // used for certain escape sequences
-    void hex_digits_to_bytes(vector<char>& buf, u32 num_bytes);
-    void octal_to_byte(vector<char>& buf, u8 first);
+    void hex_digits_to_bytes(dyn_array<char>& buf, u32 num_bytes);
+    void octal_to_byte(dyn_array<char>& buf, u8 first);
 
     // this method scans number, symbol, and dot tokens
     token scan_atom(char first); // needs first character of the token
@@ -243,14 +250,14 @@ private:
     // machine, but written by hand. To avoid backtracking, there are pretty
     // strict restrictions on the conditions under which each method below may
     // be called. Refer to the source in src/scan.cpp for more information.
-    void scan_to_dot(vector<char>& buf);
-    optional<f64> try_scan_num(vector<char>& buf, char first);
-    optional<f64> try_scan_digits(vector<char>& buf,
+    void scan_to_dot(dyn_array<char>& buf);
+    optional<f64> try_scan_num(dyn_array<char>& buf, char first);
+    optional<f64> try_scan_digits(dyn_array<char>& buf,
                                   char first,
                                   int sign,
                                   u32 base);
-    optional<f64> try_scan_frac(vector <char>& buf, i32* exp, u32 base);
-    optional<i32> try_scan_exp(vector<char>& buf);
+    optional<f64> try_scan_frac(dyn_array <char>& buf, i32* exp, u32 base);
+    optional<i32> try_scan_exp(dyn_array<char>& buf);
 
     // throw an appropriate fn_error
     inline void error(const char* msg) {

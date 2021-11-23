@@ -50,7 +50,6 @@ u16 code_chunk::add_function(local_address num_pos,
         optional<symbol_id> vt_param,
         const string& name) {
     auto s = new function_stub {
-        .pos_params=vector<symbol_id>{},
         .req_args=req_args,
         .vl_param=vl_param,
         .vt_param=vt_param,
@@ -58,9 +57,8 @@ u16 code_chunk::add_function(local_address num_pos,
         .name=name,
         .chunk=this,
         .addr=code.size,
-        .num_upvals=0,
-        .upvals=vector<local_address>{},
-        .upvals_direct=vector<bool>{}};
+        .num_upvals=0
+    };
     for (u32 i = 0; i < num_pos; ++i) {
         s->pos_params.push_back(pos_params[i]);
     }
@@ -92,20 +90,14 @@ source_loc code_chunk::location_of(u32 addr) {
 
 // used to initialize the dynamic arrays
 static constexpr size_t init_array_size = 32;
-code_chunk* mk_code_chunk(symbol_id ns_id, code_chunk* dest) {
-    if (dest == nullptr) {
-        dest = new code_chunk;
-    }
-    auto source_info = new chunk_source_info{
-        .end_addr=0,
-        .loc={.filename="", .line=0, .col=0},
-        .prev=nullptr
-    };
-    // gotta use malloc here for portability since we use realloc to resize
-    // arrays.
-    auto res = new(dest) code_chunk {
-        .ns_id = ns_id,
-        .source_info = source_info
+code_chunk* mk_code_chunk(symbol_id ns_id) {
+    auto res = new code_chunk{
+        .ns_id=ns_id,
+        .source_info = new chunk_source_info{
+            .end_addr=0,
+            .loc={.line=0, .col=0},
+            .prev=nullptr
+        }
     };
     mk_gc_header(GC_TYPE_CHUNK, &res->h);
     return res;
