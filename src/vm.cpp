@@ -248,6 +248,7 @@ void vm_thread::arrange_call_stack(working_set* ws,
     for (u32 i = num_args; i < req_args; ++i) {
         auto x = extra_pos.get(i);
         if (!x.has_value()) {
+            std::cout << "name is " << (*symtab)[func->stub->pos_params[i]] << '\n';
             runtime_error("Missing required argument in call.");
         }
         push(*x);
@@ -276,7 +277,7 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
     // the function to call should be on top
     auto callee = pop_to_ws(ws);
     if (v_tag(callee) != TAG_FUNC) {
-        runtime_error("Error on call instruction: callee is not a function");
+        runtime_error("Error on call: callee is not a function");
         return ip + 2;
     }
     auto func = vfunction(callee);
@@ -309,6 +310,64 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
         return stub->addr;
     }
 }
+
+code_address vm_thread::tcall(working_set* ws, local_address num_args) {
+    // the function to call should be on top
+    auto callee = pop_to_ws(ws);
+    if (v_tag(callee) != TAG_FUNC) {
+        runtime_error("Error on call: callee is not a function");
+        return ip + 2;
+    }
+
+    // save the values for the call operation
+    dyn_array<value> saved_stack;
+    for (i32 i = 0; i < num_args + 2; ++i) {
+        saved_stack.push_back(pop_to_ws(ws));
+    }
+
+    // time to obliterate the old call frame...
+    pop_times(stack->get_pointer() - frame->bp);
+    // set up the stack
+    for (i32 i = num_args + 2; i > 0; --i) {
+        push(saved_stack[i-1]);
+    }
+    auto func = vfunction(callee);
+    arrange_call_stack(ws, func, num_args);
+
+    // update the frame
+    auto stub = func->stub;
+    u8 sp = static_cast<u8>(stub->pos_params.size()
+            + stub->vl_param.has_value()
+            + stub->vt_param.has_value());
+    frame->num_args = sp;
+    frame->caller = func;
+    chunk = stub->chunk;
+    return stub->addr;
+}
+
+
+code_address vm_thread::apply(working_set* ws, local_address num_args) {
+    // all we need to do is expand the varargs. The rest will be taken care of
+    // by call.
+    auto callee = pop_to_ws(ws);
+    auto kw_tab = pop_to_ws(ws);
+
+    auto args = pop_to_ws(ws);
+    if (args != V_EMPTY && !args.is_cons()) {
+        runtime_error("apply argument list not actually a list");
+    }
+    u32 list_len = 0;
+    for (auto it = args; it != V_EMPTY; it = v_tail(it)) {
+        push(v_head(it));
+        ++list_len;
+    }
+
+    // put these back where we found them
+    push(kw_tab);
+    push(callee);
+    return call(ws, num_args + list_len);
+}
+
 
 
 void vm_thread::init_function(working_set* ws, function* f) {
@@ -541,6 +600,18 @@ void vm_thread::step() {
         addr = call(&ws, num_args);
         break;
 
+    case OP_TCALL:
+        num_args = cur_chunk()->read_byte(ip+1);
+        jump = true;
+        addr = tcall(&ws, num_args);
+        break;
+
+    case OP_APPLY:
+        num_args = cur_chunk()->read_byte(ip+1);
+        jump = true;
+        addr = apply(&ws, num_args);
+        break;
+
     case OP_RETURN:
         // check that we are in a call frame
         if (frame->caller == nullptr) {
@@ -666,6 +737,9 @@ void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& ou
         break;
     case OP_TCALL:
         out << "tcall " << (i32)((code.read_byte(ip+1)));;
+        break;
+    case OP_APPLY:
+        out << "apply " << (i32)((code.read_byte(ip+1)));;
         break;
     case OP_RETURN:
         out << "return";

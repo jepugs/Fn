@@ -35,26 +35,28 @@
       true (iter acc (tail rem))))
   (iter [] list))
 
-(defn concat (& lists)
-  (letfn cat2 (l1 l2)
-    (letfn a2-iter (acc rem)
-      (if (empty? rem)
-          acc
-          (a2-iter (cons (head rem) acc)
-                   (tail rem))))
-    (a2-iter l2 (reverse l1)))
-  (letfn iter (acc rem)
-    (if (empty? rem)
-        acc
-        (iter (cat2 acc (head rem))
-              (tail rem))))
-  (iter [] lists))
+; someone went and added this one to the builtins!
+
+; (defn concat (& lists)
+;   (letfn cat2 (l1 l2)
+;     (letfn a2-iter (acc rem)
+;       (if (empty? rem)
+;           acc
+;           (a2-iter (cons (head rem) acc)
+;                    (tail rem))))
+;     (a2-iter l2 (reverse l1)))
+;   (letfn iter (acc rem)
+;     (if (empty? rem)
+;         acc
+;         (iter (cat2 acc (head rem))
+;               (tail rem))))
+;   (iter [] lists))
 
 (defn foldl (f init list)
   (letfn iter (acc rem)
-    (if (empty? rem)
-        acc
-        (iter (f acc (head rem)) (tail rem))))
+         (if (empty? rem)
+             acc
+           (iter (f acc (head rem)) (tail rem))))
   (iter init list))
 
 (defn foldr (f init list)
@@ -70,7 +72,7 @@
       (cons (head list)
             (replace-at (tail list) (- pos 1) new))))
 
-(defn range (start stop (step 1))
+(defn list-range (start stop (step 1))
   ; this actually builds the range in reverse
   (def cmp (if (< step 0) < >)) ; comparison depends on sign of step
   (defn iter (acc i)
@@ -78,6 +80,17 @@
         acc
         (iter (cons i acc) (- i step))))
   (iter [] start))
+
+;; implementation of apply as a function
+(defn apply (fun arg0 arg1 & args)
+  (letfn iter (acc rem)
+    (if (empty? (tail (tail rem)))
+        [(concat (reverse acc) (head rem))
+         (head (tail rem))]
+        (iter (cons (head rem) acc)
+              (tail rem))))
+  (let result (iter [] (cons arg0 (cons arg1 args))))
+  (apply fun (nth 0 result) (nth 1 result)))
 
 
 ;; 4x4 sudoku solver

@@ -69,6 +69,9 @@ private:
     // functions, this does not affect the stack pointer.
     void compile_symbol(symbol_id sym);
 
+    void compile_llir(const llir_apply* llir,
+            lexical_env* lex,
+            compile_error* err);
     void compile_llir(const llir_call* llir,
             lexical_env* lex,
             compile_error* err);

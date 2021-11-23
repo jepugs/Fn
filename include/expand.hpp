@@ -39,6 +39,10 @@ private:
             u32 length,
             ast_form** lst,
             expander_meta* meta);
+    llir_form* expand_apply(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
     llir_form* expand_cond(const source_loc& loc,
             u32 length,
             ast_form** lst,

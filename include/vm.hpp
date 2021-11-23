@@ -87,10 +87,21 @@ private:
     call_frame* frame;
     root_stack* stack;
 
+
+    // stack operations
+    // pop the top of the stack
+    void pop();
+    // pins the value using ws before popping it
+    value pop_to_ws(working_set* ws);
+    // pop multiple times
+    void pop_times(stack_address n);
+    // push to the top of the stack
+    void push(value v);
     // peek relative to the top of the stack
     value peek(stack_address offset=0) const;
     // get a local value from the current call frame
     value local(local_address l) const;
+
     // set a local_address value
     void set_local(local_address l, value v);
     // set a stack value from the top (cannot exceed current frame)
@@ -99,6 +110,7 @@ private:
     // internalize a symbol by name
     value get_symbol(const string& name);
 
+    // manipulate global variables
     void add_global(value name, value v);
     value get_global(value name);
     void add_macro(value name, value v);
@@ -110,14 +122,6 @@ private:
     // namespace is not already loaded, then this will cause execution to halt
     // with the waiting_for_import status.
     void do_import();
-
-    // stack operations
-    void pop();
-    // this pins the top of the stack through the given working_set before
-    // popping it
-    value pop_to_ws(working_set* ws);
-    void pop_times(stack_address n);
-    void push(value v);
 
     // helper for arrange_call_stack. Takes the keyword table from the stack,
     // kw_tab, and returns a table matching call stack positions to values from
@@ -134,8 +138,15 @@ private:
     void arrange_call_stack(working_set* ws,
             function* func,
             local_address num_args);
-    // returns the next addr to go to
+    // returns the next addr to go to. num_args does not count the function or
+    // the keyword table.
     code_address call(working_set* ws, local_address num_args);
+    // like call, but replaces the current call frame rather than creating a new
+    // one. Effectively it's call + return in a single instruction
+    code_address tcall(working_set* ws, local_address num_args);
+    // num_args does not count the function, the keyword table, or the argument
+    // list.
+    code_address apply(working_set* ws, local_address num_args);
 
     // set up a newly created function (including taking init values off the
     // stack)

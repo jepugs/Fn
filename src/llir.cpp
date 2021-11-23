@@ -2,6 +2,77 @@
 
 namespace fn {
 
+llir_apply* mk_llir_apply(const source_loc& origin,
+        llir_form* callee,
+        local_address num_args,
+        llir_apply* dest) {
+    if (dest == nullptr) {
+        dest = new llir_apply;
+    }
+    return new(dest) llir_apply{
+        .header={.origin=origin, .tag=lt_apply},
+        .callee=callee,
+        .num_args=num_args,
+        .args=new llir_form*[num_args],
+    };
+}
+void clear_llir_apply(llir_apply* obj) {
+    for (u32 i = 0; i < obj->num_args; ++i) {
+        delete obj->args[i];
+    }
+    delete[] obj->args;
+}
+void free_llir_apply(llir_apply* obj) {
+    clear_llir_apply(obj);
+    delete obj;
+}
+
+
+llir_call* mk_llir_call(const source_loc& origin,
+        llir_form* callee,
+        local_address num_pos_args,
+        local_address num_kw_args,
+        llir_call* dest) {
+    if (dest == nullptr) {
+        dest = new llir_call;
+    }
+    return new (dest) llir_call {
+        .header={.origin=origin, .tag=lt_call},
+        .callee=callee,
+        .num_pos_args=num_pos_args,
+        .pos_args=new llir_form*[num_pos_args],
+        .num_kw_args=num_kw_args,
+        .kw_args=new llir_kw_arg[num_kw_args],
+    };
+}
+void clear_llir_call(llir_call* obj) {
+    free_llir_form(obj->callee);
+    for (int i = 0; i < obj->num_pos_args; ++i) {
+        free_llir_form(obj->pos_args[i]);
+    }
+    for (int i = 0; i < obj->num_kw_args; ++i) {
+        free_llir_form(obj->kw_args[i].value);
+    }
+    delete[] obj->pos_args;
+    delete[] obj->kw_args;
+}
+void free_llir_call(llir_call* obj) {
+    clear_llir_call(obj);
+    delete obj;
+}
+
+llir_const* mk_llir_const(const source_loc& origin,
+        constant_id id,
+        llir_const* dest) {
+    return new llir_const{
+        .header={.origin=origin, .tag=lt_const},
+        .id=id
+    };
+}
+void free_llir_const(llir_const* obj) {
+    delete obj;
+}
+
 llir_def* mk_llir_def(const source_loc& origin,
         symbol_id name,
         llir_form* value,
@@ -68,39 +139,6 @@ void free_llir_dot(llir_dot* obj) {
     delete obj;
 }
 
-llir_call* mk_llir_call(const source_loc& origin,
-        llir_form* callee,
-        local_address num_pos_args,
-        local_address num_kw_args,
-        llir_call* dest) {
-    if (dest == nullptr) {
-        dest = new llir_call;
-    }
-    return new (dest) llir_call {
-        .header={.origin=origin, .tag=lt_call},
-        .callee=callee,
-        .num_pos_args=num_pos_args,
-        .pos_args=new llir_form*[num_pos_args],
-        .num_kw_args=num_kw_args,
-        .kw_args=new llir_kw_arg[num_kw_args],
-    };
-}
-void clear_llir_call(llir_call* obj) {
-    free_llir_form(obj->callee);
-    for (int i = 0; i < obj->num_pos_args; ++i) {
-        free_llir_form(obj->pos_args[i]);
-    }
-    for (int i = 0; i < obj->num_kw_args; ++i) {
-        free_llir_form(obj->kw_args[i].value);
-    }
-    delete[] obj->pos_args;
-    delete[] obj->kw_args;
-}
-void free_llir_call(llir_call* obj) {
-    clear_llir_call(obj);
-    delete obj;
-}
-
 llir_if* mk_llir_if(const source_loc& origin,
         llir_form* test,
         llir_form* then,
@@ -123,19 +161,6 @@ void clear_llir_if(llir_if* obj) {
 }
 void free_llir_if(llir_if* obj) {
     clear_llir_if(obj);
-    delete obj;
-}
-
-
-llir_const* mk_llir_const(const source_loc& origin,
-        constant_id id,
-        llir_const* dest) {
-    return new llir_const{
-        .header={.origin=origin, .tag=lt_const},
-        .id=id
-    };
-}
-void free_llir_const(llir_const* obj) {
     delete obj;
 }
 
@@ -276,6 +301,9 @@ void free_llir_with(llir_with* obj) {
 
 void clear_llir_form(llir_form* obj) {
     switch (obj->tag) {
+    case lt_apply:
+        clear_llir_apply((llir_apply*)obj);
+        break;
     case lt_def:
         clear_llir_def((llir_def*)obj);
         break;
@@ -311,6 +339,9 @@ void clear_llir_form(llir_form* obj) {
 
 void free_llir_form(llir_form* obj) {
     switch (obj->tag) {
+    case lt_apply:
+        free_llir_apply((llir_apply*)obj);
+        break;
     case lt_def:
         free_llir_def((llir_def*)obj);
         break;
@@ -364,6 +395,10 @@ static void print_llir_offset(llir_form* form,
         write_indent(out, offset);
     }
     switch (form->tag) {
+        // FIXME: Write this code!
+    case lt_apply:
+        out << "(APPLY )";
+        break;
     case lt_def:
         {
             auto xdef = (llir_def*)form;

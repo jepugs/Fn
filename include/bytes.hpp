@@ -160,8 +160,12 @@ constexpr u8 OP_CJUMP = 0x31;
 constexpr u8 OP_CALL = 0x32;
 // tcall BYTE; perform a tail call
 constexpr u8 OP_TCALL = 0x33;
+// apply BYTE; apply function. Uses BYTE+3 stack elements. ->[func] kw-table
+// args pos-arg-n ... pos-arg-1. Like call, but expands the list args to provide
+// additional positional arguments to the function.
+constexpr u8 OP_APPLY = 0x34;
 // return; return from the current function
-constexpr u8 OP_RETURN = 0x34;
+constexpr u8 OP_RETURN = 0x38;
 
 
 // import; stack arguments ->[ns_id]; perform an import using the given
@@ -197,6 +201,7 @@ inline u8 instr_width(u8 instr) {
     case OP_CLOSE:
     case OP_CALL:
     case OP_TCALL:
+    case OP_APPLY:
         return 2;
     case OP_CONST:
     case OP_JUMP:

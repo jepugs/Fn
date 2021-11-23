@@ -10,6 +10,8 @@
 namespace fn {
 
 enum llir_tag {
+    // apply operation
+    lt_apply,
     // global definition
     lt_def,
     // macro definition
@@ -53,6 +55,20 @@ struct llir_form {
     source_loc origin;
     llir_tag tag;
 };
+
+struct llir_apply {
+    llir_form header;
+    llir_form* callee;
+    // number of arguments includes the required list and table
+    local_address num_args;
+    llir_form** args;
+};
+llir_apply* mk_llir_apply(const source_loc& origin,
+        llir_form* callee,
+        local_address num_args,
+        llir_apply* dest=nullptr);
+void clear_llir_apply(llir_apply* obj);
+void free_llir_apply(llir_apply* obj);
 
 struct llir_kw_arg {
     symbol_id nonkw_name;

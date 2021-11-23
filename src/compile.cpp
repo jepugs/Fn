@@ -97,6 +97,27 @@ void compiler::compile_symbol(symbol_id sym) {
     write_short(id);
 }
 
+void compiler::compile_llir(const llir_apply* llir,
+        lexical_env* lex,
+        compile_error* err) {
+    auto start_sp = lex->sp;
+
+    // compile positional arguments in ascending order
+    for (u32 i = 0; i < llir->num_args; ++i) {
+        compile_llir_generic(llir->args[i], lex, err);
+        return_on_err;
+    }
+
+    // compile callee
+    compile_llir_generic(llir->callee, lex, err);
+    return_on_err;
+
+    write_byte(OP_APPLY);
+    // the instruction doesn't count the list and table arguments at the end
+    write_byte(llir->num_args - 2);
+    lex->sp = 1+start_sp;
+}
+
 void compiler::compile_llir(const llir_call* llir,
         lexical_env* lex,
         compile_error* err) {
@@ -436,6 +457,9 @@ void compiler::compile_llir_generic(const llir_form* llir,
         lexical_env* lex,
         compile_error* err) {
     switch (llir->tag) {
+    case lt_apply:
+        compile_llir((llir_apply*)llir, lex, err);
+        break;
     case lt_def:
         compile_llir((llir_def*)llir, lex, err);
         break;

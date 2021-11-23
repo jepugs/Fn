@@ -67,6 +67,41 @@ llir_form* expander::expand_and(const source_loc& loc,
     return (llir_form*)res;
 }
 
+llir_form* expander::expand_apply(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    if (length < 4) {
+        meta->err.message = "apply requires at least 3 arguments.";
+        meta->err.origin = loc;
+        return nullptr;
+    }
+
+    auto callee = expand_meta(lst[1], meta);
+    if (!callee) {
+        return nullptr;
+    }
+
+    dyn_array<llir_form*> args;
+    for (u32 i = 2; i < length; ++i) {
+        auto x = expand_meta(lst[i], meta);
+        if (!x) {
+            for (auto y : args) {
+                free_llir_form(y);
+            }
+            free_llir_form(callee);
+            return nullptr;
+        }
+        args.push_back(x);
+    }
+
+    auto res = mk_llir_apply(loc, callee, length - 2);
+    for (u32 i = 0; i + 2 < length; ++i) {
+        res->args[i] = args[i];
+    }
+    return (llir_form*) res;
+}
+
 // see note for expand_and
 llir_form* expander::expand_cond(const source_loc& loc,
         u32 length,
@@ -1088,6 +1123,8 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
     // special forms
     if (name == "and") {
         return expand_and(loc, lst->list_length, lst->datum.list, meta);
+    } else if (name == "apply") {
+        return expand_apply(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "cond") {
         return expand_cond(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "def") {
