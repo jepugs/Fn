@@ -457,9 +457,16 @@ void compiler::compile_llir(const llir_with* llir,
 void compiler::compile_llir_generic(const llir_form* llir,
         lexical_env* lex,
         compile_error* err) {
+    dest->add_source_loc(llir->origin);
     switch (llir->tag) {
     case lt_apply:
         compile_llir((llir_apply*)llir, lex, err);
+        break;
+    case lt_call:
+        compile_llir((llir_call*)llir, lex, err);
+        break;
+    case lt_const:
+        compile_llir((llir_const*)llir, lex, err);
         break;
     case lt_def:
         compile_llir((llir_def*)llir, lex, err);
@@ -469,12 +476,6 @@ void compiler::compile_llir_generic(const llir_form* llir,
         break;
     case lt_dot:
         compile_llir((llir_dot*)llir, lex, err);
-        break;
-    case lt_call:
-        compile_llir((llir_call*)llir, lex, err);
-        break;
-    case lt_const:
-        compile_llir((llir_const*)llir, lex, err);
         break;
     case lt_if:
         compile_llir((llir_if*)llir, lex, err);

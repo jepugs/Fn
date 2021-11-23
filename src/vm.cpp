@@ -223,7 +223,7 @@ void vm_thread::arrange_call_stack(working_set* ws,
     auto num_pos_args = func->stub->pos_params.size;
     auto has_vl = func->stub->vl_param.has_value();
     auto has_vt = func->stub->vt_param.has_value();
-    auto req_args = func->stub->req_args;
+    auto req_args = func->stub->req_args;    
 
     auto kw_tab = pop_to_ws(ws); // keyword argument table
     if (v_tag(kw_tab) != TAG_TABLE) {
@@ -249,14 +249,18 @@ void vm_thread::arrange_call_stack(working_set* ws,
     table<local_address,value> extra_pos =
         process_kw_table(func->stub, num_args, kw_tab, var_tab);
     // put positional args in place
-    for (u32 i = num_args; i < req_args; ++i) {
+    u32 i;
+    for (i = num_args; i < req_args; ++i) {
         auto x = extra_pos.get(i);
         if (!x.has_value()) {
             runtime_error("Missing required argument in function call or apply.");
+        } else {
+            push(*x);
         }
-        push(*x);
     }
-    for (u32 i = req_args; i < num_pos_args; ++i) {
+    
+    for (; i < num_pos_args; ++i) {
+        std::cout << "fuck\n";
         auto x = extra_pos.get(i);
         if (!x.has_value()) {
             push(func->init_vals[i - req_args]);
