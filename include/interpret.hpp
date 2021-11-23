@@ -33,6 +33,7 @@ private:
     std::list<string> search_path;
 
     void interpret_to_end(vm_thread& vm);
+    value interpret_form(ast_form* ast, symbol_id ns, bool* error);
 
 public:
     // Initializes the allocator and virtual machine, and starts an empty chunk.
@@ -76,8 +77,15 @@ public:
             u32* bytes_used);
 
     // macroexpand a form in the given namespace
-    ast_form* macroexpand(symbol_id ns_id, const ast_form* form);
-    value ast_to_value(working_set* ws, const ast_form* form);
+    ast_form* expand_macro(symbol_id macro,
+            symbol_id ns_id,
+            local_address num_args,
+            ast_form** args,
+            source_loc& loc);
+
+    value ast_to_value(working_set* ws, ast_form* form);
+    // returns nullptr on failur
+    ast_form* value_to_ast(value v, const source_loc& loc);
 
     // Emit a runtime error in the form of an exception
     void runtime_error(const string& msg, const source_loc& src);

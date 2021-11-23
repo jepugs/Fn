@@ -288,12 +288,10 @@ void compiler::compile_llir(const llir_set* llir,
         auto x = find_local(lex, &is_upval, var->name);
         // FIXME: set! should fail on globals
         if (!x.has_value()) { // global
-            compile_symbol(var->name);
-            ++lex->sp;
-            compile_llir_generic(llir->value, lex, err);
-            return_on_err;
-            write_byte(OP_SET_GLOBAL);
-            --lex->sp;
+            err->has_error = true;
+            err->origin = llir->header.origin;
+            err->message = "Attempt to set! a global value.";
+            return;
         } else {
             compile_llir_generic(llir->value, lex, err);
             return_on_err;
@@ -306,6 +304,8 @@ void compiler::compile_llir(const llir_set* llir,
             }
             --lex->sp;
         }
+        write_byte(OP_NIL);
+        ++lex->sp;
     } else if (llir->target->tag == lt_call) { // (set! (get ...) v)
         auto call = (llir_call*)llir->target;
         auto op = call->callee;
@@ -333,6 +333,9 @@ void compiler::compile_llir(const llir_set* llir,
         return_on_err;
         compile_llir_generic(llir->value, lex, err);
         return_on_err;
+        write_byte(OP_OBJ_SET);
+        write_byte(OP_NIL);
+        lex->sp -= 2;
     } else if (llir->target->tag == lt_dot) { // (set! (dot ...) v)
         // this is like the previous case, but easier since our keys are just
         // symbols
@@ -350,14 +353,14 @@ void compiler::compile_llir(const llir_set* llir,
         ++lex->sp;
         compile_llir_generic(llir->value, lex, err);
         return_on_err;
+        write_byte(OP_OBJ_SET);
+        write_byte(OP_NIL);
+        lex->sp -= 2;
     } else {
         err->has_error = true;
         err->origin = llir->target->origin;
         err->message = "Malformed 1st argument to set!.";
     }
-    write_byte(OP_OBJ_SET);
-    write_byte(OP_NIL);
-    lex->sp -= 2;
 }
 
 void compiler::compile_llir(const llir_var* llir,

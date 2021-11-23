@@ -7,8 +7,12 @@ namespace fn {
 using namespace fn_parse;
 
 bool expander::is_macro(symbol_id sym) {
-    // todo: check this chunk's namespace in global_env
-    return false;
+    auto ns = inter->get_global_env()->get_ns(chunk->ns_id);
+    if (!ns.has_value()) {
+        return false;
+    } else {
+        return (*ns)->get_macro(sym).has_value();
+    }
 }
 
 bool expander::is_operator_list(const string& op_name, ast_form* ast) {
@@ -1068,7 +1072,13 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
     auto sym = lst->datum.list[0]->datum.sym;
     // first check for macros
     if (is_macro(sym)) {
-        auto ast = inter->macroexpand(chunk->ns_id, lst);
+        auto ast = inter->expand_macro(sym, chunk->ns_id,
+                lst->list_length - 1, &lst->datum.list[1], loc);
+        if (!ast) {
+            meta->err.origin = lst->loc;
+            meta->err.message = "Macroexpansion failed.";
+            return nullptr;
+        }
         auto res = expand_meta(ast, meta);
         free_ast_form(ast);
         return res;
