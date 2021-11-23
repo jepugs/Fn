@@ -1,6 +1,11 @@
-cmake_minimum_required(VERSION 3.10)
+# I'm using the version from the current Debian stable. I figure that's old
+# enough to run on pretty much anything.
+cmake_minimum_required(VERSION 3.18)
 
-project(Fn VERSION 0.0.0)
+# Adding this LANGUAGES option ensures that CMake searches for c++, not cc. This
+# fixes a problem I discovered on a MacBook that had g++ for c++, but an old
+# version of clang for cc.
+project(Fn VERSION 0.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
