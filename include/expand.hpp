@@ -120,6 +120,31 @@ private:
             u32 length,
             ast_form** lst,
             expander_meta* meta);
+
+    bool is_unquote(ast_form* ast);
+    bool is_unquote_splicing(ast_form* ast);
+    llir_form* quasiquote_expand_recur(ast_form* form, expander_meta* meta);
+    // quasiquoting a list, in the worst case, requires us to concatenate a
+    // series of lists. This function travels along the argument list starting
+    // at [0] and collects the next argument to concat. *stopped_at is set to
+    // the place where we stopped, so that the caller can resume looking for the
+    // next concat argument.
+    llir_form* quasiquote_next_conc_arg(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            u32* stopped_at,
+            expander_meta* meta);
+    // for just this function, the first (list) argument of the quasiquote is
+    // passed in
+    llir_form* expand_quasiquote_list(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+    llir_form* expand_quasiquote(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
+            expander_meta* meta);
+
     llir_form* expand_quote(const source_loc& loc,
             u32 length,
             ast_form** lst,

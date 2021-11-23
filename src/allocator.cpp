@@ -284,8 +284,8 @@ forward_list<gc_header*> allocator::accessible(gc_header* o) {
     case GC_TYPE_CHUNK:
         {
             auto x = (code_chunk*)o;
-            for (auto i = 0; i < x->num_constants; ++i) {
-                add_value_header(x->constant_table[i], res);
+            for (auto v : x->constant_arr) {
+                add_value_header(v, res);
             }
         }
     case GC_TYPE_CONS:

@@ -468,7 +468,7 @@ void vm_thread::step() {
 
     case OP_CONST:
         id = cur_chunk()->read_short(ip+1);
-        if (id >= cur_chunk()->num_constants) {
+        if (id >= cur_chunk()->constant_arr.size) {
             runtime_error("attempt to access nonexistent constant.");
         }
         push(cur_chunk()->get_constant(id));
@@ -583,7 +583,7 @@ void vm_thread::step() {
 void vm_thread::execute() {
     status = vs_running;
     while (status == vs_running) {
-        if (ip >= cur_chunk()->code_size) {
+        if (ip >= cur_chunk()->code.size) {
             status = vs_stopped;
             break;
         }
@@ -683,7 +683,7 @@ void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& ou
 void disassemble(const symbol_table& symtab, const code_chunk& code, std::ostream& out) {
     u32 ip = 0;
     // TODO: annotate with line number
-    while (ip < code.code_size) {
+    while (ip < code.code.size) {
         u8 instr = code.read_byte(ip);
         // write line
         out << std::setw(6) << ip << "  ";

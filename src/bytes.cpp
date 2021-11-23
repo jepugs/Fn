@@ -2,27 +2,6 @@
 
 namespace fn {
 
-#define ensure_capacity(type, min, cap, ptr) \
-    if (min > (cap)) { \
-        do { (cap) *= 2; } while (min > (cap)); \
-        auto __ptr = (type*)realloc(ptr, (cap)*sizeof(type));     \
-        if (__ptr == nullptr) { throw std::runtime_error("realloc failed"); } \
-        else { ptr = __ptr; } \
-    }
-    
-
-void code_chunk::ensure_code_capacity(code_address min_cap) {
-    ensure_capacity(u8, min_cap, code_capacity, code);
-}
-
-void code_chunk::ensure_constant_capacity(constant_id min_cap) {
-    ensure_capacity(value, min_cap, constant_capacity, constant_table);
-}
-
-void code_chunk::ensure_function_capacity(constant_id min_cap) {
-    ensure_capacity(function_stub*, min_cap, function_capacity, function_table);
-}
-
 u8 code_chunk::read_byte(u32 where) const {
     return code[where];
 }
@@ -34,8 +13,7 @@ u16 code_chunk::read_short(u32 where) const {
 }
 
 void code_chunk::write_byte(u8 data) {
-    ensure_code_capacity(code_size + 1);
-    code[code_size++] = data;
+    code.push_back(data);
 }
 
 void code_chunk::write_byte(u8 data, u32 where) {
@@ -57,13 +35,12 @@ void code_chunk::write_short(u16 data, u32 where) {
 }
 
 constant_id code_chunk::add_constant(value v) {
-    ensure_constant_capacity(num_constants + 1);
-    constant_table[num_constants] = v;
-    return num_constants++;
+    constant_arr.push_back(v);
+    return constant_arr.size - 1;
 }
 
 value code_chunk::get_constant(constant_id id) const {
-    return constant_table[id];
+    return constant_arr[id];
 }
 
 u16 code_chunk::add_function(const vector<symbol_id>& pparams,
@@ -78,13 +55,12 @@ u16 code_chunk::add_function(const vector<symbol_id>& pparams,
         // important! if foreign != nullptr it screws everything up
         .foreign=nullptr,
         .chunk=this,
-        .addr=code_size,
+        .addr=code.size,
         .num_upvals=0,
         .upvals=vector<local_address>{},
         .upvals_direct=vector<bool>{}};
-    ensure_function_capacity(num_functions + 1);
-    function_table[num_functions] = s;
-    return num_functions++;
+    function_arr.push_back(s);
+    return function_arr.size - 1;
 }
 
 u16 code_chunk::add_function(local_address num_pos,
@@ -98,29 +74,28 @@ u16 code_chunk::add_function(local_address num_pos,
         .vl_param=vl_param,
         .vt_param=vt_param,
         .chunk=this,
-        .addr=code_size,
+        .addr=code.size,
         .num_upvals=0,
         .upvals=vector<local_address>{},
         .upvals_direct=vector<bool>{}};
     for (u32 i = 0; i < num_pos; ++i) {
         s->pos_params.push_back(pos_params[i]);
     }
-    ensure_function_capacity(num_functions + 1);
-    function_table[num_functions] = s;
-    return num_functions++;
+    function_arr.push_back(s);
+    return function_arr.size - 1;
 }
 
 
 function_stub* code_chunk::get_function(u16 id) {
-    return function_table[id];
+    return function_arr[id];
 }
 
 const function_stub* code_chunk::get_function(u16 id) const {
-    return function_table[id];
+    return function_arr[id];
 }
 
 void code_chunk::add_source_loc(const source_loc& s) {
-    source_info = new chunk_source_info{code_size, s, source_info};
+    source_info = new chunk_source_info{code.size, s, source_info};
 }
 
 source_loc code_chunk::location_of(u32 addr) {
@@ -147,16 +122,6 @@ code_chunk* mk_code_chunk(symbol_id ns_id, code_chunk* dest) {
     // arrays.
     auto res = new(dest) code_chunk {
         .ns_id = ns_id,
-        .code=(u8*)malloc(sizeof(u8)*init_array_size),
-        .code_size = 0,
-        .code_capacity = init_array_size,
-        .constant_table=(value*)malloc(sizeof(value)*(init_array_size)),
-        .num_constants = 0,
-        .constant_capacity = init_array_size,
-        .function_table = (function_stub**)malloc(
-                sizeof(function_stub*)*init_array_size),
-        .num_functions = 0,
-        .function_capacity = init_array_size,
         .source_info = source_info
     };
     mk_gc_header(GC_TYPE_CHUNK, &res->h);
@@ -164,12 +129,9 @@ code_chunk* mk_code_chunk(symbol_id ns_id, code_chunk* dest) {
 }
 
 void free_code_chunk(code_chunk* chunk) {
-    free(chunk->code);
-    free(chunk->constant_table);
-    for (auto i = 0; i < chunk->num_functions; ++i) {
-        delete chunk->function_table[i];
+    for (auto x : chunk->function_arr) {
+        delete x;
     }
-    free(chunk->function_table);
 
     auto i = chunk->source_info;
     while (i != nullptr) {

@@ -11,28 +11,28 @@ namespace fn {
 
 enum llir_tag {
     // global definition
-    llir_def,
+    lt_def,
     // macro definition
-    llir_defmacro,
+    lt_defmacro,
     // dot form
-    llir_dot,
+    lt_dot,
     // function call
-    llir_call,
+    lt_call,
     // constant lookup
-    llir_const,
+    lt_const,
     // conditional
-    llir_if,
+    lt_if,
     // function creation
-    llir_fn,
+    lt_fn,
     // namespace import
-    llir_import,
+    lt_import,
     // mutation
-    llir_set,
+    lt_set,
     // variable lookup
-    llir_var,
+    lt_var,
     // sequence of expressions in a new lexical environment, returning last
     // result
-    llir_with
+    lt_with
 };
 
 // NOTE: (on the mk_/clear_/free_ functions below):
@@ -45,7 +45,7 @@ enum llir_tag {
 //   recursive=true, then this frees all subordinate llir_form* instances.
 
 // Upon further inspection, I appear to have independently reinvented
-// inheritance below, (llir_*_form is essentially a subclass of llir_form). This
+// inheritance below, (llir_* is essentially a subclass of llir_form). This
 // approach is slightly more flexible and doesn't use virtual methods, so I'll
 // leave it for now.
 
@@ -56,9 +56,9 @@ struct llir_form {
 
 struct llir_kw_arg {
     symbol_id nonkw_name;
-    llir_form* value_form;
+    llir_form* value;
 };
-struct llir_call_form {
+struct llir_call {
     llir_form header;
     llir_form* callee;
     local_address num_pos_args;
@@ -66,73 +66,73 @@ struct llir_call_form {
     local_address num_kw_args;
     llir_kw_arg* kw_args;
 };
-llir_call_form* mk_llir_call_form(const source_loc& origin,
+llir_call* mk_llir_call(const source_loc& origin,
         llir_form* callee,
         local_address num_pos_args,
         local_address num_kw_args,
-        llir_call_form* dest=nullptr);
-void clear_llir_call_form(llir_call_form* obj, bool recursive=true);
-void free_llir_call_form(llir_call_form* obj, bool recursive=true);
+        llir_call* dest=nullptr);
+void clear_llir_call(llir_call* obj);
+void free_llir_call(llir_call* obj);
 
-struct llir_const_form {
+struct llir_const {
     llir_form header;
     constant_id id;
 };
-llir_const_form* mk_llir_const_form(const source_loc& origin,
+llir_const* mk_llir_const(const source_loc& origin,
         constant_id id,
-        llir_const_form* dest=nullptr);
-void free_llir_const_form(llir_const_form* obj);
+        llir_const* dest=nullptr);
+void free_llir_const(llir_const* obj);
 
-struct llir_def_form {
+struct llir_def {
     llir_form header;
     symbol_id name;
     llir_form* value;
 };
-llir_def_form* mk_llir_def_form(const source_loc& origin,
+llir_def* mk_llir_def(const source_loc& origin,
         symbol_id name,
         llir_form* value,
-        llir_def_form* dest=nullptr);
-void clear_llir_def_form(llir_def_form* obj, bool recursive=true);
-void free_llir_def_form(llir_def_form* obj, bool recursive=true);
+        llir_def* dest=nullptr);
+void clear_llir_def(llir_def* obj);
+void free_llir_def(llir_def* obj);
 
-struct llir_defmacro_form {
+struct llir_defmacro {
     llir_form header;
     symbol_id name;
     llir_form* macro_fun;
 };
-llir_defmacro_form* mk_llir_defmacro_form(const source_loc& origin,
+llir_defmacro* mk_llir_defmacro(const source_loc& origin,
         symbol_id name,
         llir_form* macro_fun,
-        llir_defmacro_form* dest=nullptr);
-void clear_llir_defmacro_form(llir_defmacro_form* obj, bool recursive=true);
-void free_llir_defmacro_form(llir_defmacro_form* obj, bool recursive=true);
+        llir_defmacro* dest=nullptr);
+void clear_llir_defmacro(llir_defmacro* obj);
+void free_llir_defmacro(llir_defmacro* obj);
 
-struct llir_dot_form {
+struct llir_dot {
     llir_form header;
     llir_form* obj;
     local_address num_keys;
     symbol_id* keys;
 };
-llir_dot_form* mk_llir_dot_form(const source_loc& origin,
+llir_dot* mk_llir_dot(const source_loc& origin,
         llir_form* obj,
         local_address num_keys,
-        llir_dot_form* dest=nullptr);
-void clear_llir_dot_form(llir_dot_form* obj, bool recursive=true);
-void free_llir_dot_form(llir_dot_form* obj, bool recursive=true);
+        llir_dot* dest=nullptr);
+void clear_llir_dot(llir_dot* obj);
+void free_llir_dot(llir_dot* obj);
 
-struct llir_if_form {
+struct llir_if {
     llir_form header;
-    llir_form* test_form;
-    llir_form* then_form;
-    llir_form* else_form;
+    llir_form* test;
+    llir_form* then;
+    llir_form* elce;
 };
-llir_if_form* mk_llir_if_form(const source_loc& origin,
-        llir_form* test_form,
-        llir_form* then_form,
-        llir_form* else_form,
-        llir_if_form* dest=nullptr);
-void clear_llir_if_form(llir_if_form* obj, bool recursive=true);
-void free_llir_if_form(llir_if_form* obj, bool recursive=true);
+llir_if* mk_llir_if(const source_loc& origin,
+        llir_form* test,
+        llir_form* then,
+        llir_form* elce,
+        llir_if* dest=nullptr);
+void clear_llir_if(llir_if* obj);
+void free_llir_if(llir_if* obj);
 
 struct llir_fn_params {
     // positional arguments
@@ -146,78 +146,78 @@ struct llir_fn_params {
     // number of required args
     local_address req_args;
     // init forms for optional args
-    llir_form** init_forms;
+    llir_form** inits;
 };
-struct llir_fn_form {
+struct llir_fn {
     llir_form header;
     llir_fn_params params;
     llir_form* body;
 };
-llir_fn_form* mk_llir_fn_form(const source_loc& origin,
+llir_fn* mk_llir_fn(const source_loc& origin,
         local_address num_pos_args,
         bool has_var_list_arg,
         bool has_var_table_arg,
         local_address req_args,
         llir_form* body,
-        llir_fn_form* dest=nullptr);
+        llir_fn* dest=nullptr);
 // note: this takes ownership of the pointers in params
-llir_fn_form* mk_llir_fn_form(const source_loc& origin,
+llir_fn* mk_llir_fn(const source_loc& origin,
         const llir_fn_params& params,
         llir_form* body,
-        llir_fn_form* dest=nullptr);
-void clear_llir_fn_form(llir_fn_form* obj, bool recursive=true);
-void free_llir_fn_form(llir_fn_form* obj, bool recursive=true);
+        llir_fn* dest=nullptr);
+void clear_llir_fn(llir_fn* obj);
+void free_llir_fn(llir_fn* obj);
 
-struct llir_import_form {
+struct llir_import {
     llir_form header;
     symbol_id target;
     bool has_alias;
     symbol_id alias;
     bool unqualified;
 };
-llir_import_form* mk_llir_import_form(const source_loc& origin,
+llir_import* mk_llir_import(const source_loc& origin,
         symbol_id target,
-        llir_import_form* dest=nullptr);
-void free_llir_import_form(llir_import_form* obj);
+        llir_import* dest=nullptr);
+void free_llir_import(llir_import* obj);
 
-struct llir_set_form {
+struct llir_set {
     llir_form header;
     llir_form* target;
     llir_form* value;
 };
-llir_set_form* mk_llir_set_form(const source_loc& origin,
+llir_set* mk_llir_set(const source_loc& origin,
         llir_form* target,
         llir_form* value,
-        llir_set_form* dest=nullptr);
-void clear_llir_set_form(llir_set_form* obj, bool recursive=true);
-void free_llir_set_form(llir_set_form* obj, bool recursive=true);
+        llir_set* dest=nullptr);
+void clear_llir_set(llir_set* obj);
+void free_llir_set(llir_set* obj);
 
-struct llir_var_form {
+struct llir_var {
     llir_form header;
     symbol_id name;
 };
-llir_var_form* mk_llir_var_form(const source_loc& origin,
+llir_var* mk_llir_var(const source_loc& origin,
         symbol_id name,
-        llir_var_form* dest=nullptr);
-void free_llir_var_form(llir_var_form* obj);
+        llir_var* dest=nullptr);
+void free_llir_var(llir_var* obj);
 
-struct llir_with_form {
+struct llir_with {
     llir_form header;
     local_address num_vars;
     symbol_id* vars;
-    llir_form** value_forms;
+    llir_form** values;
     u32 body_length;
-    llir_form** body;
+llir_form** body;
 };
-llir_with_form* mk_llir_with_form(const source_loc& origin,
+llir_with* mk_llir_with(const source_loc& origin,
         local_address num_vars,
         u32 body_length,
-        llir_with_form* dest=nullptr);
-void clear_llir_with_form(llir_with_form* obj, bool recursive=true);
-void free_llir_with_form(llir_with_form* obj, bool recursive=true);
+        llir_with* dest=nullptr);
+void clear_llir_with(llir_with* obj);
+void free_llir_with(llir_with* obj);
 
-void clear_llir_form(llir_form* obj, bool recursive=true);
-void free_llir_form(llir_form* obj, bool recursive=true);
+void clear_llir_form(llir_form* obj);
+void free_llir_form(llir_form* obj);
 
 llir_form* copy_llir_form(llir_form* src, llir_form* dest=nullptr);
 

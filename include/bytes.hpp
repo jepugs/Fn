@@ -2,6 +2,7 @@
 #ifndef __FN_BYTES_HPP
 #define __FN_BYTES_HPP
 
+#include "array.hpp"
 #include "base.hpp"
 #include "values.hpp"
 
@@ -34,22 +35,11 @@ struct code_chunk {
     // namespace id
     symbol_id ns_id;
     // (dynamic) arrays holding chunk data
-    u8* code;
-    code_address code_size;
-    code_address code_capacity;
-    value* constant_table;
-    constant_id num_constants;
-    constant_id constant_capacity;
-    function_stub** function_table;
-    constant_id num_functions;
-    constant_id function_capacity;
+    dyn_array<u8> code;
+    dyn_array<value> constant_arr;
+    dyn_array<function_stub*> function_arr;
     // debug information
     chunk_source_info* source_info;
-
-    // functions used to resize dynamic arrays
-    void ensure_code_capacity(code_address min_cap);
-    void ensure_constant_capacity(constant_id min_cap);
-    void ensure_function_capacity(constant_id min_cap);
 
     // read a byte. Requires (where < size())
     u8 read_byte(u32 where) const;
@@ -93,6 +83,9 @@ struct code_chunk {
 // Initialize a new code chunk at location dest. If dest=nullptr, then a new
 // code_chunk is allocated. Returns a pointer to the created object.
 code_chunk* mk_code_chunk(symbol_id ns_id, code_chunk* dest=nullptr);
+
+// TODO: due to progress made since originally writing this, we should probably
+// just use a destructor instead of this function.
 // Deallocate code chunk members. This will not handle freeing the constant
 // values, (but it will take care of the function stubs)
 void free_code_chunk(code_chunk* obj);

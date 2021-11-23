@@ -97,7 +97,7 @@ void compiler::compile_symbol(symbol_id sym) {
     write_short(id);
 }
 
-void compiler::compile_llir(const llir_call_form* llir,
+void compiler::compile_llir(const llir_call* llir,
         lexical_env* lex,
         compile_error* err) {
     auto start_sp = lex->sp;
@@ -117,7 +117,7 @@ void compiler::compile_llir(const llir_call_form* llir,
         auto& k = llir->kw_args[i];
         compile_symbol(k.nonkw_name);
         ++lex->sp;
-        compile_llir_generic(k.value_form, lex, err);
+        compile_llir_generic(k.value, lex, err);
         write_byte(OP_OBJ_SET);
         return_on_err;
         lex->sp -= 3;
@@ -131,7 +131,7 @@ void compiler::compile_llir(const llir_call_form* llir,
     lex->sp = 1+start_sp;
 }
 
-void compiler::compile_llir(const llir_const_form* llir,
+void compiler::compile_llir(const llir_const* llir,
         lexical_env* lex,
         compile_error* err) {
     write_byte(OP_CONST);
@@ -139,7 +139,7 @@ void compiler::compile_llir(const llir_const_form* llir,
     ++lex->sp;
 }
 
-void compiler::compile_llir(const llir_def_form* llir,
+void compiler::compile_llir(const llir_def* llir,
         lexical_env* lex,
         compile_error* err) {
     // TODO: check legal variable name
@@ -155,7 +155,7 @@ void compiler::compile_llir(const llir_def_form* llir,
     lex->sp -= 2;
 }
 
-void compiler::compile_llir(const llir_defmacro_form* llir,
+void compiler::compile_llir(const llir_defmacro* llir,
         lexical_env* lex,
         compile_error* err) {
     // TODO: check legal variable name
@@ -171,7 +171,7 @@ void compiler::compile_llir(const llir_defmacro_form* llir,
     lex->sp -= 2;
 }
 
-void compiler::compile_llir(const llir_dot_form* llir,
+void compiler::compile_llir(const llir_dot* llir,
         lexical_env* lex,
         compile_error* err) {
     compile_llir_generic(llir->obj, lex, err);
@@ -183,29 +183,29 @@ void compiler::compile_llir(const llir_dot_form* llir,
     }
 }
 
-void compiler::compile_llir(const llir_if_form* llir,
+void compiler::compile_llir(const llir_if* llir,
         lexical_env* lex,
         compile_error* err) {
-    compile_llir_generic(llir->test_form, lex, err);
+    compile_llir_generic(llir->test, lex, err);
     return_on_err;
 
-    i64 addr1 = dest->code_size;
+    i64 addr1 = dest->code.size;
     write_byte(OP_CJUMP);
     write_short(0);
 
-    compile_llir_generic(llir->then_form, lex, err);
+    compile_llir_generic(llir->then, lex, err);
     return_on_err;
 
-    i64 addr2 = dest->code_size;
+    i64 addr2 = dest->code.size;
     write_byte(OP_JUMP);
     write_short(0);
     --lex->sp;
 
     --lex->sp; // if we're running this one, we didn't run the other
-    compile_llir_generic(llir->else_form, lex, err);
+    compile_llir_generic(llir->elce, lex, err);
     return_on_err;
 
-    i64 end_addr = dest->code_size;
+    i64 end_addr = dest->code.size;
     patch_jump(addr2 - addr1, addr1 + 1, llir->header.origin, err);
     return_on_err;
     patch_jump(end_addr - addr2 - 3, addr2 + 1, llir->header.origin, err);
@@ -213,11 +213,11 @@ void compiler::compile_llir(const llir_if_form* llir,
     return_on_err;
 }
 
-void compiler::compile_llir(const llir_fn_form* llir,
+void compiler::compile_llir(const llir_fn* llir,
         lexical_env* lex,
         compile_error* err) {
     // write jump
-    i64 start = dest->code_size;
+    i64 start = dest->code.size;
     write_byte(OP_JUMP);
     write_short(0);
 
@@ -261,7 +261,7 @@ void compiler::compile_llir(const llir_fn_form* llir,
     write_byte(OP_RETURN);
 
     // jump over the function body
-    i64 end_addr = dest->code_size;
+    i64 end_addr = dest->code.size;
     patch_jump(end_addr - start - 3, start + 1, llir->header.origin, err);
     return_on_err;
 
@@ -269,7 +269,7 @@ void compiler::compile_llir(const llir_fn_form* llir,
     // TODO compile init forms
     auto len = params.num_pos_args - params.req_args;
     for (auto i = 0; i < len; ++i) {
-        compile_llir_generic(params.init_forms[i], lex, err);
+        compile_llir_generic(params.inits[i], lex, err);
         return_on_err;
     }
 
@@ -279,11 +279,11 @@ void compiler::compile_llir(const llir_fn_form* llir,
     ++lex->sp;
 }
 
-void compiler::compile_llir(const llir_set_form* llir,
+void compiler::compile_llir(const llir_set* llir,
         lexical_env* lex,
         compile_error* err) {
-    if (llir->target->tag == llir_var) { // variable set
-        auto var = (llir_var_form*)llir->target;
+    if (llir->target->tag == lt_var) { // variable set
+        auto var = (llir_var*)llir->target;
         bool is_upval;
         auto x = find_local(lex, &is_upval, var->name);
         // FIXME: set! should fail on globals
@@ -306,47 +306,47 @@ void compiler::compile_llir(const llir_set_form* llir,
             }
             --lex->sp;
         }
-    } else if (llir->target->tag == llir_call) { // (set! (get ...) v)
-        auto call_form = (llir_call_form*)llir->target;
-        auto op = call_form->callee;
-        if (op->tag != llir_var
-                || call_form->num_kw_args != 0
-                || call_form->num_pos_args == 0
-                || ((llir_var_form*)op)->name != symtab->intern("get")) {
+    } else if (llir->target->tag == lt_call) { // (set! (get ...) v)
+        auto call = (llir_call*)llir->target;
+        auto op = call->callee;
+        if (op->tag != lt_var
+                || call->num_kw_args != 0
+                || call->num_pos_args == 0
+                || ((llir_var*)op)->name != symtab->intern("get")) {
             err->has_error = true;
             err->origin = llir->target->origin;
             err->message = "Malformed 1st argument to set!.";
         }
         // compile the first argument
-        compile_llir_generic(call_form->pos_args[0], lex, err);
+        compile_llir_generic(call->pos_args[0], lex, err);
         return_on_err;
         // iterate over the key forms, compiling as we go
         i32 i;
-        for (i = 1; i+1 < call_form->num_pos_args; ++i) {
-            compile_llir_generic(call_form->pos_args[i], lex, err);
+        for (i = 1; i+1 < call->num_pos_args; ++i) {
+            compile_llir_generic(call->pos_args[i], lex, err);
             return_on_err;
             // all but last call will be OBJ_GET
             write_byte(OP_OBJ_GET);
             --lex->sp;
         }
-        compile_llir_generic(call_form->pos_args[i], lex, err);
+        compile_llir_generic(call->pos_args[i], lex, err);
         return_on_err;
         compile_llir_generic(llir->value, lex, err);
         return_on_err;
-    } else if (llir->target->tag == llir_dot) { // (set! (dot ...) v)
+    } else if (llir->target->tag == lt_dot) { // (set! (dot ...) v)
         // this is like the previous case, but easier since our keys are just
         // symbols
-        auto dot_form = (llir_dot_form*)llir->target;
-        compile_llir_generic(dot_form->obj, lex, err);
+        auto dot = (llir_dot*)llir->target;
+        compile_llir_generic(dot->obj, lex, err);
         return_on_err;
         // iterate over the key forms, compiling as we go
         i32 i;
-        for (i = 0; i < dot_form->num_keys - 1; ++i) {
-            compile_symbol(dot_form->keys[i]);
+        for (i = 0; i < dot->num_keys - 1; ++i) {
+            compile_symbol(dot->keys[i]);
             // all but last call will be OBJ_GET
             write_byte(OP_OBJ_GET);
         }
-        compile_symbol(dot_form->keys[i]);
+        compile_symbol(dot->keys[i]);
         ++lex->sp;
         compile_llir_generic(llir->value, lex, err);
         return_on_err;
@@ -360,7 +360,7 @@ void compiler::compile_llir(const llir_set_form* llir,
     lex->sp -= 2;
 }
 
-void compiler::compile_llir(const llir_var_form* llir,
+void compiler::compile_llir(const llir_var* llir,
         lexical_env* lex,
         compile_error* err) {
     auto str = symtab->symbol_name(llir->name);
@@ -387,7 +387,7 @@ void compiler::compile_llir(const llir_var_form* llir,
     ++lex->sp;
 }
 
-void compiler::compile_llir(const llir_with_form* llir,
+void compiler::compile_llir(const llir_with* llir,
         lexical_env* lex,
         compile_error* err) {
     write_byte(OP_NIL);
@@ -400,7 +400,7 @@ void compiler::compile_llir(const llir_with_form* llir,
     }
 
     for (u32 i = 0; i < llir->num_vars; ++i) {
-        compile_llir_generic(llir->value_forms[i], &lex2, err);
+        compile_llir_generic(llir->values[i], &lex2, err);
         return_on_err;
         write_byte(OP_SET_LOCAL);
         write_byte(*lex2.vars.get(llir->vars[i]));
@@ -433,38 +433,38 @@ void compiler::compile_llir_generic(const llir_form* llir,
         lexical_env* lex,
         compile_error* err) {
     switch (llir->tag) {
-    case llir_def:
-        compile_llir((llir_def_form*)llir, lex, err);
+    case lt_def:
+        compile_llir((llir_def*)llir, lex, err);
         break;
-    case llir_defmacro:
-        compile_llir((llir_defmacro_form*)llir, lex, err);
+    case lt_defmacro:
+        compile_llir((llir_defmacro*)llir, lex, err);
         break;
-    case llir_dot:
-        compile_llir((llir_dot_form*)llir, lex, err);
+    case lt_dot:
+        compile_llir((llir_dot*)llir, lex, err);
         break;
-    case llir_call:
-        compile_llir((llir_call_form*)llir, lex, err);
+    case lt_call:
+        compile_llir((llir_call*)llir, lex, err);
         break;
-    case llir_const:
-        compile_llir((llir_const_form*)llir, lex, err);
+    case lt_const:
+        compile_llir((llir_const*)llir, lex, err);
         break;
-    case llir_if:
-        compile_llir((llir_if_form*)llir, lex, err);
+    case lt_if:
+        compile_llir((llir_if*)llir, lex, err);
         break;
-    case llir_fn:
-        compile_llir((llir_fn_form*)llir, lex, err);
+    case lt_fn:
+        compile_llir((llir_fn*)llir, lex, err);
         break;
-    case llir_import:
-        //compile_llir((llir_import_form*)llir, lex, err);
+    case lt_import:
+        //compile_llir((llir_import*)llir, lex, err);
         break;
-    case llir_set:
-        compile_llir((llir_set_form*)llir, lex, err);
+    case lt_set:
+        compile_llir((llir_set*)llir, lex, err);
         break;
-    case llir_var:
-        compile_llir((llir_var_form*)llir, lex, err);
+    case lt_var:
+        compile_llir((llir_var*)llir, lex, err);
         break;
-    case llir_with:
-        compile_llir((llir_with_form*)llir, lex, err);
+    case lt_with:
+        compile_llir((llir_with*)llir, lex, err);
         break;
     }
 }

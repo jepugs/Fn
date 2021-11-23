@@ -69,37 +69,37 @@ private:
     // functions, this does not affect the stack pointer.
     void compile_symbol(symbol_id sym);
 
-    void compile_llir(const llir_call_form* llir,
+    void compile_llir(const llir_call* llir,
             lexical_env* lex,
             compile_error* err);
-    void compile_llir(const llir_const_form* llir,
+    void compile_llir(const llir_const* llir,
             lexical_env* lex,
             compile_error* err);
-    void compile_llir(const llir_def_form* llir,
+    void compile_llir(const llir_def* llir,
             lexical_env* lex,
             compile_error* err);
-    void compile_llir(const llir_defmacro_form* llir,
+    void compile_llir(const llir_defmacro* llir,
             lexical_env* lex,
             compile_error* err);
-    void compile_llir(const llir_dot_form* llir,
+    void compile_llir(const llir_dot* llir,
             lexical_env* lex,
             compile_error* err);
-    void compile_llir(const llir_if_form* llir,
+    void compile_llir(const llir_if* llir,
             lexical_env* lex,
             compile_error* err);
-    void compile_llir(const llir_fn_form* llir,
+    void compile_llir(const llir_fn* llir,
             lexical_env* lex,
             compile_error* err);
-    void compile_llir(const llir_import_form* llir,
+    void compile_llir(const llir_import* llir,
             lexical_env* lex,
             compile_error* err);
-    void compile_llir(const llir_set_form* llir,
+    void compile_llir(const llir_set* llir,
             lexical_env* lex,
             compile_error* err);
-    void compile_llir(const llir_var_form* llir,
+    void compile_llir(const llir_var* llir,
             lexical_env* lex,
             compile_error* err);
-    void compile_llir(const llir_with_form* llir,
+    void compile_llir(const llir_with* llir,
             lexical_env* lex,
             compile_error* err);
 

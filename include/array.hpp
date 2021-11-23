@@ -75,7 +75,7 @@ struct dyn_array {
             return;
         }
         auto new_cap = capacity;
-        while (capacity < min_cap) {
+        while (new_cap < min_cap) {
             new_cap *= 2;
         }
         contents = (t*)realloc(contents, new_cap*sizeof(t));
@@ -92,10 +92,10 @@ struct dyn_array {
         ++size;
     }
 
-    t& operator[](u32 i) {
+    inline t& operator[](u32 i) {
         return contents[i];
     }
-    const t& operator[](u32 i) const {
+    inline const t& operator[](u32 i) const {
         return contents[i];
     }
 
@@ -166,10 +166,10 @@ struct static_array {
         delete[] contents;
     }
 
-    t& operator[](u32 i) {
+    inline t& operator[](u32 i) {
         return contents[i];
     }
-    const t& operator[](u32 i) const {
+    inline const t& operator[](u32 i) const {
         return contents[i];
     }
 

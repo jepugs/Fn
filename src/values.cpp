@@ -140,11 +140,13 @@ function::function(function_stub* stub)
     , upvals{nullptr}
     , init_vals{nullptr} {
     mk_gc_header(GC_TYPE_FUNCTION, &h);
+
     if (stub->foreign != nullptr) {
-        return;
+        num_upvals = 0;
+    } else {
+        num_upvals = stub->num_upvals;
     }
 
-    num_upvals = stub->num_upvals;
     upvals = new upvalue_cell*[num_upvals];
     if (stub->req_args < stub->pos_params.size()) {
         init_vals = new value[stub->pos_params.size() - stub->req_args];
@@ -153,12 +155,8 @@ function::function(function_stub* stub)
 
 // TODO: use refcount on upvalues
 function::~function() {
-    if (upvals != nullptr) {
-        delete[] upvals;
-    }
-    if (init_vals != nullptr) {
-        delete[] init_vals;
-    }
+    delete[] upvals;
+    delete[] init_vals;
 }
 
 bool value::operator==(const value& v) const {
