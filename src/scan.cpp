@@ -590,8 +590,6 @@ bool scanner::eof() {
     return input->peek() == EOF;
 }
 
-
-// FIXME: this should skip comments too
 bool scanner::eof_skip_ws() {
     while (!eof()) {
         auto ch = peek_char();

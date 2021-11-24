@@ -433,7 +433,8 @@ dyn_array<ast_form*> partial_parse_input(std::istream* in,
 
     dyn_array<ast_form*> res;
     ast_form* a;
-    while (!sc.eof() && (a = parse_next_form(&sc, symtab, resumable, err))) {
+    while (!sc.eof_skip_ws()
+            && (a = parse_next_form(&sc, symtab, resumable, err))) {
         // pos holds the position after last successful read
         pos = in->tellg();
         res.push_back(a);
