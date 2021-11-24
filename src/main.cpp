@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <iostream>
+#include <sstream>
 
 using namespace fn;
 
@@ -23,8 +24,7 @@ void show_usage() {
         "  -r           Start the REPL (after finishing evaluation).\n"
         "  -l           Print LLIR (low level intermediate rep) before\n"
         "                compiling each expression.\n"
-        "  -d           Print disassembled bytecode before evaluating\n"
-        "                each expression.\n"
+        "  -d           Print disassembled bytecode after compiling.\n"
         "  -            Take input directly from STDIN.\n"
         "  --ns namespace   Specify the namespace for evaluation. In\n"
         "                    the case of file evaluation, this will\n"
@@ -173,24 +173,21 @@ int main(int argc, char** argv) {
     case em_file:
         res = inter.interpret_file(opt.src, &i_err);
         if (i_err.happened) {
-            std::cout << "Error occurred while interpreting file:\n";
-            std::cout << i_err.message << '\n';
+            emit_error(&std::cout, i_err);
             return -1;
         }
         break;
     case em_string:
-        res = inter.interpret_string(opt.src, &i_err);
+        res = inter.interpret_string(opt.src, "--eval argument", &i_err);
         if (i_err.happened) {
-            std::cout << "Error occurred while interpreting string:\n";
-            std::cout << i_err.message << '\n';
+            emit_error(&std::cout, i_err);
             return -1;
         }
         break;
     case em_stdin:
         res = inter.interpret_istream(&std::cin, "STDIN", &i_err);
         if (i_err.happened) {
-            std::cout << "Error occurred while interpreting STDIN:\n";
-            std::cout << i_err.message << '\n';
+            emit_error(&std::cout, i_err);
             return -1;
         }
         break;
@@ -209,8 +206,6 @@ int main(int argc, char** argv) {
                 std::cout << " >> ";
                 std::cout.flush();
                 std::getline(std::cin, line);
-                // getline doesn't append the '\n', so we add it back here to
-                // put whitespace between the strings
                 buf += '\n' + line;
             } else {
                 std::cout << "fn> ";
@@ -223,15 +218,19 @@ int main(int argc, char** argv) {
 
             bool resumable;
             fault err;
-            res = inter.partial_interpret_string(buf, &ws, &bytes_used,
-                    &resumable, &err);
+            res = inter.partial_interpret_string(buf, "REPL input", &ws,
+                    &bytes_used, &resumable, &err);
             if (err.happened) {
                 if (resumable) {
-                    buf = buf.substr(bytes_used);
-                    still_reading = true;
+                    std::istringstream s{buf.substr(bytes_used)};
+                    if (s.eof()) {
+                        still_reading = false;
+                    } else {
+                        std::getline(s, buf);
+                        still_reading = true;
+                    }
                 } else {
-                    std::cout << "Interpreter error:\n"
-                              << err.message << '\n';
+                    emit_error(&std::cout, err);
                     still_reading = false;
                 }
             } else {
@@ -241,6 +240,9 @@ int main(int argc, char** argv) {
                           << endl;
                 still_reading = false;
             }
+            // this removes trailing whitespace and ensures EOF is detected, in
+            // order to avoid outputting an extra nil on EOF
+            std::ws(std::cin);
         }
     } else {
         std::cout << v_to_string(res, inter.get_symtab())

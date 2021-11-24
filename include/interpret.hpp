@@ -60,6 +60,7 @@ public:
     value interpret_file(const string& path, fault* err);
     // Evaluate a string in an empty chunk. Returns the value from the last
     // expression (or null).
+    value interpret_string(const string& src, const string& src_name, fault* err);
     value interpret_string(const string& src, fault* err);
     // Evaluate all input from an istream. Note that this will not terminate
     // until EOF is encountered in the stream.
@@ -73,8 +74,12 @@ public:
     // it might not be an error if there were more text), we roll back the
     // number of bytes consumed to right before that parse attempt. Otherwise,
     // we leave the number of bytes after the parse error.
-    value partial_interpret_string(const string& src, working_set* ws,
-            u32* bytes_used, bool* resumable, fault* err);
+    value partial_interpret_string(const string& src,
+            const string& src_name,
+            working_set* ws,
+            u32* bytes_used,
+            bool* resumable,
+            fault* err);
 
     // macroexpand a form in the given namespace
     ast_form* expand_macro(symbol_id macro,

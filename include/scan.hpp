@@ -259,9 +259,9 @@ private:
     optional<f64> try_scan_frac(dyn_array <char>& buf, i32* exp, u32 base);
     optional<i32> try_scan_exp(dyn_array<char>& buf);
 
-    // throw an appropriate fn_error
+    // throw an appropriate fn_exception
     inline void error(const char* msg) {
-        throw fn_error{"scanner", msg, source_loc{filename, line, col-1}};
+        throw fn_exception{"scanner", msg, source_loc{filename, line, col-1}};
     }
 };
 

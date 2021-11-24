@@ -177,7 +177,7 @@ public:
     allocator* get_alloc();
     symbol_table* get_symtab();
 
-    // raise an exception of type fn_error containing the provided message
+    // raise an exception of type fn_exception containing the provided message
     void runtime_error(const string& msg) const;
 };
 

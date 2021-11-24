@@ -119,11 +119,13 @@ symbol_table* vm_thread::get_symtab() {
 
 void vm_thread::runtime_error(const string& msg) const {
     auto p = cur_chunk()->location_of(ip);
-    string pre = "(ip:" + std::to_string(ip) + ") ";
+    // FIXME: this sort of information should probably not go to the user. We
+    // could log it instead if we had a logger.
+    string pre = "{ip:" + std::to_string(ip) + "} ";
     if (frame->caller && frame->caller->stub->name.size() > 0) {
-        pre = pre + "{In function: " + frame->caller->stub->name + "} ";
+        pre = pre + "(In function: " + frame->caller->stub->name + ") ";
     }
-    throw fn_error("runtime", pre + msg, p);
+    throw fn_exception("runtime", pre + msg, p);
 }
 
 void vm_thread::push(value v) {
@@ -260,7 +262,6 @@ void vm_thread::arrange_call_stack(working_set* ws,
     }
     
     for (; i < num_pos_args; ++i) {
-        std::cout << "fuck\n";
         auto x = extra_pos.get(i);
         if (!x.has_value()) {
             push(func->init_vals[i - req_args]);

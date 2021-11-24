@@ -57,13 +57,10 @@ value interpreter::interpret_form(ast_form* ast,
     auto chunk = alloc.add_chunk(ns);
     value res = V_NIL;
 
-    expand_error e_err;
     expander ex{this, chunk};
-    auto llir = ex.expand(ast, &e_err);
+    auto llir = ex.expand(ast, err);
     free_ast_form(ast);
     if (llir == nullptr) {
-        set_fault(err, ast->loc, "expand",
-                "Expansion error: " + e_err.message);
         return V_NIL;
     }
 
@@ -100,20 +97,25 @@ value interpreter::interpret_file(const string& path, fault* err) {
     return interpret_istream(&in, path, err);
 }
 
-value interpreter::interpret_string(const string& src, fault* err) {
+value interpreter::interpret_string(const string& src,
+        const string& src_name,
+        fault* err) {
     auto ws = alloc.add_working_set();
     u32 bytes_used;
     bool resumable;
-    return partial_interpret_string(src, &ws, &bytes_used, &resumable, err);
+    return partial_interpret_string(src, src_name, &ws, &bytes_used,
+            &resumable, err);
 }
 
 value interpreter::partial_interpret_string(const string& src,
+        const string& src_name,
         working_set* ws,
         u32* bytes_used,
         bool* resumable,
         fault* err) {
     std::istringstream in{src};
-    auto forms=partial_parse_input(&in,"",&symtab,bytes_used,resumable,err);
+    auto forms = partial_parse_input(&in, src_name, &symtab, bytes_used,
+            resumable, err);
     if (forms.size == 0) {
         return V_NIL;
     }
@@ -123,14 +125,11 @@ value interpreter::partial_interpret_string(const string& src,
 
     auto res = V_NIL;
     for (auto ast : forms) {
-        expand_error e_err;
         expander ex{this, chunk};
-        auto llir = ex.expand(ast, &e_err);
+        auto llir = ex.expand(ast, err);
         free_ast_form(ast);
 
         if (llir == nullptr) {
-            // TODO: throw an error
-            std::cout << "Expansion error: " << e_err.message << '\n';
             break;
         }
 
@@ -177,12 +176,9 @@ value interpreter::interpret_istream(std::istream* in,
     value res = V_NIL;
 
     for (auto ast : forms) {
-        expand_error e_err;
         expander ex{this, chunk};
-        auto llir = ex.expand(ast, &e_err);
+        auto llir = ex.expand(ast, err);
         if (llir == nullptr) {
-            set_fault(err, ast->loc, "expand",
-                    "Expansion error: " + e_err.message);
             free_ast_form(ast);
             break;
         }
@@ -204,16 +200,16 @@ value interpreter::interpret_istream(std::istream* in,
             break;
         }
 
-        if (log_dis) {
-            std::cout << "Disassembled bytecode: \n";
-            disassemble(symtab, *chunk, std::cout);
-        }
-
         vm_thread vm{&alloc, &globals, chunk};
         interpret_to_end(vm, err);
 
         free_llir_form(llir);
         res = vm.last_pop();
+    }
+
+    if (log_dis) {
+        std::cout << "Disassembled bytecode: \n";
+        disassemble(symtab, *chunk, std::cout);
     }
 
     return res;
@@ -318,7 +314,7 @@ ast_form* interpreter::value_to_ast(value v, const source_loc& loc) {
 
 void interpreter::runtime_error(const string& msg,
         const source_loc& loc) {
-    throw fn_error("runtime", msg, loc);
+    throw fn_exception("runtime", msg, loc);
 }
 
 void interpreter::add_builtin_function(const string& name,

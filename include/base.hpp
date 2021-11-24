@@ -114,7 +114,14 @@ inline void set_fault(fault* f,
     f->message = message;
 }
 
-class fn_error : public std::exception {
+inline void emit_error(std::ostream* out, const fault& err) {
+    auto& origin = err.origin;
+    (*out) << "[" + err.subsystem + "] Error at line " << origin.line
+           << ", col " << origin.col << " in " << origin.filename << ":\n\t"
+           << err.message << '\n';
+}
+
+class fn_exception : public std::exception {
     // pointer to the formatted error message. need this to ensure that the return value of what()
     // is properly cleaned up when the object is destroyed.
     string *formatted;
@@ -125,7 +132,9 @@ public:
     const source_loc origin;
 
     // TODO: move this to a .cpp file so we don't need to include sstream
-    fn_error(const string& subsystem, const string& message, const source_loc& origin)
+    fn_exception(const string& subsystem,
+            const string& message,
+            const source_loc& origin)
         : subsystem{subsystem}
         , message{message}
         , origin{origin} {
@@ -136,7 +145,7 @@ public:
         formatted = new string(ss.str());
         
     }
-    ~fn_error() {
+    ~fn_exception() {
         delete formatted;
     }
 

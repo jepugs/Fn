@@ -72,8 +72,7 @@ llir_form* expander::expand_apply(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length < 4) {
-        meta->err.message = "apply requires at least 3 arguments.";
-        meta->err.origin = loc;
+        e_fault(loc, "apply requires at least 3 arguments.");
         return nullptr;
     }
 
@@ -108,8 +107,7 @@ llir_form* expander::expand_cond(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if ((length & 1) != 1) {
-        meta->err.message = "Odd number of arguments to cond.";
-        meta->err.origin = loc;
+        e_fault(loc, "Odd number of arguments to cond.");
         return nullptr;
     } else if (length == 1) {
         return (llir_form*)mk_llir_var(loc, intern("nil"));
@@ -139,13 +137,11 @@ llir_form* expander::expand_def(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length != 3) {
-        meta->err.message = "def requires exactly 2 arguments.";
-        meta->err.origin = loc;
+        e_fault(loc, "def requires exactly 2 arguments.");
         return nullptr;
     }
     if (lst[1]->kind != ak_symbol_atom) {
-        meta->err.message = "First argument to def not a symbol.";
-        meta->err.origin = loc;
+        e_fault(loc, "First argument to def not a symbol.");
         return nullptr;
     }
 
@@ -163,12 +159,10 @@ llir_form* expander::expand_defmacro(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length < 3) {
-        meta->err.origin = loc;
-        meta->err.message = "defmacro requires at least 2 arguments.";
+        e_fault(loc, "defmacro requires at least 2 arguments.");
         return nullptr;
     } else if (!lst[1]->is_symbol()) {
-        meta->err.origin = loc;
-        meta->err.message = "First argument to defmacro must be a symbol.";
+        e_fault(loc, "First argument to defmacro must be a symbol.");
         return nullptr;
     }
 
@@ -194,12 +188,10 @@ llir_form* expander::expand_defn(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length < 3) {
-        meta->err.origin = loc;
-        meta->err.message = "defn requires at least 2 arguments.";
+        e_fault(loc, "defn requires at least 2 arguments.");
         return nullptr;
     } else if (!lst[1]->is_symbol()) {
-        meta->err.origin = loc;
-        meta->err.message = "First argument to defn must be a symbol.";
+        e_fault(loc, "First argument to defn must be a symbol.");
         return nullptr;
     }
 
@@ -256,8 +248,7 @@ llir_form* expander::expand_let_in_do(u32 length,
         return (llir_form*)mk_llir_var(let->loc,
                 inter->get_symtab()->intern("nil"));
     } else if ((let->list_length & 1) != 1) {
-        meta->err.origin = let->loc;
-        meta->err.message = "Odd number of arguments to let.";
+        e_fault(let->loc, "Odd number of arguments to let.");
         return nullptr;
     }
 
@@ -274,8 +265,7 @@ llir_form* expander::expand_let_in_do(u32 length,
     for (u32 i = 0; i < num_vars; ++i) {
         auto var = let->datum.list[2*i+1];
         if (var->kind != ak_symbol_atom) {
-            meta->err.origin = var->loc;
-            meta->err.message = "let binding names must be symbols.";
+            e_fault(var->loc, "let binding names must be symbols.");
             for (u32 j = 0; j < i; ++j) {
                 free_llir_form(res->values[i]);
             }
@@ -313,12 +303,10 @@ llir_form* expander::expand_letfn_in_do(u32 length,
     auto letfn_len = ast_body[0]->list_length;
     auto& loc = ast_body[0]->loc;
     if (letfn_len < 3) {
-        meta->err.origin = loc;
-        meta->err.message = "letfn requires at least two arguments.";
+        e_fault(loc, "letfn requires at least two arguments.");
         return nullptr;
     } else if (!letfn_lst[1]->is_symbol()) {
-        meta->err.origin = loc;
-        meta->err.message = "letfn name must be a symbol.";
+        e_fault(letfn_lst[1]->loc, "letfn name must be a symbol.");
         return nullptr;
     }
 
@@ -443,15 +431,13 @@ llir_form* expander::expand_dollar_fn(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length != 2) {
-        meta->err.origin = loc;
-        meta->err.message = "dollar-fn requires exactly 1 argument.";
+        e_fault(loc, "dollar-fn requires exactly 1 argument.");
         return nullptr;
     }
 
     expander_meta meta2 = {.max_dollar_sym=-1};
     auto body = expand_meta(lst[1], &meta2);
     if (!body) {
-        meta->err = meta2.err;
         return nullptr;
     }
 
@@ -477,8 +463,7 @@ llir_form* expander::expand_dot(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length < 3) {
-        meta->err.origin = loc;
-        meta->err.message = "dot requires at least 2 arguments.";
+        e_fault(loc, "dot requires at least 2 arguments.");
         return nullptr;
     }
 
@@ -490,8 +475,7 @@ llir_form* expander::expand_dot(const source_loc& loc,
     auto res = mk_llir_dot(loc, x, length - 2);
     for (u32 i = 0; i + 2 < length; ++i) {
         if (!lst[i+2]->is_symbol()) {
-            meta->err.origin = loc;
-            meta->err.message = "dot keys must be symbols.";
+            e_fault(loc, "dot keys must be symbols.");
             free_llir_dot(res);
             return nullptr;
         } else {
@@ -506,8 +490,7 @@ bool expander::expand_params(ast_form* ast,
         expander_meta* meta) {
     const auto& loc = ast->loc;
     if (ast->kind != ak_list) {
-        meta->err.origin = loc;
-        meta->err.message = "fn requires a parameter list.";
+        e_fault(loc, "fn requires a parameter list.");
         return false;
     }
 
@@ -543,8 +526,8 @@ bool expander::expand_params(ast_form* ast,
             for (auto x : inits) {
                 free_llir_form(x);
             }
-            meta->err.origin = x->loc;
-            meta->err.message = "Malformed optional parameter in parameter list.";
+            e_fault(x->loc,
+                    "Malformed optional parameter in parameter list.");
             return false;
         }
         auto y = expand_meta(x->datum.list[1], meta);
@@ -622,8 +605,7 @@ bool expander::expand_params(ast_form* ast,
         for (auto x : inits) {
             free_llir_form(x);
         }
-        meta->err.origin = loc;
-        meta->err.message = "Malformed parameter list.";
+        e_fault(loc, "Malformed parameter list.");
         return false;
     }
 
@@ -646,8 +628,7 @@ llir_form* expander::expand_fn(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length == 1) {
-        meta->err.origin = loc;
-        meta->err.message = "fn requires a parameter list.";
+        e_fault(loc, "fn requires a parameter list.");
         return nullptr;
     }
     llir_fn_params params;
@@ -669,8 +650,7 @@ llir_form* expander::expand_if(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length != 4) {
-        meta->err.origin = loc;
-        meta->err.message = "if requires exactly 3 arguments.";
+        e_fault(loc, "if requires exactly 3 arguments.");
         return nullptr;
     }
 
@@ -698,12 +678,10 @@ llir_form* expander::expand_import(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length != 2) {
-        meta->err.origin = loc;
-        meta->err.message = "import requires exactly 1 argument.";
+        e_fault(loc, "import requires exactly 1 argument.");
         return nullptr;
     } else if (lst[1]->kind != ak_symbol_atom) {
-        meta->err.origin = loc;
-        meta->err.message = "import argument must be a symbol.";
+        e_fault(loc, "import argument must be a symbol.");
         return nullptr;
     }
     return (llir_form*)mk_llir_import(loc, lst[1]->datum.sym);
@@ -714,8 +692,7 @@ llir_form* expander::expand_let(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if ((length & 1) != 1) {
-        meta->err.origin = loc;
-        meta->err.message = "Odd number of arguments to let.";
+        e_fault(loc, "Odd number of arguments to let.");
         return nullptr;
     }
     // unlike letfn, we actually have to evaluate code in case there are
@@ -729,8 +706,7 @@ llir_form* expander::expand_let(const source_loc& loc,
     for (u32 i = 0; i < num_vars; ++i) {
         auto var = lst[2*i+1];
         if (var->kind != ak_symbol_atom) {
-            meta->err.origin = var->loc;
-            meta->err.message = "let binding names must be symbols.";
+            e_fault(var->loc, "let binding names must be symbols.");
             for (u32 j = 0; j < i; ++j) {
                 free_llir_form(res->values[i]);
             }
@@ -755,8 +731,7 @@ llir_form* expander::expand_letfn(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length < 3) {
-        meta->err.origin = loc;
-        meta->err.message = "letfn requires at least 2 arguments.";
+        e_fault(loc, "letfn requires at least 2 arguments.");
         return nullptr;
     }
     // There's no way for the created function to leave the letfn, so this means
@@ -829,8 +804,7 @@ llir_form* expander::quasiquote_next_conc_arg(const source_loc& loc,
 
     if (is_unquote_splicing(lst[0])) {
         if (lst[0]->list_length != 2) {
-            meta->err.origin = loc;
-            meta->err.message = "unquote-splicing requires exactly 1 argument.";
+            e_fault(loc, "unquote-splicing requires exactly 1 argument.");
             return nullptr;
         }
         *stopped_at = 1;
@@ -841,8 +815,7 @@ llir_form* expander::quasiquote_next_conc_arg(const source_loc& loc,
     for (i = 0; i < length; ++i) {
         if (is_unquote(lst[i])) {
             if (lst[i]->list_length != 2) {
-                meta->err.origin = loc;
-                meta->err.message = "unquote requires exactly 1 argument.";
+                e_fault(loc, "unquote requires exactly 1 argument.");
                 for (auto x : list_args) {
                     free_llir_form(x);
                 }
@@ -913,8 +886,7 @@ llir_form* expander::expand_quasiquote(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length != 2) {
-        meta->err.origin = loc;
-        meta->err.message = "quasiquote requires exactly 1 argument.";
+        e_fault(loc, "quasiquote requires exactly 1 argument.");
         return nullptr;
     }
     if (lst[1]->kind != ak_list) {
@@ -930,8 +902,7 @@ llir_form* expander::expand_quote(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length != 2) {
-        meta->err.origin = loc;
-        meta->err.message = "quote requires exactly 1 argument.";
+        e_fault(loc, "quote requires exactly 1 argument.");
         return nullptr;
     }
     auto ws = inter->get_alloc()->add_working_set();
@@ -945,8 +916,7 @@ llir_form* expander::expand_set(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length != 3) {
-        meta->err.origin = loc;
-        meta->err.message = "set! requires exactly 2 argument.";
+        e_fault(loc, "set! requires exactly 2 argument.");
         return nullptr;
     }
     auto tar = expand_meta(lst[1], meta);
@@ -965,8 +935,7 @@ llir_form* expander::expand_unquote(const source_loc& loc,
         u32 length,
         ast_form** lst,
         expander_meta* meta) {
-    meta->err.origin = loc;
-    meta->err.message = "unquote outside of quasiquote.";
+    e_fault(loc, "unquote outside of quasiquote.");
     return nullptr;
 }
 
@@ -974,8 +943,7 @@ llir_form* expander::expand_unquote_splicing(const source_loc& loc,
         u32 length,
         ast_form** lst,
         expander_meta* meta) {
-    meta->err.origin = loc;
-    meta->err.message = "unquote-splicing outside of quasiquote.";
+    e_fault(loc, "unquote-splicing outside of quasiquote.");
     return nullptr;
 }
 
@@ -984,12 +952,10 @@ llir_form* expander::expand_with(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (lst[1]->kind != ak_list) {
-        meta->err.origin = loc;
-        meta->err.message = "with binding form must be a list.";
+        e_fault(loc, "with binding form must be a list.");
         return nullptr;
     } else if ((lst[1]->list_length & 1) != 0) {
-        meta->err.origin = loc;
-        meta->err.message = "Odd number of items in with binding form.";
+        e_fault(loc, "Odd number of items in with binding form.");
         return nullptr;
     }
 
@@ -1000,8 +966,7 @@ llir_form* expander::expand_with(const source_loc& loc,
     // bindings
     for (u32 i = 0; i < num_vars; ++i) {
         if (!lst2[2*i]->is_symbol()) {
-            meta->err.origin = loc;
-            meta->err.message = "with binding names must be symbols.";
+            e_fault(loc, "with binding names must be symbols.");
             return nullptr;
         }
 
@@ -1058,8 +1023,7 @@ llir_form* expander::expand_call(const source_loc& loc,
         if (lst[i]->kind == ak_symbol_atom
                 && is_keyword(lst[i]->datum.sym)) {
             if (i + 1 >= len) {
-                meta->err.origin = lst[i]->loc;
-                meta->err.message = "Keyword without any argument.";
+                e_fault(lst[i]->loc, "Keyword without any argument.");
                 failed = true;
                 break;
             }
@@ -1073,17 +1037,15 @@ llir_form* expander::expand_call(const source_loc& loc,
             // check for duplicates
             for (auto k : kw_args) {
                 if (k.nonkw_name == sym) {
-                    meta->err.origin = lst[i]->loc;
-                    meta->err.message = "Duplicate keyword argument.";
+                    e_fault(lst[i]->loc, "Duplicate keyword argument.");
                     failed = true;
                     break;
                 }
             }
             kw_args.push_back(llir_kw_arg{sym,x});
         } else {
-            meta->err.origin = lst[i]->loc;
-            meta->err.message = "Positional arguments cannot follow keyword "
-                    "arguments.";
+            e_fault(lst[i]->loc,
+                    "Positional arguments cannot follow keyword arguments.");
             failed = true;
             break;
         }
@@ -1115,8 +1077,7 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
         auto ast = inter->expand_macro(sym, chunk->ns_id,
                 lst->list_length - 1, &lst->datum.list[1], loc);
         if (!ast) {
-            meta->err.origin = lst->loc;
-            meta->err.message = "Macroexpansion failed.";
+            e_fault(lst->loc, "Macroexpansion failed.");
             return nullptr;
         }
         auto res = expand_meta(ast, meta);
@@ -1180,8 +1141,7 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
 llir_form* expander::expand_list(ast_form* lst, expander_meta* meta) {
     auto& loc = lst->loc;
     if (lst->list_length == 0) {
-        meta->err.origin = loc;
-        meta->err.message = "() is not a legal expression";
+        e_fault(loc, "() is not a legal expression");
         return nullptr;
     }
 
@@ -1190,12 +1150,10 @@ llir_form* expander::expand_list(ast_form* lst, expander_meta* meta) {
     case ak_symbol_atom:
         return expand_symbol_list(lst, meta);
     case ak_number_atom:
-        meta->err.origin = loc;
-        meta->err.message = "Cannot call numbers as functions.";
+        e_fault(loc, "Cannot call numbers as functions.");
         return nullptr;
     case ak_string_atom:
-        meta->err.origin = loc;
-        meta->err.message = "Cannot call strings as functions.";
+        e_fault(loc, "Cannot call strings as functions.");
         return nullptr;
     default:
         break;
@@ -1273,19 +1231,20 @@ bool expander::is_keyword(symbol_id sym) const {
     return name[0] == ':';
 }
 
+void expander::e_fault(const source_loc& loc, const string& msg) {
+    set_fault(err, loc, "expand", msg);
+}
+
 expander::expander(interpreter* inter, code_chunk* const_chunk)
     : inter{inter}
     , chunk{const_chunk} {
 }
 
-llir_form* expander::expand(ast_form* ast, expand_error* err) {
+llir_form* expander::expand(ast_form* ast, fault* err) {
+    this->err = err;
     expander_meta m;
     m.max_dollar_sym = -1;
-    auto res = expand_meta(ast, &m);
-    if (!res) {
-        *err = m.err;
-    }
-    return res;
+    return expand_meta(ast, &m);
 }
 
 }

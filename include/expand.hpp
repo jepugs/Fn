@@ -13,23 +13,17 @@ using namespace fn_parse;
 
 struct interpreter;
 
-struct expand_error {
-    source_loc origin;
-    string message;
-};
-
 struct expander_meta {
     // largest value dollar symbol encountered. -1 if none is encountered.
     i16 max_dollar_sym;
-    // In the event of an error, the various expand_ methods return null and set
-    // this string. (It must be freed later).
-    expand_error err;
 };
 
 class expander {
 private:
     interpreter* inter;
     code_chunk* chunk;
+    // set on illegal syntax/failed macro expansion
+    fault* err;
 
     bool is_macro(symbol_id sym);
 
@@ -99,11 +93,14 @@ private:
             ast_form** lst,
             expander_meta* meta);
 
-    llir_form* expand_fn(const source_loc& loc,
+    // Attempt to populate params to the parameter list represented by ast.
+    // Returns false on error.
+    bool expand_params(ast_form* ast,
+            llir_fn_params* params,
+            expander_meta* meta);    llir_form* expand_fn(const source_loc& loc,
             u32 length,
             ast_form** lst,
             expander_meta* meta);
-
     llir_form* expand_if(const source_loc& loc,
             u32 length,
             ast_form** lst,
@@ -187,15 +184,14 @@ private:
     string symbol_name(symbol_id name);
     bool is_keyword(symbol_id sym) const;
 
+    // set the fault using the "expand" subsystem
+    void e_fault(const source_loc& loc, const string& msg);
+
 public:
     expander(interpreter* inter, code_chunk* const_chunk);
     // expand an ast_form into llir
-    llir_form* expand(ast_form* form, expand_error* err);
-    // Attempt to populate params to the parameter list represented by ast.
-    // Returns false on error.
-    bool expand_params(ast_form* ast,
-            llir_fn_params* params,
-            expander_meta* meta);
+    llir_form* expand(ast_form* form, fault* err);
+
 };
 
 }
