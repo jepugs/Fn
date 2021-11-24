@@ -62,36 +62,50 @@ ast_form* mk_list_form(source_loc loc,
 void clear_ast_form(ast_form* form, bool recursive=true);
 void free_ast_form(ast_form* form, bool recursive=true);
 
-struct parse_error {
-    source_loc origin;
-    bool resumable = false;
-    string message;
-};
 
 // get the next form by reading tokens one at a time from the scanner. Return a
 // null pointer on EOF. It is the responsibility of the caller to delete the
 // returned object. Returns null and sets err on failure.
+
+// If the parse failed irrecoverably, sets *resumable = false. If the parse
+// could succeed by adding additional characters to the end of the input, sets
+// *resumable = true and *bytes_used to the number of bytes used after the last
+// successful parse. This is mainly for the REPL.
 ast_form* parse_next_form(scanner* sc,
         symbol_table* symtab,
-        parse_error* err);
+        bool* resumable,
+        fault* err);
+
 // This is the same as above, but we pass in the first token directly (as
-// opposed to getting it from the scanner).
+// opposed to getting it from the scanner). Used for prefix operators.
 ast_form* parse_next_form(scanner* sc,
         symbol_table* symtab,
         token t0,
-        parse_error* err);
+        bool* resumable,
+        fault* err);
 
-// attempt to parse as many ast_forms as possible from the given string. The
+// Attempt to parse as many ast_forms as possible from the given string. The
 // parse_error* structure is set to the first error encountered.
 dyn_array<ast_form*> parse_string(const string& src,
         symbol_table* symtab,
-        u32* bytes_used,
-        parse_error* err);
+        fault* err);
 
-// parse ast forms from sc until an error is encountered
-dyn_array<ast_form*> parse_input(scanner* sc,
+// Parse AST forms from sc until an error is encountered
+dyn_array<ast_form*> parse_input(std::istream* in,
+        const string& src_name,
         symbol_table* symtab,
-        parse_error* err);
+        fault* err);
+
+// This sets *resumable the same way as in parse_next_form. In addition, on
+// error, it sets *bytes_used to be the number of bytes consumed after the last
+// successful parse. This is used for detecting the ends of expressions at the
+// REPL to enable multi-line input and multiple expressions per line.
+dyn_array<ast_form*> partial_parse_input(std::istream* in,
+        const string& src_name,
+        symbol_table* symtab,
+        u32* bytes_used,
+        bool* resumable,
+        fault* err);
 
 }
 #endif

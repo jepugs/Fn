@@ -4,12 +4,8 @@ namespace fn {
 
 llir_apply* mk_llir_apply(const source_loc& origin,
         llir_form* callee,
-        local_address num_args,
-        llir_apply* dest) {
-    if (dest == nullptr) {
-        dest = new llir_apply;
-    }
-    return new(dest) llir_apply{
+        local_address num_args) {
+    return new llir_apply{
         .header={.origin=origin, .tag=lt_apply},
         .callee=callee,
         .num_args=num_args,
@@ -18,9 +14,10 @@ llir_apply* mk_llir_apply(const source_loc& origin,
 }
 void clear_llir_apply(llir_apply* obj) {
     for (u32 i = 0; i < obj->num_args; ++i) {
-        delete obj->args[i];
+        free_llir_form(obj->args[i]);
     }
     delete[] obj->args;
+    free_llir_form(obj->callee);
 }
 void free_llir_apply(llir_apply* obj) {
     clear_llir_apply(obj);
@@ -31,12 +28,8 @@ void free_llir_apply(llir_apply* obj) {
 llir_call* mk_llir_call(const source_loc& origin,
         llir_form* callee,
         local_address num_pos_args,
-        local_address num_kw_args,
-        llir_call* dest) {
-    if (dest == nullptr) {
-        dest = new llir_call;
-    }
-    return new (dest) llir_call {
+        local_address num_kw_args) {
+    return new llir_call {
         .header={.origin=origin, .tag=lt_call},
         .callee=callee,
         .num_pos_args=num_pos_args,
@@ -211,8 +204,8 @@ void clear_llir_fn(llir_fn* obj) {
         free_llir_form(obj->params.inits[i]);
     }
     free_llir_form(obj->body);
-    delete obj->params.pos_args;
-    delete obj->params.inits;
+    delete[] obj->params.pos_args;
+    delete[] obj->params.inits;
 }
 void free_llir_fn(llir_fn* obj) {
     clear_llir_fn(obj);
@@ -346,6 +339,12 @@ void free_llir_form(llir_form* obj) {
     case lt_apply:
         free_llir_apply((llir_apply*)obj);
         break;
+    case lt_call:
+        free_llir_call((llir_call*)obj);
+        break;
+    case lt_const:
+        free_llir_const((llir_const*)obj);
+        break;
     case lt_def:
         free_llir_def((llir_def*)obj);
         break;
@@ -354,12 +353,6 @@ void free_llir_form(llir_form* obj) {
         break;
     case lt_dot:
         free_llir_dot((llir_dot*)obj);
-        break;
-    case lt_call:
-        free_llir_call((llir_call*)obj);
-        break;
-    case lt_const:
-        free_llir_const((llir_const*)obj);
         break;
     case lt_fn:
         free_llir_fn((llir_fn*)obj);

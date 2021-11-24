@@ -465,7 +465,7 @@ llir_form* expander::expand_dollar_fn(const source_loc& loc,
     }
 
     auto res = mk_llir_fn(loc, m+1, false, false, m+1, "", body);
-    for (i32 i = 0; i <= m+1; ++i) {
+    for (i32 i = 0; i < m+1; ++i) {
         res->params.pos_args[i] = intern("$" + std::to_string(i));
     }
 

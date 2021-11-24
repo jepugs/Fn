@@ -42,7 +42,7 @@ global_env* interpreter::get_global_env() {
     return &globals;
 }
 
-void interpreter::interpret_to_end(vm_thread& vm) {
+void interpreter::interpret_to_end(vm_thread& vm, fault* err) {
     vm.execute();
     while (vm.check_status() == vs_waiting_for_import) {
         // TODO: import code here :/
@@ -53,21 +53,17 @@ void interpreter::interpret_to_end(vm_thread& vm) {
 
 value interpreter::interpret_form(ast_form* ast,
         symbol_id ns,
-        bool* error) {
+        fault* err) {
     auto chunk = alloc.add_chunk(ns);
     value res = V_NIL;
-
-    *error = false;
 
     expand_error e_err;
     expander ex{this, chunk};
     auto llir = ex.expand(ast, &e_err);
     free_ast_form(ast);
     if (llir == nullptr) {
-        if (error != nullptr) {
-            *error = true;
-        }
-        std::cout << "Expansion error: " << e_err.message << '\n';
+        set_fault(err, ast->loc, "expand",
+                "Expansion error: " + e_err.message);
         return V_NIL;
     }
 
@@ -80,10 +76,8 @@ value interpreter::interpret_form(ast_form* ast,
     c_err.has_error = false;
     c.compile(llir, &c_err);
     if (c_err.has_error) {
-        if (error != nullptr) {
-            *error = true;
-        }
-        std::cout << "Compile error: " << c_err.message << '\n';
+        set_fault(err, ast->loc, "compile",
+                "Compilation error: " + c_err.message);
         return V_NIL;
     }
 
@@ -93,7 +87,7 @@ value interpreter::interpret_form(ast_form* ast,
     }
 
     vm_thread vm{&alloc, &globals, chunk};
-    interpret_to_end(vm);
+    interpret_to_end(vm, err);
 
     free_llir_form(llir);
     res = vm.last_pop();
@@ -101,30 +95,27 @@ value interpreter::interpret_form(ast_form* ast,
     return res;
 }
 
-value interpreter::interpret_file(const string& path, bool* error) {
+value interpreter::interpret_file(const string& path, fault* err) {
     std::ifstream in{path};
-    return interpret_istream(&in, path, error);
+    return interpret_istream(&in, path, err);
 }
 
-value interpreter::interpret_string(const string& src) {
+value interpreter::interpret_string(const string& src, fault* err) {
     auto ws = alloc.add_working_set();
     u32 bytes_used;
-    return partial_interpret_string(src, &ws, &bytes_used);
+    bool resumable;
+    return partial_interpret_string(src, &ws, &bytes_used, &resumable, err);
 }
 
 value interpreter::partial_interpret_string(const string& src,
         working_set* ws,
-        u32* bytes_used) {
-    parse_error p_err;
-    auto forms = parse_string(src, &symtab, bytes_used, &p_err);
+        u32* bytes_used,
+        bool* resumable,
+        fault* err) {
+    std::istringstream in{src};
+    auto forms=partial_parse_input(&in,"",&symtab,bytes_used,resumable,err);
     if (forms.size == 0) {
-        if (!p_err.resumable) {
-            // TODO: we can do better than this for error handling
-            std::cout << "Parse error: " << p_err.message << '\n';
-            return V_NIL;
-        } else {
-            return V_NIL;
-        }
+        return V_NIL;
     }
 
     auto ns_name = symtab.intern("fn/user");
@@ -164,28 +155,20 @@ value interpreter::partial_interpret_string(const string& src,
         }
 
         vm_thread vm{&alloc, &globals, chunk};
-        interpret_to_end(vm);
+        interpret_to_end(vm, err);
 
         free_llir_form(llir);
         res = vm.last_pop();
     }
-    //delete chunk;
 
     return res;
 }
 
 value interpreter::interpret_istream(std::istream* in,
         const string& src_name,
-        bool* error) {
-    fn_scan::scanner sc{in, src_name};
-    parse_error p_err;
-
-    auto forms = parse_input(&sc, &symtab, &p_err);
+        fault* err) {
+    auto forms = parse_input(in, src_name, &symtab, err);
     if (forms.size == 0) {
-        if (error != nullptr) {
-            *error = true;
-        }
-        std::cout << "Parser error: " << p_err.message << '\n';
         return V_NIL;
     }
 
@@ -193,20 +176,17 @@ value interpreter::interpret_istream(std::istream* in,
     auto chunk = alloc.add_chunk(ns_name);
     value res = V_NIL;
 
-    *error = false;
     for (auto ast : forms) {
         expand_error e_err;
         expander ex{this, chunk};
         auto llir = ex.expand(ast, &e_err);
-        free_ast_form(ast);
-
         if (llir == nullptr) {
-            if (error != nullptr) {
-                *error = true;
-            }
-            std::cout << "Expansion error: " << e_err.message << '\n';
+            set_fault(err, ast->loc, "expand",
+                    "Expansion error: " + e_err.message);
+            free_ast_form(ast);
             break;
         }
+        free_ast_form(ast);
 
         if (log_llir) {
             std::cout << "LLIR: \n";
@@ -218,10 +198,9 @@ value interpreter::interpret_istream(std::istream* in,
         c_err.has_error = false;
         c.compile(llir, &c_err);
         if (c_err.has_error) {
-            if (error != nullptr) {
-                *error = true;
-            }
-            std::cout << "Compile error: " << c_err.message << '\n';
+            set_fault(err, llir->origin, "compile",
+                    "Compile error: " + c_err.message);
+            free_llir_form(llir);
             break;
         }
 
@@ -231,7 +210,7 @@ value interpreter::interpret_istream(std::istream* in,
         }
 
         vm_thread vm{&alloc, &globals, chunk};
-        interpret_to_end(vm);
+        interpret_to_end(vm, err);
 
         free_llir_form(llir);
         res = vm.last_pop();
@@ -266,8 +245,13 @@ ast_form* interpreter::expand_macro(symbol_id macro,
     chunk->write_byte(num_args);
     chunk->write_byte(OP_POP);
 
+    // FIXME: should return this fault to the caller
+    fault err;
     vm_thread vm{&alloc, &globals, chunk};
-    interpret_to_end(vm);
+    interpret_to_end(vm, &err);
+    if (err.happened) {
+        return nullptr;
+    }
     auto val = vm.last_pop();
     return value_to_ast(val, loc);
 }
@@ -342,11 +326,10 @@ void interpreter::add_builtin_function(const string& name,
         value (*foreign_func)(interpreter_handle*, value*)) {
     // Have to extract the params manually, as the expander method could execute
     // code if it encounters an initform that has a macro in it.
-    parse_error err;
-    u32 bytes_used;
-    auto forms = parse_string(params, &symtab, &bytes_used, &err);
-    if (forms.size != 1
-            || bytes_used != params.size()
+    fault err;
+    auto forms = parse_string(params, &symtab, &err);
+    if (err.happened
+            || forms.size != 1
             || forms[0]->kind != ak_list) {
         for (auto f : forms) {
             free_ast_form(f);

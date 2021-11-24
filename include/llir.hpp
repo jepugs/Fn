@@ -65,8 +65,7 @@ struct llir_apply {
 };
 llir_apply* mk_llir_apply(const source_loc& origin,
         llir_form* callee,
-        local_address num_args,
-        llir_apply* dest=nullptr);
+        local_address num_args);
 void clear_llir_apply(llir_apply* obj);
 void free_llir_apply(llir_apply* obj);
 
@@ -85,8 +84,7 @@ struct llir_call {
 llir_call* mk_llir_call(const source_loc& origin,
         llir_form* callee,
         local_address num_pos_args,
-        local_address num_kw_args,
-        llir_call* dest=nullptr);
+        local_address num_kw_args);
 void clear_llir_call(llir_call* obj);
 void free_llir_call(llir_call* obj);
 

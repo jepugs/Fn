@@ -489,14 +489,16 @@ code_chunk* allocator::add_chunk(symbol_id ns_id) {
     if (!x.has_value()) {
         globals->create_ns(ns_id);
     }
-    auto res = new code_chunk{ns_id};
-    objects.push_back((gc_header*)res);
-    auto source_info = new chunk_source_info{
-        .end_addr=0,
-        .loc={.line=0, .col=0},
-        .prev=nullptr
+    auto res = new code_chunk{
+        .ns_id = ns_id,
+        .source_info = new chunk_source_info{
+            .end_addr=0,
+            .loc={.line=0, .col=0},
+            .prev=nullptr
+        }
     };
-    res->source_info = source_info;
+    mk_gc_header(GC_TYPE_CHUNK, &res->h);
+    objects.push_back((gc_header*)res);
 
     return res;
 }

@@ -98,6 +98,22 @@ struct source_loc {
     int col;
 };
 
+struct fault {
+    bool happened = false;
+    source_loc origin;
+    string subsystem;
+    string message;
+};
+inline void set_fault(fault* f,
+        const source_loc& origin,
+        const string& subsystem,
+        const string& message) {
+    f->happened = true;
+    f->origin = origin;
+    f->subsystem = subsystem;
+    f->message = message;
+}
+
 class fn_error : public std::exception {
     // pointer to the formatted error message. need this to ensure that the return value of what()
     // is properly cleaned up when the object is destroyed.

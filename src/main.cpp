@@ -165,23 +165,30 @@ int main(int argc, char** argv) {
 
     // evaluate
     // FIXME: use --ns arg when applicable
-    bool i_err;
+    fault i_err;
     value res;
     switch (opt.mode) {
     case em_file:
         res = inter.interpret_file(opt.src, &i_err);
-        if (i_err) {
-            std::cout << "Error occurred while interpreting file.\n";
+        if (i_err.happened) {
+            std::cout << "Error occurred while interpreting file:\n";
+            std::cout << i_err.message << '\n';
             return -1;
         }
         break;
     case em_string:
-        res = inter.interpret_string(opt.src);
+        res = inter.interpret_string(opt.src, &i_err);
+        if (i_err.happened) {
+            std::cout << "Error occurred while interpreting string:\n";
+            std::cout << i_err.message << '\n';
+            return -1;
+        }
         break;
     case em_stdin:
         res = inter.interpret_istream(&std::cin, "STDIN", &i_err);
-        if (i_err) {
-            std::cout << "Error occurred while interpreting STDIN.\n";
+        if (i_err.happened) {
+            std::cout << "Error occurred while interpreting STDIN:\n";
+            std::cout << i_err.message << '\n';
             return -1;
         }
         break;
@@ -192,7 +199,7 @@ int main(int argc, char** argv) {
     // run the repl if necessary
     if (opt.repl) {
         string buf;
-        u32 pos = 0;
+        u32 bytes_used = 0;
         bool still_reading = false;
         while (!std::cin.eof()) {
             string line;
@@ -212,12 +219,19 @@ int main(int argc, char** argv) {
                 //if(line[0] == ':')
             }
 
-            res = inter.partial_interpret_string(buf, &ws, &pos);
-
-            // note that this doesn't account for trailing whitespace
-            if (pos < buf.size() && buf != "\n") {
-                buf = buf.substr(pos);
-                still_reading = true;
+            bool resumable;
+            fault err;
+            res = inter.partial_interpret_string(buf, &ws, &bytes_used,
+                    &resumable, &err);
+            if (err.happened) {
+                if (resumable) {
+                    buf = buf.substr(bytes_used);
+                    still_reading = true;
+                } else {
+                    std::cout << "Interpreter error:\n"
+                              << err.message << '\n';
+                    still_reading = false;
+                }
             } else {
                 buf = "";
                 // print value
