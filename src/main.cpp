@@ -76,10 +76,6 @@ struct interpreter_options {
 // create an interpreter_options object based on CLI options. Returns false on
 // malformed command line arguments.
 void process_args(int argc, char** argv, interpreter_options* opt) {
-    if (argc == 1) {
-        opt->repl = true;
-        return;
-    }
     // process options first
     int i;
     for (i = 1; i < argc; ++i) {
@@ -126,6 +122,12 @@ void process_args(int argc, char** argv, interpreter_options* opt) {
         }
     }
 
+    if (i == argc) {
+        opt->args_start = i;
+        opt->mode = em_none;
+        opt->repl = true;
+        return;
+    }
 
     // process source
     string src{argv[i]};
