@@ -101,7 +101,7 @@ llir_defmacro* mk_llir_defmacro(const source_loc& origin,
     };
 }
 void clear_llir_defmacro(llir_defmacro* obj) {
-    delete obj->macro_fun;
+    free_llir_form(obj->macro_fun);
 }
 void free_llir_defmacro(llir_defmacro* obj) {
     clear_llir_defmacro(obj);

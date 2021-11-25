@@ -248,9 +248,9 @@ int main(int argc, char** argv) {
             }
         }
     } else {
-        std::cout << v_to_string(res, inter.get_symtab())
-                  << endl;
+        std::cout << v_to_string(res, inter.get_symtab());
     }
+    std::cout << endl;
 
     return 0;
 }

@@ -381,13 +381,12 @@ void allocator::mark() {
     // global namespaces
     for (auto k : globals->ns_table.keys()) {
         auto ns = *globals->get_ns(k);
-        // iterate over bindings
         for (auto k2 : ns->names()) {
             auto h = ns->get(k2)->header();
             mark_descend(*h);
         }
         for (auto k2 : ns->macro_names()) {
-            auto h = ns->get(k2)->header();
+            auto h = ns->get_macro(k2)->header();
             mark_descend(*h);
         }
     }

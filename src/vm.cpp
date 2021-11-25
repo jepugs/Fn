@@ -258,7 +258,7 @@ void vm_thread::arrange_call_stack(working_set* ws,
             push(*x);
         }
     }
-    
+
     for (; i < num_pos_args; ++i) {
         auto x = extra_pos.get(i);
         if (!x.has_value()) {

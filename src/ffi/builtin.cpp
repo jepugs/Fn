@@ -111,7 +111,7 @@ fn_fun(eq, "=", "(& args)") {
         return V_TRUE;
     }
 
-    auto x = args[0];
+    auto x = v_head(args[0]);
     fn_for_list(it, v_tail(args[0])) {
         if (v_head(it) != x) {
             return V_FALSE;
@@ -278,7 +278,7 @@ fn_fun(concat, "concat", "(& colls)") {
             auto hd = v_head(it);
             res = handle->string_concat(res, hd);
         }
-    // } else if (v_tag(res)->is_table()) {
+    // } else if (res.is_table()) {
     //     fn_for_list(it, v_tail(args[0])) {
     //         auto hd = v_head(it);
     //         res = handle->table_join(res, hd);

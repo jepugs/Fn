@@ -131,6 +131,7 @@ dyn_array<value> interpreter::partial_interpret_string(const string& src,
         auto llir = ex.expand(ast, err);
         free_ast_form(ast);
         if (llir == nullptr) { // fault has occurred
+            *resumable = false;
             break;
         }
         if (log_llir) {
@@ -142,6 +143,7 @@ dyn_array<value> interpreter::partial_interpret_string(const string& src,
         c.compile(llir, err);
         free_llir_form(llir);
         if (err->happened) {
+            *resumable = false;
             break;
         }
         if (log_dis) {
@@ -152,6 +154,7 @@ dyn_array<value> interpreter::partial_interpret_string(const string& src,
         vm_thread vm{&alloc, &globals, chunk};
         interpret_to_end(vm, err);
         if (err->happened) {
+            *resumable = false;
             break;
         }
 

@@ -85,6 +85,7 @@ symbol_table::~symbol_table() {
 
 symbol_id symbol_table::intern(const string& str) {
     if (next_gensym <= by_id.size) {
+        // this is just fatal lmao
         throw std::runtime_error("Symbol table exhausted.");
     }
     auto v = by_name.get(str);
