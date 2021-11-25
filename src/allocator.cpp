@@ -73,6 +73,14 @@ void root_stack::set(u32 offset, value v) {
     contents[offset] = v;
 }
 
+void root_stack::push_function(function* callee) {
+    function_stack.push_back(callee);
+}
+
+void root_stack::pop_function() {
+    function_stack.resize(function_stack.size-1);
+}
+
 upvalue_cell* root_stack::get_upvalue(stack_address pos) {
     // iterate over the open upvalues
     auto it = upvals.begin();
@@ -398,6 +406,9 @@ void allocator::mark() {
                 if (h.has_value()) {
                     mark_descend(*h);
                 }
+            }
+            for (auto x : (*it)->function_stack) {
+                mark_descend((gc_header*)x);
             }
             auto h = (*it)->last_pop.header();
             if (h.has_value()) {

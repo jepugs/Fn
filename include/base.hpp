@@ -120,6 +120,19 @@ inline void emit_error(std::ostream* out, const fault& err) {
            << err.message << '\n';
 }
 
+// The virtual machine's internal methods and foreign functions throw this
+// exception. It gets handled within the VM to prevent it from travelling up the
+// call stack.
+class runtime_exception : public std::exception {
+public:
+    const char* what() const noexcept override {
+        return "runtime_exception. This should have been handled internally :(";
+    }
+
+};
+
+// DEPRECATED in favor of runtime_exception, which never leaves the scope of the
+// virtual machine
 class fn_exception : public std::exception {
     // pointer to the formatted error message. need this to ensure that the return value of what()
     // is properly cleaned up when the object is destroyed.

@@ -27,6 +27,7 @@ private:
     root_stack();
     u32 pointer;
     dyn_array<value> contents;
+    dyn_array<function*> function_stack;
     // open upvalues in descending order by stack position
     std::list<upvalue_cell*> upvals;
     bool dead; // if true, stack will be deleted when garbage is collected
@@ -54,6 +55,11 @@ public:
     void push(value v);
     // set a value, indexed so 0 is the bottom
     void set(u32 offset, value v);
+
+    // root_stack also maintains a stack of the functions in the call frame, in
+    // order to make sure that they are visible.
+    void push_function(function* callee);
+    void pop_function();
 
     // set the upvalues of a function object with the given base pointer
     upvalue_cell* get_upvalue(stack_address loc);

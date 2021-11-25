@@ -52,13 +52,13 @@ value vm_thread::last_pop(working_set* ws) const {
 }
 
 void vm_thread::add_global(value name, value v) {
-    auto ns_id = cur_chunk()->ns_id;
+    auto ns_id = chunk->ns_id;
     auto ns = *globals->get_ns(ns_id);
     ns->set(vsymbol(name), v);
 }
 
 value vm_thread::get_global(value name) {
-    auto ns_id = cur_chunk()->ns_id;
+    auto ns_id = chunk->ns_id;
     auto ns = *globals->get_ns(ns_id);
     auto res = ns->get(vsymbol(name));
 
@@ -70,13 +70,13 @@ value vm_thread::get_global(value name) {
 }
 
 void vm_thread::add_macro(value name, value v) {
-    auto ns_id = cur_chunk()->ns_id;
+    auto ns_id = chunk->ns_id;
     auto ns = *globals->get_ns(ns_id);
     ns->set_macro(vsymbol(name), v);
 }
 
 value vm_thread::get_macro(value name) {
-    auto ns_id = cur_chunk()->ns_id;
+    auto ns_id = chunk->ns_id;
     auto ns = *globals->get_ns(ns_id);
     auto res = ns->get_macro(vsymbol(name));
 
@@ -100,32 +100,30 @@ void vm_thread::do_import() {
 }
 
 
-code_chunk* vm_thread::cur_chunk() const {
-    if (frame->caller) {
-        return frame->caller->stub->chunk;
-    } else {
-        return chunk;
-    }
-}
-code_chunk* vm_thread::get_chunk() {
+code_chunk* vm_thread::get_chunk() const {
     return chunk;
 }
-allocator* vm_thread::get_alloc() {
+allocator* vm_thread::get_alloc() const {
     return alloc;
 }
-symbol_table* vm_thread::get_symtab() {
+symbol_table* vm_thread::get_symtab() const {
     return symtab;
 }
+const root_stack* vm_thread::get_stack() const {
+    return stack;
+}
+
 
 void vm_thread::runtime_error(const string& msg) const {
-    auto p = cur_chunk()->location_of(ip);
     // FIXME: this sort of information should probably not go to the user. We
     // could log it instead if we had a logger.
-    string pre = "{ip:" + std::to_string(ip) + "} ";
+    string s = "{ip:" + std::to_string(ip) + "} ";
     if (frame->caller && frame->caller->stub->name.size() > 0) {
-        pre = pre + "(In function: " + frame->caller->stub->name + ") ";
+        s = s + "(In function: " + frame->caller->stub->name + ") ";
     }
-    throw fn_exception("runtime", pre + msg, p);
+    s = s + msg;
+    set_fault(err, chunk->location_of(ip), "vm", s);
+    throw runtime_exception{};
 }
 
 void vm_thread::push(value v) {
@@ -229,7 +227,7 @@ void vm_thread::arrange_call_stack(working_set* ws,
 
     auto kw_tab = pop_to_ws(ws); // keyword argument table
     if (v_tag(kw_tab) != TAG_TABLE) {
-        runtime_error("Error on call instruction: malformed keyword table.");
+        runtime_error("Malformed keyword table in function call.");
     }
 
     // For the most part, positional arguments can get left where they are.
@@ -308,6 +306,7 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
         }
         push(stub->foreign(&handle, args));
         delete[] args;
+        stack->push_function(func);
         return ip + 2;
     } else { // native function call
         // base pointer
@@ -315,6 +314,7 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
         // extend the call frame
         frame = new call_frame{frame, ip+2, chunk, bp, func, sp};
         chunk = stub->chunk;
+        stack->push_function(func);
         return stub->addr;
     }
 }
@@ -329,15 +329,15 @@ code_address vm_thread::tcall(working_set* ws, local_address num_args) {
 
     // save the values for the call operation
     dyn_array<value> saved_stack;
-    for (i32 i = 0; i < num_args + 2; ++i) {
+    for (i32 i = 0; i < num_args+1; ++i) {
         saved_stack.push_back(pop_to_ws(ws));
     }
 
     // time to obliterate the old call frame...
-    pop_times(stack->get_pointer() - frame->bp);
+    stack->close(frame->bp);
     // set up the stack
-    for (i32 i = num_args + 2; i > 0; --i) {
-        push(saved_stack[i-1]);
+    for (i32 i = 0; i < num_args+1; ++i) {
+        push(saved_stack[num_args - i]);
     }
     auto func = vfunction(callee);
     arrange_call_stack(ws, func, num_args);
@@ -350,6 +350,9 @@ code_address vm_thread::tcall(working_set* ws, local_address num_args) {
     frame->num_args = sp;
     frame->caller = func;
     chunk = stub->chunk;
+    // update the frame in the root_stack
+    stack->pop_function();
+    stack->push_function(func);
     return stub->addr;
 }
 
@@ -362,7 +365,7 @@ code_address vm_thread::apply(working_set* ws, local_address num_args) {
 
     auto args = pop_to_ws(ws);
     if (args != V_EMPTY && !args.is_cons()) {
-        runtime_error("apply argument list not actually a list");
+        runtime_error("OP_APPLY argument list not actually a list");
     }
     u32 list_len = 0;
     for (auto it = args; it != V_EMPTY; it = v_tail(it)) {
@@ -370,11 +373,10 @@ code_address vm_thread::apply(working_set* ws, local_address num_args) {
         ++list_len;
     }
 
-    // put these back where we found them
+    // put things back
     push(kw_tab);
     push(callee);
-    auto res = call(ws, num_args + list_len);
-    return res;
+    return call(ws, num_args + list_len);
 }
 
 
@@ -408,7 +410,7 @@ void vm_thread::init_function(working_set* ws, function* f) {
 #define push_bool(b) push(b ? V_TRUE : V_FALSE);
 void vm_thread::step() {
 
-    u8 instr = cur_chunk()->read_byte(ip);
+    u8 instr = chunk->read_byte(ip);
 
     // variable for use inside the switch
     value v1, v2, v3;
@@ -440,23 +442,23 @@ void vm_thread::step() {
         pop();
         break;
     case OP_COPY:
-        v1 = peek(cur_chunk()->read_byte(ip+1));
+        v1 = peek(chunk->read_byte(ip+1));
         push(v1);
         ++ip;
         break;
     case OP_LOCAL:
-        v1 = local(cur_chunk()->read_byte(ip+1));
+        v1 = local(chunk->read_byte(ip+1));
         push(v1);
         ++ip;
         break;
     case OP_SET_LOCAL:
         v1 = pop_to_ws(&ws);
-        set_local(cur_chunk()->read_byte(ip+1), v1);
+        set_local(chunk->read_byte(ip+1), v1);
         ++ip;
         break;
 
     case OP_UPVALUE:
-        l = cur_chunk()->read_byte(ip+1);
+        l = chunk->read_byte(ip+1);
         // TODO: check upvalue exists
         u = frame->caller->upvals[l];
         if (u->closed) {
@@ -471,7 +473,7 @@ void vm_thread::step() {
         ++ip;
         break;
     case OP_SET_UPVALUE:
-        l = cur_chunk()->read_byte(ip+1);
+        l = chunk->read_byte(ip+1);
         // TODO: check upvalue exists
         u = frame->caller->upvals[l];
         if (u->closed) {
@@ -484,8 +486,8 @@ void vm_thread::step() {
         break;
 
     case OP_CLOSURE:
-        id = cur_chunk()->read_short(ip+1);
-        stub = cur_chunk()->get_function(cur_chunk()->read_short(ip+1));
+        id = chunk->read_short(ip+1);
+        stub = chunk->get_function(chunk->read_short(ip+1));
         v1 = ws.add_function(stub);
         init_function(&ws, vfunction(v1));
         push(v1);
@@ -493,7 +495,7 @@ void vm_thread::step() {
         break;
 
     case OP_CLOSE:
-        num_args = cur_chunk()->read_byte(ip+1);
+        num_args = chunk->read_byte(ip+1);
         stack->close(stack->get_pointer() - num_args);
         // TODO: check stack size >= num_args
         ++ip;
@@ -531,11 +533,11 @@ void vm_thread::step() {
         break;
 
     case OP_CONST:
-        id = cur_chunk()->read_short(ip+1);
-        if (id >= cur_chunk()->constant_arr.size) {
-            runtime_error("attempt to access nonexistent constant.");
+        id = chunk->read_short(ip+1);
+        if (id >= chunk->constant_arr.size) {
+            runtime_error("Attempt to access nonexistent constant.");
         }
-        push(cur_chunk()->get_constant(id));
+        push(chunk->get_constant(id));
         ip += 2;
         break;
 
@@ -562,7 +564,7 @@ void vm_thread::step() {
             }
             break;
         } 
-        runtime_error("obj-get operand not a table");
+        runtime_error("OP_OBJ_GET operand not a table.");
         break;
 
     case OP_OBJ_SET:
@@ -573,7 +575,7 @@ void vm_thread::step() {
         // object
         v2 = pop_to_ws(&ws);
         if (v_tag(v2) != TAG_TABLE) {
-            runtime_error("obj-set operand not a table");
+            runtime_error("OP_OBJ_SET operand not a table.");
         }
         vtable(v2)->contents.insert(v1,v3);
         break;
@@ -586,33 +588,33 @@ void vm_thread::step() {
 
     case OP_JUMP:
         jump = true;
-        addr = ip + 3 + static_cast<i16>(cur_chunk()->read_short(ip+1));
+        addr = ip + 3 + static_cast<i16>(chunk->read_short(ip+1));
         break;
 
     case OP_CJUMP:
         // jump on false
         if (!v_truthy(pop_to_ws(&ws))) {
             jump = true;
-            addr = ip + 3 + static_cast<i16>(cur_chunk()->read_short(ip+1));
+            addr = ip + 3 + static_cast<i16>(chunk->read_short(ip+1));
         } else {
             ip += 2;
         }
         break;
 
     case OP_CALL:
-        num_args = cur_chunk()->read_byte(ip+1);
+        num_args = chunk->read_byte(ip+1);
         jump = true;
         addr = call(&ws, num_args);
         break;
 
     case OP_TCALL:
-        num_args = cur_chunk()->read_byte(ip+1);
+        num_args = chunk->read_byte(ip+1);
         jump = true;
         addr = tcall(&ws, num_args);
         break;
 
     case OP_APPLY:
-        num_args = cur_chunk()->read_byte(ip+1);
+        num_args = chunk->read_byte(ip+1);
         jump = true;
         addr = apply(&ws, num_args);
         break;
@@ -620,7 +622,7 @@ void vm_thread::step() {
     case OP_RETURN:
         // check that we are in a call frame
         if (frame->caller == nullptr) {
-            runtime_error("return instruction at top level.");
+            runtime_error("Return instruction at top level.");
         }
         // get return value
         v1 = pop_to_ws(&ws);
@@ -639,6 +641,7 @@ void vm_thread::step() {
         delete tmp;
 
         push(v1);
+        stack->pop_function();
         break;
 
     case OP_TABLE:
@@ -646,7 +649,7 @@ void vm_thread::step() {
         break;
 
     default:
-        runtime_error("unrecognized opcode");
+        runtime_error("Unrecognized opcode.");
         break;
     }
     ++ip;
@@ -656,15 +659,22 @@ void vm_thread::step() {
     }
 }
 
-void vm_thread::execute() {
+void vm_thread::execute(fault* err) {
+    this->err = err;
     status = vs_running;
-    while (status == vs_running) {
-        if (ip >= cur_chunk()->code.size) {
-            status = vs_stopped;
-            break;
+    try {
+        while (status == vs_running) {
+            if (ip >= chunk->code.size) {
+                status = vs_stopped;
+                break;
+            }
+            step();
         }
-        step();
+    } catch (const runtime_exception& ex) {
+        // fault is already set
+        status = vs_fault;
     }
+
 }
 
 // disassemble a single instruction, writing output to out

@@ -94,18 +94,18 @@ void compiler::compile_symbol(symbol_id sym) {
     write_short(id);
 }
 
-void compiler::compile_llir(const llir_apply* llir,
+void compiler::compile_apply(const llir_apply* llir,
         lexical_env* lex) {
     auto start_sp = lex->sp;
 
     // compile positional arguments in ascending order
     for (u32 i = 0; i < llir->num_args; ++i) {
-        compile_llir_generic(llir->args[i], lex);
+        compile_llir_generic(llir->args[i], lex, false);
         return_on_err;
     }
 
     // compile callee
-    compile_llir_generic(llir->callee, lex);
+    compile_llir_generic(llir->callee, lex, false);
     return_on_err;
 
     write_byte(OP_APPLY);
@@ -114,12 +114,13 @@ void compiler::compile_llir(const llir_apply* llir,
     lex->sp = 1+start_sp;
 }
 
-void compiler::compile_llir(const llir_call* llir,
-        lexical_env* lex) {
+void compiler::compile_call(const llir_call* llir,
+        lexical_env* lex,
+        bool tail) {
     auto start_sp = lex->sp;
     // compile positional arguments in ascending order
     for (u32 i = 0; i < llir->num_pos_args; ++i) {
-        compile_llir_generic(llir->pos_args[i], lex);
+        compile_llir_generic(llir->pos_args[i], lex, false);
         return_on_err;
     }
     // TODO: compile keyword table
@@ -133,16 +134,20 @@ void compiler::compile_llir(const llir_call* llir,
         auto& k = llir->kw_args[i];
         compile_symbol(k.nonkw_name);
         ++lex->sp;
-        compile_llir_generic(k.value, lex);
+        compile_llir_generic(k.value, lex, false);
         write_byte(OP_OBJ_SET);
         return_on_err;
         lex->sp -= 3;
     }
 
     // compile callee
-    compile_llir_generic(llir->callee, lex);
+    compile_llir_generic(llir->callee, lex, false);
     return_on_err;
-    write_byte(OP_CALL);
+    if (tail) {
+        write_byte(OP_TCALL);
+    } else {
+        write_byte(OP_CALL);
+    }
     write_byte(llir->num_pos_args);
     lex->sp = 1+start_sp;
 }
@@ -163,7 +168,7 @@ void compiler::compile_llir(const llir_def* llir,
     write_byte(0);
     lex->sp += 2;
 
-    compile_llir_generic(llir->value, lex);
+    compile_llir_generic(llir->value, lex, false);
     return_on_err;
     write_byte(OP_SET_GLOBAL);
     lex->sp -= 2;
@@ -178,7 +183,7 @@ void compiler::compile_llir(const llir_defmacro* llir,
     write_byte(0);
     lex->sp += 2;
 
-    compile_llir_generic(llir->macro_fun, lex);
+    compile_llir_generic(llir->macro_fun, lex, false);
     return_on_err;
     write_byte(OP_SET_MACRO);
     lex->sp -= 2;
@@ -186,7 +191,7 @@ void compiler::compile_llir(const llir_defmacro* llir,
 
 void compiler::compile_llir(const llir_dot* llir,
         lexical_env* lex) {
-    compile_llir_generic(llir->obj, lex);
+    compile_llir_generic(llir->obj, lex, false);
     return_on_err;
 
     for (u32 i = 0; i < llir->num_keys; ++i) {
@@ -195,16 +200,17 @@ void compiler::compile_llir(const llir_dot* llir,
     }
 }
 
-void compiler::compile_llir(const llir_if* llir,
-        lexical_env* lex) {
-    compile_llir_generic(llir->test, lex);
+void compiler::compile_if(const llir_if* llir,
+        lexical_env* lex,
+        bool tail) {
+    compile_llir_generic(llir->test, lex, false);
     return_on_err;
 
     i64 addr1 = dest->code.size;
     write_byte(OP_CJUMP);
     write_short(0);
 
-    compile_llir_generic(llir->then, lex);
+    compile_llir_generic(llir->then, lex, tail);
     return_on_err;
 
     i64 addr2 = dest->code.size;
@@ -213,7 +219,7 @@ void compiler::compile_llir(const llir_if* llir,
     --lex->sp;
 
     --lex->sp; // if we're running this one, we didn't run the other
-    compile_llir_generic(llir->elce, lex);
+    compile_llir_generic(llir->elce, lex, tail);
     return_on_err;
 
     i64 end_addr = dest->code.size;
@@ -224,7 +230,7 @@ void compiler::compile_llir(const llir_if* llir,
     return_on_err;
 }
 
-void compiler::compile_llir(const llir_fn* llir,
+void compiler::compile_fn(const llir_fn* llir,
         lexical_env* lex) {
     // write jump
     i64 start = dest->code.size;
@@ -267,7 +273,7 @@ void compiler::compile_llir(const llir_fn* llir,
         lex2.vars.insert(params.var_table_arg, params.num_pos_args);
     }
 
-    compile_llir_generic(llir->body, &lex2);
+    compile_llir_generic(llir->body, &lex2, true);
     return_on_err;
     write_byte(OP_RETURN);
 
@@ -280,7 +286,7 @@ void compiler::compile_llir(const llir_fn* llir,
     // TODO compile init forms
     auto len = params.num_pos_args - params.req_args;
     for (auto i = 0; i < len; ++i) {
-        compile_llir_generic(params.inits[i], lex);
+        compile_llir_generic(params.inits[i], lex, false);
         return_on_err;
     }
 
@@ -301,7 +307,7 @@ void compiler::compile_llir(const llir_set* llir,
             c_fault(llir->header.origin, "Attempt to set! a global value.");
             return;
         } else {
-            compile_llir_generic(llir->value, lex);
+            compile_llir_generic(llir->value, lex, false);
             return_on_err;
             if (is_upval) {
                 write_byte(OP_SET_UPVALUE);
@@ -324,20 +330,20 @@ void compiler::compile_llir(const llir_set* llir,
             c_fault(llir->target->origin, "Malformed 1st argument to set!.");
         }
         // compile the first argument
-        compile_llir_generic(call->pos_args[0], lex);
+        compile_llir_generic(call->pos_args[0], lex, false);
         return_on_err;
         // iterate over the key forms, compiling as we go
         i32 i;
         for (i = 1; i+1 < call->num_pos_args; ++i) {
-            compile_llir_generic(call->pos_args[i], lex);
+            compile_llir_generic(call->pos_args[i], lex, false);
             return_on_err;
             // all but last call will be OBJ_GET
             write_byte(OP_OBJ_GET);
             --lex->sp;
         }
-        compile_llir_generic(call->pos_args[i], lex);
+        compile_llir_generic(call->pos_args[i], lex, false);
         return_on_err;
-        compile_llir_generic(llir->value, lex);
+        compile_llir_generic(llir->value, lex, false);
         return_on_err;
         write_byte(OP_OBJ_SET);
         write_byte(OP_NIL);
@@ -357,7 +363,7 @@ void compiler::compile_llir(const llir_set* llir,
         }
         compile_symbol(dot->keys[i]);
         ++lex->sp;
-        compile_llir_generic(llir->value, lex);
+        compile_llir_generic(llir->value, lex, false);
         return_on_err;
         write_byte(OP_OBJ_SET);
         write_byte(OP_NIL);
@@ -393,8 +399,9 @@ void compiler::compile_llir(const llir_var* llir,
     ++lex->sp;
 }
 
-void compiler::compile_llir(const llir_with* llir,
-        lexical_env* lex) {
+void compiler::compile_with(const llir_with* llir,
+        lexical_env* lex,
+        bool tail) {
     write_byte(OP_NIL);
     auto ret_place = lex->sp++;
     auto lex2 = extend_lex_env(lex);
@@ -405,7 +412,7 @@ void compiler::compile_llir(const llir_with* llir,
     }
 
     for (u32 i = 0; i < llir->num_vars; ++i) {
-        compile_llir_generic(llir->values[i], &lex2);
+        compile_llir_generic(llir->values[i], &lex2, false);
         return_on_err;
         write_byte(OP_SET_LOCAL);
         write_byte(*lex2.vars.get(llir->vars[i]));
@@ -418,12 +425,12 @@ void compiler::compile_llir(const llir_with* llir,
     } else {
         u32 i = 0;
         for(i = 0; i+1 < llir->body_length; ++i) {
-            compile_llir_generic(llir->body[i], &lex2);
+            compile_llir_generic(llir->body[i], &lex2, false);
             return_on_err;
             write_byte(OP_POP);
             --lex2.sp;
         }
-        compile_llir_generic(llir->body[i], &lex2);
+        compile_llir_generic(llir->body[i], &lex2, tail);
         return_on_err;
     }
     write_byte(OP_SET_LOCAL);
@@ -435,14 +442,15 @@ void compiler::compile_llir(const llir_with* llir,
 }
 
 void compiler::compile_llir_generic(const llir_form* llir,
-        lexical_env* lex) {
+        lexical_env* lex,
+        bool tail) {
     dest->add_source_loc(llir->origin);
     switch (llir->tag) {
     case lt_apply:
-        compile_llir((llir_apply*)llir, lex);
+        compile_apply((llir_apply*)llir, lex);
         break;
     case lt_call:
-        compile_llir((llir_call*)llir, lex);
+        compile_call((llir_call*)llir, lex, tail);
         break;
     case lt_const:
         compile_llir((llir_const*)llir, lex);
@@ -457,10 +465,10 @@ void compiler::compile_llir_generic(const llir_form* llir,
         compile_llir((llir_dot*)llir, lex);
         break;
     case lt_if:
-        compile_llir((llir_if*)llir, lex);
+        compile_if((llir_if*)llir, lex, tail);
         break;
     case lt_fn:
-        compile_llir((llir_fn*)llir, lex);
+        compile_fn((llir_fn*)llir, lex);
         break;
     case lt_import:
         //compile_llir((llir_import*)llir, lex);
@@ -472,7 +480,7 @@ void compiler::compile_llir_generic(const llir_form* llir,
         compile_llir((llir_var*)llir, lex);
         break;
     case lt_with:
-        compile_llir((llir_with*)llir, lex);
+        compile_with((llir_with*)llir, lex, tail);
         break;
     }
 }

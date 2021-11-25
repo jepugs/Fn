@@ -63,25 +63,25 @@ private:
     // functions, this does not affect the stack pointer.
     void compile_symbol(symbol_id sym);
 
+    // TODO: add tail apply
+    void compile_apply(const llir_apply* llir,
+            lexical_env* lex);
     // FIXME: this was a terrible idea wtf. no more overloading :'(
-    void compile_llir(const llir_apply* llir,
-            lexical_env* lex);
-    void compile_llir(const llir_call* llir,
-            lexical_env* lex);
+    void compile_call(const llir_call* llir,
+            lexical_env* lex,
+            bool tail);
     void compile_llir(const llir_const* llir,
             lexical_env* lex);
     void compile_llir(const llir_def* llir,
             lexical_env* lex);
     void compile_llir(const llir_defmacro* llir,
-            lexical_env* lex);
+            lexical_env* lexn);
     void compile_llir(const llir_dot* llir,
             lexical_env* lex);
-    void compile_llir(const llir_if* llir,
-            lexical_env* lex);
-    void compile_llir_fn(const llir_fn* llir,
-            const string& name,
-            lexical_env* lex);
-    void compile_llir(const llir_fn* llir,
+    void compile_if(const llir_if* llir,
+            lexical_env* lex,
+            bool tail);
+    void compile_fn(const llir_fn* llir,
             lexical_env* lex);
     void compile_llir(const llir_import* llir,
             lexical_env* lex);
@@ -89,11 +89,13 @@ private:
             lexical_env* lex);
     void compile_llir(const llir_var* llir,
             lexical_env* lex);
-    void compile_llir(const llir_with* llir,
-            lexical_env* lex);
+    void compile_with(const llir_with* llir,
+            lexical_env* lex,
+            bool tail);
 
     void compile_llir_generic(const llir_form* llir,
-            lexical_env* lex);
+            lexical_env* lex,
+            bool tail=false);
 
     void c_fault(const source_loc& origin, const string& message);
 

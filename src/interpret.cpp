@@ -45,7 +45,7 @@ global_env* interpreter::get_global_env() {
 }
 
 void interpreter::interpret_to_end(vm_thread& vm, fault* err) {
-    vm.execute();
+    vm.execute(err);
     while (vm.check_status() == vs_waiting_for_import) {
         // TODO: import code here :/
         break;
