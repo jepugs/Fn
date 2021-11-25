@@ -1019,6 +1019,12 @@ llir_form* expander::expand_call(const source_loc& loc,
             pos_args.push_back(x);
         }
     }
+    if (failed) {
+        for (auto x : pos_args) {
+            free_llir_form(x);
+        }
+        return nullptr;
+    }
     for (; i < len; i += 2) {
         if (lst[i]->kind == ak_symbol_atom
                 && is_keyword(lst[i]->datum.sym)) {
@@ -1077,7 +1083,7 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
         auto ast = inter->expand_macro(sym, chunk->ns_id,
                 lst->list_length - 1, &lst->datum.list[1], loc, err);
         if (!ast) {
-            e_fault(lst->loc, "Macroexpansion failed.");
+            err->message = "(During macroexpansion): " + err->message;
             return nullptr;
         }
         auto res = expand_meta(ast, meta);

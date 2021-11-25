@@ -199,6 +199,9 @@ value interpreter::interpret_istream(std::istream* in,
 
         vm_thread vm{&alloc, &globals, chunk};
         interpret_to_end(vm, err);
+        if (err->happened) {
+            break;
+        }
 
         res = vm.last_pop(ws);
     }
