@@ -151,6 +151,9 @@ dyn_array<value> interpreter::partial_interpret_string(const string& src,
 
         vm_thread vm{&alloc, &globals, chunk};
         interpret_to_end(vm, err);
+        if (err->happened) {
+            break;
+        }
 
         res.push_back(vm.last_pop(ws));
     }
