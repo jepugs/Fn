@@ -83,9 +83,8 @@ private:
     bool released;
     allocator* alloc; // weak reference
 
-    // new_objs are values allocated for this working set (not yet in the gc
-    // list)
-    forward_list<value> new_objects;
+    // new objects allocated for this working set (not yet in the gc list)
+    forward_list<gc_header*> new_objects;
     // pinned objects are guaranteed to live during this working_set's life
     forward_list<gc_header*> pinned_objects;
 
@@ -113,6 +112,9 @@ public:
     value add_foreign(local_address min_args,
             bool var_args,
             optional<value> (*func)(local_address, value*, virtual_machine*));
+    // add a chunk with name the specified namespace. (The namespace will be
+    // created if it does not already exist).
+    code_chunk* add_chunk(symbol_id id);
 
     // FIXME: pinning is not thread-safe
 
@@ -143,7 +145,7 @@ private:
     u32 count;
 
     // roots for the mark and sweep algorithm
-    dyn_array<value> root_objects;
+    dyn_array<gc_header*> root_objects;
     // variable-size stacks of root objects. Used for vm stacks.
     std::list<root_stack*> root_stacks;
     // pins are temporary root objects which are added and managed by
@@ -188,17 +190,10 @@ public:
     void force_collect();
 
     // add a value to the list of root values so it will not be collected
-    void add_root_object(value v);
+    void add_root_object(gc_header* h);
     // create a root stack managed by this allocator
     root_stack* add_root_stack();
     working_set add_working_set();
-
-    // add a chunk with name the specified namespace. (The namespace will be
-    // created if it does not already exist).
-    code_chunk* add_chunk(symbol_id ns_name);
-    // note: this namespace must be in the global environment of this allocator
-    // instance.
-    code_chunk* add_chunk(fn_namespace* ns);
 
     void print_status();
 };

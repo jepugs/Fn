@@ -142,7 +142,6 @@ local_address function_stub::add_upvalue(u8 addr, bool direct) {
 
 function::function(function_stub* stub)
     : stub{stub}
-    , num_upvals{0}
     , upvals{nullptr}
     , init_vals{nullptr} {
     mk_gc_header(GC_TYPE_FUNCTION, &h);
@@ -151,10 +150,7 @@ function::function(function_stub* stub)
         num_upvals = 0;
     } else {
         num_upvals = stub->num_upvals;
-    }
-
-    upvals = new upvalue_cell*[num_upvals];
-    if (stub->req_args < stub->pos_params.size) {
+        upvals = new upvalue_cell*[num_upvals];
         init_vals = new value[stub->pos_params.size - stub->req_args];
     }
 }

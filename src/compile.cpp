@@ -6,7 +6,7 @@ namespace fn {
 
 using namespace fn_parse;
 
-#define return_on_err if (err->has_error) return
+#define return_on_err if (err->happened) return
 
 lexical_env extend_lex_env(lexical_env* parent, function_stub* new_func) {
     u8 bp;
@@ -79,12 +79,9 @@ void compiler::patch_short(u16 u, code_address where) {
 }
 void compiler::patch_jump(i64 offset,
         code_address where,
-        const source_loc& origin,
-        compile_error* err) {
+        const source_loc& origin) {
     if (offset < SHRT_MIN || offset > SHRT_MAX) {
-        err->has_error = true;
-        err->origin = origin;
-        err->message = "jmp distance won't fit in 16 bits";
+        c_fault(origin, "JMP distance won't fit in 16 bits");
         return;
     }
     i16 jmp_dist = (i16)offset;
@@ -98,18 +95,17 @@ void compiler::compile_symbol(symbol_id sym) {
 }
 
 void compiler::compile_llir(const llir_apply* llir,
-        lexical_env* lex,
-        compile_error* err) {
+        lexical_env* lex) {
     auto start_sp = lex->sp;
 
     // compile positional arguments in ascending order
     for (u32 i = 0; i < llir->num_args; ++i) {
-        compile_llir_generic(llir->args[i], lex, err);
+        compile_llir_generic(llir->args[i], lex);
         return_on_err;
     }
 
     // compile callee
-    compile_llir_generic(llir->callee, lex, err);
+    compile_llir_generic(llir->callee, lex);
     return_on_err;
 
     write_byte(OP_APPLY);
@@ -119,12 +115,11 @@ void compiler::compile_llir(const llir_apply* llir,
 }
 
 void compiler::compile_llir(const llir_call* llir,
-        lexical_env* lex,
-        compile_error* err) {
+        lexical_env* lex) {
     auto start_sp = lex->sp;
     // compile positional arguments in ascending order
     for (u32 i = 0; i < llir->num_pos_args; ++i) {
-        compile_llir_generic(llir->pos_args[i], lex, err);
+        compile_llir_generic(llir->pos_args[i], lex);
         return_on_err;
     }
     // TODO: compile keyword table
@@ -138,14 +133,14 @@ void compiler::compile_llir(const llir_call* llir,
         auto& k = llir->kw_args[i];
         compile_symbol(k.nonkw_name);
         ++lex->sp;
-        compile_llir_generic(k.value, lex, err);
+        compile_llir_generic(k.value, lex);
         write_byte(OP_OBJ_SET);
         return_on_err;
         lex->sp -= 3;
     }
 
     // compile callee
-    compile_llir_generic(llir->callee, lex, err);
+    compile_llir_generic(llir->callee, lex);
     return_on_err;
     write_byte(OP_CALL);
     write_byte(llir->num_pos_args);
@@ -153,16 +148,14 @@ void compiler::compile_llir(const llir_call* llir,
 }
 
 void compiler::compile_llir(const llir_const* llir,
-        lexical_env* lex,
-        compile_error* err) {
+        lexical_env* lex) {
     write_byte(OP_CONST);
     write_short(llir->id);
     ++lex->sp;
 }
 
 void compiler::compile_llir(const llir_def* llir,
-        lexical_env* lex,
-        compile_error* err) {
+        lexical_env* lex) {
     // TODO: check legal variable name
     write_byte(OP_CONST);
     write_short(dest->add_constant(as_sym_value(llir->name)));
@@ -170,15 +163,14 @@ void compiler::compile_llir(const llir_def* llir,
     write_byte(0);
     lex->sp += 2;
 
-    compile_llir_generic(llir->value, lex, err);
+    compile_llir_generic(llir->value, lex);
     return_on_err;
     write_byte(OP_SET_GLOBAL);
     lex->sp -= 2;
 }
 
 void compiler::compile_llir(const llir_defmacro* llir,
-        lexical_env* lex,
-        compile_error* err) {
+        lexical_env* lex) {
     // TODO: check legal variable name
     write_byte(OP_CONST);
     write_short(dest->add_constant(as_sym_value(llir->name)));
@@ -186,16 +178,15 @@ void compiler::compile_llir(const llir_defmacro* llir,
     write_byte(0);
     lex->sp += 2;
 
-    compile_llir_generic(llir->macro_fun, lex, err);
+    compile_llir_generic(llir->macro_fun, lex);
     return_on_err;
     write_byte(OP_SET_MACRO);
     lex->sp -= 2;
 }
 
 void compiler::compile_llir(const llir_dot* llir,
-        lexical_env* lex,
-        compile_error* err) {
-    compile_llir_generic(llir->obj, lex, err);
+        lexical_env* lex) {
+    compile_llir_generic(llir->obj, lex);
     return_on_err;
 
     for (u32 i = 0; i < llir->num_keys; ++i) {
@@ -205,16 +196,15 @@ void compiler::compile_llir(const llir_dot* llir,
 }
 
 void compiler::compile_llir(const llir_if* llir,
-        lexical_env* lex,
-        compile_error* err) {
-    compile_llir_generic(llir->test, lex, err);
+        lexical_env* lex) {
+    compile_llir_generic(llir->test, lex);
     return_on_err;
 
     i64 addr1 = dest->code.size;
     write_byte(OP_CJUMP);
     write_short(0);
 
-    compile_llir_generic(llir->then, lex, err);
+    compile_llir_generic(llir->then, lex);
     return_on_err;
 
     i64 addr2 = dest->code.size;
@@ -223,20 +213,19 @@ void compiler::compile_llir(const llir_if* llir,
     --lex->sp;
 
     --lex->sp; // if we're running this one, we didn't run the other
-    compile_llir_generic(llir->elce, lex, err);
+    compile_llir_generic(llir->elce, lex);
     return_on_err;
 
     i64 end_addr = dest->code.size;
-    patch_jump(addr2 - addr1, addr1 + 1, llir->header.origin, err);
+    patch_jump(addr2 - addr1, addr1 + 1, llir->header.origin);
     return_on_err;
-    patch_jump(end_addr - addr2 - 3, addr2 + 1, llir->header.origin, err);
+    patch_jump(end_addr - addr2 - 3, addr2 + 1, llir->header.origin);
     // minus three since jump is relative to the end of the 3 byte instruction
     return_on_err;
 }
 
 void compiler::compile_llir(const llir_fn* llir,
-        lexical_env* lex,
-        compile_error* err) {
+        lexical_env* lex) {
     // write jump
     i64 start = dest->code.size;
     write_byte(OP_JUMP);
@@ -278,20 +267,20 @@ void compiler::compile_llir(const llir_fn* llir,
         lex2.vars.insert(params.var_table_arg, params.num_pos_args);
     }
 
-    compile_llir_generic(llir->body, &lex2, err);
+    compile_llir_generic(llir->body, &lex2);
     return_on_err;
     write_byte(OP_RETURN);
 
     // jump over the function body
     i64 end_addr = dest->code.size;
-    patch_jump(end_addr - start - 3, start + 1, llir->header.origin, err);
+    patch_jump(end_addr - start - 3, start + 1, llir->header.origin);
     return_on_err;
 
 
     // TODO compile init forms
     auto len = params.num_pos_args - params.req_args;
     for (auto i = 0; i < len; ++i) {
-        compile_llir_generic(params.inits[i], lex, err);
+        compile_llir_generic(params.inits[i], lex);
         return_on_err;
     }
 
@@ -302,20 +291,17 @@ void compiler::compile_llir(const llir_fn* llir,
 }
 
 void compiler::compile_llir(const llir_set* llir,
-        lexical_env* lex,
-        compile_error* err) {
+        lexical_env* lex) {
     if (llir->target->tag == lt_var) { // variable set
         auto var = (llir_var*)llir->target;
         bool is_upval;
         auto x = find_local(lex, &is_upval, var->name);
         // FIXME: set! should fail on globals
         if (!x.has_value()) { // global
-            err->has_error = true;
-            err->origin = llir->header.origin;
-            err->message = "Attempt to set! a global value.";
+            c_fault(llir->header.origin, "Attempt to set! a global value.");
             return;
         } else {
-            compile_llir_generic(llir->value, lex, err);
+            compile_llir_generic(llir->value, lex);
             return_on_err;
             if (is_upval) {
                 write_byte(OP_SET_UPVALUE);
@@ -335,25 +321,23 @@ void compiler::compile_llir(const llir_set* llir,
                 || call->num_kw_args != 0
                 || call->num_pos_args == 0
                 || ((llir_var*)op)->name != symtab->intern("get")) {
-            err->has_error = true;
-            err->origin = llir->target->origin;
-            err->message = "Malformed 1st argument to set!.";
+            c_fault(llir->target->origin, "Malformed 1st argument to set!.");
         }
         // compile the first argument
-        compile_llir_generic(call->pos_args[0], lex, err);
+        compile_llir_generic(call->pos_args[0], lex);
         return_on_err;
         // iterate over the key forms, compiling as we go
         i32 i;
         for (i = 1; i+1 < call->num_pos_args; ++i) {
-            compile_llir_generic(call->pos_args[i], lex, err);
+            compile_llir_generic(call->pos_args[i], lex);
             return_on_err;
             // all but last call will be OBJ_GET
             write_byte(OP_OBJ_GET);
             --lex->sp;
         }
-        compile_llir_generic(call->pos_args[i], lex, err);
+        compile_llir_generic(call->pos_args[i], lex);
         return_on_err;
-        compile_llir_generic(llir->value, lex, err);
+        compile_llir_generic(llir->value, lex);
         return_on_err;
         write_byte(OP_OBJ_SET);
         write_byte(OP_NIL);
@@ -362,7 +346,7 @@ void compiler::compile_llir(const llir_set* llir,
         // this is like the previous case, but easier since our keys are just
         // symbols
         auto dot = (llir_dot*)llir->target;
-        compile_llir_generic(dot->obj, lex, err);
+        compile_llir_generic(dot->obj, lex);
         return_on_err;
         // iterate over the key forms, compiling as we go
         i32 i;
@@ -373,21 +357,18 @@ void compiler::compile_llir(const llir_set* llir,
         }
         compile_symbol(dot->keys[i]);
         ++lex->sp;
-        compile_llir_generic(llir->value, lex, err);
+        compile_llir_generic(llir->value, lex);
         return_on_err;
         write_byte(OP_OBJ_SET);
         write_byte(OP_NIL);
         lex->sp -= 2;
     } else {
-        err->has_error = true;
-        err->origin = llir->target->origin;
-        err->message = "Malformed 1st argument to set!.";
+        c_fault(llir->target->origin, "Malformed 1st argument to set!.");
     }
 }
 
 void compiler::compile_llir(const llir_var* llir,
-        lexical_env* lex,
-        compile_error* err) {
+        lexical_env* lex) {
     auto str = symtab->symbol_name(llir->name);
     if (str == "nil") {
         write_byte(OP_NIL);
@@ -413,8 +394,7 @@ void compiler::compile_llir(const llir_var* llir,
 }
 
 void compiler::compile_llir(const llir_with* llir,
-        lexical_env* lex,
-        compile_error* err) {
+        lexical_env* lex) {
     write_byte(OP_NIL);
     auto ret_place = lex->sp++;
     auto lex2 = extend_lex_env(lex);
@@ -425,7 +405,7 @@ void compiler::compile_llir(const llir_with* llir,
     }
 
     for (u32 i = 0; i < llir->num_vars; ++i) {
-        compile_llir_generic(llir->values[i], &lex2, err);
+        compile_llir_generic(llir->values[i], &lex2);
         return_on_err;
         write_byte(OP_SET_LOCAL);
         write_byte(*lex2.vars.get(llir->vars[i]));
@@ -438,12 +418,12 @@ void compiler::compile_llir(const llir_with* llir,
     } else {
         u32 i = 0;
         for(i = 0; i+1 < llir->body_length; ++i) {
-            compile_llir_generic(llir->body[i], &lex2, err);
+            compile_llir_generic(llir->body[i], &lex2);
             return_on_err;
             write_byte(OP_POP);
             --lex2.sp;
         }
-        compile_llir_generic(llir->body[i], &lex2, err);
+        compile_llir_generic(llir->body[i], &lex2);
         return_on_err;
     }
     write_byte(OP_SET_LOCAL);
@@ -455,52 +435,56 @@ void compiler::compile_llir(const llir_with* llir,
 }
 
 void compiler::compile_llir_generic(const llir_form* llir,
-        lexical_env* lex,
-        compile_error* err) {
+        lexical_env* lex) {
     dest->add_source_loc(llir->origin);
     switch (llir->tag) {
     case lt_apply:
-        compile_llir((llir_apply*)llir, lex, err);
+        compile_llir((llir_apply*)llir, lex);
         break;
     case lt_call:
-        compile_llir((llir_call*)llir, lex, err);
+        compile_llir((llir_call*)llir, lex);
         break;
     case lt_const:
-        compile_llir((llir_const*)llir, lex, err);
+        compile_llir((llir_const*)llir, lex);
         break;
     case lt_def:
-        compile_llir((llir_def*)llir, lex, err);
+        compile_llir((llir_def*)llir, lex);
         break;
     case lt_defmacro:
-        compile_llir((llir_defmacro*)llir, lex, err);
+        compile_llir((llir_defmacro*)llir, lex);
         break;
     case lt_dot:
-        compile_llir((llir_dot*)llir, lex, err);
+        compile_llir((llir_dot*)llir, lex);
         break;
     case lt_if:
-        compile_llir((llir_if*)llir, lex, err);
+        compile_llir((llir_if*)llir, lex);
         break;
     case lt_fn:
-        compile_llir((llir_fn*)llir, lex, err);
+        compile_llir((llir_fn*)llir, lex);
         break;
     case lt_import:
-        //compile_llir((llir_import*)llir, lex, err);
+        //compile_llir((llir_import*)llir, lex);
         break;
     case lt_set:
-        compile_llir((llir_set*)llir, lex, err);
+        compile_llir((llir_set*)llir, lex);
         break;
     case lt_var:
-        compile_llir((llir_var*)llir, lex, err);
+        compile_llir((llir_var*)llir, lex);
         break;
     case lt_with:
-        compile_llir((llir_with*)llir, lex, err);
+        compile_llir((llir_with*)llir, lex);
         break;
     }
 }
 
-void compiler::compile(const llir_form* llir, compile_error* err) {
+void compiler::c_fault(const source_loc& origin, const string& message) {
+    set_fault(err, origin, "compile", message);
+}
+
+void compiler::compile(const llir_form* llir, fault* err) {
     lexical_env lex;
-    compile_llir_generic(llir, &lex, err);
+    this->err = err;
+    compile_llir_generic(llir, &lex);
     write_byte(OP_POP);
 }
 

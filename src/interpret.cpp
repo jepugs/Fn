@@ -14,14 +14,16 @@ interpreter::interpreter()
     search_path.push_back("/usr/lib/fn/ns");
     search_path.push_back(fs::current_path().u8string());
 
-    globals.create_ns(symtab.intern("fn/builtin"));
+    auto builtin_id = symtab.intern("fn/builtin");
+    globals.create_ns(builtin_id);
     globals.create_ns(symtab.intern("fn/user"));
+
+    auto ws = alloc.add_working_set();
+    ffi_chunk = ws.add_chunk(builtin_id);
+    alloc.add_root_object((gc_header*)ffi_chunk);
 }
 
 interpreter::~interpreter() {
-    for (auto s : ffi_stubs) {
-        delete s;
-    }
 }
 
 void interpreter::configure_logging(bool log_llir_forms,
@@ -53,14 +55,15 @@ void interpreter::interpret_to_end(vm_thread& vm, fault* err) {
 
 value interpreter::interpret_form(ast_form* ast,
         symbol_id ns,
+        working_set* ws,
         fault* err) {
-    auto chunk = alloc.add_chunk(ns);
+    auto chunk = ws->add_chunk(ns);
     value res = V_NIL;
 
     expander ex{this, chunk};
     auto llir = ex.expand(ast, err);
     free_ast_form(ast);
-    if (llir == nullptr) {
+    if (llir == nullptr) { // indicates the fault has been set
         return V_NIL;
     }
 
@@ -69,12 +72,8 @@ value interpreter::interpret_form(ast_form* ast,
         print_llir(llir, symtab, chunk);
     }
     compiler c{&symtab, &alloc, chunk};
-    compile_error c_err;
-    c_err.has_error = false;
-    c.compile(llir, &c_err);
-    if (c_err.has_error) {
-        set_fault(err, ast->loc, "compile",
-                "Compilation error: " + c_err.message);
+    c.compile(llir, err);
+    if (err->happened) {
         return V_NIL;
     }
 
@@ -87,27 +86,30 @@ value interpreter::interpret_form(ast_form* ast,
     interpret_to_end(vm, err);
 
     free_llir_form(llir);
-    res = vm.last_pop();
+    res = vm.last_pop(ws);
 
     return res;
 }
 
-value interpreter::interpret_file(const string& path, fault* err) {
+value interpreter::interpret_file(const string& path,
+        working_set* ws,
+        fault* err) {
     std::ifstream in{path};
-    return interpret_istream(&in, path, err);
+    return interpret_istream(&in, path, ws, err);
 }
 
 value interpreter::interpret_string(const string& src,
         const string& src_name,
+        working_set* ws,
         fault* err) {
-    auto ws = alloc.add_working_set();
     u32 bytes_used;
     bool resumable;
-    return partial_interpret_string(src, src_name, &ws, &bytes_used,
+    auto vals = partial_interpret_string(src, src_name, ws, &bytes_used,
             &resumable, err);
+    return vals[vals.size-1];
 }
 
-value interpreter::partial_interpret_string(const string& src,
+dyn_array<value> interpreter::partial_interpret_string(const string& src,
         const string& src_name,
         working_set* ws,
         u32* bytes_used,
@@ -117,37 +119,31 @@ value interpreter::partial_interpret_string(const string& src,
     auto forms = partial_parse_input(&in, src_name, &symtab, bytes_used,
             resumable, err);
     if (forms.size == 0) {
-        return V_NIL;
+        return {};
     }
 
     auto ns_name = symtab.intern("fn/user");
-    auto chunk = alloc.add_chunk(ns_name);
+    auto chunk = ws->add_chunk(ns_name);
 
-    auto res = V_NIL;
+    dyn_array<value> res;
     for (auto ast : forms) {
         expander ex{this, chunk};
         auto llir = ex.expand(ast, err);
         free_ast_form(ast);
-
-        if (llir == nullptr) {
+        if (llir == nullptr) { // fault has occurred
             break;
         }
-
         if (log_llir) {
             std::cout << "LLIR: \n";
             print_llir(llir, symtab, chunk);
         }
 
-
         compiler c{&symtab, &alloc, chunk};
-        compile_error c_err;
-        c_err.has_error = false;
-        c.compile(llir, &c_err);
-        if (c_err.has_error) {
-            std::cout << "Compile error: " << c_err.message << '\n';
+        c.compile(llir, err);
+        free_llir_form(llir);
+        if (err->happened) {
             break;
         }
-
         if (log_dis) {
             std::cout << "Disassembled bytecode: \n";
             disassemble(symtab, *chunk, std::cout);
@@ -156,8 +152,7 @@ value interpreter::partial_interpret_string(const string& src,
         vm_thread vm{&alloc, &globals, chunk};
         interpret_to_end(vm, err);
 
-        free_llir_form(llir);
-        res = vm.last_pop();
+        res.push_back(vm.last_pop(ws));
     }
 
     return res;
@@ -165,6 +160,7 @@ value interpreter::partial_interpret_string(const string& src,
 
 value interpreter::interpret_istream(std::istream* in,
         const string& src_name,
+        working_set* ws,
         fault* err) {
     auto forms = parse_input(in, src_name, &symtab, err);
     if (forms.size == 0) {
@@ -172,17 +168,16 @@ value interpreter::interpret_istream(std::istream* in,
     }
 
     auto ns_name = symtab.intern("fn/user");
-    auto chunk = alloc.add_chunk(ns_name);
+    auto chunk = ws->add_chunk(ns_name);
     value res = V_NIL;
 
     for (auto ast : forms) {
         expander ex{this, chunk};
         auto llir = ex.expand(ast, err);
+        free_ast_form(ast);
         if (llir == nullptr) {
-            free_ast_form(ast);
             break;
         }
-        free_ast_form(ast);
 
         if (log_llir) {
             std::cout << "LLIR: \n";
@@ -190,21 +185,16 @@ value interpreter::interpret_istream(std::istream* in,
         }
 
         compiler c{&symtab, &alloc, chunk};
-        compile_error c_err;
-        c_err.has_error = false;
-        c.compile(llir, &c_err);
-        if (c_err.has_error) {
-            set_fault(err, llir->origin, "compile",
-                    "Compile error: " + c_err.message);
-            free_llir_form(llir);
+        c.compile(llir, err);
+        free_llir_form(llir);
+        if (err->happened) { // fault
             break;
         }
 
         vm_thread vm{&alloc, &globals, chunk};
         interpret_to_end(vm, err);
 
-        free_llir_form(llir);
-        res = vm.last_pop();
+        res = vm.last_pop(ws);
     }
 
     if (log_dis) {
@@ -221,8 +211,8 @@ ast_form* interpreter::expand_macro(symbol_id macro,
         local_address num_args,
         ast_form** args,
         source_loc& loc) {
-    auto chunk = alloc.add_chunk(ns_id);
     auto ws = alloc.add_working_set();
+    auto chunk = ws.add_chunk(ns_id);
 
     for (u32 i = 0; i < num_args; ++i) {
         auto v = ast_to_value(&ws, args[i]);
@@ -243,12 +233,12 @@ ast_form* interpreter::expand_macro(symbol_id macro,
 
     // FIXME: should return this fault to the caller
     fault err;
-    vm_thread vm{&alloc, &globals, chunk};
+    vm_thread vm(&alloc, &globals, chunk);
     interpret_to_end(vm, &err);
     if (err.happened) {
         return nullptr;
     }
-    auto val = vm.last_pop();
+    auto val = vm.last_pop(&ws);
     return value_to_ast(val, loc);
 }
 
@@ -400,19 +390,12 @@ void interpreter::add_builtin_function(const string& name,
     }
 
     // FIXME: check that the param list isn't too long
-    auto stub = new function_stub{
-        .pos_params = pos_params,
-        .req_args = (u8)pos_params.size,
-        .vl_param = vl,
-        .vt_param = vt,
-        .foreign = foreign_func,
-        .name = name
+    auto stub_id = ffi_chunk->add_foreign_function((u8)pos_params.size,
+            pos_params.data, (u8)pos_params.size, vl, vt, foreign_func, name);
         // no other values are used by foreign functions
-    };
-    ffi_stubs.push_back(stub);
 
     auto ws = alloc.add_working_set();
-    auto f = vfunction(ws.add_function(stub));
+    auto f = vfunction(ws.add_function(ffi_chunk->get_function(stub_id)));
     auto builtin = *globals.get_ns(symtab.intern("fn/builtin"));
     builtin->set(symtab.intern(name), as_value(f));
 }

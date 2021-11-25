@@ -47,8 +47,8 @@ u32 vm_thread::get_ip() const {
     return ip;
 }
 
-value vm_thread::last_pop() const {
-    return stack->get_last_pop();
+value vm_thread::last_pop(working_set* ws) const {
+    return ws->pin_value(stack->get_last_pop());
 }
 
 void vm_thread::add_global(value name, value v) {
@@ -381,10 +381,6 @@ code_address vm_thread::apply(working_set* ws, local_address num_args) {
 
 void vm_thread::init_function(working_set* ws, function* f) {
     auto stub = f->stub;
-    if (stub->foreign != nullptr) {
-        // no init to do here
-        return;
-    }
 
     // Add init values
     // DANGER! Init vals are popped right off the stack, so they better be there

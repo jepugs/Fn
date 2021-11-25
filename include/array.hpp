@@ -60,9 +60,15 @@ struct dyn_array {
         return *this;
     }
     dyn_array& operator= (dyn_array<t>&& other) {
+        auto tmpc = capacity;
         capacity = other.capacity;
+        other.capacity = tmpc;
+        auto tmps = size;
         size = other.size;
+        other.size = tmps;
+        auto tmp = data;
         data = other.data;
+        other.data = tmp;
         return *this;
     }
 
@@ -199,12 +205,12 @@ struct static_array {
     static_array<t> operator=(static_array<t>&& other) {
         // just switch out the fields and let the other destructor take care of
         // deallocating our original array.
-        auto tmps = size;
+        auto tmpc = size;
         size = other.size;
-        other.size = tmps;
-        auto tmpc = data;
+        other.size = tmpc;
+        auto tmpd = data;
         data = other.data;
-        other.data = tmpc;
+        other.data = tmpd;
         return *this;
     }
 

@@ -163,6 +163,8 @@ int main(int argc, char** argv) {
     interpreter inter{};
     inter.configure_logging(opt.llir, opt.dis);
     install_builtin(inter);
+    // FIXME: this might cause a chunk to only be added to the allocator after
+    // the allocator has been deleted, which is no bueno
     auto ws = inter.get_alloc()->add_working_set();
 
     // evaluate
@@ -171,21 +173,21 @@ int main(int argc, char** argv) {
     value res;
     switch (opt.mode) {
     case em_file:
-        res = inter.interpret_file(opt.src, &i_err);
+        res = inter.interpret_file(opt.src, &ws, &i_err);
         if (i_err.happened) {
             emit_error(&std::cout, i_err);
             return -1;
         }
         break;
     case em_string:
-        res = inter.interpret_string(opt.src, "--eval argument", &i_err);
+        res = inter.interpret_string(opt.src, "--eval argument", &ws, &i_err);
         if (i_err.happened) {
             emit_error(&std::cout, i_err);
             return -1;
         }
         break;
     case em_stdin:
-        res = inter.interpret_istream(&std::cin, "STDIN", &i_err);
+        res = inter.interpret_istream(&std::cin, "STDIN", &ws, &i_err);
         if (i_err.happened) {
             emit_error(&std::cout, i_err);
             return -1;
@@ -196,11 +198,14 @@ int main(int argc, char** argv) {
     }
     
     // run the repl if necessary
+    dyn_array<value> vals;
     if (opt.repl) {
         string buf;
         u32 bytes_used = 0;
         bool still_reading = false;
         while (!std::cin.eof()) {
+            // declared inside the loop so return values get garbage collected
+            auto ws = inter.get_alloc()->add_working_set();
             string line;
             if (still_reading) {
                 std::cout << " >> ";
@@ -218,7 +223,7 @@ int main(int argc, char** argv) {
 
             bool resumable;
             fault err;
-            res = inter.partial_interpret_string(buf, "REPL input", &ws,
+            vals = inter.partial_interpret_string(buf, "REPL input", &ws,
                     &bytes_used, &resumable, &err);
             if (err.happened) {
                 if (resumable) {
@@ -233,16 +238,14 @@ int main(int argc, char** argv) {
                     emit_error(&std::cout, err);
                     still_reading = false;
                 }
-            } else {
+            } else if (vals.size > 0) { // emit nothing on no input
                 buf = "";
                 // print value
-                std::cout << v_to_string(res, inter.get_symtab())
-                          << endl;
-                still_reading = false;
+                for (auto x : vals) {
+                    std::cout << v_to_string(x, inter.get_symtab()) << '\n';
+                    still_reading = false;
+                }
             }
-            // this removes trailing whitespace and ensures EOF is detected, in
-            // order to avoid outputting an extra nil on EOF
-            std::ws(std::cin);
         }
     } else {
         std::cout << v_to_string(res, inter.get_symtab())

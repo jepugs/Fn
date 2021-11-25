@@ -81,8 +81,7 @@ constexpr u8 GC_TYPE_BITMASK    = 0xf0;
 
 // GC Types
 constexpr u8 GC_TYPE_CHUNK      = 0x00;
-// NOTE: it's very important that these four line up with the type tags in
-// values.hpp
+// NOTE: I want these four to line up with the type tags in values.hpp
 constexpr u8 GC_TYPE_STRING     = 0x10;
 constexpr u8 GC_TYPE_CONS       = 0x20;
 constexpr u8 GC_TYPE_TABLE      = 0x30;

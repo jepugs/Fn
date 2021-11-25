@@ -283,8 +283,8 @@ struct function_stub {
     // this function will be deferred to this
     value (*foreign)(interpreter_handle*,value*);
 
-    string name;                   // optional name for debugging info
     code_chunk* chunk;             // chunk containing the function
+    string name;                   // optional name for debugging info
     code_address addr;             // function address in its chunk
 
     local_address num_upvals;

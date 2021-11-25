@@ -37,17 +37,12 @@ struct lexical_env {
 // based on the parent and on whether or not new_func is null.
 lexical_env extend_lex_env(lexical_env* parent, function_stub* new_func=nullptr);
 
-struct compile_error {
-    bool has_error;
-    source_loc origin;
-    string message;
-};
-
 struct compiler {
 private:
     symbol_table* symtab;
     allocator* alloc;
     code_chunk* dest;
+    fault* err;
 
     // Find a local variable. An upvalue is created in the enclosing lex
     // structure if necessary. *is_upval is set to true if this is an upvalue
@@ -62,8 +57,7 @@ private:
     // patch in a jump address.
     void patch_jump(i64 offset,
             code_address where,
-            const source_loc& origin,
-            compile_error* err);
+            const source_loc& origin);
 
     // add a symbol as a constant and compile it. Unlike other compilation
     // functions, this does not affect the stack pointer.
@@ -71,49 +65,37 @@ private:
 
     // FIXME: this was a terrible idea wtf. no more overloading :'(
     void compile_llir(const llir_apply* llir,
-            lexical_env* lex,
-            compile_error* err);
+            lexical_env* lex);
     void compile_llir(const llir_call* llir,
-            lexical_env* lex,
-            compile_error* err);
+            lexical_env* lex);
     void compile_llir(const llir_const* llir,
-            lexical_env* lex,
-            compile_error* err);
+            lexical_env* lex);
     void compile_llir(const llir_def* llir,
-            lexical_env* lex,
-            compile_error* err);
+            lexical_env* lex);
     void compile_llir(const llir_defmacro* llir,
-            lexical_env* lex,
-            compile_error* err);
+            lexical_env* lex);
     void compile_llir(const llir_dot* llir,
-            lexical_env* lex,
-            compile_error* err);
+            lexical_env* lex);
     void compile_llir(const llir_if* llir,
-            lexical_env* lex,
-            compile_error* err);
+            lexical_env* lex);
     void compile_llir_fn(const llir_fn* llir,
             const string& name,
-            lexical_env* lex,
-            compile_error* err);
+            lexical_env* lex);
     void compile_llir(const llir_fn* llir,
-            lexical_env* lex,
-            compile_error* err);
+            lexical_env* lex);
     void compile_llir(const llir_import* llir,
-            lexical_env* lex,
-            compile_error* err);
+            lexical_env* lex);
     void compile_llir(const llir_set* llir,
-            lexical_env* lex,
-            compile_error* err);
+            lexical_env* lex);
     void compile_llir(const llir_var* llir,
-            lexical_env* lex,
-            compile_error* err);
+            lexical_env* lex);
     void compile_llir(const llir_with* llir,
-            lexical_env* lex,
-            compile_error* err);
+            lexical_env* lex);
 
     void compile_llir_generic(const llir_form* llir,
-            lexical_env* lex,
-            compile_error* err);
+            lexical_env* lex);
+
+    void c_fault(const source_loc& origin, const string& message);
 
 public:
     compiler(symbol_table* use_symtab, allocator* use_alloc, code_chunk* dest)
@@ -125,7 +107,7 @@ public:
     compiler& operator=(const compiler& c) = delete;
 
     // compile a single expression. Returns false on failure.
-    void compile(const llir_form* expr, compile_error* err);
+    void compile(const llir_form* expr, fault* err);
 };
 
 }

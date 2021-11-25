@@ -54,9 +54,32 @@ u16 code_chunk::add_function(local_address num_pos,
         .vl_param=vl_param,
         .vt_param=vt_param,
         .foreign=nullptr,
-        .name=name,
         .chunk=this,
+        .name=name,
         .addr=code.size,
+        .num_upvals=0
+    };
+    for (u32 i = 0; i < num_pos; ++i) {
+        s->pos_params.push_back(pos_params[i]);
+    }
+    function_arr.push_back(s);
+    return function_arr.size - 1;
+}
+
+u16 code_chunk::add_foreign_function(local_address num_pos,
+        symbol_id* pos_params,
+        local_address req_args,
+        optional<symbol_id> vl_param,
+        optional<symbol_id> vt_param,
+        value (*foreign_func)(interpreter_handle*, value*),
+        const string& name) {
+    auto s = new function_stub {
+        .req_args=req_args,
+        .vl_param=vl_param,
+        .vt_param=vt_param,
+        .foreign=foreign_func,
+        .chunk=this,
+        .name=name,
         .num_upvals=0
     };
     for (u32 i = 0; i < num_pos; ++i) {

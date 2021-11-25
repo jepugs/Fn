@@ -170,7 +170,7 @@ public:
     code_address get_ip() const;
 
     // get the last popped value (null if there isn't any)
-    value last_pop() const;
+    value last_pop(working_set* ws) const;
 
     code_chunk* cur_chunk() const;
     code_chunk* get_chunk();

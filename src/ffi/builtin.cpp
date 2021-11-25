@@ -366,10 +366,10 @@ void install_builtin(interpreter& inter) {
     fn_add_builtin(inter, concat);
 
     // at the very least, map should get a native implementation
-    //fn_add_builtin(inter, map);
-    //fn_add_builtin(inter, filter);
-    //fn_add_builtin(inter, foldl);
-    //fn_add_builtin(inter, reverse);
+    // fn_add_builtin(inter, map);
+    // fn_add_builtin(inter, filter);
+    // fn_add_builtin(inter, foldl);
+    // fn_add_builtin(inter, reverse);
 
     // import into repl namespace
     auto& st = *inter.get_symtab();

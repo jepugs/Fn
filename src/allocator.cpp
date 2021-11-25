@@ -9,15 +9,15 @@
 #define gc_global(h) (((h).bits & GC_GLOBAL_BIT) == GC_GLOBAL_BIT)
 #define gc_type(h) (((h).bits & GC_TYPE_BITMASK))
 
-#define gc_set_mark(h) (((h).bits |= GC_MARK_BIT))
-#define gc_unset_mark(h) (((h).bits &= ~GC_MARK_BIT))
+#define gc_set_mark(h) \
+    (((h).bits = ((h).bits | GC_MARK_BIT)))
+#define gc_unset_mark(h) (((h).bits = (h).bits & ~GC_MARK_BIT))
 
 #define gc_set_ignore(h) (((h).bits |= GC_IGNORE_BIT))
 #define gc_unset_ignore(h) (((h).bits &= ~GC_IGNORE_BIT))
 
 #define gc_set_global(h) (((h).bits |= GC_GLOBAL_BIT))
 #define gc_unset_global(h) (((h).bits &= ~GC_GLOBAL_BIT))
-
 
 namespace fn {
 
@@ -116,12 +116,8 @@ void root_stack::mark_for_deletion() {
 
 void working_set::add_to_gc() {
     // add new objects to the allocator's list
-    for (auto v : new_objects) {
-        auto h = v.header();
-        if (!h.has_value()) {
-            continue;
-        }
-        alloc->objects.push_front(*h);
+    for (auto h : new_objects) {
+        alloc->objects.push_front(h);
     }
 
     // decrease the reference count for pinned objects. The pinned_objects list
@@ -146,12 +142,21 @@ working_set::~working_set() {
     }
 }
 
+
+// FIXME: this won't work lol. Should swap fields
+
 working_set& working_set::operator=(working_set&& other) noexcept {
-    this->released = other.released;
-    this->alloc = other.alloc;
-    this->new_objects = std::move(other.new_objects);
-    this->pinned_objects = std::move(other.pinned_objects);
-    other.released = true;
+    auto tmpr = released;
+    released = other.released;
+    other.released = tmpr;
+
+    auto tmpa = other.alloc;
+    alloc = other.alloc;
+    other.alloc = tmpa;
+
+    new_objects = std::move(other.new_objects);
+    pinned_objects = std::move(other.pinned_objects);
+
     return *this;
 }
 
@@ -160,7 +165,7 @@ value working_set::add_cons(value hd, value tl) {
     alloc->mem_usage += sizeof(cons);
     ++alloc->count;
     auto v = as_value(new cons{hd,tl});
-    new_objects.push_front(v);
+    new_objects.push_front(*v.header());
     return v;
 }
 
@@ -169,7 +174,7 @@ value working_set::add_string(const string& s) {
     alloc->mem_usage += sizeof(fn_string) + s.length();
     ++alloc->count;
     auto v = as_value(new fn_string{s});
-    new_objects.push_front(v);
+    new_objects.push_front(*v.header());
     return v;
 }
 
@@ -178,7 +183,7 @@ value working_set::add_string(const fn_string& s) {
     alloc->mem_usage += sizeof(fn_string) + s.len;
     ++alloc->count;
     auto v = as_value(new fn_string{s});
-    new_objects.push_front(v);
+    new_objects.push_front(*v.header());
     return v;
 }
 
@@ -187,7 +192,7 @@ value working_set::add_table() {
     alloc->mem_usage += sizeof(fn_table);
     ++alloc->count;
     auto v = as_value(new fn_table{});
-    new_objects.push_front(v);
+    new_objects.push_front(*v.header());
     return v;
 }
 
@@ -197,8 +202,25 @@ value working_set::add_function(function_stub* stub) {
     ++alloc->count;
     auto f = new function{stub};
     auto v = as_value(f);
-    new_objects.push_front(v);
+    new_objects.push_front(*v.header());
     return v;
+}
+
+code_chunk* working_set::add_chunk(symbol_id ns_id) {
+    alloc->collect();
+    alloc->mem_usage += sizeof(code_chunk);
+    ++alloc->count;
+
+    // ensure namespace exists
+    auto x = alloc->globals->get_ns(ns_id);
+    if (!x.has_value()) {
+        alloc->globals->create_ns(ns_id);
+    }
+
+    auto res = mk_code_chunk(ns_id);
+
+    new_objects.push_front((gc_header*)res);
+    return res;
 }
 
 value working_set::pin_value(value v) {
@@ -215,7 +237,7 @@ value working_set::pin_value(value v) {
 
 allocator::allocator(global_env* use_globals)
     : globals{use_globals}
-    , gc_enabled{false}
+    , gc_enabled{true}
     , to_collect{false}
     , mem_usage{0}
     , collect_threshold{COLLECT_TH}
@@ -288,6 +310,7 @@ forward_list<gc_header*> allocator::accessible(gc_header* o) {
                 add_value_header(v, res);
             }
         }
+        break;
     case GC_TYPE_CONS:
         add_value_header(((cons*)o)->head, res);
         add_value_header(((cons*)o)->tail, res);
@@ -315,7 +338,7 @@ forward_list<gc_header*> allocator::accessible(gc_header* o) {
             for (u32 i = 0; i < num_opt; ++i) {
                 add_value_header(f->init_vals[i], res);
             }
-            res.push_front((gc_header*)f->stub->chunk);
+            res.push_front(&f->stub->chunk->h);
         }
         break;
     }
@@ -335,31 +358,6 @@ void allocator::mark_descend(gc_header* o) {
 }
 
 void allocator::mark() {
-    for (auto v : root_objects) {
-        auto h = v.header();
-        if (h.has_value()) {
-            mark_descend(*h);
-        }
-    }
-
-    for (auto it = root_stacks.begin(); it != root_stacks.end();) {
-        if ((*it)->dead) {
-            delete *it;
-            it = root_stacks.erase(it);
-        } else {
-            for (u32 i = 0; i < (*it)->get_pointer(); ++i) {
-                auto h = (*it)->contents[i].header();
-                if (h.has_value()) {
-                    mark_descend(*h);
-                }
-            }
-            auto h = (*it)->last_pop.header();
-            if (h.has_value()) {
-                mark_descend(*h);
-            }
-        }
-    }
-
     for (auto it = pinned_objects.begin(); it != pinned_objects.end();) {
         auto h = it->header();
         if (!h.has_value() || (*h)->pin_count == 0) {
@@ -385,6 +383,29 @@ void allocator::mark() {
             mark_descend(*h);
         }
     }
+
+    for (auto h : root_objects) {
+        mark_descend(h);
+    }
+
+    for (auto it = root_stacks.begin(); it != root_stacks.end(); ++it) {
+        if ((*it)->dead) {
+            delete *it;
+            it = root_stacks.erase(it);
+        } else {
+            for (u32 i = 0; i < (*it)->get_pointer(); ++i) {
+                auto h = (*it)->contents[i].header();
+                if (h.has_value()) {
+                    mark_descend(*h);
+                }
+            }
+            auto h = (*it)->last_pop.header();
+            if (h.has_value()) {
+                mark_descend(*h);
+            }
+        }
+    }
+
 }
 
 void allocator::sweep() {
@@ -406,7 +427,7 @@ void allocator::sweep() {
     objects.swap(more_objs);
     // unmark remaining objects
     for (auto h : objects) {
-        gc_unset_mark(*h) = false;
+        gc_unset_mark(*h);
     }
 #ifdef GC_DEBUG
     auto ct = orig_ct - count;
@@ -469,8 +490,8 @@ void allocator::force_collect() {
     to_collect = false;
 }
 
-void allocator::add_root_object(value v) {
-    root_objects.push_back(v);
+void allocator::add_root_object(gc_header* h) {
+    root_objects.push_back(h);
 }
 
 root_stack* allocator::add_root_stack() {
@@ -481,26 +502,6 @@ root_stack* allocator::add_root_stack() {
 
 working_set allocator::add_working_set() {
     return working_set{this};
-}
-
-code_chunk* allocator::add_chunk(symbol_id ns_id) {
-    // ensure namespace exists
-    auto x = globals->get_ns(ns_id);
-    if (!x.has_value()) {
-        globals->create_ns(ns_id);
-    }
-    auto res = new code_chunk{
-        .ns_id = ns_id,
-        .source_info = new chunk_source_info{
-            .end_addr=0,
-            .loc={.line=0, .col=0},
-            .prev=nullptr
-        }
-    };
-    mk_gc_header(GC_TYPE_CHUNK, &res->h);
-    objects.push_back((gc_header*)res);
-
-    return res;
 }
 
 void allocator::print_status() {

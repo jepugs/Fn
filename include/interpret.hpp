@@ -23,7 +23,7 @@ private:
 
     // Since these don't rightfully belong to any chunks, we save them right
     // here in the interpreter.
-    dyn_array<function_stub*> ffi_stubs;
+    code_chunk* ffi_chunk;
 
     // logging settings. For now these just go to cout.
     bool log_llir = false;
@@ -33,7 +33,10 @@ private:
     std::list<string> search_path;
 
     void interpret_to_end(vm_thread& vm, fault* err);
-    value interpret_form(ast_form* ast, symbol_id ns, fault* err);
+    value interpret_form(ast_form* ast,
+            symbol_id ns,
+            working_set* ws,
+            fault* err);
 
 public:
     // Initializes the allocator and virtual machine, and starts an empty chunk.
@@ -57,15 +60,23 @@ public:
     
     // Evaluate a source file in an empty chunk. Returns the value from the last
     // expression (or null for an empty file).
-    value interpret_file(const string& path, fault* err);
+    value interpret_file(const string& path,
+            working_set* ws,
+            fault* err);
     // Evaluate a string in an empty chunk. Returns the value from the last
     // expression (or null).
-    value interpret_string(const string& src, const string& src_name, fault* err);
-    value interpret_string(const string& src, fault* err);
+    value interpret_string(const string& src,
+            const string& src_name,
+            working_set* ws,
+            fault* err);
+    value interpret_string(const string& src,
+            working_set* ws,
+            fault* err);
     // Evaluate all input from an istream. Note that this will not terminate
     // until EOF is encountered in the stream.
     value interpret_istream(std::istream* in,
             const string& src_name,
+            working_set* ws,
             fault* err);
 
     // Evaluate as much of a string as we can. Returns the number of bytes used.
@@ -74,7 +85,7 @@ public:
     // it might not be an error if there were more text), we roll back the
     // number of bytes consumed to right before that parse attempt. Otherwise,
     // we leave the number of bytes after the parse error.
-    value partial_interpret_string(const string& src,
+    dyn_array<value> partial_interpret_string(const string& src,
             const string& src_name,
             working_set* ws,
             u32* bytes_used,
