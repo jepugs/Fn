@@ -243,8 +243,8 @@ ast_form* interpreter::expand_macro(symbol_id macro,
         symbol_id ns_id,
         local_address num_args,
         ast_form** args,
-        source_loc& loc) {
-    auto chunk = alloc.add_chunk(ns_id);
+        source_loc& loc,
+        fault* err) {
     auto ws = alloc.add_working_set();
 
     for (u32 i = 0; i < num_args; ++i) {
@@ -264,9 +264,12 @@ ast_form* interpreter::expand_macro(symbol_id macro,
     chunk->write_byte(num_args);
     chunk->write_byte(OP_POP);
 
-    vm_thread vm{&alloc, &globals, chunk};
-    interpret_to_end(vm);
-    auto val = vm.last_pop();
+    vm_thread vm(&alloc, &globals, chunk);
+    interpret_to_end(vm, err);
+    if (err->happened) {
+        return nullptr;
+    }
+    auto val = vm.last_pop(&ws);
     return value_to_ast(val, loc);
 }
 

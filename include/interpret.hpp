@@ -81,7 +81,8 @@ public:
             symbol_id ns_id,
             local_address num_args,
             ast_form** args,
-            source_loc& loc);
+            source_loc& loc,
+            fault* err);
 
     value ast_to_value(working_set* ws, ast_form* form);
     // returns nullptr on failur
