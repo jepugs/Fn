@@ -529,96 +529,133 @@ variadic table parameter to catch the trailing arguments.
 *** TODO dollar-fn
 
 
-** TODO Namespaces and Import
+** Namespaces and Import
 
-*** Namespaces and Packages
+A namespace is a collection of global definitions. Each namespace has
+a *package* and a *name*. Together these make up the full name or *global identifier*
+of the namespace. The global identifier is required to be unique.
 
-A namespace is a collection of global variables and macros. They are identified
-by a name which is required to be globally unique. All Fn code lives inside of
-some namespace.
+All code in Fn runs inside of some namespace.
 
-Some examples of namespace names are:
+Global identifiers are written as *package/name*, where package can contain
+additional slashes, but the name may not. Some examples of namespace names are:
 #+BEGIN_SRC
 fn/builtin
-fn/repl
+fn/ffi
 project/main
 project/subsystem/parser
 #+END_SRC
 
-The slashes above are delimiters. In particular, everything to the left of the
-last slash is called the *package name*, and the part to the right is called the
-*short name*. For instance the namespace ~project/subsystem/parser~ has package
-~project/subsystem~ and short name ~parser~. Similarly, we call ~package/subsystem~
-the *full name*.
-
-For the sake of brevity we will often call the short name or full name just the
-*name*. Hopefully this isn't confusing anywhere.
-
-We also have the concept of a *subpackage*. In the above examples,
-~project/subsystem~ is a subpackage of ~project~. That is, the subpackages of a
-~<pkg>~ are all packages with names of the form ~<pkg>/...~.
+By putting slashes in the package, we can further organize our code into
+*subpackages*. E.g. in the above, ~project/subsystem~ is a subpackage of ~project~.
 
 
 *** Namespace Determination
 
-The rules for namespace/package determination are explained in more detail in
-section [[Command Line Interface]]. This section just covers the most common
-configuration.
+When a file is run, the namespace is generally determined automatically. (See
+[[Command Line Interface]] for information about namespaces in other contexts).
 
-When a file is interpreted, the short name of the namespace is set to the stem
-of the filename. The package may be any symbol, and is specified by putting a
-~package~ declaration at the top of the file:
-
+The namespace name for a file is simply the stem of its filename, e.g. ~util~ for
+~util.fn~. The package must be specified directly via a *package declaration* in the
+file. For example, the following file would have namespace
+~devco/product/db-auth~.
 #+BEGIN_SRC fn
-(package myproject/util)
+;; db-auth.fn
+(package devco/product)
 #+END_SRC
+The package declaration must be the first expression in the file. (In other
+contexts it would be treated like calling a function named ~package~).
 
-If no package declaration is present, the package ~fn/user~ is used by default.
-
-Unlike other special forms in Fn, there can only be one package declaration per
-file, and it must come at the beginning of the file, although it can be
-preceeded by comments and whitespace.
-
-The REPL allows the current namespace to be changed interactively. By default it
-uses the namespace ~fn/repl~.
+If there is no package declaration, the default package ~fn/user~ is used instead.
 
 
 *** Importing Namespaces
 
-Importing a namespace means taking its bindings into the current namespace. This
-is done by way of the ~import~ command:
+Importing a namespace brings its definitions into the current namespace. This is
+done with the import command,
 #+BEGIN_SRC fn
 (import package/namespace)
 #+END_SRC
 
-This creates bindings of the form ~namespace:var-name~. That's /short name, colon,
-var name/. Since colons are prohibited from user-defined identifiers, this is
-guaranteed not to cause any collisions, provided only one namespace with the
-given short name is imported. Although, using aliases (see below), one can work
-around even this problem.
-
-If the requested namespace was already imported, then import copies in the
-bindings and goes on its merry way. However, if the namespace was not imported,
-then we have to go out and find it. The details of this are discussed in Section
-[[Command Line Interface]], particularly in Subsection [[Import Search]].
-
-~import~ also lets you define an alias for a namespace, or drop the prefix
-altogether and perform an unqualified import. The syntax for these respective
-operations is shown below.
+Imported definitions have names consisting of the namespace name and the
+original definition name separated by a colon, e.g. ~namespace:definition~. For
+example,
 #+BEGIN_SRC fn
-(import package/namespace :alias ns)          ; ns:var-name
-(import package/namespace :unqualified true)  ; var-name
+;; file export.fn
+(package example/demo)
+(def my-var 3.14)
+(defn my-fun (x)
+  (/ (log x) (log 10)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; file main.fn
+(import example/demo/export)
+export:my-var ; = 3.14
+export:my-fun ; function object
+(export:my-fun 1000) ; = 3
+#+END_SRC
+
+There are also ~:alias~ and ~:unqualified~ options to control the names of the
+import:
+#+BEGIN_SRC fn
+,(import example/demo/export :as ex)
+ex:my-var
+ex:my-fun
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(import package/namespace :unqualified true)
+my-var
+my-fun
 #+END_SRC
 
 
-*** Builtin Namespace
+*** Finding Namespace Sources
 
-When a new namespace is created, an unqualified import of ~fn/builtin~ is
-automatically performed. This namespace contains essential functions for
-interacting with Fn's builtin data structures.
+The first time a namespace is imported, we must find and load its source file.
+Subsequent imports will reuse the created namespace.
+
+When a file is run, its package is set as the *root package* and the file's
+directory is set as the *working directory*. When a new import is encountered, the
+following locations are searched:
+- If the imported namespace is in the root package, then we search for the file
+  ~name.fn~ in the working directory.
+- If the imported package is in a subspace of the root package, say
+  ~root/subpackage/name~, then we look for the file ~subpackage/name.fn~ in the
+  working directory.
+- If the environment variable FN_SEARCH_PATH is set to a colon-delimited
+  sequence of directories, then we search each directory in the order provided.
+  The file we look for is ~package/fn~, where slashes in the package are converted
+  into subdirectories in the search.
+- Finally, the system namespace directory ~${PREFIX}/ns~ is searched. ~${PREFIX}~ is
+  usually ~/usr/local/lib/fn/~.
+
+Example: We have the following files:
+- project/main.fn
+- project/engine.fn
+- project/util/http.fn
+- project/util/math.fn
+
+Suppose main.fn has the following package declaration:
+#+BEGIN_SRC fn
+(package devco/product)
+#+END_SRC
+
+If we run the file main.fn, we can import all the other files like this:
+#+BEGIN_SRC fn
+(import devco/product/engine)
+(import devco/product/util/http)
+(import devco/product/util/math)
+#+END_SRC
+
+Furthermore, these names are preserved in nested imports. For instance, in
+http.fn we can import engine.fn and math.fn like this:
+#+BEGIN_SRC fn
+(import devco/product/engine)
+(import devco/product/util/math)
+#+END_SRC
 
 
-*** Global Names
+*** Global Identifiers for Definitions
 
 After a namespace has been imported once, its bindings can be referenced even
 without importing it explicitly. This is done by using symbols whose names are
