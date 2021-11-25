@@ -312,14 +312,17 @@ llir_form* expander::expand_letfn_in_do(u32 length,
 
     // generate llir for the new function
     auto sym = letfn_lst[1]->datum.sym;
-    llir_fn_params params;
-    if (!expand_params(letfn_lst[2], &params, meta)) {
-        return nullptr;
-    }
     auto fn_body = expand_do(loc, letfn_len-2, &letfn_lst[2],meta);
     if (!fn_body) {
         return nullptr;
     }
+
+    llir_fn_params params;
+    if (!expand_params(letfn_lst[2], &params, meta)) {
+        free_llir_form(fn_body);
+        return nullptr;
+    }
+
     // FIXME: function names should reflect surrounding functions. Should also
     // do this for other types of functions (even anonymous ones)
     auto fn_llir = (llir_form*)mk_llir_fn(loc, params,
