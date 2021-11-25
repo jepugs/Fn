@@ -216,7 +216,8 @@ ast_form* interpreter::expand_macro(symbol_id macro,
         symbol_id ns_id,
         local_address num_args,
         ast_form** args,
-        source_loc& loc) {
+        source_loc& loc,
+        fault* err) {
     auto ws = alloc.add_working_set();
     auto chunk = ws.add_chunk(ns_id);
 
@@ -237,11 +238,9 @@ ast_form* interpreter::expand_macro(symbol_id macro,
     chunk->write_byte(num_args);
     chunk->write_byte(OP_POP);
 
-    // FIXME: should return this fault to the caller
-    fault err;
     vm_thread vm(&alloc, &globals, chunk);
-    interpret_to_end(vm, &err);
-    if (err.happened) {
+    interpret_to_end(vm, err);
+    if (err->happened) {
         return nullptr;
     }
     auto val = vm.last_pop(&ws);

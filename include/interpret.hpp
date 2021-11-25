@@ -97,11 +97,15 @@ public:
             symbol_id ns_id,
             local_address num_args,
             ast_form** args,
-            source_loc& loc);
+            source_loc& loc,
+            fault* err);
 
     value ast_to_value(working_set* ws, ast_form* form);
     // returns nullptr on failur
     ast_form* value_to_ast(value v, const source_loc& loc);
+
+    symbol_id intern(const string& str);
+    symbol_id gensym();
 
     // Emit a runtime error in the form of an exception
     void runtime_error(const string& msg, const source_loc& src);

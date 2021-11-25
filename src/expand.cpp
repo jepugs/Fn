@@ -1075,7 +1075,7 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
     // first check for macros
     if (is_macro(sym)) {
         auto ast = inter->expand_macro(sym, chunk->ns_id,
-                lst->list_length - 1, &lst->datum.list[1], loc);
+                lst->list_length - 1, &lst->datum.list[1], loc, err);
         if (!ast) {
             e_fault(lst->loc, "Macroexpansion failed.");
             return nullptr;

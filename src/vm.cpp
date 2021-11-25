@@ -326,6 +326,13 @@ code_address vm_thread::tcall(working_set* ws, local_address num_args) {
         runtime_error("Error on call: callee is not a function");
         return ip + 2;
     }
+    auto func = vfunction(callee);
+    auto stub = func->stub;
+    // foreign calls are just normal calls
+    if (stub->foreign != nullptr) {
+        push(callee);
+        return call(ws, num_args);
+    }
 
     // save the values for the call operation
     dyn_array<value> saved_stack;
@@ -339,11 +346,9 @@ code_address vm_thread::tcall(working_set* ws, local_address num_args) {
     for (i32 i = 0; i < num_args+1; ++i) {
         push(saved_stack[num_args - i]);
     }
-    auto func = vfunction(callee);
     arrange_call_stack(ws, func, num_args);
 
     // update the frame
-    auto stub = func->stub;
     u8 sp = static_cast<u8>(stub->pos_params.size
             + stub->vl_param.has_value()
             + stub->vt_param.has_value());
@@ -463,7 +468,7 @@ void vm_thread::step() {
         u = frame->caller->upvals[l];
         if (u->closed) {
             push(u->closed_value);
-        } else {
+        } else{
             if (frame->prev == nullptr) {
                 runtime_error("Upvalue get in toplevel frame.");
             }
@@ -479,7 +484,7 @@ void vm_thread::step() {
         if (u->closed) {
             u->closed_value = pop_to_ws(&ws);
         } else {
-            auto pos = frame->caller->stub->upvals[l] + frame->bp;
+            auto pos = frame->caller->stub->upvals[l];
             stack->set(pos, pop_to_ws(&ws));
         }
         ++ip;

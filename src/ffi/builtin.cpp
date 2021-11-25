@@ -289,6 +289,17 @@ fn_fun(concat, "concat", "(& colls)") {
     return res;
 }
 
+fn_fun(print, "print", "(x)") {
+    std::cout << v_to_string(args[0], ((interpreter*)handle->inter)->get_symtab());
+    return V_NIL;
+}
+
+fn_fun(println, "println", "(x)") {
+    std::cout << v_to_string(args[0], ((interpreter*)handle->inter)->get_symtab())
+              << '\n';
+    return V_NIL;
+}
+
 fn_fun(Table, "Table", "(& args)") {
     auto res = handle->ws->add_table();
     fn_for_list(it, args[0]) {
@@ -364,6 +375,10 @@ void install_builtin(interpreter& inter) {
     fn_add_builtin(inter, empty_q);
     fn_add_builtin(inter, length);
     fn_add_builtin(inter, concat);
+
+    // these should be replaced
+    fn_add_builtin(inter, print);
+    fn_add_builtin(inter, println);
 
     // at the very least, map should get a native implementation
     // fn_add_builtin(inter, map);

@@ -209,6 +209,7 @@ void compiler::compile_if(const llir_if* llir,
     i64 addr1 = dest->code.size;
     write_byte(OP_CJUMP);
     write_short(0);
+    --lex->sp;
 
     compile_llir_generic(llir->then, lex, tail);
     return_on_err;
@@ -216,7 +217,6 @@ void compiler::compile_if(const llir_if* llir,
     i64 addr2 = dest->code.size;
     write_byte(OP_JUMP);
     write_short(0);
-    --lex->sp;
 
     --lex->sp; // if we're running this one, we didn't run the other
     compile_llir_generic(llir->elce, lex, tail);
