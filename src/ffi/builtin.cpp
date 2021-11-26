@@ -290,12 +290,12 @@ fn_fun(concat, "concat", "(& colls)") {
 }
 
 fn_fun(print, "print", "(x)") {
-    std::cout << v_to_string(args[0], ((interpreter*)handle->inter)->get_symtab());
+    std::cout << v_to_string(args[0], ((vm_thread*)handle->inter)->get_symtab());
     return V_NIL;
 }
 
 fn_fun(println, "println", "(x)") {
-    std::cout << v_to_string(args[0], ((interpreter*)handle->inter)->get_symtab())
+    std::cout << v_to_string(args[0], ((vm_thread*)handle->inter)->get_symtab())
               << '\n';
     return V_NIL;
 }
@@ -335,6 +335,10 @@ fn_fun(table_keys, "table-keys", "(table)") {
         res = handle->ws->add_cons(k, res);
     }
     return res;
+}
+
+fn_fun(gensym, "gensym", "()") {
+    return as_sym_value(((vm_thread*)handle->inter)->get_symtab()->gensym());
 }
 
 void install_builtin(interpreter& inter) {
@@ -379,6 +383,11 @@ void install_builtin(interpreter& inter) {
     // these should be replaced
     fn_add_builtin(inter, print);
     fn_add_builtin(inter, println);
+
+    // symbol things
+    //fn_add_builtin(inter, intern);
+    //fn_add_builtin(inter, symbol_name);
+    fn_add_builtin(inter, gensym);
 
     // at the very least, map should get a native implementation
     // fn_add_builtin(inter, map);

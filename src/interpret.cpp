@@ -408,5 +408,12 @@ void interpreter::add_builtin_function(const string& name,
     builtin->set(symtab.intern(name), as_value(f));
 }
 
+symbol_id interpreter::intern(const string& str) {
+    return symtab.intern(str);
+}
+
+symbol_id interpreter::gensym() {
+    return symtab.gensym();
+}
 
 }

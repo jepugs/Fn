@@ -377,8 +377,7 @@ class symbol_table {
 private:
     table<string,symtab_entry> by_name;
     dyn_array<symtab_entry> by_id;
-    // TODO: figure out why this can't be a full number :(
-    symbol_id next_gensym = (symbol_id)(-1);
+    symbol_id next_gensym = -1;
 
 public:
     symbol_table() = default;

@@ -259,11 +259,7 @@ string v_to_string(value v, const symbol_table* symbols) {
     case TAG_EMPTY:
         return "[]";
     case TAG_SYM:
-        if (symbols->is_gensym(vsymbol(v))) {
-            return "#gensym:" +std::to_string(vsymbol(v)) + "";
-        } else {
-            return symbols->symbol_name(vsymbol(v));
-        }
+        return symbols->nice_name(vsymbol(v));
     }
     return "<unprintable-object>";
 }
