@@ -95,7 +95,7 @@ value interpreter::interpret_file(const string& path,
         working_set* ws,
         fault* err) {
     std::ifstream in{path};
-    return interpret_istream(&in, path, ws, err);
+    return interpret_istream(&in, source_loc{path}, ws, err);
 }
 
 value interpreter::interpret_string(const string& src,
@@ -116,7 +116,7 @@ dyn_array<value> interpreter::partial_interpret_string(const string& src,
         bool* resumable,
         fault* err) {
     std::istringstream in{src};
-    auto forms = partial_parse_input(&in, src_name, &symtab, bytes_used,
+    auto forms = partial_parse_input(&in, source_loc{src_name}, &symtab, bytes_used,
             resumable, err);
     if (forms.size == 0) {
         return {};
@@ -165,10 +165,10 @@ dyn_array<value> interpreter::partial_interpret_string(const string& src,
 }
 
 value interpreter::interpret_istream(std::istream* in,
-        const string& src_name,
+        const source_loc& src_start,
         working_set* ws,
         fault* err) {
-    auto forms = parse_input(in, src_name, &symtab, err);
+    auto forms = parse_input(in, src_start, &symtab, err);
     if (forms.size == 0) {
         return V_NIL;
     }

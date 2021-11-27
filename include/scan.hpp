@@ -109,12 +109,26 @@ struct token {
         this->tk = tok.tk;
         // copy new string if necessary
         if (tk == tk_string || tk == tk_symbol) {
-            datum.str = new string(*tok.datum.str);
+            datum.str = new string{*tok.datum.str};
         } else if (tk == tk_dot) {
-            datum.ids = new dyn_array<string*>(*tok.datum.ids);
+            datum.ids = new dyn_array<string*>;
+            for (auto x : *tok.datum.ids) {
+                datum.ids->push_back(new string{*x});
+            }
         } else {
             this->datum = tok.datum;
         }
+        this->loc = tok.loc;
+        return *this;
+    }
+    token& operator=(token&& other) {
+        auto tmptk = tk;
+        auto tmpd = datum;
+        tk = other.tk;
+        datum = other.datum;
+        loc = other.loc;
+        other.tk = tmptk;
+        other.datum = tmpd;
         return *this;
     }
 

@@ -299,20 +299,26 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
             + stub->vl_param.has_value()
             + stub->vt_param.has_value());
     if (stub->foreign != nullptr) { // foreign function call
-        fn_handle handle{
-            .vm=this,
-            .ws=ws,
-            .func_name="<ffi call>",
-            .origin=chunk->location_of(ip),
-            .err=err
-        };
         auto args = new value[sp];
         for (i32 i = sp; i > 0; --i) {
             args[i-1] = pop_to_ws(ws);
         }
-        push(stub->foreign(&handle, args));
+
+        fn_handle handle{
+            .vm=this,
+            .ws=ws,
+            .func_name=stub->name,
+            .origin=chunk->location_of(ip),
+            .err=err
+        };
+        
+        auto result = stub->foreign(&handle, args);
+        if(err->happened) {
+            status = vs_fault;
+        } else {
+            push(result);
+        }
         delete[] args;
-        stack->push_function(func);
         return ip + 2;
     } else { // native function call
         // base pointer

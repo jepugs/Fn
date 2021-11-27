@@ -93,8 +93,10 @@ constexpr u8 GC_TYPE_FUNCTION   = 0x40;
 // REPL.
 struct source_loc {
     string filename;
-    int line;
-    int col;
+    int line = 1;
+    int col = 0;
+    bool operator==(const source_loc& other);
+    bool operator!=(const source_loc& other);
 };
 
 struct fault {

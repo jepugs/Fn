@@ -72,7 +72,7 @@ public:
     // Evaluate all input from an istream. Note that this will not terminate
     // until EOF is encountered in the stream.
     value interpret_istream(std::istream* in,
-            const string& src_name,
+            const source_loc& src_start,
             working_set* ws,
             fault* err);
 

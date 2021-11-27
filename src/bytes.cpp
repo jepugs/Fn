@@ -99,16 +99,24 @@ const function_stub* code_chunk::get_function(u16 id) const {
 }
 
 void code_chunk::add_source_loc(const source_loc& s) {
-    source_info = new chunk_source_info{code.size, s, source_info};
+    if (code.size == source_info->start_addr) {
+        auto tmp = source_info->prev;
+        delete source_info;
+        source_info = tmp;
+    }
+    if (source_info == nullptr || source_info->loc != s) {
+        source_info = new chunk_source_info{code.size, s, source_info};
+    }
 }
 
 source_loc code_chunk::location_of(u32 addr) {
-    for (auto x = source_info; x != nullptr; x = x->prev) {
-        if (x->end_addr > addr) {
+    auto x = source_info;
+    for (; x->prev != nullptr; x = x->prev) {
+        if (x->start_addr <= addr) {
             return x->loc;
         }
     }
-    return source_info->loc;
+    return x->loc;
 }
 
 // used to initialize the dynamic arrays
@@ -117,7 +125,7 @@ code_chunk* mk_code_chunk(symbol_id ns_id) {
     auto res = new code_chunk{
         .ns_id=ns_id,
         .source_info = new chunk_source_info{
-            .end_addr=0,
+            .start_addr=0,
             .loc={.line=0, .col=0},
             .prev=nullptr
         }

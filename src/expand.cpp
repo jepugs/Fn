@@ -141,7 +141,7 @@ llir_form* expander::expand_def(const source_loc& loc,
         return nullptr;
     }
     if (lst[1]->kind != ak_symbol_atom) {
-        e_fault(loc, "First argument to def not a symbol.");
+        e_fault(lst[1]->loc, "First argument to def not a symbol.");
         return nullptr;
     }
 
@@ -162,7 +162,7 @@ llir_form* expander::expand_defmacro(const source_loc& loc,
         e_fault(loc, "defmacro requires at least 2 arguments.");
         return nullptr;
     } else if (!lst[1]->is_symbol()) {
-        e_fault(loc, "First argument to defmacro must be a symbol.");
+        e_fault(lst[1]->loc, "First argument to defmacro must be a symbol.");
         return nullptr;
     }
 
@@ -448,7 +448,7 @@ llir_form* expander::expand_dollar_fn(const source_loc& loc,
     if (m >= 0) {
         auto body2 = mk_llir_with(body->origin, 1, 1);
         body2->vars[0] = intern("$");
-        body2->values[0] = (llir_form*)mk_llir_var(loc, intern("$0"));
+        body2->values[0] = (llir_form*)mk_llir_var(body->origin, intern("$0"));
         body2->body[0] = body;
         body = (llir_form*) body2;
     }

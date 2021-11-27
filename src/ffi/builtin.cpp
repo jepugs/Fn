@@ -264,7 +264,7 @@ fn_fun(ge, ">=", "(& args)") {
         return V_TRUE;
     }
 
-    auto prev = args[0];
+    auto prev = vhead(args[0]);
     h->assert_type(TAG_NUM, prev);
     if (h->failed()) {
         return V_NIL;
@@ -276,13 +276,18 @@ fn_fun(ge, ">=", "(& args)") {
         if (h->failed()) {
             return V_NIL;
         }
-        if (vnumber(prev) < vnumber(hd)) {
+        if (vnumber(prev) >= vnumber(hd)) {
             prev = hd;
         } else {
             return V_FALSE;
         }
     }
     return V_TRUE;
+}
+
+fn_fun (fn_not, "not", "(x)") {
+    return vtruth(args[0]) ? V_FALSE : V_TRUE;
+        
 }
 
 
@@ -476,8 +481,10 @@ void install_builtin(interpreter& inter) {
     fn_add_builtin(inter, number_q);
     fn_add_builtin(inter, integer_q);
 
-    //fn_add_builtin(inter, boolean_q);
+    //fn_add_builtin(inter, bool_q);
     //fn_add_builtin(inter, symbol_q);
+
+    fn_add_builtin(inter, fn_not);
 
     fn_add_builtin(inter, eq);
     fn_add_builtin(inter, gt);
