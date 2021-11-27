@@ -1,0 +1,104 @@
+;(package fn)
+
+(def otherwise true)
+
+(defn even? (x)
+  (= (mod x 2) 0))
+(defn odd? (x)
+  (= (mod x 2) 1))
+
+(defn take (n list)
+  (letfn iter (acc rem i)
+    (if (or (empty? rem)
+            (>= i n))
+        (reverse acc)
+        (iter (cons (head rem) acc)
+              (tail rem)
+              (+ i 1))))
+  (iter [] list 0))
+
+(defn drop (n list)
+  (if (or (empty? list) (= n 0))
+      list
+      (drop (- n 1) (tail list))))
+
+(defn split (n list)
+  (letfn iter (acc rem i)
+    (if (or (empty? rem)
+            (>= i n))
+        [(reverse acc) rem]
+        (iter (cons (head rem) acc)
+              (tail rem)
+              (+ i 1))))
+  (iter [] list 0))
+
+(defn take-while (pred list)
+  "Take elements from a list as long as pred is true."
+  (letfn iter (acc rem)
+    (if (or (empty? rem)
+            (not (pred (head rem))))
+        (reverse acc)
+        (iter (cons (head rem) acc)
+              (tail rem))))
+  (iter [] list))
+
+(defn drop-while (pred list)
+  ""
+  (if (or (empty? list)
+          (not (pred (head list))))
+      list
+      (drop pred (tail list))))
+
+
+(defn reverse (list)
+  (letfn iter (acc rem)
+    (if (empty? rem)
+        acc
+        (iter (cons (head rem) acc) (tail rem))))
+  (iter [] list))
+
+(defn map (f list)
+  (reverse (maprev f list)))
+
+; map, but returns reversed list. This is faster than map
+(defn maprev (f list)
+  (letfn iter (acc rem)
+    (if (empty? rem)
+        acc
+        (iter (cons (f (head rem)) acc)
+              (tail rem))))
+  (iter [] list))
+
+(defn filter (pred list)
+  (letfn iter (acc rem)
+    (cond
+      (empty? rem) (reverse acc)
+      (pred (head rem)) (iter (cons (head rem) acc)
+                              (tail rem))
+      true (iter acc (tail rem))))
+  (iter [] list))
+
+(defn foldl (f init list)
+  (letfn iter (acc rem)
+         (if (empty? rem)
+             acc
+           (iter (f acc (head rem)) (tail rem))))
+  (iter init list))
+
+(defn foldr (f init list)
+  (letfn iter (acc rem)
+    (if (empty? rem)
+        acc
+        (iter (f (head rem) acc) (tail rem))))
+  (iter init (reverse list)))
+
+(defn apply (fun arg0 arg1 & args)
+  (letfn iter (acc rem)
+    (if (empty? (tail (tail rem)))
+        [(concat (reverse acc) (head rem))
+         (head (tail rem))]
+        (iter (cons (head rem) acc)
+              (tail rem))))
+  (let result (iter [] (cons arg0 (cons arg1 args))))
+  (apply fun (nth 0 result) (nth 1 result)))
+
