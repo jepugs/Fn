@@ -76,10 +76,11 @@ Here's a tiny preview to give you the general flavor of Fn.
 (defn count-odd-numbers (list)
   (let acc 0)
   (map (fn (x)
-         (if (= (mod x 2) 1)
-             (set! acc (+ acc 1)) ; update acc for odd number
+         (if (odd? x)
+             (set! acc (+ acc 1)) ; increment for odd number
              nil))                ; otherwise just return nil
-       list))
+       list)
+  acc) ; return acc
 ;; Here map applies a function to each element of a list
 
 ;; However, we'd prefer to write this function in a purely functional way:
