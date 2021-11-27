@@ -16,6 +16,8 @@ tool to evaluate code.
 Section [[Builtin Functions]] contains a list of builtin functions. This section is
 mostly unwritten.
 
+Upcoming section [[FFI]] details how to interface with C code from Fn.
+
 
 * Language Features
 
@@ -782,16 +784,146 @@ At the time of writing, these are not actually implemented in the codebase, but
 you can try your luck because there's a chance that this document is out of sync
 with my progress.
 
+
 * TODO Builtin Functions
 
-Current builtins at the time of writing are:
+** ~fn/builtin~
 
-- ~+ - * / abs mod pow exp log~
-- ~number? integer? list?~
-- ~=~
-- ~List cons head tail nth~
-- ~Table get table-keys~
-- ~length empty?~
+These functions are automatically imported into every namespace upon creation.
+They are not all implemented at the time of writing, but a surprising number
+are.
 
-More are being added all the time. I'll make better documentation here after
-giving the FFI one last facelift.
+*Equality Comparisons*
+- ~= (& args)~
+  - Returns true if all args are semantically equal
+- ~same? (& args)~
+  - Behaves the same as ~=~ for numbers, symbols, bools, and the empty
+    list. For other types, only returns true if all the arguments correspond to
+    the same garbage collector object.
+
+
+*Type queries:*
+- ~number?~, ~string?~, ~list?~, ~table?~, ~function?~, ~symbol?~, ~bool?~
+  - These accept a single argument and return true if it has the corresponding
+    type, false otherwise.
+
+
+*Functions on Symbols*
+- ~gensym ()~
+  - create a nameless symbol which is guaranteed to be unique
+- ~intern (string)~
+  - create a symbol from a string
+- ~symname (symbol)~
+  - get a symbol's name as a string
+
+*Functions on Numbers*
+- ~+~, ~-~, ~*~, ~/~, ~**~
+  - Arithmetic operators. These accept arbitrarily many arguments.
+  - ~**~ is exponentiation.
+  - Calling with no arguments yields the identity element for the operation.
+  - Calling with one argument yields the argument itself for ~+~, ~*~, and ~**~, the
+    multiplicative inverse for ~/~, and the additive inverse for ~-~.
+  - Underlying operations are performed on IEEE 64-bit floats (with truncated
+    significand).
+- ~abs~, ~exp~, ~log~
+  - Functions of exactly one argument that perform their respective mathematical
+    operations.
+  - ~log~ is natural log
+- ~mod (quantity modulus)~
+  - Computes ~quantity~ modulo ~modulus~. The second argument must be an
+    integer.
+- ~integer?~
+  - One argument of any type. True if it's an integer, false otherwise.
+- ~<~, ~>~, ~<=~, ~>=~
+  - The usual quantity comparisons. Accept arbitrarily many args. Always return
+    true if 1 or 0 args are passed.
+
+
+*Functions on Lists*
+- ~List~
+  - Creates a list from its arguments.
+- ~cons (hd tl)~
+  - prepend ~hd~ to a list ~tl~
+- ~head, tail~
+  - One argument. Get the head or tail of a list, respectively.
+- ~take,~ ~drop,~ ~split~ ~(n list)~
+  - ~take~ takes the first n elements of a list. ~drop~ drops the first n elements
+    of a list. ~split~ does both at once and returns a list ~[front back]~, where
+    front and back are the two pieces of the list.
+- ~take-while, drop-while, split-after (pred list)~
+  - ~pred~ is a function of one argument used as a predicate
+  - Analogous to take, drop, and split, but instead of splitting after ~n~
+    elements, they split on the first element for which ~pred~ fails.
+
+
+*Functions on Tables*
+- ~Table~
+  - Accepts an even number of arguments. Treats them as alternating key/value
+    pairs and constructs a table.
+- ~get (table key)~
+  - Get a value from a table. A runtime exception is generated if the table has
+    no such key.
+- ~get-default (table key (default nil))~
+  - Get a value from a table, return default if it's not found.
+- ~has-key? (table key)~
+  - True or false depending on if key is a key for table.
+- ~table-keys~
+  - Returns a list of keys to a table. No promises about the order.
+
+
+*Functions on Collections* 
+Strings aren't really collections, but some of these work on them too.
+- ~length~
+  - Returns length for strings and lists, number of keys for tables.
+- ~concat (& args)~
+  - Concatenate arguments in the order provided
+  - All arguments must have the same type
+  - When concatenating tables which have keys in common, the last table in the
+    argument list takes precedence.
+- ~contains? (coll x)~
+  - True if ~(= x y)~ for some ~y~ in the collection, false otherwise.
+  - Doesn't work on strings
+- ~reverse~
+  - This one doesn't work on tables.
+- ~empty?~
+  - Works on strings, lists, and tables.
+
+
+*Transformations*
+- ~apply (fun arg0 arg1 & args)~
+  - The last two arguments must be a list and a table, respectively. Calls the
+    provided function in the following way: all arguments before the last two
+    are passed as positional arguments. The list is expanded and its elements
+    are passed as positional arguments. The table is used for keyword arguments.
+    Its keys should be symbols (but not keywords).
+- ~partial (fun & args)~
+  - partially apply a function
+- ~comp (& funs)~
+  - compose the provided functions
+- ~map (fun coll)~
+  - we all know ~map~
+  - as a bonus, it also works on tables
+- ~foldl (fun init coll)~
+  - perform a left fold
+  - ~fun~ accepts arguments ~(accumulator input)~
+- ~foldr (fun init coll)~
+  - perform a right fold
+  - ~fun~ accepts arguments ~(input accumulator)~
+- ~filter (fun coll)~
+  - works on lists and tables
+
+*Error Generation*
+- ~error (message)~
+  - Creates a fatal error that crashes the program.
+
+
+* FFI
+
+Fn will provide an FFI that works in the following way:
+- Create C source file that includes the ~fnffi.h~ header, which provides functions
+  for manipulating Fn values.
+  - The functions intended to be called from Fn must have a particular type
+    signature.
+- Compile the file into a shared library.
+- Back in Fn, use the namespace ~fn/ffi~ to import functions by name from the
+  shared library.
