@@ -18,7 +18,7 @@ namespace fn {
 // IMPLNOTE: this structure could be made into a linked list itself for the C
 // version of the VM.
 struct chunk_source_info {
-    u32 end_addr;
+    u32 start_addr;
     source_loc loc;
     chunk_source_info* prev;
 };

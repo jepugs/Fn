@@ -92,7 +92,7 @@ dyn_array<ast_form*> parse_string(const string& src,
 
 // Parse AST forms from sc until an error is encountered
 dyn_array<ast_form*> parse_input(std::istream* in,
-        const string& src_name,
+        const source_loc& src_start,
         symbol_table* symtab,
         fault* err);
 
@@ -101,7 +101,7 @@ dyn_array<ast_form*> parse_input(std::istream* in,
 // successful parse. This is used for detecting the ends of expressions at the
 // REPL to enable multi-line input and multiple expressions per line.
 dyn_array<ast_form*> partial_parse_input(std::istream* in,
-        const string& src_name,
+        const source_loc& src_start,
         symbol_table* symtab,
         u32* bytes_used,
         bool* resumable,

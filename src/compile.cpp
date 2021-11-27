@@ -444,6 +444,7 @@ void compiler::compile_with(const llir_with* llir,
 void compiler::compile_llir_generic(const llir_form* llir,
         lexical_env* lex,
         bool tail) {
+    auto old_loc = dest->location_of(dest->code.size);
     dest->add_source_loc(llir->origin);
     switch (llir->tag) {
     case lt_apply:
@@ -483,6 +484,7 @@ void compiler::compile_llir_generic(const llir_form* llir,
         compile_with((llir_with*)llir, lex, tail);
         break;
     }
+    dest->add_source_loc(old_loc);
 }
 
 void compiler::c_fault(const source_loc& origin, const string& message) {

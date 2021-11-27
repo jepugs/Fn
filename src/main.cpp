@@ -187,7 +187,7 @@ int main(int argc, char** argv) {
         }
         break;
     case em_stdin:
-        res = inter.interpret_istream(&std::cin, "STDIN", &ws, &i_err);
+        res = inter.interpret_istream(&std::cin, source_loc{"STDIN"}, &ws, &i_err);
         if (i_err.happened) {
             emit_error(&std::cout, i_err);
             return -1;
