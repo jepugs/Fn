@@ -435,7 +435,7 @@ static void print_llir_offset(llir_form* form,
             int noffset = offset+2;
             if (xcall->callee->tag == lt_var) {
                 auto sym = ((llir_var*)xcall->callee)->name;
-                auto str = v_to_string(as_sym_value(sym), &st);
+                auto str = v_to_string(vbox_symbol(sym), &st);
                 out << str << ' ';
                 noffset += str.size();
 

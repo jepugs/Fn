@@ -73,7 +73,7 @@ struct code_chunk {
             local_address req_args,
             optional<symbol_id> vl_param,
             optional<symbol_id> vt_param,
-            value (*foreign_func)(interpreter_handle*, value*),
+            value (*foreign_func)(fn_handle*, value*),
             const string& name);
     function_stub* get_function(u16 id);
     const function_stub* get_function(u16 id) const;

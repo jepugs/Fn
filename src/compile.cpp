@@ -89,7 +89,7 @@ void compiler::patch_jump(i64 offset,
 }
 
 void compiler::compile_symbol(symbol_id sym) {
-    auto id = dest->add_constant(as_sym_value(sym));
+    auto id = dest->add_constant(vbox_symbol(sym));
     write_byte(OP_CONST);
     write_short(id);
 }
@@ -163,7 +163,7 @@ void compiler::compile_llir(const llir_def* llir,
         lexical_env* lex) {
     // TODO: check legal variable name
     write_byte(OP_CONST);
-    write_short(dest->add_constant(as_sym_value(llir->name)));
+    write_short(dest->add_constant(vbox_symbol(llir->name)));
     write_byte(OP_COPY);
     write_byte(0);
     lex->sp += 2;
@@ -178,7 +178,7 @@ void compiler::compile_llir(const llir_defmacro* llir,
         lexical_env* lex) {
     // TODO: check legal variable name
     write_byte(OP_CONST);
-    write_short(dest->add_constant(as_sym_value(llir->name)));
+    write_short(dest->add_constant(vbox_symbol(llir->name)));
     write_byte(OP_COPY);
     write_byte(0);
     lex->sp += 2;

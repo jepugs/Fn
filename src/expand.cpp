@@ -1208,7 +1208,7 @@ llir_form* expander::expand_meta(ast_form* ast, expander_meta* meta) {
     auto ws = inter->get_alloc()->add_working_set();
     switch (ast->kind) {
     case ak_number_atom:
-        c = chunk->add_constant(as_value(ast->datum.num));
+        c = chunk->add_constant(vbox_number(ast->datum.num));
         return (llir_form*)mk_llir_const(loc, c);
     case ak_string_atom:
         c = chunk->add_constant(ws.add_string(ast->datum.str->data));

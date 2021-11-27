@@ -234,7 +234,7 @@ ast_form* interpreter::expand_macro(symbol_id macro,
     chunk->write_byte(OP_TABLE);
 
     chunk->write_byte(OP_CONST);
-    chunk->write_short(chunk->add_constant(as_sym_value(macro)));
+    chunk->write_short(chunk->add_constant(vbox_symbol(macro)));
     chunk->write_byte(OP_MACRO);
 
     chunk->write_byte(OP_CALL);
@@ -253,11 +253,11 @@ ast_form* interpreter::expand_macro(symbol_id macro,
 value interpreter::ast_to_value(working_set* ws, ast_form* form) {
     switch (form->kind) {
     case ak_number_atom:
-        return as_value(form->datum.num);
+        return vbox_number(form->datum.num);
     case ak_string_atom:
         return ws->add_string(*form->datum.str);
     case ak_symbol_atom:
-        return as_sym_value(form->datum.sym);
+        return vbox_symbol(form->datum.sym);
     case ak_list:
         if (form->list_length == 0) {
             return V_EMPTY;
@@ -297,8 +297,8 @@ ast_form* interpreter::value_to_ast(value v, const source_loc& loc) {
     }
 
     dyn_array<ast_form*> lst;
-    for (auto it = v; it != V_EMPTY; it = v_tail(it)) {
-        auto x = value_to_ast(v_head(it), loc);
+    for (auto it = v; it != V_EMPTY; it = vtail(it)) {
+        auto x = value_to_ast(vhead(it), loc);
         if (!x) {
             for (auto y : lst) {
                 free_ast_form(y);
@@ -317,7 +317,7 @@ void interpreter::runtime_error(const string& msg,
 
 void interpreter::add_builtin_function(const string& name,
         const string& params,
-        value (*foreign_func)(interpreter_handle*, value*)) {
+        value (*foreign_func)(fn_handle*, value*)) {
     // Have to extract the params manually, as the expander method could execute
     // code if it encounters an initform that has a macro in it.
     fault err;
@@ -405,7 +405,7 @@ void interpreter::add_builtin_function(const string& name,
     auto ws = alloc.add_working_set();
     auto f = vfunction(ws.add_function(ffi_chunk->get_function(stub_id)));
     auto builtin = *globals.get_ns(symtab.intern("fn/builtin"));
-    builtin->set(symtab.intern(name), as_value(f));
+    builtin->set(symtab.intern(name), vbox_function(f));
 }
 
 symbol_id interpreter::intern(const string& str) {

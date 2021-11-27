@@ -18,45 +18,14 @@ struct interpreter_handle {
     // assert that a value is a list
     void assert_list(value v);
 
-    // Type-checked utility functions. These emit runtime errors when
-    // appropriate.
-
-    // arithmetic
-    value v_add(value a, value b);
-    value v_sub(value a, value b);
-    value v_mul(value a, value b);
-    value v_div(value a, value b);
-    value v_abs(value a);
-    value v_mod(value a, value b);
-    value v_pow(value a, value b);
-    value v_exp(value a);
-    value v_log(value a);
-
     // string functions
-    value v_strlen(value a);
-    value v_substr(value a, u32 start);
-    value v_substr(value a, u32 start, u32 len);
-    string v_string_as_string(value a);
     value string_concat(value l, value r);
 
-    // symbol functions
-    value v_symname(value a);
-
     // list functions
-    // only works on cons
-    value v_head(value a);
-    // works on cons and empty
-    value v_tail(value a);
-    // tl must be a list
-    value v_cons(value hd, value tl);
-    // lst must be a list and n must be in bounds
-    value v_nth(i64 n, value lst);
     value list_concat(value l, value r);
 
     // table functions
-    value v_get(value tab, value k);
-    value v_set(value tab, value k, value v);
-    value table_join(value l, value r);
+    value table_concat(value l, value r);
 
     // collection functions
     value v_length(value x);

@@ -3,7 +3,7 @@
 
 #include "base.hpp"
 #include "interpret.hpp"
-#include "ffi/interpreter_handle.hpp"
+#include "ffi/fn_handle.hpp"
 #include "values.hpp"
 
 namespace fn {

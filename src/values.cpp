@@ -2,26 +2,6 @@
 
 namespace fn {
 
-optional<gc_header*> value::header() const {
-    if (is_cons()) {
-        return &vcons(*this)->h;
-    } else if (is_string()) {
-        return &vstring(*this)->h;
-    } else if (is_table()) {
-        return &vtable(*this)->h;
-    } else if (is_function()) {
-        return &vfunction(*this)->h;
-    }
-    return { };
-}
-
-value v_head(value x) {
-    return vcons(x)->head;
-}
-value v_tail(value x) {
-    return vcons(x)->tail;
-}
-
 cons::cons(value head, value tail)
     : head{head}
     , tail{tail} {
@@ -53,6 +33,14 @@ fn_string::fn_string(const fn_string& src)
     std::memcpy(v, src.data, len);
     data = v;
 }
+
+fn_string::fn_string(u32 len)
+    : len{len} {
+    mk_gc_header(GC_TYPE_STRING, &h);
+    data = new char[len+1];
+    data[len]='\0';
+}
+
 fn_string::~fn_string() {
     delete[] data;
 }
@@ -163,15 +151,15 @@ function::~function() {
 }
 
 bool value::operator==(const value& v) const {
-    if (v_same(*this,v)) {
+    if (vsame(*this,v)) {
         return true;
     }
 
     auto tag = v_tag(*this);
-    if (v_tag(v) != tag) {
+    if (vtag(v) != tag) {
         return false;
     }
-    switch (v_tag(*this)) {
+    switch (vtag(*this)) {
     case TAG_STRING:
         return *vstring(*this) == *vstring(v);
     case TAG_CONS:

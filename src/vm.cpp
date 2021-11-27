@@ -4,6 +4,7 @@
 
 #include "bytes.hpp"
 #include "namespace.hpp"
+#include "ffi/fn_handle.hpp"
 #include "values.hpp"
 
 #include <cstdlib>
@@ -40,7 +41,7 @@ vm_status vm_thread::check_status() const {
 }
 
 value vm_thread::get_symbol(const string& name) {
-    return as_sym_value(get_symtab()->intern(name));
+    return vbox_symbol(get_symtab()->intern(name));
 }
 
 u32 vm_thread::get_ip() const {
@@ -298,8 +299,13 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
             + stub->vl_param.has_value()
             + stub->vt_param.has_value());
     if (stub->foreign != nullptr) { // foreign function call
-        interpreter_handle handle{.inter=this, .ws=ws,
-            .func_name="<ffi call>"};
+        fn_handle handle{
+            .vm=this,
+            .ws=ws,
+            .func_name="<ffi call>",
+            .origin=chunk->location_of(ip),
+            .err=err
+        };
         auto args = new value[sp];
         for (i32 i = sp; i > 0; --i) {
             args[i-1] = pop_to_ws(ws);
@@ -369,12 +375,12 @@ code_address vm_thread::apply(working_set* ws, local_address num_args) {
     auto kw_tab = pop_to_ws(ws);
 
     auto args = pop_to_ws(ws);
-    if (args != V_EMPTY && !args.is_cons()) {
+    if (args != V_EMPTY && !vis_cons(args)) {
         runtime_error("OP_APPLY argument list not actually a list");
     }
     u32 list_len = 0;
-    for (auto it = args; it != V_EMPTY; it = v_tail(it)) {
-        push(v_head(it));
+    for (auto it = args; it != V_EMPTY; it = vtail(it)) {
+        push(vhead(it));
         ++list_len;
     }
 
@@ -598,7 +604,7 @@ void vm_thread::step() {
 
     case OP_CJUMP:
         // jump on false
-        if (!v_truthy(pop_to_ws(&ws))) {
+        if (!vtruth(pop_to_ws(&ws))) {
             jump = true;
             addr = ip + 3 + static_cast<i16>(chunk->read_short(ip+1));
         } else {

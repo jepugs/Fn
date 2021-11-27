@@ -22,115 +22,51 @@ void interpreter_handle::assert_list(value v) {
     }
 }
 
-value interpreter_handle::v_add(value a, value b) {
-    assert_type(TAG_NUM, a);
-    assert_type(TAG_NUM, b);
-    return as_value(a.num + b.num);
-}
+// value interpreter_handle::v_add(value a, value b) {
+//     assert_type(TAG_NUM, a);
+//     assert_type(TAG_NUM, b);
+//     return as_value(a.num + b.num);
+// }
 
-value interpreter_handle::v_sub(value a, value b) {
-    assert_type(TAG_NUM, a);
-    assert_type(TAG_NUM, b);
-    return as_value(a.num - b.num);
-}
+// value interpreter_handle::v_sub(value a, value b) {
+//     assert_type(TAG_NUM, a);
+//     assert_type(TAG_NUM, b);
+//     return as_value(a.num - b.num);
+// }
 
-value interpreter_handle::v_mul(value a, value b) {
-    assert_type(TAG_NUM, a);
-    assert_type(TAG_NUM, b);
-    return as_value(a.num * b.num);
-}
+// value interpreter_handle::v_mul(value a, value b) {
+//     assert_type(TAG_NUM, a);
+//     assert_type(TAG_NUM, b);
+//     return as_value(a.num * b.num);
+// }
 
-value interpreter_handle::v_div(value a, value b) {
-    assert_type(TAG_NUM, a);
-    assert_type(TAG_NUM, b);
-    return as_value(a.num / b.num);
-}
+// value interpreter_handle::v_div(value a, value b) {
+//     assert_type(TAG_NUM, a);
+//     assert_type(TAG_NUM, b);
+//     return as_value(a.num / b.num);
+// }
 
-value interpreter_handle::v_abs(value a) {
-    assert_type(TAG_NUM, a);
-    return as_value(fabs(a.num));
-}
+// value interpreter_handle::v_abs(value a) {
+//     assert_type(TAG_NUM, a);
+//     return as_value(fabs(a.num));
+// }
 
-value interpreter_handle::v_mod(value a, value b) {
-    assert_type(TAG_NUM, a);
-    assert_type(TAG_NUM, b);
-    auto x = a.num, y = b.num;
-    u64 x_int = (u64)x;
-    u64 y_int = (u64)y;
-    if (y != y_int) {
-        runtime_error("modulus must be an integer");
-    }
-    return as_value((f64)(x_int % y_int) + (x - x_int));
-}
+// value interpreter_handle::v_strlen(value a) {
+//     assert_type(TAG_STRING, a);
+//     return as_value((f64)vstring(a)->len);
+// }
 
-value interpreter_handle::v_pow(value a, value b) {
-    assert_type(TAG_NUM, a);
-    assert_type(TAG_NUM, b);
-    return as_value(pow(a.num,b.num));
-}
-
-value interpreter_handle::v_exp(value a) {
-    assert_type(TAG_NUM, a);
-    return as_value(exp(a.num));
-}
-
-value interpreter_handle::v_log(value a) {
-    assert_type(TAG_NUM, a);
-    return as_value(log(a.num));
-}
-
-value interpreter_handle::v_strlen(value a) {
-    assert_type(TAG_STRING, a);
-    return as_value((f64)vstring(a)->len);
-}
-
-value interpreter_handle::v_substr(value a, u32 start) {
-    assert_type(TAG_STRING, a);
-    auto s = vstring(a)->as_string().substr(start);
-    return ws->add_string(s);
-}
+// value interpreter_handle::v_substr(value a, u32 start) {
+//     assert_type(TAG_STRING, a);
+//     auto s = vstring(a)->as_string().substr(start);
+//     return ws->add_string(s);
+// }
 
 value interpreter_handle::string_concat(value l, value r) {
     assert_type(TAG_STRING, l);
     assert_type(TAG_STRING, r);
     auto s = vstring(l)->as_string() + vstring(r)->as_string();
     return ws->add_string(s);
-}
-
-value interpreter_handle::v_head(value a) {
-    assert_type(TAG_CONS, a);
-    return vcons(a)->head;
-}
-
-value interpreter_handle::v_tail(value a) {
-    if (a.is_empty()) {
-        return V_EMPTY;
-    } else if (!a.is_cons()) {
-        runtime_error("Value does not have legal type.");
-    }
-    return vcons(a)->tail;
-}
-
-value interpreter_handle::v_cons(value hd, value tl) {
-    if (!tl.is_cons() && !tl.is_empty()) {
-        runtime_error("Value does not have legal type.");
-    }
-    return ws->add_cons(hd, tl);
-}
-
-value interpreter_handle::v_nth(i64 n, value lst) {
-    if (lst.is_empty()) {
-        return V_NIL;
-    }
-    assert_type(TAG_CONS, lst);
-    while (n != 0) {
-        if (lst.is_empty()) {
-            return V_NIL;
-        }
-        lst = vcons(lst)->tail;
-        --n;
-    }
-    return vcons(lst)->head;
 }
 
 value interpreter_handle::list_concat(value l, value r) {
@@ -140,10 +76,10 @@ value interpreter_handle::list_concat(value l, value r) {
         return r;
     }
 
-    auto res = ws->add_cons(v_head(l), V_EMPTY);
+    auto res = ws->add_cons(vhead(l), V_EMPTY);
     auto end = res;
-    for (auto it = v_tail(l); it != V_EMPTY; it = v_tail(it)) {
-        auto next = ws->add_cons(v_head(it), V_EMPTY);
+    for (auto it = vtail(l); it != V_EMPTY; it = vtail(it)) {
+        auto next = ws->add_cons(vhead(it), V_EMPTY);
         vcons(end)->tail = next;
         end = next;
     }
@@ -160,14 +96,14 @@ value interpreter_handle::v_length(value x) {
             for (; c != V_EMPTY; c = vcons(c)->tail) {
                 ++i;
             }
-            return as_value(i);
+            return vbox_number(i);
         }
     case TAG_EMPTY:
-        return as_value(0.0);
+        return vbox_number(0.0);
     case TAG_TABLE:
-        return as_value((i64)vtable(x)->contents.get_size());
+        return vbox_number((i64)vtable(x)->contents.get_size());
     case TAG_STRING:
-        return as_value(vstring(x)->len);
+        return vbox_number(vstring(x)->len);
     default:
         runtime_error("Can only compute length for lists and tables.");
     }

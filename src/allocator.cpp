@@ -172,26 +172,40 @@ value working_set::add_cons(value hd, value tl) {
     alloc->collect();
     alloc->mem_usage += sizeof(cons);
     ++alloc->count;
-    auto v = as_value(new cons{hd,tl});
-    new_objects.push_front(*v.header());
+    auto ptr = new cons{hd,tl};
+    auto v = vbox_cons(ptr);
+    new_objects.push_front((gc_header*)ptr);
     return v;
 }
 
 value working_set::add_string(const string& s) {
     alloc->collect();
-    alloc->mem_usage += sizeof(fn_string) + s.length();
+    // +1 for null terminator
+    alloc->mem_usage += sizeof(fn_string) + s.length() + 1;
     ++alloc->count;
-    auto v = as_value(new fn_string{s});
-    new_objects.push_front(*v.header());
+    auto ptr = new fn_string{s};
+    auto v = vbox_string(ptr);
+    new_objects.push_front((gc_header*)ptr);
     return v;
 }
 
 value working_set::add_string(const fn_string& s) {
     alloc->collect();
-    alloc->mem_usage += sizeof(fn_string) + s.len;
+    alloc->mem_usage += sizeof(fn_string) + s.len + 1;
     ++alloc->count;
-    auto v = as_value(new fn_string{s});
-    new_objects.push_front(*v.header());
+    auto ptr = new fn_string{s};
+    auto v = vbox_string(ptr);
+    new_objects.push_front((gc_header*)ptr);
+    return v;
+}
+
+value working_set::add_string(u32 len) {
+    alloc->collect();
+    alloc->mem_usage += sizeof(fn_string) + len + 1;
+    ++alloc->count;
+    auto ptr = new fn_string{len};
+    auto v = vbox_string(ptr);
+    new_objects.push_front((gc_header*)ptr);
     return v;
 }
 
@@ -199,8 +213,9 @@ value working_set::add_table() {
     alloc->collect();
     alloc->mem_usage += sizeof(fn_table);
     ++alloc->count;
-    auto v = as_value(new fn_table{});
-    new_objects.push_front(*v.header());
+    auto ptr = new fn_table{};
+    auto v = vbox_table(ptr);
+    new_objects.push_front((gc_header*)ptr);
     return v;
 }
 
@@ -208,9 +223,9 @@ value working_set::add_function(function_stub* stub) {
     alloc->collect();
     alloc->mem_usage += sizeof(function);
     ++alloc->count;
-    auto f = new function{stub};
-    auto v = as_value(f);
-    new_objects.push_front(*v.header());
+    auto ptr = new function{stub};
+    auto v = vbox_function(ptr);
+    new_objects.push_front((gc_header*)ptr);
     return v;
 }
 
@@ -232,13 +247,13 @@ code_chunk* working_set::add_chunk(symbol_id ns_id) {
 }
 
 value working_set::pin_value(value v) {
-    auto h = v.header();
-    if(h.has_value()) {
-        if ((*h)->pin_count++ == 0) {
+    if(vhas_header(v)) {
+        auto h = vheader(v);
+        if (h->pin_count++ == 0) {
             // first time this object is pinned
             alloc->pinned_objects.push_front(v);
         }
-        pinned_objects.push_front(*h);
+        pinned_objects.push_front(h);
     }
     return v;
 }
@@ -302,9 +317,8 @@ void allocator::dealloc(gc_header* o) {
 
 // add a value's header to dest if it has one
 static void add_value_header(value v, forward_list<gc_header*>& dest) {
-    auto x = v.header();
-    if (x.has_value()) {
-        dest.push_front(*x);
+    if (vhas_header(v)) {
+        dest.push_front(vheader(v));
     }
 }
 
@@ -367,13 +381,13 @@ void allocator::mark_descend(gc_header* o) {
 
 void allocator::mark() {
     for (auto it = pinned_objects.begin(); it != pinned_objects.end();) {
-        auto h = it->header();
-        if (!h.has_value() || (*h)->pin_count == 0) {
+        auto v = *it;
+        if (!vhas_header(v) || vheader(v)->pin_count == 0) {
             // remove unreferenced pins and immediate values, (although a
             // non-immediate value should never be here)
             it = pinned_objects.erase(it);
         } else {
-            mark_descend(*h);
+            mark_descend(vheader(v));
             ++it;
         }
     }
@@ -382,12 +396,14 @@ void allocator::mark() {
     for (auto k : globals->ns_table.keys()) {
         auto ns = *globals->get_ns(k);
         for (auto k2 : ns->names()) {
-            auto h = ns->get(k2)->header();
-            mark_descend(*h);
+            auto x = *ns->get(k2);
+            if (vhas_header(x)) {
+                mark_descend(vheader(x));
+            }
         }
         for (auto k2 : ns->macro_names()) {
-            auto h = ns->get_macro(k2)->header();
-            mark_descend(*h);
+            // these are all functions, so we don't need to check
+            mark_descend(vheader(*ns->get_macro(k2)));
         }
     }
 
@@ -401,17 +417,17 @@ void allocator::mark() {
             it = root_stacks.erase(it);
         } else {
             for (u32 i = 0; i < (*it)->get_pointer(); ++i) {
-                auto h = (*it)->contents[i].header();
-                if (h.has_value()) {
-                    mark_descend(*h);
+                auto v = (*it)->contents[i];
+                if (vhas_header(v)) {
+                    mark_descend(vheader(v));
                 }
             }
             for (auto x : (*it)->function_stack) {
                 mark_descend((gc_header*)x);
             }
-            auto h = (*it)->last_pop.header();
-            if (h.has_value()) {
-                mark_descend(*h);
+            auto v = (*it)->last_pop;
+            if (vhas_header(v)) {
+                mark_descend(vheader(v));
             }
         }
     }

@@ -111,13 +111,11 @@ public:
     value add_cons(value hd, value tl);
     value add_string(const string& s);
     value add_string(const fn_string& s);
+    value add_string(u32 len);
     value add_table();
     // Create a function. The caller is responsible for correctly setting
     // upvalues and init values.
     value add_function(function_stub* stub);
-    value add_foreign(local_address min_args,
-            bool var_args,
-            optional<value> (*func)(local_address, value*, virtual_machine*));
     // add a chunk with name the specified namespace. (The namespace will be
     // created if it does not already exist).
     code_chunk* add_chunk(symbol_id id);
