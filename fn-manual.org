@@ -840,12 +840,12 @@ are.
   - The usual quantity comparisons. Accept arbitrarily many args. Always return
     true if 1 or 0 args are passed.
 
-*Functions on Bools*
-- ~not~
-- ~nand~
-- ~nor~
-- ~xor~
-- ~xnor~
+*Functions on Strings*
+- ~String (& args)~
+  - convert each argument to a string and concatenate them
+- ~substring (str start (len -1))~
+  - get a substring. Negative length values represent distances from the end of
+    the string, with -1 indicating that the substring should go to the end.
 
 *Functions on Lists*
 - ~List~
@@ -854,6 +854,8 @@ are.
   - prepend ~hd~ to a list ~tl~
 - ~head, tail~
   - One argument. Get the head or tail of a list, respectively.
+- ~nth (n list)~
+  - Get the nth element of a list, indexed from 0.
 - ~take,~ ~drop,~ ~split~ ~(n list)~
   - ~take~ takes the first n elements of a list. ~drop~ drops the first n elements
     of a list. ~split~ does both at once and returns a list ~[front back]~, where
@@ -862,7 +864,6 @@ are.
   - ~pred~ is a function of one argument used as a predicate
   - Analogous to take, drop, and split, but instead of splitting after ~n~
     elements, they split on the first element for which ~pred~ fails.
-
 
 *Functions on Tables*
 - ~Table~
@@ -875,7 +876,7 @@ are.
   - Get a value from a table, return default if it's not found.
 - ~has-key? (table key)~
   - True or false depending on if key is a key for table.
-- ~table-keys~
+- ~get-keys~
   - Returns a list of keys to a table. No promises about the order.
 
 
@@ -896,6 +897,13 @@ Strings aren't really collections, but some of these work on them too.
 - ~empty?~
   - Works on strings, lists, and tables.
 
+*Functions on Bools*
+- ~or~, ~and~ (wrappers for the builtins)
+- ~not~
+- ~nand~
+- ~nor~
+- ~xor~
+- ~xnor~
 
 *Transformations*
 - ~apply (fun arg0 arg1 & args)~
@@ -904,9 +912,10 @@ Strings aren't really collections, but some of these work on them too.
     are passed as positional arguments. The list is expanded and its elements
     are passed as positional arguments. The table is used for keyword arguments.
     Its keys should be symbols (but not keywords).
+  - This wraps a builtin operator
 - ~partial (fun & args)~
   - partially apply a function
-- ~comp (& funs)~
+- ~comp (fun & funs)~
   - compose the provided functions
 - ~map (fun & colls)~
   - we all know ~map~
@@ -923,9 +932,14 @@ Strings aren't really collections, but some of these work on them too.
 - ~filter (fun coll)~
   - works on lists and tables
 
+*Macros*
+- ~->~, ~->>~ 
+  - Threading macros. These work like they do in Clojure. No time now to type a
+    description here.
+
 *Error Generation*
 - ~error (message)~
-  - Creates a fatal error that crashes the program.
+  - Stops execution and emits the provided error message.
 
 
 * FFI

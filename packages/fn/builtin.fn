@@ -1,11 +1,42 @@
 ;(package fn)
 
-(def otherwise true)
-
 (defn even? (x)
   (= (mod x 2) 0))
 (defn odd? (x)
   (= (mod x 2) 1))
+
+(defn and (& args)
+  (letfn iter (prev rem)
+    (if (empty? rem)
+        prev
+        (and (head rem)
+             (iter (head rem) (tail rem)))))
+  (if (empty? args)
+      true
+      (and (head args)
+           (iter (head args) (tail args)))))
+
+(defn or (& args)
+  (letfn iter (prev rem)
+    (if (empty? rem)
+        prev
+        (or (head rem)
+            (iter (head rem) (tail rem)))))
+  (if (empty? args)
+      false
+      (or (head args)
+          (iter (head args) (tail args)))))
+
+(defn nand (& args)
+  (not (apply and args {})))
+(defmacro nand (& args)
+  `(not (and ,@args)))
+(defn nor (& args)
+  (not (apply or args {})))
+(defmacro nor (& args)
+  `(not (or ,@args)))
+
+(def otherwise true)
 
 (defn take (n list)
   (letfn iter (acc rem i)
@@ -43,12 +74,34 @@
   (iter [] list))
 
 (defn drop-while (pred list)
-  ""
   (if (or (empty? list)
           (not (pred (head list))))
       list
       (drop pred (tail list))))
 
+(defn split-after (n list)
+  "Take elements from a list as long as pred is true."
+  (letfn iter (acc rem)
+    (if (or (empty? rem)
+            (not (pred (head rem))))
+        [(reverse acc) rem]
+        (iter (cons (head rem) acc)
+              (tail rem))))
+  (iter [] list))
+
+(defn contains? (coll x (test =))
+  (letfn list-iter (rem)
+    (if (test x (head rem))
+        true
+        (list-iter (tail rem))))
+  (letfn table-iter (rem-keys)
+    (if (test (get coll (head rem-keys)) x)
+        true
+        (table-iter (tail rem-keys))))
+  (cond
+    (list? coll)   (list-iter coll)
+    (table? coll)  (table-iter (get-keys coll))
+    otherwise      (error "contains? argument must be a list or table.")))
 
 (defn reverse (list)
   (letfn iter (acc rem)
@@ -56,6 +109,45 @@
         acc
         (iter (cons (head rem) acc) (tail rem))))
   (iter [] list))
+
+(defn apply (fun arg0 arg1 & args)
+  (letfn iter (acc rem)
+    (if (empty? (tail (tail rem)))
+        [(concat (reverse acc) (head rem))
+         (head (tail rem))]
+        (iter (cons (head rem) acc)
+              (tail rem))))
+  (let result (iter [] (cons arg0 (cons arg1 args))))
+  (apply fun (nth 0 result) (nth 1 result)))
+
+(defn partial (fun & args :& kwargs)
+  (fn (& more-args :& more-kwargs)
+    (apply fun
+           (concat args more-args)
+           (concat kwargs more-kwargs))))
+
+(defn comp (fun & funs)
+  (if (empty? funs)
+      fun
+      (fn (& args :& kwargs)
+        (fun (apply (apply comp funs {})
+                    args
+                    kwargs)))))
+
+(defmacro -> (val & args)
+  (letfn f (acc in)
+    (if (list? in)
+        (cons (head in)
+              (concat [acc] (tail in)))
+        [in acc]))
+  (foldl f val args))
+
+(defmacro ->> (val & args)
+  (letfn f (acc in)
+         (if (list? in)
+             (concat in [acc])
+           [in acc]))
+  (foldl f val args))
 
 (defn map (f list)
   (reverse (maprev f list)))
@@ -67,15 +159,6 @@
         acc
         (iter (cons (f (head rem)) acc)
               (tail rem))))
-  (iter [] list))
-
-(defn filter (pred list)
-  (letfn iter (acc rem)
-    (cond
-      (empty? rem) (reverse acc)
-      (pred (head rem)) (iter (cons (head rem) acc)
-                              (tail rem))
-      true (iter acc (tail rem))))
   (iter [] list))
 
 (defn foldl (f init list)
@@ -92,13 +175,11 @@
         (iter (f (head rem) acc) (tail rem))))
   (iter init (reverse list)))
 
-(defn apply (fun arg0 arg1 & args)
+(defn filter (pred list)
   (letfn iter (acc rem)
-    (if (empty? (tail (tail rem)))
-        [(concat (reverse acc) (head rem))
-         (head (tail rem))]
-        (iter (cons (head rem) acc)
-              (tail rem))))
-  (let result (iter [] (cons arg0 (cons arg1 args))))
-  (apply fun (nth 0 result) (nth 1 result)))
-
+    (cond
+      (empty? rem) (reverse acc)
+      (pred (head rem)) (iter (cons (head rem) acc)
+                              (tail rem))
+      true (iter acc (tail rem))))
+  (iter [] list))

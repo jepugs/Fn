@@ -17,6 +17,66 @@
 
 namespace fn {
 
+fn_fun(eq, "=", "(& args)") {
+    if (args[0] == V_EMPTY) {
+        return V_TRUE;
+    }
+
+    auto x = vhead(args[0]);
+    fn_for_list(it, vtail(args[0])) {
+        if (vhead(it) != x) {
+            return V_FALSE;
+        }
+    }
+    return V_TRUE;
+}
+
+fn_fun(same_q, "same?", "(& args)") {
+    if (args[0] == V_EMPTY) {
+        return V_TRUE;
+    }
+    auto x = vhead(args[0]);
+    fn_for_list(it, vtail(args[0])) {
+        if (!vsame(vhead(it),x)) {
+            return V_FALSE;
+        }
+    }
+    return V_TRUE;
+}
+
+fn_fun(number_q, "number?", "(x)") {
+    return vis_number(args[0]) ? V_TRUE : V_FALSE;
+}
+
+fn_fun(string_q, "string?", "(x)") {
+    return vis_string(args[0]) ? V_TRUE : V_FALSE;
+}
+
+fn_fun(list_q, "list?", "(x)") {
+    if (args[0] == V_EMPTY || vis_cons(args[0])) {
+        return V_TRUE;
+    } else {
+        return V_FALSE;
+    }
+}
+
+fn_fun(table_q, "table?", "(x)") {
+    return vis_table(args[0]) ? V_TRUE : V_FALSE;
+}
+fn_fun(function_q, "function?", "(x)") {
+    return vis_function(args[0]) ? V_TRUE : V_FALSE;
+}
+fn_fun(symbol_q, "symbol?", "(x)") {
+    return vis_symbol(args[0]) ? V_TRUE : V_FALSE;
+}
+fn_fun(bool_q, "bool?", "(x)") {
+    return vis_bool(args[0]) ? V_TRUE : V_FALSE;
+}
+
+fn_fun(gensym, "gensym", "()") {
+    return h->gensym();
+}
+
 fn_fun(add, "+", "(& args)") {
     f64 res = 0;
     // don't need to check if args is a list b/c of param list
@@ -154,30 +214,12 @@ fn_fun(log, "log", "(x)") {
     return vbox_number(log(vnumber(args[0])));
 }
 
-fn_fun(number_q, "number?", "(x)") {
-    return vis_number(args[0]) ? V_TRUE : V_FALSE;
-}
-
 fn_fun(integer_q, "integer?", "(x)") {
     if (!vis_number(args[0])) {
         return V_FALSE;
     }
     auto num = vnumber(args[0]);
     return (num == (i64) num) ? V_TRUE : V_FALSE;
-}
-
-fn_fun(eq, "=", "(& args)") {
-    if (args[0] == V_EMPTY) {
-        return V_TRUE;
-    }
-
-    auto x = vhead(args[0]);
-    fn_for_list(it, vtail(args[0])) {
-        if (vhead(it) != x) {
-            return V_FALSE;
-        }
-    }
-    return V_TRUE;
 }
 
 fn_fun(lt, "<", "(& args)") {
@@ -356,14 +398,6 @@ fn_fun(nth, "nth", "(n list)") {
     return vhead(lst);
 }
 
-fn_fun(list_q, "list?", "(x)") {
-    if (args[0] == V_EMPTY || vis_cons(args[0])) {
-        return V_TRUE;
-    } else {
-        return V_FALSE;
-    }
-}
-
 fn_fun(empty_q, "empty?", "(x)") {
     switch (v_tag(args[0])) {
     case TAG_CONS:
@@ -378,9 +412,25 @@ fn_fun(empty_q, "empty?", "(x)") {
     }
 }
 
-// fn_fun(length, "length", "(x)") {
-//     return h->v_length(args[0]);
-// }
+fn_fun(length, "length", "(x)") {
+    auto tag = vtag(args[0]);
+    if (tag == TAG_CONS) {
+        u64 res = 0;
+        fn_for_list(it, args[0]) {
+            ++res; 
+        }
+        return vbox_number(res);
+    } else if (tag == TAG_EMPTY) {
+        return vbox_number(0);
+    } else if (tag == TAG_TABLE) {
+        return vbox_number(vtable(args[0])->contents.get_size());
+    } else if (tag == TAG_STRING) {
+        return vbox_number(vstring(args[0])->len);
+    }
+
+    h->error("length argument must be a string or collection.");
+    return V_NIL;
+}
 
 fn_fun(concat, "concat", "(& colls)") {
     if (args[0] == V_EMPTY) {
@@ -405,13 +455,13 @@ fn_fun(concat, "concat", "(& colls)") {
             }
             res = h->string_concat(res, hd);
         }
-    // } else if (res.is_table()) {
-    //     fn_for_list(it, vtail(args[0])) {
-    //         auto hd = vhead(it);
-    //         res = h->table_join(res, hd);
-    //     }
+    } else if (vis_table(res)) {
+        fn_for_list(it, vtail(args[0])) {
+            auto hd = vhead(it);
+            res = h->table_concat(res, hd);
+        }
     } else {
-        h->error("join arguments must be collections");
+        h->error("concat arguments must be collections");
     }
     return res;
 }
@@ -441,84 +491,105 @@ fn_fun(Table, "Table", "(& args)") {
     return res;
 }
 
-// fn_fun(get, "get", "(obj & keys)") {
-//     value res = args[0];
-//     fn_for_list(it, args[1]) {
-//         h->assert_type(TAG_TABLE, res);
-//         auto x = vtable(res)->contents.get(vhead(it));
-//         if (x.has_value()) {
-//             res = *x;
-//         } else {
-//             res = V_NIL;
-//         }
-//     }
-//     return res;
-// }
-
-// fn_fun(table_keys, "table-keys", "(table)") {
-//     h->assert_type(TAG_TABLE, args[0]);
-//     auto keys = vtable(args[0])->contents.keys();
-//     auto res = V_EMPTY;
-//     for (auto k : keys) {
-//         res = h->ws->add_cons(k, res);
-//     }
-//     return res;
-// }
-
-fn_fun(gensym, "gensym", "()") {
-    return h->gensym();
+fn_fun(get, "get", "(table & keys)") {
+    value res = args[0];
+    fn_for_list(it, args[1]) {
+        h->assert_type(TAG_TABLE, res);
+        if (h->failed()) {
+            return V_NIL;
+        }
+        auto x = vtable(res)->contents.get(vhead(it));
+        if (x.has_value()) {
+            res = *x;
+        } else {
+            res = V_NIL;
+        }
+    }
+    return res;
 }
 
+fn_fun(get_keys, "get-keys", "(table)") {
+    h->assert_type(TAG_TABLE, args[0]);
+    auto keys = vtable(args[0])->contents.keys();
+    auto res = V_EMPTY;
+    for (auto k : keys) {
+        res = h->add_cons(k, res);
+    }
+    return res;
+}
+
+fn_fun(error, "error", "(message)") {
+    h->assert_type(TAG_STRING, args[0]);
+    h->error(vstring(args[0])->data);
+    return V_NIL;
+}
+
+
 void install_builtin(interpreter& inter) {
-    fn_add_builtin(inter, add);
-    fn_add_builtin(inter, sub);
-    fn_add_builtin(inter, mul);
-    fn_add_builtin(inter, div);
-    fn_add_builtin(inter, abs);
-    fn_add_builtin(inter, mod);
-    fn_add_builtin(inter, pow);
-    fn_add_builtin(inter, exp);
-    fn_add_builtin(inter, log);
-    fn_add_builtin(inter, number_q);
-    fn_add_builtin(inter, integer_q);
-
-    //fn_add_builtin(inter, bool_q);
-    //fn_add_builtin(inter, symbol_q);
-
-    fn_add_builtin(inter, fn_not);
-
     fn_add_builtin(inter, eq);
-    fn_add_builtin(inter, gt);
-    fn_add_builtin(inter, lt);
-    fn_add_builtin(inter, ge);
-    fn_add_builtin(inter, le);
+    fn_add_builtin(inter, same_q);
 
-    fn_add_builtin(inter, List);
+    fn_add_builtin(inter, number_q);
+    fn_add_builtin(inter, string_q);
     fn_add_builtin(inter, list_q);
-    fn_add_builtin(inter, cons);
-    fn_add_builtin(inter, head);
-    fn_add_builtin(inter, tail);
-    fn_add_builtin(inter, nth);
-
-    fn_add_builtin(inter, Table);
-    // fn_add_builtin(inter, get);
-    // fn_add_builtin(inter, table_keys);
-
-    // fn_add_builtin(inter, String);
-    // fn_add_builtin(inter, substring);
-
-    fn_add_builtin(inter, empty_q);
-    // fn_add_builtin(inter, length);
-    fn_add_builtin(inter, concat);
-
-    // these should be replaced
-    fn_add_builtin(inter, print);
-    fn_add_builtin(inter, println);
+    fn_add_builtin(inter, table_q);
+    fn_add_builtin(inter, function_q);
+    fn_add_builtin(inter, symbol_q);
+    fn_add_builtin(inter, bool_q);
 
     // symbol things
     //fn_add_builtin(inter, intern);
     //fn_add_builtin(inter, symbol_name);
     fn_add_builtin(inter, gensym);
+
+    fn_add_builtin(inter, add);
+    fn_add_builtin(inter, sub);
+    fn_add_builtin(inter, mul);
+    fn_add_builtin(inter, div);
+    fn_add_builtin(inter, pow);
+
+    fn_add_builtin(inter, abs);
+    fn_add_builtin(inter, exp);
+    fn_add_builtin(inter, log);
+    fn_add_builtin(inter, mod);
+
+    fn_add_builtin(inter, integer_q);
+    // fn_add_builtin(inter, floor);
+    // fn_add_builtin(inter, ceil);
+    // fn_add_builtin(inter, frac-part);
+
+    fn_add_builtin(inter, gt);
+    fn_add_builtin(inter, lt);
+    fn_add_builtin(inter, ge);
+    fn_add_builtin(inter, le);
+
+    // fn_add_builtin(inter, String);
+    // fn_add_builtin(inter, substring);
+
+    fn_add_builtin(inter, fn_not);
+
+    fn_add_builtin(inter, List);
+    fn_add_builtin(inter, cons);
+    fn_add_builtin(inter, head);
+    fn_add_builtin(inter, tail);
+    fn_add_builtin(inter, nth);
+
+    fn_add_builtin(inter, length);
+    fn_add_builtin(inter, concat);
+    fn_add_builtin(inter, empty_q);
+
+    fn_add_builtin(inter, Table);
+    fn_add_builtin(inter, get);
+    // fn_add_builtin(inter, get_default);
+    // fn_add_builtin(inter, has_key_q);
+    fn_add_builtin(inter, get_keys);
+
+    fn_add_builtin(inter, error);
+
+    // these should be replaced
+    fn_add_builtin(inter, print);
+    fn_add_builtin(inter, println);
+
 
     // at the very least, map should get a native implementation
     // fn_add_builtin(inter, map);
