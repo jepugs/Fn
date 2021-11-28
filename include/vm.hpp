@@ -149,7 +149,7 @@ private:
     code_address tcall(working_set* ws, local_address num_args);
     // num_args does not count the function, the keyword table, or the argument
     // list.
-    code_address apply(working_set* ws, local_address num_args);
+    code_address apply(working_set* ws,local_address num_args,bool tail=false);
 
     // set up a newly created function (including taking init values off the
     // stack)

@@ -65,7 +65,8 @@ private:
 
     // TODO: add tail apply
     void compile_apply(const llir_apply* llir,
-            lexical_env* lex);
+            lexical_env* lex,
+            bool tail);
     // FIXME: this was a terrible idea wtf. no more overloading :'(
     void compile_call(const llir_call* llir,
             lexical_env* lex,

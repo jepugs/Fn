@@ -175,6 +175,10 @@ value interpreter::interpret_istream(std::istream* in,
 
     auto ns_name = symtab.intern("fn/user");
     auto chunk = ws->add_chunk(ns_name);
+    // FIXME: this works around a semantic problem where the allocator can't see
+    // constants that are added to this chunk. working sets should automatically
+    // pin values.
+    ws->pin((gc_header*)chunk);
     value res = V_NIL;
 
     for (auto ast : forms) {

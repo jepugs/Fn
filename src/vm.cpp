@@ -341,7 +341,7 @@ code_address vm_thread::tcall(working_set* ws, local_address num_args) {
     auto func = vfunction(callee);
     auto stub = func->stub;
     // foreign calls are just normal calls
-    if (stub->foreign != nullptr) {
+    if (stub->foreign != nullptr || frame->caller == nullptr) {
         push(callee);
         return call(ws, num_args);
     }
@@ -374,7 +374,9 @@ code_address vm_thread::tcall(working_set* ws, local_address num_args) {
 }
 
 
-code_address vm_thread::apply(working_set* ws, local_address num_args) {
+code_address vm_thread::apply(working_set* ws,
+        local_address num_args,
+        bool tail) {
     // all we need to do is expand the varargs. The rest will be taken care of
     // by call.
     auto callee = pop_to_ws(ws);
@@ -393,7 +395,7 @@ code_address vm_thread::apply(working_set* ws, local_address num_args) {
     // put things back
     push(kw_tab);
     push(callee);
-    return call(ws, num_args + list_len);
+    return tail ? tcall(ws, num_args+list_len) : call(ws, num_args+list_len);
 }
 
 
@@ -636,6 +638,12 @@ void vm_thread::step() {
         addr = apply(&ws, num_args);
         break;
 
+    case OP_TAPPLY:
+        num_args = chunk->read_byte(ip+1);
+        jump = true;
+        addr = apply(&ws, num_args, true);
+        break;
+
     case OP_RETURN:
         // check that we are in a call frame
         if (frame->caller == nullptr) {
@@ -772,6 +780,9 @@ void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& ou
         break;
     case OP_APPLY:
         out << "apply " << (i32)((code.read_byte(ip+1)));;
+        break;
+    case OP_TAPPLY:
+        out << "tapply " << (i32)((code.read_byte(ip+1)));;
         break;
     case OP_RETURN:
         out << "return";

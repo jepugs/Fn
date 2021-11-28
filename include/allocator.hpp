@@ -126,6 +126,7 @@ public:
     // working_set. Returns v. The value is automagically unpinned if its
     // reference count hits 0.
     value pin_value(value v);
+    void pin(gc_header* gc);
 };
 
 struct allocator {
@@ -155,7 +156,7 @@ private:
     // pins are temporary root objects which are added and managed by
     // working_sets. When an object's working_set reference count falls to 0, it
     // is removed automatically.
-    std::list<value> pinned_objects;
+    std::list<gc_header*> pinned_objects;
 
     // IMPLNOTE: you may wonder why we have this roots/pins dichotomy. This way,
     // we can make root objects without any working_set, and also guarantee that

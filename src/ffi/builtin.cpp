@@ -427,18 +427,19 @@ fn_fun(println, "println", "(x)") {
     return V_NIL;
 }
 
-// fn_fun(Table, "Table", "(& args)") {
-//     auto res = h->ws->add_table();
-//     fn_for_list(it, args[0]) {
-//         auto tl = vtail(it);
-//         if (tl == V_EMPTY) {
-//             h->error("Table requires an even number of arguments.");
-//         }
-//         vtable(res)->contents.insert(vhead(it), vhead(tl));
-//         it = tl;
-//     }
-//     return res;
-// }
+fn_fun(Table, "Table", "(& args)") {
+    auto res = h->add_table();
+    fn_for_list(it, args[0]) {
+        auto tl = vtail(it);
+        if (tl == V_EMPTY) {
+            h->error("Table requires an even number of arguments.");
+            return V_NIL;
+        }
+        vtable(res)->contents.insert(vhead(it), vhead(tl));
+        it = tl;
+    }
+    return res;
+}
 
 // fn_fun(get, "get", "(obj & keys)") {
 //     value res = args[0];
@@ -499,7 +500,7 @@ void install_builtin(interpreter& inter) {
     fn_add_builtin(inter, tail);
     fn_add_builtin(inter, nth);
 
-    // fn_add_builtin(inter, Table);
+    fn_add_builtin(inter, Table);
     // fn_add_builtin(inter, get);
     // fn_add_builtin(inter, table_keys);
 

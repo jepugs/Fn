@@ -175,7 +175,7 @@ value working_set::add_cons(value hd, value tl) {
     auto ptr = new cons{hd,tl};
     auto v = vbox_cons(ptr);
     new_objects.push_front((gc_header*)ptr);
-    return v;
+    return pin_value(v);
 }
 
 value working_set::add_string(const string& s) {
@@ -186,6 +186,8 @@ value working_set::add_string(const string& s) {
     auto ptr = new fn_string{s};
     auto v = vbox_string(ptr);
     new_objects.push_front((gc_header*)ptr);
+    // string return values don't need to be pinned right away because they
+    // don't refer to any other objects.
     return v;
 }
 
@@ -216,7 +218,7 @@ value working_set::add_table() {
     auto ptr = new fn_table{};
     auto v = vbox_table(ptr);
     new_objects.push_front((gc_header*)ptr);
-    return v;
+    return pin_value(v);
 }
 
 value working_set::add_function(function_stub* stub) {
@@ -243,6 +245,7 @@ code_chunk* working_set::add_chunk(symbol_id ns_id) {
     auto res = mk_code_chunk(ns_id);
 
     new_objects.push_front((gc_header*)res);
+    pin((gc_header*)res);
     return res;
 }
 
@@ -251,11 +254,18 @@ value working_set::pin_value(value v) {
         auto h = vheader(v);
         if (h->pin_count++ == 0) {
             // first time this object is pinned
-            alloc->pinned_objects.push_front(v);
+            alloc->pinned_objects.push_front(h);
         }
         pinned_objects.push_front(h);
     }
     return v;
+}
+
+void working_set::pin(gc_header* h) {
+    if (h->pin_count++ == 0) {
+        // first time this object is pinned
+        alloc->pinned_objects.push_front(h);
+    }
 }
 
 allocator::allocator(global_env* use_globals)
@@ -360,7 +370,7 @@ forward_list<gc_header*> allocator::accessible(gc_header* o) {
             for (u32 i = 0; i < num_opt; ++i) {
                 add_value_header(f->init_vals[i], res);
             }
-            res.push_front(&f->stub->chunk->h);
+            res.push_front((gc_header*)f->stub->chunk);
         }
         break;
     }
@@ -381,13 +391,11 @@ void allocator::mark_descend(gc_header* o) {
 
 void allocator::mark() {
     for (auto it = pinned_objects.begin(); it != pinned_objects.end();) {
-        auto v = *it;
-        if (!vhas_header(v) || vheader(v)->pin_count == 0) {
-            // remove unreferenced pins and immediate values, (although a
-            // non-immediate value should never be here)
+        auto h = *it;
+        if (h->pin_count == 0) {
             it = pinned_objects.erase(it);
         } else {
-            mark_descend(vheader(v));
+            mark_descend(h);
             ++it;
         }
     }
@@ -445,16 +453,20 @@ void allocator::sweep() {
     std::list<gc_header*> more_objs;
     for (auto h : objects) {
         if (gc_mark(*h)) {
+            gc_unset_mark(*h);
             more_objs.push_back(h);
         } else {
             dealloc(h);
         }
     }
     objects.swap(more_objs);
-    // unmark remaining objects
-    for (auto h : objects) {
+
+    // some pinned objects still belong to working sets, so they're not in the
+    // objects list to get unpinned
+    for (auto h : pinned_objects) {
         gc_unset_mark(*h);
     }
+
 #ifdef GC_DEBUG
     auto ct = orig_ct - count;
     auto sz = orig_sz - mem_usage;

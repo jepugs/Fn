@@ -68,7 +68,7 @@ constexpr u64 max_local_address = 255;
 // header for all objects managed by the garbage collector.
 struct alignas(16) gc_header {
     u8 bits;         // bitfield holding gc information
-    i8 pin_count;    // times pinned
+    i8 pin_count=0;    // times pinned
     i8 global_count; // references from global variables
 };
 gc_header* mk_gc_header(u8 bits, gc_header* dest=nullptr);
@@ -80,7 +80,7 @@ constexpr u8 GC_GLOBAL_BIT      = 0x03;
 constexpr u8 GC_TYPE_BITMASK    = 0xf0;
 
 // GC Types
-constexpr u8 GC_TYPE_CHUNK      = 0x00;
+constexpr u8 GC_TYPE_CHUNK      = 0x80;
 // NOTE: I want these four to line up with the type tags in values.hpp
 constexpr u8 GC_TYPE_STRING     = 0x10;
 constexpr u8 GC_TYPE_CONS       = 0x20;

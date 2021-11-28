@@ -95,7 +95,8 @@ void compiler::compile_symbol(symbol_id sym) {
 }
 
 void compiler::compile_apply(const llir_apply* llir,
-        lexical_env* lex) {
+        lexical_env* lex,
+        bool tail) {
     auto start_sp = lex->sp;
 
     // compile positional arguments in ascending order
@@ -108,7 +109,7 @@ void compiler::compile_apply(const llir_apply* llir,
     compile_llir_generic(llir->callee, lex, false);
     return_on_err;
 
-    write_byte(OP_APPLY);
+    write_byte(tail ? OP_TAPPLY : OP_APPLY);
     // the instruction doesn't count the list and table arguments at the end
     write_byte(llir->num_args - 2);
     lex->sp = 1+start_sp;
@@ -448,7 +449,7 @@ void compiler::compile_llir_generic(const llir_form* llir,
     dest->add_source_loc(llir->origin);
     switch (llir->tag) {
     case lt_apply:
-        compile_apply((llir_apply*)llir, lex);
+        compile_apply((llir_apply*)llir, lex, tail);
         break;
     case lt_call:
         compile_call((llir_call*)llir, lex, tail);

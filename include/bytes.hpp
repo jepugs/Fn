@@ -168,6 +168,8 @@ constexpr u8 OP_TCALL = 0x33;
 // args pos-arg-n ... pos-arg-1. Like call, but expands the list args to provide
 // additional positional arguments to the function.
 constexpr u8 OP_APPLY = 0x34;
+// tail call version of apply
+constexpr u8 OP_TAPPLY = 0x35;
 // return; return from the current function
 constexpr u8 OP_RETURN = 0x38;
 
@@ -206,6 +208,7 @@ inline u8 instr_width(u8 instr) {
     case OP_CALL:
     case OP_TCALL:
     case OP_APPLY:
+    case OP_TAPPLY:
         return 2;
     case OP_CONST:
     case OP_JUMP:
