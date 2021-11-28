@@ -634,17 +634,21 @@ llir_form* expander::expand_fn(const source_loc& loc,
         e_fault(loc, "fn requires a parameter list.");
         return nullptr;
     }
-    llir_fn_params params;
-    if (!expand_params(lst[1], &params, meta)) {
-        return nullptr;
-    }
-
     llir_form* body;
     if (length == 2) {
         body = (llir_form*)mk_llir_var(loc, intern("nil"));
     } else {
         body = (llir_form*)expand_do(loc, length-1, &lst[1], meta);
+        if (!body) {
+            return nullptr;
+        }
     }
+
+    llir_fn_params params;
+    if (!expand_params(lst[1], &params, meta)) {
+        return nullptr;
+    }
+
     return (llir_form*)mk_llir_fn(loc, params, "", body);
 }
 
