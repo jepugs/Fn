@@ -23,6 +23,12 @@ void fn_handle::assert_list(value v) {
     }
 }
 
+void fn_handle::assert_integer(value v) {
+    if (vtag(v) != TAG_NUM || vnumber(v) != (i64)vnumber(v)) {
+        error("Value is not an integer.");
+    }
+}
+
 value fn_handle::add_string(const char* str) {
     return ((working_set*)ws)->add_string(str);
 }

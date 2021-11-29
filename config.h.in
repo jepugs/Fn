@@ -1,6 +1,6 @@
 #ifndef __FN_CONFIG_H 
 #define __FN_CONFIG_H 
 
-#cmakedefine PREFIX "@PREFIX@"
+#cmakedefine PREFIX "@CMAKE_INSTALL_PREFIX@"
 
 #endif

@@ -297,6 +297,14 @@ void compiler::compile_fn(const llir_fn* llir,
     ++lex->sp;
 }
 
+void compiler::compile_import(const llir_import* llir,
+        lexical_env* lex) {
+    compile_symbol(llir->target);
+    write_byte(OP_IMPORT);
+    compile_symbol(llir->target);
+    ++lex->sp;
+}
+
 void compiler::compile_llir(const llir_set* llir,
         lexical_env* lex) {
     if (llir->target->tag == lt_var) { // variable set
@@ -374,7 +382,7 @@ void compiler::compile_llir(const llir_set* llir,
     }
 }
 
-void compiler::compile_llir(const llir_var* llir,
+void compiler::compile_var(const llir_var* llir,
         lexical_env* lex) {
     auto str = symtab->symbol_name(llir->name);
     if (str == "nil") {
@@ -383,6 +391,9 @@ void compiler::compile_llir(const llir_var* llir,
         write_byte(OP_FALSE);
     } else if (str == "true") {
         write_byte(OP_TRUE);
+    } else if (str[0] == '/') {
+        compile_symbol(llir->name);
+        write_byte(OP_BY_GUID);
     } else {
         bool is_upval;
         auto x = find_local(lex, &is_upval, llir->name);
@@ -473,13 +484,13 @@ void compiler::compile_llir_generic(const llir_form* llir,
         compile_fn((llir_fn*)llir, lex);
         break;
     case lt_import:
-        //compile_llir((llir_import*)llir, lex);
+        compile_import((llir_import*)llir, lex);
         break;
     case lt_set:
         compile_llir((llir_set*)llir, lex);
         break;
     case lt_var:
-        compile_llir((llir_var*)llir, lex);
+        compile_var((llir_var*)llir, lex);
         break;
     case lt_with:
         compile_with((llir_with*)llir, lex, tail);

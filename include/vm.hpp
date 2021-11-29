@@ -68,7 +68,7 @@ enum vm_status {
 // instruction pointer, stack, etc. This is where the bytecode execution logic
 // is.
 struct vm_thread {
-    friend class interpreter_handle;
+    friend class fn_handle;
 private:
     // These are weak references to objects maintained by the interpreter.
     symbol_table* symtab;
@@ -82,7 +82,7 @@ private:
     // set when the execution status is set to vs_error
     string error_message;
     // set when the execution status is vs_waiting_for_import
-    value pending_import_id;
+    symbol_id pending_import_id;
 
     // instruction pointer and stack
     code_address ip;
@@ -117,13 +117,14 @@ private:
     value get_global(value name);
     void add_macro(value name, value v);
     value get_macro(value name);
+    value by_guid(value name);
 
     // attempt an import without escaping to interpreter
     optional<value> try_import(symbol_id ns_id);
     // perform an import using the top of the stack as the id. If the target
     // namespace is not already loaded, then this will cause execution to halt
     // with the waiting_for_import status.
-    void do_import();
+    void do_import(working_set* ws);
 
     // helper for arrange_call_stack. Takes the keyword table from the stack,
     // kw_tab, and returns a table matching call stack positions to values from
@@ -168,7 +169,7 @@ public:
 
     // checks the status of the virtual machine
     vm_status check_status() const;
-    value get_pending_import_id() const;
+    symbol_id get_pending_import_id() const;
     
 
     // execute instructions until a stopping condition occurs. Check status to

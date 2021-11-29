@@ -230,7 +230,9 @@ constexpr value V_TRUE  = { .raw = TAG_TRUE };
 constexpr value V_EMPTY = { .raw = TAG_EMPTY };
 
 // convert a value to a string
-string v_to_string(value v, const symbol_table* symbols);
+string v_to_string(value v,
+        const symbol_table* symbols,
+        bool code_format=false);
 
 
 // type information

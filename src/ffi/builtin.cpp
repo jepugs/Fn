@@ -73,6 +73,23 @@ fn_fun(bool_q, "bool?", "(x)") {
     return vis_bool(args[0]) ? V_TRUE : V_FALSE;
 }
 
+fn_fun(intern, "intern", "(str)") {
+    h->assert_type(TAG_STRING, args[0]);
+    if (h->failed()) {
+        return V_NIL;
+    }
+    return h->intern(vstring(args[0])->data);
+}
+
+fn_fun(symname, "symname", "(sym)") {
+    h->assert_type(TAG_SYM, args[0]);
+    if (h->failed()) {
+        return V_NIL;
+    }
+    auto str = ((vm_thread*)h->vm)->get_symtab()->symbol_name(vsymbol(args[0]));
+    return h->add_string(str);
+}
+
 fn_fun(gensym, "gensym", "()") {
     return h->gensym();
 }
@@ -222,6 +239,21 @@ fn_fun(integer_q, "integer?", "(x)") {
     return (num == (i64) num) ? V_TRUE : V_FALSE;
 }
 
+fn_fun(floor, "floor", "(x)") {
+    h->assert_type(TAG_NUM, args[0]);
+    return vbox_number(floor(vnumber(args[0])));
+}
+
+fn_fun(ceil, "ceil", "(x)") {
+    h->assert_type(TAG_NUM, args[0]);
+    return vbox_number(ceil(vnumber(args[0])));
+}
+
+fn_fun(frac_part, "frac-part", "(x)") {
+    h->assert_type(TAG_NUM, args[0]);
+    return vbox_number(vnumber(args[0]) - floor(vnumber(args[0])));
+}
+
 fn_fun(lt, "<", "(& args)") {
     if (args[0] == V_EMPTY) {
         return V_TRUE;
@@ -330,6 +362,50 @@ fn_fun(ge, ">=", "(& args)") {
 fn_fun (fn_not, "not", "(x)") {
     return vtruth(args[0]) ? V_FALSE : V_TRUE;
         
+}
+
+fn_fun (String, "String", "(& args)") {
+    if (args[0] == V_EMPTY) {
+        return h->add_string("");
+    }
+
+    auto res = v_to_string(vhead(args[0]), ((vm_thread*)h->vm)->get_symtab());
+    fn_for_list(it, vtail(args[0])) {
+        res = res + v_to_string(vhead(it),
+                ((vm_thread*)h->vm)->get_symtab());
+    }
+    return h->add_string(res);
+}
+
+// FIXME: get this into a different namespace so as to not perturb
+fn_fun (substring_internal, "substring-internal", "(str pos len)") {
+    h->assert_type(TAG_STRING, args[0]);
+    if (h->failed()) {
+        return V_NIL;
+    }
+    h->assert_integer(args[1]);
+    if (h->failed()) {
+        return V_NIL;
+    }
+    h->assert_integer(args[2]);
+    if (h->failed()) {
+        return V_NIL;
+    }
+
+    auto str = vstring(args[0]);
+    auto pos = vnumber(args[1]);
+    auto len_arg = vnumber(args[2]);
+    auto len = len_arg;
+    if (len_arg < 0) {
+        auto end = str->len + len_arg;
+        len = end - pos + 1;
+        if (len < 0) {
+            len = 0;
+        }
+    } else if (len + pos > str->len) {
+        len = str->len - pos;
+    }
+    return h->substr(args[0], pos, len);
 }
 
 
@@ -508,6 +584,32 @@ fn_fun(get, "get", "(table & keys)") {
     return res;
 }
 
+fn_fun(get_default, "get-default", "(table key default)") {
+    h->assert_type(TAG_TABLE, args[0]);
+    if (h->failed()) {
+        return V_NIL;
+    }
+    auto x = vtable(args[0])->contents.get(args[1]);
+    if (x.has_value()) {
+        return *x;
+    } else {
+        return args[2];
+    }
+}
+
+fn_fun(has_key_q, "has-key?", "(table key)") {
+    h->assert_type(TAG_TABLE, args[0]);
+    if (h->failed()) {
+        return V_NIL;
+    }
+    auto x = vtable(args[0])->contents.get(args[1]);
+    if (x.has_value()) {
+        return V_TRUE;
+    } else {
+        return V_FALSE;
+    }
+}
+
 fn_fun(get_keys, "get-keys", "(table)") {
     h->assert_type(TAG_TABLE, args[0]);
     auto keys = vtable(args[0])->contents.keys();
@@ -538,8 +640,8 @@ void install_builtin(interpreter& inter) {
     fn_add_builtin(inter, bool_q);
 
     // symbol things
-    //fn_add_builtin(inter, intern);
-    //fn_add_builtin(inter, symbol_name);
+    fn_add_builtin(inter, intern);
+    fn_add_builtin(inter, symname);
     fn_add_builtin(inter, gensym);
 
     fn_add_builtin(inter, add);
@@ -554,17 +656,17 @@ void install_builtin(interpreter& inter) {
     fn_add_builtin(inter, mod);
 
     fn_add_builtin(inter, integer_q);
-    // fn_add_builtin(inter, floor);
-    // fn_add_builtin(inter, ceil);
-    // fn_add_builtin(inter, frac-part);
+    fn_add_builtin(inter, floor);
+    fn_add_builtin(inter, ceil);
+    fn_add_builtin(inter, frac_part);
 
     fn_add_builtin(inter, gt);
     fn_add_builtin(inter, lt);
     fn_add_builtin(inter, ge);
     fn_add_builtin(inter, le);
 
-    // fn_add_builtin(inter, String);
-    // fn_add_builtin(inter, substring);
+    fn_add_builtin(inter, String);
+    fn_add_builtin(inter, substring_internal);
 
     fn_add_builtin(inter, fn_not);
 
@@ -580,30 +682,21 @@ void install_builtin(interpreter& inter) {
 
     fn_add_builtin(inter, Table);
     fn_add_builtin(inter, get);
-    // fn_add_builtin(inter, get_default);
-    // fn_add_builtin(inter, has_key_q);
+    fn_add_builtin(inter, get_default);
+    fn_add_builtin(inter, has_key_q);
     fn_add_builtin(inter, get_keys);
 
     fn_add_builtin(inter, error);
 
-    // these should be replaced
+    // these should be replaced with proper I/O facilities
     fn_add_builtin(inter, print);
     fn_add_builtin(inter, println);
 
 
-    // at the very least, map should get a native implementation
-    // fn_add_builtin(inter, map);
-    // fn_add_builtin(inter, filter);
-    // fn_add_builtin(inter, foldl);
-    // fn_add_builtin(inter, reverse);
-
-    // import into repl namespace
-    auto& st = *inter.get_symtab();
-    auto& glob = *inter.get_global_env();
-    do_import(st,
-            **glob.get_ns(st.intern("fn/user")),
-            **glob.get_ns(st.intern("fn/builtin")),
-            "");
+    // import remaining library from a file
+    fault err;
+    inter.import_ns(inter.get_symtab()->intern("fn/builtin"), &err);
+    // FIXME: log error as a warning
 }
 
 }

@@ -84,11 +84,11 @@ private:
             bool tail);
     void compile_fn(const llir_fn* llir,
             lexical_env* lex);
-    void compile_llir(const llir_import* llir,
+    void compile_import(const llir_import* llir,
             lexical_env* lex);
     void compile_llir(const llir_set* llir,
             lexical_env* lex);
-    void compile_llir(const llir_var* llir,
+    void compile_var(const llir_var* llir,
             lexical_env* lex);
     void compile_with(const llir_with* llir,
             lexical_env* lex,

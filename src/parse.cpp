@@ -397,6 +397,20 @@ ast_form* parse_next_form(scanner* sc,
     return res;
 }
 
+dyn_array<ast_form*> parse_from_scanner(scanner* sc,
+        symbol_table* symtab,
+        fault* err) {
+    dyn_array<ast_form*> res;
+    ast_form* a;
+    bool resumable;
+    while (!sc->eof_skip_ws()
+            && (a = parse_next_form(sc, symtab, &resumable, err))) {
+        // pos holds the position after last successful read
+        res.push_back(a);
+    }
+    return res;
+}
+
 dyn_array<ast_form*> parse_string(const string& src,
         symbol_table* symtab,
         fault* err) {

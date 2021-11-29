@@ -30,6 +30,8 @@ struct fn_handle {
     void assert_type(u64 tag, value v);
     // assert that a value is a list
     void assert_list(value v);
+    // assert that a value is an integer
+    void assert_integer(value v);
 
 
     // value creation

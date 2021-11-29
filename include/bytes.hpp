@@ -140,6 +140,8 @@ constexpr u8 OP_MACRO = 0x14;
 // macro-set; set the macro function associated to a symbol. stack arguments:
 // ->[function] symbol.
 constexpr u8 OP_SET_MACRO = 0x15;
+// get global by its full name, e.g. /fn/builtin:map
+constexpr u8 OP_BY_GUID = 0x16;
 
 
 // const SHORT; push a constant, identified by its 16-bit id
@@ -186,6 +188,7 @@ inline u8 instr_width(u8 instr) {
     switch (instr) {
     case OP_NOP:
     case OP_POP:
+    case OP_BY_GUID:
     case OP_GLOBAL:
     case OP_SET_GLOBAL:
     case OP_NIL:

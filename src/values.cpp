@@ -203,39 +203,51 @@ template<> u32 hash<value>(const value& v) {
     }
 }
 
-string v_to_string(value v, const symbol_table* symbols) {
+string v_to_string(value v, const symbol_table* symbols, bool code_format) {
     auto tag = v_tag(v);
     string res;
     fn_table* t;
     // TODO: add escaping to strings/characters
     switch(tag) {
     case TAG_NUM:
-        {
-            std::ostringstream os;
+        {   std::ostringstream os;
             os << std::noshowpoint << vnumber(v);
             return os.str();
         }
     case TAG_CONS:
-        res = "[ ";
-        for (value x = v; v_tag(x) == TAG_CONS; x = vcons(x)->tail) {
-            res += v_to_string(vcons(x)->head,symbols) + " ";
+        {   res = "[" + v_to_string(vhead(v), symbols, code_format);
+            auto it = vtail(v);
+            for (; it != V_EMPTY; it = vtail(it)) {
+                res += " " + v_to_string(vhead(it), symbols, code_format);
+            }
+            return res + "]";
         }
-        return res + "]";
     case TAG_STRING:
-        return "\"" + string{vstring(v)->data} + "\"";
+        if (code_format) {
+            // TODO: handle escapes
+            return "\"" + string{vstring(v)->data} + "\"";
+        } else {
+            return string{vstring(v)->data};
+        }
     case TAG_TABLE:
-        // TODO: recursively track which objects we've descended into
-        res = "{ ";
-        t = vtable(v);
-        for (auto k : t->contents.keys()) {
-            res += v_to_string(k,symbols) + " "
-                + v_to_string(*t->contents.get(k),symbols) + " ";
-            if (res.size() >= 69) {
-                res += "...";
+        {   // TODO: recursively track which objects we've descended into
+            t = vtable(v);
+            auto keys = t->contents.keys();
+            if (keys.empty()) {
+                res = "{}";
                 break;
             }
+            res = "{";
+            auto k = keys.front();
+            res += v_to_string(k,symbols) + " "
+                + v_to_string(*t->contents.get(k),symbols,code_format);
+            keys.pop_front();
+            for (auto k : keys) {
+                res += " " + v_to_string(k,symbols) + " "
+                    + v_to_string(*t->contents.get(k),symbols,code_format);
+            }
+            return res + "}";
         }
-        return res + "}";
     case TAG_FUNC:
         return "<function>";
     case TAG_NIL:
@@ -247,7 +259,11 @@ string v_to_string(value v, const symbol_table* symbols) {
     case TAG_EMPTY:
         return "[]";
     case TAG_SYM:
-        return symbols->nice_name(vsymbol(v));
+        if (code_format) {
+            return "'" + symbols->nice_name(vsymbol(v));
+        } else {
+            return symbols->nice_name(vsymbol(v));
+        }
     }
     return "<unprintable-object>";
 }

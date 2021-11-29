@@ -84,13 +84,24 @@ ast_form* parse_next_form(scanner* sc,
         bool* resumable,
         fault* err);
 
+// Attempt to parse as many ast_forms as possible from the given scanner.
+dyn_array<ast_form*> parse_from_scanner(scanner* sc,
+        symbol_table* symtab,
+        fault* err);
+
 // Attempt to parse as many ast_forms as possible from the given string. The
 // parse_error* structure is set to the first error encountered.
 dyn_array<ast_form*> parse_string(const string& src,
         symbol_table* symtab,
         fault* err);
 
-// Parse AST forms from sc until an error is encountered
+// Parse AST forms from in until an error is encountered
+dyn_array<ast_form*> parse_input(std::istream* in,
+        const source_loc& src_start,
+        symbol_table* symtab,
+        fault* err);
+
+// Parse AST forms from in until an error is encountered
 dyn_array<ast_form*> parse_input(std::istream* in,
         const source_loc& src_start,
         symbol_table* symtab,

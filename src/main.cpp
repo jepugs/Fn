@@ -29,14 +29,14 @@ void show_usage() {
         "  --ns namespace   Specify the namespace for evaluation. In\n"
         "                    the case of file evaluation, this will\n"
         "                    override the file's package & namespace.\n"
-        "                    The default namespace is fn/user.\n"
+        "                    The default namespace is fn/user/repl.\n"
         "  --eval string    Evaluate a string (instead of a file).\n"
         "  ARGS ...         These are passed to the interpreter as\n"
         "                    command line arguments.\n"
-        "Running with no options starts REPL in namespace fn/user. When\n"
-        "evaluating a file, the package and namespace are determined by\n"
-        "the filename and package declaration, if present. Refer to the\n"
-        "Fn manual for more information.\n"
+        "Running with no options starts REPL in namespace fn/user/repl.\n"
+        "When evaluating a file, the package and namespace are determined\n"
+        "by the filename and package declaration, if present. Refer to\n"
+        "the Fn manual for more information.\n"
         ;
 }
 
@@ -54,7 +54,7 @@ struct interpreter_options {
     // holds filename or string to evaluate depending on mode
     string src = "";
     // namespace if one is set
-    string ns = "fn/user";
+    string ns = "fn/user/repl";
     // the start of program arguments in argv
     int args_start = 1;
     // if true, should just show help and exit. In this case, other fields of
@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
     value res;
     switch (opt.mode) {
     case em_file:
-        res = inter.interpret_file(opt.src, &ws, &i_err);
+        res = inter.interpret_main_file(opt.src, &ws, &i_err);
         if (i_err.happened) {
             emit_error(&std::cout, i_err);
             return -1;
@@ -242,7 +242,7 @@ int main(int argc, char** argv) {
                 buf = "";
                 // print value
                 for (auto x : vals) {
-                    std::cout << v_to_string(x, inter.get_symtab()) << '\n';
+                    std::cout << v_to_string(x, inter.get_symtab(), true) << '\n';
                     still_reading = false;
                 }
             }

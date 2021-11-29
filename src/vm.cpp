@@ -40,6 +40,10 @@ vm_status vm_thread::check_status() const {
     return status;
 }
 
+symbol_id vm_thread::get_pending_import_id() const {
+    return pending_import_id;
+}
+
 value vm_thread::get_symbol(const string& name) {
     return vbox_symbol(get_symtab()->intern(name));
 }
@@ -53,6 +57,9 @@ value vm_thread::last_pop(working_set* ws) const {
 }
 
 void vm_thread::add_global(value name, value v) {
+    if (!vis_symbol(name)) {
+        runtime_error("Variable names must be symbols.");
+    }
     auto ns_id = chunk->ns_id;
     auto ns = *globals->get_ns(ns_id);
     ns->set(vsymbol(name), v);
@@ -61,6 +68,9 @@ void vm_thread::add_global(value name, value v) {
 value vm_thread::get_global(value name) {
     auto ns_id = chunk->ns_id;
     auto ns = *globals->get_ns(ns_id);
+    if (!vis_symbol(name)) {
+        runtime_error("Variable names must be symbols.");
+    }
     auto res = ns->get(vsymbol(name));
 
     if (!res.has_value()) {
@@ -68,6 +78,40 @@ value vm_thread::get_global(value name) {
                 + v_to_string(name, get_symtab()));
     }
     return *res;
+}
+
+value vm_thread::by_guid(value name) {
+    if (!vis_symbol(name)) {
+        runtime_error("Variable GUIDs must be symbols.");
+    }
+    auto str = symtab->symbol_name(vsymbol(name)).substr(1);
+    u32 i;
+    for (i = 0; i < str.size(); ++i) {
+        if (str[i] == ':') {
+            break;
+        }
+    }
+    if (i == str.size()) {
+        runtime_error("Missing colon in GUID.");
+    }
+
+    auto ns_str = str.substr(0, i);
+    auto var_str = str.substr(i+1);
+    if (ns_str == "") {
+        runtime_error("Empty namespace name in GUID.");
+    }
+    if (var_str == "") {
+        runtime_error("Empty variable name in GUID.");
+    }
+    auto ns = globals->get_ns(symtab->intern(ns_str));
+    if (!ns.has_value()) {
+        runtime_error("GUID corresponds to nonexistent namespace.");
+    }
+    auto x = (**ns).get(symtab->intern(var_str));
+    if (!x.has_value()) {
+        runtime_error("GUID corresponds to nonexistent definition.");
+    }
+    return *x;
 }
 
 void vm_thread::add_macro(value name, value v) {
@@ -95,9 +139,23 @@ optional<value> vm_thread::try_import(symbol_id ns_id) {
     return std::nullopt;
 }
 
-void vm_thread::do_import() {
-    // auto ns_id = pop().usym_id();
-    // TODO: write this :(
+void vm_thread::do_import(working_set* ws) {
+    auto ns_id = pop_to_ws(ws);
+    if (!vis_symbol(ns_id)) {
+        runtime_error("OP_IMPORT name must be a symbol.");
+    }
+    auto x = globals->get_ns(vsymbol(ns_id));
+    if (!x.has_value()) {
+        // this will be saved as the last pop before deferring control to the
+        // interpreter
+        pending_import_id = vsymbol(ns_id);
+        status = vs_waiting_for_import;
+    } else {
+        string pkg, name;
+        ns_name((*symtab)[vsymbol(ns_id)], &pkg, &name);
+        // FIXME: maybe check for overwrites?
+        copy_defs(*symtab, **globals->get_ns(chunk->ns_id), **x, name + ":");
+    }
 }
 
 
@@ -535,6 +593,9 @@ void vm_thread::step() {
         }
         add_global(v2, v1);
         break;
+    case OP_BY_GUID:
+        push(by_guid(pop_to_ws(&ws)));
+        break;
     case OP_MACRO:
         v1 = pop_to_ws(&ws);
         if (v_tag(v1) != TAG_SYM) {
@@ -600,9 +661,7 @@ void vm_thread::step() {
         break;
 
     case OP_IMPORT:
-        do_import();
-        // ns = import_ns(v1);
-        // push(as_value(ns));
+        do_import(&ws);
         break;
 
     case OP_JUMP:
@@ -686,6 +745,17 @@ void vm_thread::step() {
 
 void vm_thread::execute(fault* err) {
     this->err = err;
+    if (status == vs_waiting_for_import) {
+        auto x = globals->get_ns(pending_import_id);
+        if (!x.has_value()) {
+            set_fault(err, chunk->location_of(ip), "vm", "Import failed.");
+            return;
+        }
+        string pkg, name;
+        ns_name((*symtab)[pending_import_id], &pkg, &name);
+        // FIXME: maybe check for overwrites?
+        copy_defs(*symtab, **globals->get_ns(chunk->ns_id), **x, name + ":");
+    }
     status = vs_running;
     try {
         while (status == vs_running) {
@@ -738,6 +808,9 @@ void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& ou
         break;
     case OP_SET_GLOBAL:
         out << "set-global";
+        break;
+    case OP_BY_GUID:
+        out << "by-guid";
         break;
     case OP_CONST:
         out << "const " << code.read_short(ip+1);

@@ -1,4 +1,5 @@
 #include "interpret.hpp"
+#include "config.h"
 
 #include <filesystem>
 #include <sstream>
@@ -9,17 +10,15 @@ namespace fs = std::filesystem;
 
 interpreter::interpreter()
     : globals{&symtab}
-    , alloc{&globals} {
+    , alloc{&globals}
+    , base_dir{"."}
+    , base_pkg{symtab.intern("fn/user")} {
 
     search_path.push_back("/usr/lib/fn/ns");
     search_path.push_back(fs::current_path().u8string());
 
-    auto builtin_id = symtab.intern("fn/builtin");
-    globals.create_ns(builtin_id);
-    globals.create_ns(symtab.intern("fn/user"));
-
     auto ws = alloc.add_working_set();
-    ffi_chunk = ws.add_chunk(builtin_id);
+    ffi_chunk = ws.add_chunk(symtab.intern("fn/builtin"));
     alloc.add_root_object((gc_header*)ffi_chunk);
 }
 
@@ -47,8 +46,11 @@ global_env* interpreter::get_global_env() {
 void interpreter::interpret_to_end(vm_thread& vm, fault* err) {
     vm.execute(err);
     while (vm.check_status() == vs_waiting_for_import) {
-        // TODO: import code here :/
-        break;
+        import_ns(vm.get_pending_import_id(), err);
+        if (err->happened) {
+            break;
+        }
+        vm.execute(err);
     }
     // all other statuses cause us to exit
 }
@@ -91,12 +93,73 @@ value interpreter::interpret_form(ast_form* ast,
     return res;
 }
 
-value interpreter::interpret_file(const string& path,
+value interpreter::interpret_file_in_ns(const string& path,
+        symbol_id ns_id,
         working_set* ws,
         fault* err) {
     std::ifstream in{path};
-    return interpret_istream(&in, source_loc{path}, ws, err);
+    scanner sc{&in, fs::path{path}.filename()};
+    
+    // Skip package declaration
+    auto x = read_pkg_decl(&sc, ws, err);
+    if (err->happened) {
+        return V_NIL;
+    }
+    if (!x.has_value()) {
+        //reset the scanner
+        in = std::ifstream{path};
+        sc = scanner{&in, fs::path{path}.filename()};
+    }
+
+    return interpret_from_scanner(&sc, ns_id, ws, err);
 }
+
+bool interpreter::import_ns(symbol_id ns_id, fault* err) {
+    // TODO: emit warning if import disagrees with file package declaration
+    auto x = find_import_file(ns_id);
+    if (!x.has_value()) {
+        return false;
+    }
+    auto ws = alloc.add_working_set();
+    interpret_file_in_ns(*x, ns_id, &ws, err);
+    return true;
+}
+
+value interpreter::interpret_main_file(const string& path,
+        working_set* ws,
+        fault* err) {
+    fs::path p{path};
+    std::ifstream in{path};
+    scanner sc{&in, p.filename()};
+    fs::path dir{p};
+    base_dir = dir.remove_filename().u8string();
+    if (base_dir.size() == 0) {
+        base_dir = "./";
+    }
+    std::cout << "base dir is " << base_dir << '\n';
+
+    source_loc start;
+    auto x = read_pkg_decl(&sc, ws, err);
+    string pkg;
+    if (!x.has_value()) {
+        if (err->happened) {
+            return V_NIL;
+        }
+        // no package declaration, so reinitialize the scanner
+        in = std::ifstream{path};
+        sc = scanner{&in, p.filename()};
+        pkg = "fn/user";
+    } else {
+        pkg = symtab[*x];
+    }
+    base_pkg = intern(pkg);
+    string ns_str = pkg + "/" + p.stem().u8string();
+    std::cout << "ns file " << p.u8string() << '\n';
+    std::cout << "ns string " << ns_str << '\n';
+
+    return interpret_from_scanner(&sc, symtab.intern(ns_str), ws, err);
+}
+
 
 value interpreter::interpret_string(const string& src,
         const string& src_name,
@@ -122,7 +185,7 @@ dyn_array<value> interpreter::partial_interpret_string(const string& src,
         return {};
     }
 
-    auto ns_name = symtab.intern("fn/user");
+    auto ns_name = symtab.intern("fn/user/repl");
     auto chunk = ws->add_chunk(ns_name);
 
     dyn_array<value> res;
@@ -173,7 +236,7 @@ value interpreter::interpret_istream(std::istream* in,
         return V_NIL;
     }
 
-    auto ns_name = symtab.intern("fn/user");
+    auto ns_name = symtab.intern("fn/user/repl");
     auto chunk = ws->add_chunk(ns_name);
     // FIXME: this works around a semantic problem where the allocator can't see
     // constants that are added to this chunk. working sets should automatically
@@ -218,6 +281,112 @@ value interpreter::interpret_istream(std::istream* in,
     return res;
 }
 
+value interpreter::interpret_from_scanner(scanner* sc,
+        symbol_id ns_id,
+        working_set* ws,
+        fault* err) {
+    auto forms = parse_from_scanner(sc, &symtab, err);
+    if (forms.size == 0) {
+        return V_NIL;
+    }
+
+    auto chunk = ws->add_chunk(ns_id);
+    // FIXME: this works around a semantic problem where the allocator can't see
+    // constants that are added to this chunk. working sets should automatically
+    // pin values.
+    ws->pin((gc_header*)chunk);
+    value res = V_NIL;
+
+    for (auto ast : forms) {
+        expander ex{this, chunk};
+        auto llir = ex.expand(ast, err);
+        free_ast_form(ast);
+        if (llir == nullptr) {
+            break;
+        }
+
+        if (log_llir) {
+            std::cout << "LLIR: \n";
+            print_llir(llir, symtab, chunk);
+        }
+
+        compiler c{&symtab, &alloc, chunk};
+        c.compile(llir, err);
+        free_llir_form(llir);
+        if (err->happened) { // fault
+            break;
+        }
+
+        vm_thread vm{&alloc, &globals, chunk};
+        interpret_to_end(vm, err);
+        if (err->happened) {
+            break;
+        }
+
+        res = vm.last_pop(ws);
+    }
+
+    if (log_dis) {
+        std::cout << "Disassembled bytecode: \n";
+        disassemble(symtab, *chunk, std::cout);
+    }
+
+    return res;
+}
+
+
+optional<symbol_id> interpreter::read_pkg_decl(scanner* sc,
+        working_set* ws,
+        fault* err) {
+    bool resumable;
+    auto ast = parse_next_form(sc, &symtab, &resumable, err);
+    if (err->happened) {
+        return {};
+    }
+    if (ast->kind != ak_list || ast->list_length == 0) {
+        free_ast_form(ast);
+        return {};
+    }
+    auto op = ast->datum.list[0];
+    if (op->kind != ak_symbol_atom || op->datum.sym != intern("package")) {
+        free_ast_form(ast);
+        return {};
+    }
+    if (ast->list_length != 2) {
+        set_fault(err, ast->loc, "interpreter",
+                "Incorrect arity in package declaration.");
+        free_ast_form(ast);
+        return {};
+    }
+    auto name_form = ast->datum.list[1];
+    if (name_form->kind != ak_symbol_atom) {
+        set_fault(err, name_form->loc, "interpreter",
+                "Package name must be a symbol.");
+        free_ast_form(ast);
+        return {};
+    }
+    auto res = name_form->datum.sym;
+    free_ast_form(ast);
+    return res;
+}
+
+optional<string> interpreter::find_import_file(symbol_id ns_id) {
+    string pkg, ns;
+    ns_name(symtab[ns_id], &pkg, &ns);
+    string base = symtab[base_pkg];
+    if (is_subpkg(pkg, base)) {
+        auto str = subpkg_rel_path(pkg, base);
+        auto res = str + "/" + ns + ".fn";
+        return res;
+    }
+    // system path
+    auto str = string{PREFIX} + "/lib/fn/packages/" +  symtab[ns_id] + ".fn";
+    fs::path p{str};
+    if (fs::exists(p) && !fs::is_directory(p)) {
+        return p.u8string();
+    }
+    return {};
+}
 
 ast_form* interpreter::expand_macro(symbol_id macro,
         symbol_id ns_id,

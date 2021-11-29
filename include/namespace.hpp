@@ -28,6 +28,8 @@ struct alignas(32) fn_namespace {
 struct global_env {
     symbol_table* symtab;
     table<symbol_id, fn_namespace*> ns_table;
+    symbol_id builtin_id;
+    bool import_builtin;
 
     // this creates the root namespace hierarchy including the fn.builtin
     // namespace.
@@ -36,14 +38,26 @@ struct global_env {
 
     symbol_table* get_symtab();
 
+    optional<fn_namespace*> get_ns(const string& name);
     optional<fn_namespace*> get_ns(symbol_id name);
     fn_namespace* create_ns(symbol_id name);
+    fn_namespace* create_ns(const string& name);
 
 };
 
+// global name destructuring
+void ns_name(const string& global_name, string* pkg, string* name);
+// tell if sub is a subpackage of pkg
+bool is_subpkg(const string& sub, const string& pkg);
+// Returns the suffix of sub which distinguishes it from superpackage pkg. If
+// this would be the empty string, returns ".". This will not work properly if
+// sub is not a subpackage of pkg.
+string subpkg_rel_path(const string& sub, const string& pkg);
+
+
 // import bindings src into dest. The new bindings' names consist
 // of the names in src with prefix prepended.
-void do_import(symbol_table& symtab,
+void copy_defs(symbol_table& symtab,
         fn_namespace& dest,
         fn_namespace& src,
         const string& prefix);

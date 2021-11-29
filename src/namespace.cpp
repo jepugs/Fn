@@ -32,7 +32,11 @@ forward_list<symbol_id> fn_namespace::macro_names() const {
 
 
 global_env::global_env(symbol_table* use_symtab)
-    : symtab{use_symtab} {
+    : symtab{use_symtab}
+    , builtin_id{symtab->intern("fn/builtin")}
+    , import_builtin{false} {
+    create_ns(builtin_id);
+    import_builtin=true;
 }
 
 global_env::~global_env() {
@@ -56,10 +60,58 @@ fn_namespace* global_env::create_ns(symbol_id name) {
     }
     auto res = new fn_namespace(name);
     ns_table.insert(name, res);
+    if (import_builtin) {
+        copy_defs(*symtab, *res, **ns_table.get(builtin_id), "");
+    }
     return res;
 }
 
-void do_import(symbol_table& symtab, fn_namespace& dest, fn_namespace& src,
+void ns_name(const string& global_name, string* pkg, string* name) {
+    if (global_name.size() == 0) {
+        *name = "";
+        *pkg = "";
+        return;
+    }
+    i64 last_slash = -1;
+    for (u32 i = 0; i < global_name.size(); ++i) {
+        if (global_name[i] == '/') {
+            last_slash = i;
+        }
+    }
+    if (last_slash == -1) {
+        *pkg = "";
+    } else {
+        *pkg = global_name.substr(0, last_slash);
+    }
+    *name = global_name.substr(last_slash+1);
+}
+
+bool is_subpkg(const string& sub, const string& pkg) {
+    if (sub.size() < pkg.size()) {
+        return false;
+    }
+    u32 i;
+    for (i = 0; i < pkg.size(); ++i) {
+        if (sub[i] != pkg[i]) {
+            return false;
+        }
+    }
+    if (i < sub.size()) {
+        return sub[i] == '/';
+    } else {
+        return true;
+    }
+}
+
+string subpkg_rel_path(const string& sub, const string& pkg) {
+    if (sub.size() == pkg.size()) {
+        return ".";
+    } else {
+        return sub.substr(pkg.size()+1);
+    }
+}
+
+void copy_defs(symbol_table& symtab, fn_namespace& dest, fn_namespace& src,
         const string& prefix) {
     for (auto k : src.names()) {
         auto name = symtab.intern(prefix + symtab[k]);

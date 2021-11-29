@@ -25,6 +25,9 @@ private:
     // here in the interpreter.
     code_chunk* ffi_chunk;
 
+    string base_dir;
+    symbol_id base_pkg;
+
     // logging settings. For now these just go to cout.
     bool log_llir = false;
     bool log_dis = false;
@@ -54,10 +57,27 @@ public:
     void add_builtin_function(const string& name,
             const string& args,
             value (*foreign_func)(fn_handle*,value*));
-    
+
     // Evaluate a source file in an empty chunk. Returns the value from the last
     // expression (or null for an empty file).
     value interpret_file(const string& path,
+            working_set* ws,
+            fault* err);
+    // Like interpret_file, but overrides the file's package/namespace with the
+    // provided one.
+    value interpret_file_in_ns(const string& path,
+            symbol_id ns_id,
+            working_set* ws,
+            fault* err);
+    // like interpret_file, but also sets the base directory to the given
+    // directory, and the base package to the package of the file
+    value interpret_main_file(const string& path,
+            working_set* ws,
+            fault* err);
+    // like interpret_main_file, but accepts an (fully qualified) namespace name
+    // that overrides the file's namespace and package
+    value interpret_main_file_in_ns(const string& path,
+            symbol_id ns_id,
             working_set* ws,
             fault* err);
     // Evaluate a string in an empty chunk. Returns the value from the last
@@ -75,6 +95,22 @@ public:
             const source_loc& src_start,
             working_set* ws,
             fault* err);
+    value interpret_from_scanner(scanner* sc,
+            symbol_id ns_id,
+            working_set* ws,
+            fault* err);
+    // Import a namespace, performing full search. Returns false if no file is
+    // found.
+    bool import_ns(symbol_id ns_id, fault* err);
+    // read the package declaration from a file, if present. This will leave the
+    // scanner where it left off, so it should be reinitialized if this returns
+    // nullopt.
+    optional<symbol_id> read_pkg_decl(scanner* sc,
+            working_set* ws,
+            fault* err);
+    // search for the file, first relative to the base package, then in the
+    // search path (unimplemented), and then in the system package directory.
+    optional<string> find_import_file(symbol_id ns_id);
 
     // Evaluate as much of a string as we can. Returns the number of bytes used.
     // Here's how this works: we try to parse ast_forms from src, and execute

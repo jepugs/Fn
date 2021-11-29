@@ -1,4 +1,4 @@
-;(package fn)
+(package fn)
 
 (defn even? (x)
   (= (mod x 2) 0))
@@ -89,26 +89,31 @@
               (tail rem))))
   (iter [] list))
 
-(defn contains? (coll x (test =))
-  (letfn list-iter (rem)
-    (if (test x (head rem))
-        true
-        (list-iter (tail rem))))
-  (letfn table-iter (rem-keys)
-    (if (test (get coll (head rem-keys)) x)
-        true
-        (table-iter (tail rem-keys))))
-  (cond
-    (list? coll)   (list-iter coll)
-    (table? coll)  (table-iter (get-keys coll))
-    otherwise      (error "contains? argument must be a list or table.")))
-
 (defn reverse (list)
   (letfn iter (acc rem)
     (if (empty? rem)
         acc
         (iter (cons (head rem) acc) (tail rem))))
   (iter [] list))
+
+
+(defn substring (str start (len -1))
+  (substring-internal start len))
+
+
+(defn contains? (coll x (test /fn/builtin:=))
+  (letfn list-iter (rem)
+         (if (test x (head rem))
+             true
+           (list-iter (tail rem))))
+  (letfn table-iter (rem-keys)
+         (if (test (get coll (head rem-keys)) x)
+             true
+           (table-iter (tail rem-keys))))
+  (cond
+   (list? coll)   (list-iter coll)
+   (table? coll)  (table-iter (get-keys coll))
+   otherwise      (error "contains? argument must be a list or table.")))
 
 (defn apply (fun arg0 arg1 & args)
   (letfn iter (acc rem)
