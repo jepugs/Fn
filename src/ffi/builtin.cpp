@@ -312,7 +312,7 @@ fn_fun(le, "<=", "(& args)") {
         return V_TRUE;
     }
 
-    auto prev = args[0];
+    auto prev = vhead(args[0]);
     h->assert_type(TAG_NUM, prev);
     if (h->failed()) {
         return V_NIL;

@@ -24,21 +24,22 @@ template<> inline u32 hash<u32>(const u32& id) {
     return id;
 }
 
-// hash table entry
-template <typename K, typename T> struct entry {
-    const K key;
-    T val;
-
-    entry(const K& k, T& v) : key(k), val(v) { }
-};
 
 /// hash table with string keys. uses linear probing.
 template <typename K, typename T> class table {
 private:
+    // hash table entry
+    struct entry {
+        const K key;
+        T val;
+
+        entry(const K& k, const T& v) : key{k}, val{v} { }
+    };
+
     u32 cap;
     u32 threshold;
     u32 size;
-    entry<K,T> **array;
+    entry **array;
 
     // increase the capacity by a factor of 2. this involves recomputing all hashes
     void increase_cap() {
@@ -48,7 +49,7 @@ private:
         // initialize a new array
         cap *= 2;
         threshold = (u32)(REHASH_THRESHOLD * cap);
-        array = new entry<K,T>*[cap];
+        array = new entry*[cap];
         for (u32 i =0; i < cap; ++i) {
             array[i] = nullptr;
         }
@@ -69,7 +70,7 @@ public:
         float th = REHASH_THRESHOLD * (float) init_cap;
         threshold = (u32)th;
         size = 0;
-        array = new entry<K,T>*[init_cap];
+        array = new entry*[init_cap];
         for (u32 i =0; i < init_cap; ++i) {
             array[i] = nullptr;
         }
@@ -78,10 +79,10 @@ public:
         : cap(src.cap)
         , threshold(src.threshold)
         , size(src.size)
-        , array(new entry<K,T>*[cap]) {
+        , array(new entry*[cap]) {
         for (u32 i = 0; i < cap; ++i) {
             if (src.array[i] != nullptr) {
-                array[i] = new entry(src.array[i]->key, src.array[i]->val);
+                array[i] = new entry{src.array[i]->key, src.array[i]->val};
             } else {
                 array[i] = nullptr;
             }
@@ -106,11 +107,11 @@ public:
         cap = src.cap;
         threshold = src.threshold;
         size = src.size;
-        array = new entry<K,T>*[cap];
+        array = new entry*[cap];
 
         for (u32 i = 0; i < cap; ++i) {
             if (src.array[i] != nullptr) {
-                array[i] = new entry(src.array[i]->key, src.array[i]->val);
+                array[i] = new entry{src.array[i]->key, src.array[i]->val};
             } else {
                 array[i] = nullptr;
             }
@@ -124,7 +125,7 @@ public:
     }
 
     // insert/overwrite a new entry
-    __attribute__((noinline)) T& insert(const K& k, T v) {
+    T& insert(const K& k, T v) {
         if (size >= threshold) {
             increase_cap();
         }
@@ -135,7 +136,7 @@ public:
             if (array[i] == nullptr) {
                 // no collision; make a new entry
                 ++size;
-                array[i] = new entry<K,T>(k, v);
+                array[i] = new entry{k, v};
                 break;
             } else if (array[i]->key == k) {
                 // no collision; overwrite previous entry
@@ -162,7 +163,7 @@ public:
                 return std::nullopt;
             } else if (array[i]->key == k && x) {
                 // found the key
-                return std::make_optional(array[i]->val);
+                return array[i]->val;
             }
             i = (i+1) % cap;
             ++ct;

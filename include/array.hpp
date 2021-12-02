@@ -80,7 +80,7 @@ struct dyn_array {
         while (new_cap < min_cap) {
             new_cap *= 2;
         }
-        if (std::is_trivially_copyable<t>::value) {
+        if constexpr (std::is_trivially_copyable<t>::value) {
             data = (t*)realloc(data, new_cap*sizeof(t));
         } else {
             auto old_data = data;

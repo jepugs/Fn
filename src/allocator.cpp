@@ -411,7 +411,8 @@ void allocator::mark() {
         }
         for (auto k2 : ns->macro_names()) {
             // these are all functions, so we don't need to check
-            mark_descend(vheader(*ns->get_macro(k2)));
+            auto x = ns->get_macro(k2);
+            mark_descend(vheader(*x));
         }
     }
 
@@ -516,11 +517,11 @@ void allocator::collect() {
 void allocator::force_collect() {
     // note: assume that objects begin unmarked
 #ifdef GC_DEBUG
-    std::cout << "garbage collection beginning (mem_usage = "
-              << mem_usage
-              << ", num_objects() = "
-              << count
-              << " ):\n";
+    // std::cout << "garbage collection beginning (mem_usage = "
+    //           << mem_usage
+    //           << ", num_objects() = "
+    //           << count
+    //           << " ):\n";
 #endif
 
     mark();

@@ -116,6 +116,10 @@ value vm_thread::by_guid(value name) {
 }
 
 void vm_thread::add_macro(value name, value v) {
+    if (!vis_function(v)) {
+        runtime_error("op-macro value not a function.");
+        vheader(v);
+    }
     auto ns_id = chunk->ns_id;
     auto ns = *globals->get_ns(ns_id);
     ns->set_macro(vsymbol(name), v);

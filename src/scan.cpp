@@ -100,7 +100,7 @@ token scanner::make_token(token_kind tk, const string& str) const {
 token scanner::make_token(token_kind tk, double num) const {
     return token{tk, source_loc{filename, line, col}, num};
 }
-token scanner::make_token(token_kind tk, const dyn_array<string*>& ids) const {
+token scanner::make_token(token_kind tk, const dyn_array<string>& ids) const {
     return token{tk, source_loc{filename, line, col}, ids};
 }
 
@@ -232,11 +232,11 @@ token scanner::scan_atom(char first) {
         return make_token(tk_symbol, string{buf.data, buf.size});
     }
 
-    dyn_array<string*> ids;
+    dyn_array<string> ids;
     scan_to_dot(buf);
 
     while (true) {
-        ids.push_back(new string{buf.data, buf.size});
+        ids.push_back(string{buf.data, buf.size});
         buf.resize(0);
         if (eof()) {
             break;
@@ -257,9 +257,7 @@ token scanner::scan_atom(char first) {
 
     // we don't actually want to delete these
     if (ids.size == 1) {
-        auto res = make_token(tk_symbol, *ids[0]);
-        // in this case it gets copied
-        delete ids[0];
+        auto res = make_token(tk_symbol, ids[0]);
         return res;
     } else {
         return make_token(tk_dot, ids);

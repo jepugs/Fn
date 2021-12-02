@@ -50,7 +50,7 @@ union token_datum {
     // used for string literals and symbol names
     string* str;
     // used for dots
-    dyn_array<string*>* ids;
+    dyn_array<string>* ids;
     // placeholder null pointer for other token types
     void *nothing;
 };
@@ -76,10 +76,10 @@ struct token {
         , loc{loc}
         , datum{.str = new string{str}} {
     }
-    token(token_kind tk, source_loc loc, const dyn_array<string*>& ids)
+    token(token_kind tk, source_loc loc, const dyn_array<string>& ids)
         : tk{tk}
         , loc{loc}
-        , datum{.ids = new dyn_array<string*>{ids}} {
+        , datum{.ids = new dyn_array<string>{ids}} {
     }
 
     token(const token& tok)
@@ -88,7 +88,7 @@ struct token {
         if (tk == tk_string || tk == tk_symbol) {
             datum.str = new string{*tok.datum.str};
         } else if (tk == tk_dot) {
-            datum.ids = new dyn_array<string*>{*tok.datum.ids};
+            datum.ids = new dyn_array<string>{*tok.datum.ids};
         } else {
             datum = tok.datum;
         }
@@ -100,9 +100,6 @@ struct token {
         if (tk == tk_string || tk == tk_symbol) {
             delete datum.str;
         } else if (tk == tk_dot) {
-            for (auto x : *datum.ids) {
-                delete x;
-            }
             delete datum.ids;
         }
 
@@ -111,9 +108,9 @@ struct token {
         if (tk == tk_string || tk == tk_symbol) {
             datum.str = new string{*tok.datum.str};
         } else if (tk == tk_dot) {
-            datum.ids = new dyn_array<string*>;
+            datum.ids = new dyn_array<string>;
             for (auto x : *tok.datum.ids) {
-                datum.ids->push_back(new string{*x});
+                datum.ids->push_back(x);
             }
         } else {
             this->datum = tok.datum;
@@ -137,9 +134,6 @@ struct token {
         if (tk == tk_string || tk == tk_symbol) {
             delete datum.str;
         } else if (tk == tk_dot) {
-            for (auto x : *datum.ids) {
-                delete x;
-            }
             delete datum.ids;
         }
     }
@@ -185,11 +179,11 @@ struct token {
             return *(this->datum.str);
         case tk_dot:
             {
-                auto res = *(*(this->datum.ids))[0];
+                auto res = (*(this->datum.ids))[0];
 
                 u32 u;
                 for (u = 1; u < res.size(); ++u) {
-                    auto s = *(*(this->datum.ids))[u];
+                    auto s = (*(this->datum.ids))[u];
                     res = res + "." + s;
                 }
 
@@ -247,7 +241,7 @@ private:
     token make_token(token_kind tk) const;
     token make_token(token_kind tk, const string& str) const;
     token make_token(token_kind tk, double num) const;
-    token make_token(token_kind tk, const dyn_array<string*>& ids) const;
+    token make_token(token_kind tk, const dyn_array<string>& ids) const;
 
     // methods to scan variable-length tokens
 

@@ -360,7 +360,7 @@ ast_form* parse_next_form(scanner* sc,
     case tk_dot:
         buf.push_back(mk_symbol_form(loc, symtab->intern("dot")));
         for (auto s : *t0.datum.ids) {
-            buf.push_back(mk_symbol_form(loc, symtab->intern(*s)));
+            buf.push_back(mk_symbol_form(loc, symtab->intern(s)));
         }
         res = mk_list_form(loc, &buf);
         break;

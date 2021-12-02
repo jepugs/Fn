@@ -124,7 +124,7 @@ llir_dot* mk_llir_dot(const source_loc& origin,
     return dest;
 }
 void clear_llir_dot(llir_dot* obj) {
-    delete obj->keys;
+    delete[] obj->keys;
     free_llir_form(obj->obj);
 }
 void free_llir_dot(llir_dot* obj) {

@@ -119,7 +119,7 @@ void copy_defs(symbol_table& symtab, fn_namespace& dest, fn_namespace& src,
     }
     for (auto k : src.macro_names()) {
         auto name = symtab.intern(prefix + symtab[k]);
-        dest.set_macro(name, *src.get(k));
+        dest.set_macro(name, *src.get_macro(k));
     }
 }
 
