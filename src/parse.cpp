@@ -415,16 +415,16 @@ dyn_array<ast_form*> parse_string(const string& src,
         symbol_table* symtab,
         fault* err) {
     std::istringstream in{src};
-    return parse_input(&in, source_loc{"", 1, 0}, symtab, err);
+    return parse_input(&in, symtab, err);
 }
 
 dyn_array<ast_form*> parse_input(std::istream* in,
-        const source_loc& src_start,
         symbol_table* symtab,
         fault* err) {
     u32 bytes_used;
     bool resumable;
-    auto res = partial_parse_input(in, src_start, symtab, &bytes_used,
+    scanner sc{in};
+    auto res = partial_parse_input(&sc, symtab, &bytes_used,
             &resumable, err);
     if (err->happened) {
         for (auto x : res) {
@@ -435,22 +435,20 @@ dyn_array<ast_form*> parse_input(std::istream* in,
     return res;
 }
 
-dyn_array<ast_form*> partial_parse_input(std::istream* in,
-        const source_loc& src_start,
+dyn_array<ast_form*> partial_parse_input(scanner* sc,
         symbol_table* symtab,
         u32* bytes_used,
         bool* resumable,
         fault* err) {
-    scanner sc{in, src_start.filename, src_start.line, src_start.col};
-    auto start = in->tellg();
+    auto start = sc->tellg();
     auto pos = start;
 
     dyn_array<ast_form*> res;
     ast_form* a;
-    while (!sc.eof_skip_ws()
-            && (a = parse_next_form(&sc, symtab, resumable, err))) {
+    while (!sc->eof_skip_ws()
+            && (a = parse_next_form(sc, symtab, resumable, err))) {
         // pos holds the position after last successful read
-        pos = in->tellg();
+        pos = sc->tellg();
         res.push_back(a);
     }
     if (err->happened) {

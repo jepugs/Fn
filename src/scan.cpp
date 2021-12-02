@@ -625,5 +625,9 @@ char scanner::peek_char() {
     return input->peek();
 }
 
+size_t scanner::tellg() {
+    return input->tellg();
+}
+
 
 }

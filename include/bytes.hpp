@@ -37,6 +37,11 @@ struct code_chunk {
     // (dynamic) arrays holding chunk data
     dyn_array<u8> code;
     dyn_array<value> constant_arr;
+    // This table is to prevent duplicate constants from being inserted. This
+    // turns out to save memory overall. When serializing chunks, this should
+    // obviously be dropped.
+    table<value,constant_id> constant_table;
+
     dyn_array<function_stub*> function_arr;
     // debug information
     chunk_source_info* source_info;

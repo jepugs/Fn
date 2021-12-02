@@ -224,6 +224,8 @@ public:
     // check for eof after skipping whitespace
     // FIXME: this should skip comments too
     bool eof_skip_ws();
+    // get stream position from running tellg on the input stream
+    size_t tellg();
 
 private:
     std::istream *input;

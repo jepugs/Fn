@@ -21,6 +21,7 @@ vm_thread::vm_thread(allocator* use_alloc, global_env* use_globals,
     , globals{use_globals}
     , alloc{use_alloc}
     , chunk{use_chunk}
+    , status{vs_stopped}
     , ip{0}
     , frame{new call_frame{nullptr, 0, use_chunk, 0, nullptr}} {
     stack = alloc->add_root_stack();

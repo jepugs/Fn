@@ -76,6 +76,7 @@ struct interpreter_options {
 // create an interpreter_options object based on CLI options. Returns false on
 // malformed command line arguments.
 void process_args(int argc, char** argv, interpreter_options* opt) {
+    static_assert(std::is_standard_layout<code_chunk>::value);
     // process options first
     int i;
     for (i = 1; i < argc; ++i) {
@@ -134,7 +135,7 @@ void process_args(int argc, char** argv, interpreter_options* opt) {
     if (src == string{"--eval"}) {
         if(i == argc) {
             opt->err = true;
-            opt->message = "--eval must be followd by a string to evaluate.";
+            opt->message = "--eval must be followed by a string to evaluate.";
             return;
         }
         opt->src = argv[++i];
@@ -160,12 +161,19 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    interpreter inter{};
-    inter.configure_logging(opt.llir, opt.dis);
+    logger log{&std::cerr, &std::cout};
+    interpreter inter{&log};
     install_builtin(inter);
+    // Important: configure logging after install_builtin. Don't want to
+    // disassemble the standard library.
+    inter.set_log_dis(opt.dis);
+    inter.set_log_llir(opt.llir);
     // FIXME: this might cause a chunk to only be added to the allocator after
     // the allocator has been deleted, which is no bueno
     auto ws = inter.get_alloc()->add_working_set();
+
+    // namespace to use for evaluation
+    auto ns_id = inter.intern("fn/user");
 
     // evaluate
     // FIXME: use --ns arg when applicable
@@ -175,22 +183,24 @@ int main(int argc, char** argv) {
     case em_file:
         res = inter.interpret_main_file(opt.src, &ws, &i_err);
         if (i_err.happened) {
-            emit_error(&std::cout, i_err);
             return -1;
         }
         break;
     case em_string:
-        res = inter.interpret_string(opt.src, "--eval argument", &ws, &i_err);
+        res = inter.interpret_string(opt.src, ns_id, &ws, &i_err);
         if (i_err.happened) {
-            emit_error(&std::cout, i_err);
             return -1;
         }
         break;
     case em_stdin:
-        res = inter.interpret_istream(&std::cin, source_loc{"STDIN"}, &ws, &i_err);
-        if (i_err.happened) {
-            emit_error(&std::cout, i_err);
-            return -1;
+        {
+            scanner sc{&std::cin, "STDIN"};
+            bool resumable;
+            res = inter.interpret_from_scanner(&sc, ns_id, &ws, &resumable,
+                    &i_err);
+            if (i_err.happened) {
+                return -1;
+            }
         }
         break;
     case em_none:
@@ -223,7 +233,7 @@ int main(int argc, char** argv) {
 
             bool resumable;
             fault err;
-            vals = inter.partial_interpret_string(buf, "REPL input", &ws,
+            vals = inter.partial_interpret_string(buf, ns_id, &ws,
                     &bytes_used, &resumable, &err);
             if (err.happened) {
                 if (resumable) {
@@ -235,7 +245,6 @@ int main(int argc, char** argv) {
                         still_reading = true;
                     }
                 } else {
-                    emit_error(&std::cout, err);
                     still_reading = false;
                 }
             } else if (vals.size > 0) { // emit nothing on no input

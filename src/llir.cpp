@@ -381,12 +381,12 @@ static void write_indent(std::ostream& out, int offset) {
     }
 }
 
-static void print_llir_offset(llir_form* form,
+static string print_llir_offset(llir_form* form,
         symbol_table& st,
         code_chunk* chunk,
         int offset,
         bool preindent) {
-    std::ostream& out = std::cout;
+    std::ostringstream out;
 
     if (preindent) {
         write_indent(out, offset);
@@ -440,26 +440,28 @@ static void print_llir_offset(llir_form* form,
                 noffset += str.size();
 
                 if (xcall->num_pos_args > 0) {
-                    print_llir_offset(xcall->pos_args[0], st, chunk, noffset,
-                            false);
+                    out << print_llir_offset(xcall->pos_args[0], st, chunk,
+                            noffset, false);
                 }
                 i = 1;
             } else {
-                print_llir_offset(xcall->callee, st, chunk, noffset, false);
+                out << print_llir_offset(xcall->callee, st, chunk, noffset,
+                        false);
             }
             for (; i < xcall->num_pos_args; ++i) {
-                out << '\n';
-                print_llir_offset(xcall->pos_args[i], st, chunk, noffset, true);
+                out << '\n'
+                    << print_llir_offset(xcall->pos_args[i], st, chunk,
+                            noffset, true);
             }
 
             if (xcall->num_kw_args > 0) {
                 out << '\n';
                 write_indent(out, noffset);
-                out << ":kw { ";
                 // TODO: print keyword too
-                print_llir_offset(xcall->kw_args[0].value, st, chunk,
-                        noffset + 6, false);
-                out << '}';
+                out << ":kw { "
+                    << print_llir_offset(xcall->kw_args[0].value, st, chunk,
+                            noffset + 6, false)
+                    << '}';
                     
             }
 
@@ -488,22 +490,22 @@ static void print_llir_offset(llir_form* form,
             if (params.has_var_table_arg) {
                 out << ":& " << st.nice_name(params.var_table_arg) << ' ';
             }
-            out << ")\n";
             // body
-            print_llir_offset(xfn->body, st, chunk, offset+2, true);
-            out << ')';
+            out << ")\n"
+                << print_llir_offset(xfn->body, st, chunk, offset+2, true)
+                << ')';
         }
         break;
     case lt_if:
         {
             auto xif = (llir_if*)form;
-            out << "(IF ";
-            print_llir_offset(xif->test, st, chunk, offset+4, false);
-            out << '\n';
-            print_llir_offset(xif->then, st, chunk, offset+4, true);
-            out << '\n';
-            print_llir_offset(xif->elce, st, chunk, offset+4, true);
-            out << ')';
+            out << "(IF "
+                << print_llir_offset(xif->test, st, chunk, offset+4, false)
+                << '\n'
+                << print_llir_offset(xif->then, st, chunk, offset+4, true)
+                << '\n'
+                << print_llir_offset(xif->elce, st, chunk, offset+4, true)
+                << ')';
         }
         break;
     case lt_import:
@@ -515,11 +517,13 @@ static void print_llir_offset(llir_form* form,
     case lt_set:
         {
             auto xset = (llir_set*)form;
-            out << "(SET! ";
-            print_llir_offset(xset->target, st, chunk, offset + 6, false);
-            out << '\n';
-            print_llir_offset(xset->value, st, chunk, offset + 6, true);
-            out << ')';
+            out << "(SET! "
+                << print_llir_offset(xset->target, st, chunk, offset + 6,
+                        false)
+                << '\n'
+                << print_llir_offset(xset->value, st, chunk, offset + 6,
+                        true)
+                << ')';
         }
         break;
     case lt_var:
@@ -544,9 +548,9 @@ static void print_llir_offset(llir_form* form,
                 if (st.is_gensym(xwith->vars[i])) {
                     name = st.gensym_name(xwith->vars[i]);
                 }
-                out << name << ' ';
-                print_llir_offset(xwith->values[i], st, chunk,
-                        offset + 8 + name.size(), false);
+                out << name << ' '
+                    << print_llir_offset(xwith->values[i], st, chunk,
+                            offset + 8 + name.size(), false);
 
                 for (i = 1; i < xwith->num_vars; ++i) {
                     out << '\n';
@@ -555,27 +559,28 @@ static void print_llir_offset(llir_form* form,
                         name = st.gensym_name(xwith->vars[i]);
                     }
                     write_indent(out, offset + 7);
-                    out << name << ' ';
-                    print_llir_offset(xwith->values[i], st, chunk,
-                            offset + 8 + name.size(), false);
+                    out << name << ' '
+                        << print_llir_offset(xwith->values[i], st, chunk,
+                                offset + 8 + name.size(), false);
                 }
             }
             out << ')';
                 
             // print body
             for (u32 i = 0; i < xwith->body_length; ++i) {
-                out << '\n';
-                print_llir_offset(xwith->body[i], st, chunk, offset+2, true);
+                out << '\n'
+                    << print_llir_offset(xwith->body[i], st, chunk, offset+2,
+                            true);
             }
             out << ')';
         }
         break;
     }
+    return out.str();
 }
 
-void print_llir(llir_form* f, symbol_table& st, code_chunk* chunk) {
-    print_llir_offset(f, st, chunk, 0, false);
-    std::cout <<  '\n';
+string print_llir(llir_form* f, symbol_table& st, code_chunk* chunk) {
+    return print_llir_offset(f, st, chunk, 0, false) + string{"\n"};
 }
 
 }

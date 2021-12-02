@@ -8,6 +8,7 @@ add_library(fn_lib OBJECT
   ffi/fn_handle.cpp
   llir.cpp
   interpret.cpp
+  log.cpp
   namespace.cpp
   parse.cpp
   scan.cpp

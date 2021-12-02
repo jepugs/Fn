@@ -7,6 +7,7 @@
 #include "compile.hpp"
 #include "expand.hpp"
 #include "llir.hpp"
+#include "log.hpp"
 #include "parse.hpp"
 #include "vm.hpp"
 
@@ -20,6 +21,7 @@ private:
     symbol_table symtab;
     global_env globals;
     allocator alloc;
+    logger* log;
 
     // Since these don't rightfully belong to any chunks, we save them right
     // here in the interpreter.
@@ -32,21 +34,34 @@ private:
     bool log_llir = false;
     bool log_dis = false;
 
-    // ordered list of directories to search for imports
-    std::list<string> search_path;
-
+    // interpret until the vm halts either on an error or on the end of the
+    // bytecode.
     void interpret_to_end(vm_thread& vm, fault* err);
     value interpret_form(ast_form* ast,
             symbol_id ns,
             working_set* ws,
             fault* err);
+    void log_error(fault* err);
 
 public:
     // Initializes the allocator and virtual machine, and starts an empty chunk.
-    interpreter();
+    // The logger here must not be null and must outlive this interpreter
+    // instance.
+    // FIXME: this seems inelegant. The problem is that the logger manages the
+    // file table. Maybe the interpreter should do that instead? (Alternatively,
+    // the interpreter make its own logger).
+    interpreter(logger* log);
     ~interpreter();
 
-    void configure_logging(bool log_llir_forms, bool log_disassembly);
+    // Set the base package. Default is the package of the main file or fn/user
+    // if no package declaration is present.
+    void set_base_pkg(symbol_id sym);
+    // set the base directory. Default is to directory of the main file or the
+    // current directory if there is no main file.
+    void set_base_dir(const string& dir);
+    // determine whether to log llir or disassembly
+    void set_log_dis(bool b);
+    void set_log_llir(bool b);
 
     // Accessors
     allocator* get_alloc();
@@ -59,46 +74,56 @@ public:
             value (*foreign_func)(fn_handle*,value*));
 
     // Evaluate a source file in an empty chunk. Returns the value from the last
-    // expression (or null for an empty file).
+    // expression (or null for an empty file). A warning will be generated if
+    // the specified namespace does not match the package declaration in the
+    // file.
     value interpret_file(const string& path,
-            working_set* ws,
-            fault* err);
-    // Like interpret_file, but overrides the file's package/namespace with the
-    // provided one.
-    value interpret_file_in_ns(const string& path,
             symbol_id ns_id,
             working_set* ws,
             fault* err);
-    // like interpret_file, but also sets the base directory to the given
-    // directory, and the base package to the package of the file
+    // like interpret_file(), but also sets the base directory and base package
+    // to the directory and package of the given file
     value interpret_main_file(const string& path,
             working_set* ws,
             fault* err);
-    // like interpret_main_file, but accepts an (fully qualified) namespace name
-    // that overrides the file's namespace and package
-    value interpret_main_file_in_ns(const string& path,
+    // namespace override version of interpret_main_file(). The base package
+    // will be the package indicated by the ns_id.
+    value interpret_main_file(const string& path,
             symbol_id ns_id,
             working_set* ws,
             fault* err);
     // Evaluate a string in an empty chunk. Returns the value from the last
     // expression (or null).
     value interpret_string(const string& src,
-            const string& src_name,
-            working_set* ws,
-            fault* err);
-    value interpret_string(const string& src,
-            working_set* ws,
-            fault* err);
-    // Evaluate all input from an istream. Note that this will not terminate
-    // until EOF is encountered in the stream.
-    value interpret_istream(std::istream* in,
-            const source_loc& src_start,
-            working_set* ws,
-            fault* err);
-    value interpret_from_scanner(scanner* sc,
             symbol_id ns_id,
             working_set* ws,
             fault* err);
+    // Interpret input from a scanner object. When scanning a file, this scanner
+    // should start after the package declaration (i.e. at the position it's
+    // left at by read_pkg_decl()). If an error occurs, *resumable is set to
+    // true for errors that could be prevented by extending the input stream,
+    // and false otherwise.
+    value interpret_from_scanner(scanner* sc,
+            symbol_id ns_id,
+            working_set* ws,
+            bool* resumable,
+            fault* err);
+    // Evaluate as much of a string as we can. Returns the number of bytes used.
+    // Here's how this works: we try to parse ast_forms from src, and execute
+    // them one at a time until we get an error. If it's a resumable error (i.e.
+    // it might not be an error if there were more text), we roll back the
+    // number of bytes consumed to right before that parse attempt. Otherwise,
+    // we leave the number of bytes after the parse error. Only non-resumable
+    // errors are logged. It's up to the caller to log errors if resumable =
+    // true.
+    dyn_array<value> partial_interpret_string(const string& src,
+            symbol_id ns_id,
+            working_set* ws,
+            u32* bytes_used,
+            bool* resumable,
+            fault* err);
+
+
     // Import a namespace, performing full search. Returns false if no file is
     // found.
     bool import_ns(symbol_id ns_id, fault* err);
@@ -111,19 +136,6 @@ public:
     // search for the file, first relative to the base package, then in the
     // search path (unimplemented), and then in the system package directory.
     optional<string> find_import_file(symbol_id ns_id);
-
-    // Evaluate as much of a string as we can. Returns the number of bytes used.
-    // Here's how this works: we try to parse ast_forms from src, and execute
-    // them one at a time until we get an error. If it's a resumable error (i.e.
-    // it might not be an error if there were more text), we roll back the
-    // number of bytes consumed to right before that parse attempt. Otherwise,
-    // we leave the number of bytes after the parse error.
-    dyn_array<value> partial_interpret_string(const string& src,
-            const string& src_name,
-            working_set* ws,
-            u32* bytes_used,
-            bool* resumable,
-            fault* err);
 
     // macroexpand a form in the given namespace
     ast_form* expand_macro(symbol_id macro,

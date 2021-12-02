@@ -35,8 +35,14 @@ void code_chunk::write_short(u16 data, u32 where) {
 }
 
 constant_id code_chunk::add_constant(value v) {
+    auto x = constant_table.get(v);
+    if (x.has_value()) {
+        return *x;
+    }
     constant_arr.push_back(v);
-    return constant_arr.size - 1;
+    auto id = constant_arr.size - 1;
+    constant_table.insert(v, id);
+    return id;
 }
 
 value code_chunk::get_constant(constant_id id) const {
