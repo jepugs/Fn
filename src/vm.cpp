@@ -562,7 +562,7 @@ inline void vm_thread::step() {
     case OP_SET_UPVALUE:
         l = chunk->read_byte(ip+1);
         // TODO: check upvalue exists
-        u = frame->caller->upvals[l];
+        u = frame->upvals[l];
         if (u->closed) {
             u->closed_value = stack->peek();
         } else {
@@ -767,7 +767,8 @@ void vm_thread::execute(fault* err) {
     if (status == vs_waiting_for_import) {
         auto x = globals->get_ns(pending_import_id);
         if (!x.has_value()) {
-            set_fault(err, chunk->location_of(ip), "vm", "Import failed.");
+            set_fault(err, chunk->location_of(ip), "vm",
+                    "Import failed (no namespace created).");
             return;
         }
         string pkg, name;

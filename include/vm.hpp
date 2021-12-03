@@ -33,6 +33,9 @@ struct call_frame {
     function* caller;
     // the number of arguments we need to pop after exiting the current call
     local_address num_args;
+    // since this is the main reason we use the callee, it makes sense to put it
+    // here directly.
+    upvalue_cell** upvals;
 
     call_frame(call_frame* prev,
                code_address ret_addr,
@@ -46,6 +49,9 @@ struct call_frame {
         , bp{bp}
         , caller{caller}
         , num_args{num_args} {
+        if (caller) {
+            upvals = caller->upvals;
+        }
     }
 };
 

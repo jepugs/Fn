@@ -117,7 +117,14 @@ value interpreter::interpret_file(const string& path,
     }
 
     bool resumable;
-    return interpret_from_scanner(&sc, ns_id, ws, &resumable, err);
+    // create namespace if necessary
+    auto ns = globals.get_ns(ns_id);
+    if (!ns.has_value()) {
+        globals.create_ns(ns_id);
+    }
+    auto res = interpret_from_scanner(&sc, ns_id, ws, &resumable, err);
+    return res;
+
 }
 
 value interpreter::interpret_main_file(const string& path,
@@ -224,15 +231,12 @@ dyn_array<value> interpreter::partial_interpret_string(const string& src,
         vm_thread vm{&alloc, &globals, chunk};
         interpret_to_end(vm, err);
         if (err->happened) {
-            *resumable = false;
             log_error(err);
+            *resumable = false;
             break;
         }
 
         res.push_back(vm.last_pop(ws));
-    }
-    if (err->happened && *resumable == false) {
-        log_error(err);
     }
 
     return res;
@@ -297,6 +301,10 @@ bool interpreter::import_ns(symbol_id ns_id, fault* err) {
     auto x = find_import_file(ns_id);
     if (!x.has_value()) {
         return false;
+    }
+    // create ns
+    if (!globals.get_ns(ns_id).has_value()) {
+        globals.create_ns(ns_id);
     }
     auto ws = alloc.add_working_set();
     interpret_file(*x, ns_id, &ws, err);
