@@ -100,6 +100,8 @@ upvalue_cell* root_stack::get_upvalue(stack_address pos) {
 }
 
 void root_stack::close(u32 base_addr) {
+    // Warning: don't do any stack operations here so last_pop won't be
+    // affected. (Otherwise do_return will break).
     for (auto it = upvals.begin(); it != upvals.end(); ) {
         if ((*it)->pos < base_addr) {
             break;
@@ -116,6 +118,15 @@ void root_stack::close(u32 base_addr) {
     }
     pointer = base_addr;
     contents.resize(base_addr);
+}
+
+void root_stack::do_return(u32 base_addr) {
+    pop();
+    // NOTE! No stack operations can happen here, or last pop will get messed
+    // up.
+    close(base_addr);
+    push(last_pop);
+    pop_function();
 }
 
 void root_stack::mark_for_deletion() {

@@ -159,7 +159,9 @@ private:
     void runtime_error(const string& msg) const;
 
     // step a single instruction
-    void step();
+    // Note: experimented with inline here and found no difference whether I
+    // used -O2 or -O0. I'll leave it as a compiler hint anyway.
+    inline void step();
 
 public:
     // initialize the virtual machine

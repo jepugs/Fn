@@ -41,7 +41,6 @@ private:
             symbol_id ns,
             working_set* ws,
             fault* err);
-    void log_error(fault* err);
 
 public:
     // Initializes the allocator and virtual machine, and starts an empty chunk.
@@ -62,6 +61,7 @@ public:
     // determine whether to log llir or disassembly
     void set_log_dis(bool b);
     void set_log_llir(bool b);
+    void log_error(fault* err);
 
     // Accessors
     allocator* get_alloc();

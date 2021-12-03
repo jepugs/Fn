@@ -45,6 +45,7 @@ public:
 
     u32 get_pointer() const;
 
+    // Declaring these inline didn't really do anything on GCC 11.1.0.
     value peek(u32 offset=0) const;
     value peek_bottom(u32 offset=0) const;
     // FIXME: this should actually pop to a working set if you're gonna use the
@@ -65,8 +66,12 @@ public:
     upvalue_cell* get_upvalue(stack_address loc);
     // close all upvalues with stack addresses >= base_addr. (Closing an upvalue
     // involves copying its value to the heap and removing it from the list of
-    // upvalues).
+    // upvalues). This does not change last_pop.
     void close(u32 base_addr);
+    // like close(), but first saves the top of the stack and pushes it back
+    // after doing the close (so the final stack size is base_addr+1). This sets
+    // last_pop to the return value.
+    void do_return(u32 base_addr);
 
     value& operator[](u32 offset) {
         return contents[offset];

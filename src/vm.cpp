@@ -208,7 +208,7 @@ value vm_thread::pop_to_ws(working_set* ws) {
     if (frame->bp >= stack->get_pointer()) {
         runtime_error("pop on empty call frame");
     }
-    auto res = ws->pin_value(peek());
+    auto res = ws->pin_value(stack->peek());
     stack->pop();
     return res;
 }
@@ -304,7 +304,10 @@ void vm_thread::arrange_call_stack(working_set* ws,
         i32 m = num_args - num_pos_args;
         for (auto i = 0; i < m; ++i) {
             // this builds the list in the correct order
-            var_list = ws->add_cons(pop_to_ws(ws), var_list);
+            var_list = ws->add_cons(peek(0), var_list);
+            // peek/pop because we don't need to add the top of the list to the
+            // working set (since it's accessible from the list)
+            stack->pop();
         }
     }
 
@@ -374,8 +377,10 @@ code_address vm_thread::call(working_set* ws, local_address num_args) {
             .origin=chunk->location_of(ip),
             .err=err
         };
-        
+
         auto result = stub->foreign(&handle, args);
+        // can take args off the stack
+        //pop_times(sp);
         if(err->happened) {
             status = vs_fault;
         } else {
@@ -490,7 +495,7 @@ void vm_thread::init_function(working_set* ws, function* f) {
 }
 
 #define push_bool(b) push(b ? V_TRUE : V_FALSE);
-void vm_thread::step() {
+inline void vm_thread::step() {
 
     u8 instr = chunk->read_byte(ip);
 
@@ -521,10 +526,10 @@ void vm_thread::step() {
     case OP_NOP:
         break;
     case OP_POP:
-        pop();
+        stack->pop();
         break;
     case OP_COPY:
-        v1 = peek(chunk->read_byte(ip+1));
+        v1 = stack->peek(chunk->read_byte(ip+1));
         push(v1);
         ++ip;
         break;
@@ -547,7 +552,7 @@ void vm_thread::step() {
             push(u->closed_value);
         } else{
             if (frame->prev == nullptr) {
-                runtime_error("Upvalue get in toplevel frame.");
+                runtime_error("op-upvalue in toplevel frame.");
             }
             auto pos = u->pos;
             push(stack->peek_bottom(pos));
@@ -559,11 +564,12 @@ void vm_thread::step() {
         // TODO: check upvalue exists
         u = frame->caller->upvals[l];
         if (u->closed) {
-            u->closed_value = pop_to_ws(&ws);
+            u->closed_value = stack->peek();
         } else {
             auto pos = frame->caller->stub->upvals[l];
-            stack->set(pos, pop_to_ws(&ws));
+            stack->set(pos, stack->peek());
         }
+        stack->pop();
         ++ip;
         break;
 
@@ -584,37 +590,47 @@ void vm_thread::step() {
         break;
 
     case OP_GLOBAL:
-        v1 = pop_to_ws(&ws);
+        v1 = stack->peek();
         if (v_tag(v1) != TAG_SYM) {
             runtime_error("OP_GLOBAL name operand is not a symbol.");
         }
-        push(get_global(v1));
+        v2 = get_global(v1);
+        stack->pop();
+        push(v2);
         break;
     case OP_SET_GLOBAL:
-        v1 = pop_to_ws(&ws); // value
-        v2 = pop_to_ws(&ws); // name
+        v1 = stack->peek(); // value
+        v2 = stack->peek(1); // name
         if (v_tag(v2) != TAG_SYM) {
             runtime_error("OP_SET_GLOBAL name operand is not a symbol.");
         }
         add_global(v2, v1);
+        stack->pop_times(2);
         break;
     case OP_BY_GUID:
-        push(by_guid(pop_to_ws(&ws)));
+        v1 = by_guid(stack->peek());
+        stack->pop();
+        push(v1);
         break;
     case OP_MACRO:
-        v1 = pop_to_ws(&ws);
+        v1 = stack->peek();
         if (v_tag(v1) != TAG_SYM) {
             runtime_error("OP_MACRO name operand is not a symbol.");
         }
-        push(get_macro(v1));
+        v2 = get_macro(v1);
+        stack->pop();
+        stack->push(v2);
         break;
     case OP_SET_MACRO:
-        v1 = pop_to_ws(&ws);
-        v2 = pop_to_ws(&ws);
+        v1 = stack->peek();
+        v2 = stack->peek(1);
         if (v_tag(v2) != TAG_SYM) {
-            runtime_error("OP_SET_MACRO name operand is not a symbol.");
+            runtime_error("op-set-macro name operand is not a symbol.");
+        } else if (v_tag(v1) != TAG_FUNC) {
+            runtime_error("op-set-macro value is not a function.");
         }
         add_macro(v2, v1);
+        stack->pop_times(2);
         break;
 
     case OP_CONST:
@@ -654,15 +670,16 @@ void vm_thread::step() {
 
     case OP_OBJ_SET:
         // new-value
-        v3 = pop_to_ws(&ws);
+        v3 = stack->peek(0);
         // key
-        v1 = pop_to_ws(&ws);
+        v1 = stack->peek(1);
         // object
-        v2 = pop_to_ws(&ws);
+        v2 = stack->peek(2);
         if (v_tag(v2) != TAG_TABLE) {
             runtime_error("OP_OBJ_SET operand not a table.");
         }
         vtable(v2)->contents.insert(v1,v3);
+        stack->pop_times(3);
         break;
 
     case OP_IMPORT:
@@ -676,12 +693,13 @@ void vm_thread::step() {
 
     case OP_CJUMP:
         // jump on false
-        if (!vtruth(pop_to_ws(&ws))) {
+        if (!vtruth(stack->peek(0))) {
             jump = true;
             addr = ip + 3 + static_cast<i16>(chunk->read_short(ip+1));
         } else {
             ip += 2;
         }
+        stack->pop();
         break;
 
     case OP_CALL:
@@ -713,8 +731,6 @@ void vm_thread::step() {
         if (frame->caller == nullptr) {
             runtime_error("Return instruction at top level.");
         }
-        // get return value
-        v1 = pop_to_ws(&ws);
 
         // jump to return address
         jump = true;
@@ -722,15 +738,13 @@ void vm_thread::step() {
         chunk = frame->ret_chunk;
 
         num_args = frame->num_args;
-        // close to base pointer
-        stack->close(frame->bp);
+        // do the return manipulation on the stack
+        stack->do_return(frame->bp);
         tmp = frame;
         // TODO: restore stack pointer
         frame = tmp->prev;
         delete tmp;
 
-        push(v1);
-        stack->pop_function();
         break;
 
     case OP_TABLE:
