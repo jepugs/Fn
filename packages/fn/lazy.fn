@@ -1,0 +1,120 @@
+(package fn)
+
+; fun here is required to accept 0 arguments and return either nil or a pair of
+; the form [value Lazy-List].
+(defn Lazy-List (fun)
+  (let is-empty nil
+       empty-method (fn ()
+                      (force)
+                      (res.empty?))
+       hd (fn ()
+            (force)
+            (res.head))
+       tl (fn ()
+            (force)
+            (res.tail))
+       force (fn ()
+               (let x (fun))
+               (if (= x nil)
+                   (do
+                     (set! res.empty? (fn () true))
+                     (set! res.head (fn () nil))
+                     (set! res.tail (fn () res)))
+                   (do
+                     (set! res.empty? (fn () false))
+                     (let v (head x))
+                     (set! res.head (fn () v))
+                     (let n (nth 1 x))
+                     (set! res.tail (fn () n)))))
+       res {'class Lazy-List
+            'empty? empty-method
+            'head hd
+            'tail tl
+            'filter $(lfilter $ res)})
+  res)
+
+(defn list->lazy (list)
+  (if (empty? list)
+      (Lazy-List (fn () nil))
+      (Lazy-List $[(head list)
+                   (list->lazy (tail list))])))
+
+(defn lazy->list (lazy)
+  (letfn iter (acc rem)
+    (if (rem.empty?)
+        (reverse acc)
+        (iter (cons (rem.head) acc)
+              (rem.tail))))
+  (iter [] lazy))
+
+(defn lcons (hd lazy)
+  (Lazy-List (fn ()
+               [hd lazy])))
+(defmacro lcons (hd tl)
+  `(Lazy-List (fn ()
+                [,hd ,tl])))
+
+(defn drop-nth (n lazy)
+  (cond
+    (lazy.empty?)  lazy
+    (<= n 0)       (lazy.tail)
+    otherwise      (Lazy-List $[(lazy.head)
+                                (drop-nth (- n 1) (lazy.tail))])))
+
+(defn lconcat (l1 l2)
+  (if (l1.empty?)
+      l2
+      (Lazy-List
+       $[(head l1)
+         (lconcat (tail l1) l2)])))
+
+(defn ldrop (n lazy)
+  (if (or (lazy.empty?) (<= n 0))
+      lazy
+      (ldrop (- n 1) (lazy.tail))))
+
+(defn drop-every (n lazy)
+  (letfn next ()
+    (let x (drop-every n (drop n lazy)))
+    [(head x) (tail x)])
+  (lconcat (list->lazy (ltake (- n 1) lazy))
+           (Lazy-List next)))
+
+(defn ltake (n lazy)
+  (letfn iter (acc m rem)
+    (if (or (rem.empty?) (<= m 0))
+        (reverse acc)
+        (iter (cons (rem.head) acc)
+              (- m 1)
+              (rem.tail))))
+  (iter [] n lazy))
+
+; nonnegative integers
+(def N>=0
+  (with (next-int
+         $(Lazy-List (fn ()
+                       [$0 (next-int (+ $0 1))])))
+    (next-int 0)))
+
+(defmacro defer-list (expr)
+  (let x (gensym))
+  `(Lazy-List (fn ()
+                (with (,x ,expr)
+                  [(head ,x) (tail ,x)]))))
+
+(defn lmap (fun lazy)
+  (if (lazy.empty?)
+      (list->lazy [])
+      (lcons (fun (head lazy))
+             (lmap fun (tail lazy)))))
+
+(defn unbox-lazy (lazy)
+  [(head lazy) (tail lazy)])
+
+(defn lfilter (pred lazy)
+  (if (empty? lazy)
+      lazy
+      (if (pred (head lazy))
+          (lcons (head lazy) (lfilter pred (tail lazy)))
+          (lfilter pred (tail lazy)))))
+

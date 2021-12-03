@@ -29,12 +29,12 @@
 
 (defn nand (& args)
   (not (apply and args {})))
-(defmacro nand (& args)
-  `(not (and ,@args)))
+; (defmacro nand (& args)
+;   `(not (and ,@args)))
 (defn nor (& args)
   (not (apply or args {})))
-(defmacro nor (& args)
-  `(not (or ,@args)))
+; (defmacro nor (& args)
+;   `(not (or ,@args)))
 
 (def otherwise true)
 
@@ -182,9 +182,98 @@
 
 (defn filter (pred list)
   (letfn iter (acc rem)
+    (println "itebr")
     (cond
       (empty? rem) (reverse acc)
-      (pred (head rem)) (iter (cons (head rem) acc)
+      (pred (head rem)) (iter (conj (head rem) acc)
                               (tail rem))
       true (iter acc (tail rem))))
+  (println list)
   (iter [] list))
+
+(defn macro-assert (condition msg)
+  (if (not condition)
+      (error msg)
+      nil))
+
+(defn mapcat (fun list)
+  (apply #'concat (map fun list) {}))
+
+(defmacro match (& clauses)
+  (macro-assert (= 2 (length clauses)))
+  (let bindings (pattern-bindings (head clauses) (nth 1 clauses))
+       names (head bindings)
+       body (nth 1 bindings))
+  `(do (let ,@(mapcat $`(,$ nil) bindings))
+     ,(nth 1 values)
+     ,(nth 1 clauses)))
+
+
+(defn list-range (start stop)
+  (letfn iter (acc i)
+    (if (< i start)
+        acc
+        (iter (cons i acc) (- i 1))))
+  (iter [] stop))
+
+;; Wrap a bunch of the builtin foreign functions to expand functionality. This
+;; is a bit of a hack, but it lets us define simpler versions of these functions
+;; internally without polluting the namespace.
+(do
+  (let list-head head)
+  (let list-tail tail)
+  (let list-empty? empty?)
+  (let list-nth nth)
+  ; this is like a prototype for protocols. Every table containing head, tail,
+  ; empty?, and conj methods can be treated as a sequence
+  (defn head (seq)
+    (if (list? seq)
+        (list-head seq)
+        (seq.head)))
+  (defn tail (seq)
+    (if (list? seq)
+        (list-tail seq)
+        (seq.tail)))
+  ; (defn empty? (seq)
+  ;   (if (or (list? seq)
+  ;           (table? seq))
+  ;       (list-empty? seq)
+  ;       (seq.empty?)))
+  (defn conj (elt seq)
+    (if (list? seq)
+        (cons elt seq)
+        (seq.conj elt)))
+  (defn conj-to-front? ()
+    (if (list? seq)
+        true
+        (seq.conj-to-front?)))
+  (letfn new-nth (n seq)
+    (letfn iter (n rem)
+      (if (= n 0)
+          (head rem)
+          (iter (- n 1) (tail rem))))
+    (iter n seq))
+  (defn nth (n seq)
+    (if (or (not (integer? n))
+            (< n 0))
+        (error "Invalid index in call to nth.")
+        nil)
+    (if (list? seq)
+        (list-nth n seq)
+        (new-nth n seq)))
+  ; implementing all the above will give you nth, map, filter, foldl, etc. You
+  ; can override those though.
+  (let seq-map map)
+  (defn map (pred seq)
+    (if (and (table? seq)
+             (has-key? seq 'map))
+        (seq.map pred)
+        (seq-map pred seq)))
+  (let seq-filter filter)
+  (defn filter (pred seq)
+    (if (and (table? seq)
+             (has-key? seq 'filter))
+        (seq.filter pred)
+        (seq-filter pred seq))))
+
+
