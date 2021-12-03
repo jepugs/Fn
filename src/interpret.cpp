@@ -432,7 +432,6 @@ ast_form* interpreter::value_to_ast(value v, const source_loc& loc) {
     // list code
     if (v == V_EMPTY) {
         dyn_array<ast_form*> lst;
-        lst.push_back(mk_symbol_form(loc, symtab.intern("List")));
         return mk_list_form(loc, &lst);
     }
 
