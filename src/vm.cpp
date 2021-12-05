@@ -85,7 +85,7 @@ value vm_thread::by_guid(value name) {
     if (!vis_symbol(name)) {
         runtime_error("Variable GUIDs must be symbols.");
     }
-    auto str = symtab->symbol_name(vsymbol(name)).substr(1);
+    auto str = symtab->symbol_name(vsymbol(name)).substr(2);
     u32 i;
     for (i = 0; i < str.size(); ++i) {
         if (str[i] == ':') {
@@ -526,7 +526,7 @@ inline void vm_thread::step() {
     case OP_NOP:
         break;
     case OP_POP:
-        stack->pop();
+        pop();
         break;
     case OP_COPY:
         v1 = stack->peek(chunk->read_byte(ip+1));
@@ -595,21 +595,21 @@ inline void vm_thread::step() {
             runtime_error("OP_GLOBAL name operand is not a symbol.");
         }
         v2 = get_global(v1);
-        stack->pop();
+        pop();
         push(v2);
         break;
     case OP_SET_GLOBAL:
         v1 = stack->peek(); // value
         v2 = stack->peek(1); // name
         if (v_tag(v2) != TAG_SYM) {
-            runtime_error("OP_SET_GLOBAL name operand is not a symbol.");
+            runtime_error("op-set-global name operand is not a symbol.");
         }
         add_global(v2, v1);
-        stack->pop_times(2);
+        pop_times(2);
         break;
     case OP_BY_GUID:
         v1 = by_guid(stack->peek());
-        stack->pop();
+        pop();
         push(v1);
         break;
     case OP_MACRO:

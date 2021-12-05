@@ -97,11 +97,13 @@
   (iter [] list))
 
 
-(defn substring (str start (len -1))
-  (substring-internal start len))
+(do
+  (let substring-internal substring)
+  (defn substring (str start (len -1))
+    (substring-internal str start len))
+  )
 
-
-(defn contains? (coll x (test /fn/builtin:=))
+(defn contains? (coll x (test #/fn/builtin:=))
   (letfn list-iter (rem)
          (if (test x (head rem))
              true
@@ -197,7 +199,7 @@
       nil))
 
 (defn mapcat (fun list)
-  (apply #'concat (map fun list) {}))
+  (apply 'concat (map fun list) {}))
 
 (defmacro match (& clauses)
   (macro-assert (= 2 (length clauses)))

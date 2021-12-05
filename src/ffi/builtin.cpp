@@ -377,8 +377,7 @@ fn_fun (String, "String", "(& args)") {
     return h->add_string(res);
 }
 
-// FIXME: get this into a different namespace so as to not perturb
-fn_fun (substring_internal, "substring-internal", "(str pos len)") {
+fn_fun (substring, "substring", "(str pos len)") {
     h->assert_type(TAG_STRING, args[0]);
     if (h->failed()) {
         return V_NIL;
@@ -666,7 +665,7 @@ void install_builtin(interpreter& inter) {
     fn_add_builtin(inter, le);
 
     fn_add_builtin(inter, String);
-    fn_add_builtin(inter, substring_internal);
+    fn_add_builtin(inter, substring);
 
     fn_add_builtin(inter, fn_not);
 

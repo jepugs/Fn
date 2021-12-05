@@ -30,6 +30,7 @@
             'empty? empty-method
             'head hd
             'tail tl
+            'map $(lmap $ res)
             'filter $(lfilter $ res)})
   res)
 
@@ -112,9 +113,63 @@
   [(head lazy) (tail lazy)])
 
 (defn lfilter (pred lazy)
-  (if (empty? lazy)
-      lazy
-      (if (pred (head lazy))
-          (lcons (head lazy) (lfilter pred (tail lazy)))
-          (lfilter pred (tail lazy)))))
+  (letfn next (rem)
+    (cond
+      (rem.empty?) rem
+      (pred (head rem))
+        (lcons (head rem)
+               (Lazy-List $(unbox-lazy (next (tail rem)))))
+      otherwise (next (tail rem))))
+  (next lazy))
 
+; sequence of prime numbers
+(do
+  (let init-primes (list->lazy [2 3 5 7])
+       candidates
+       (with (next-pair
+              (fn (x)
+                (lcons (- (* 6 x) 1)
+                       (lcons (+ (* 6 x) 1)
+                              (next-pair (+ x 1))))))
+         (next-pair 2)))
+  (letfn prime-test? (x)
+    (let max (ceil (** x 0.5)))
+    (letfn iter (rem)
+      (let n (head rem))
+      (cond
+        (= (mod x n) 0) false
+        (>= n max) true
+        otherwise (iter (tail rem))))
+    (iter primes))
+  (def primes
+    (lconcat init-primes
+             (Lazy-List (fn ()
+                          (let next (filter prime-test? candidates))
+                          [(head next) (tail next)])))))
+
+(defn factor (n)
+  (if (not (integer? n))
+      (error "Can only factor integers.")
+      nil)
+  (letfn factor-recur (acc val rem-primes)
+    (let p (head rem-primes))
+    (cond
+      (= val 1) (reverse acc)
+      (= (mod val p) 0)
+        (factor-recur (cons p acc) (/ val p) rem-primes)
+      (>= p (** val 0.5))
+        (reverse (cons val acc))
+      otherwise
+        (factor-recur acc val (tail rem-primes))))
+  (cond
+    (= n 0)    [0]
+    (< n 0)    (factor-recur [-1] (- n) primes)
+    otherwise  (factor-recur [] n primes)))
+
+; remove first element = to elt
+(defn lremove (elt seq)
+  (cond
+    (empty? seq)       empty
+    (= elt (head seq)) (tail seq)
+    otherwise          (lcons (head seq)
+                              (lremove elt (tail seq)))))

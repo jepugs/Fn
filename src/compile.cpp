@@ -283,10 +283,9 @@ void compiler::compile_fn(const llir_fn* llir,
     patch_jump(end_addr - start - 3, start + 1, llir->header.origin);
     return_on_err;
 
-
     // TODO compile init forms
-    auto len = params.num_pos_args - params.req_args;
-    for (auto i = 0; i < len; ++i) {
+    auto init_len = params.num_pos_args - params.req_args;
+    for (auto i = 0; i < init_len; ++i) {
         compile_llir_generic(params.inits[i], lex, false);
         return_on_err;
     }
@@ -294,6 +293,7 @@ void compiler::compile_fn(const llir_fn* llir,
     // write closure command
     write_byte(OP_CLOSURE);
     write_short(func_id);
+    lex->sp -= init_len;
     ++lex->sp;
 }
 
@@ -391,7 +391,7 @@ void compiler::compile_var(const llir_var* llir,
         write_byte(OP_FALSE);
     } else if (str == "true") {
         write_byte(OP_TRUE);
-    } else if (str[0] == '/') {
+    } else if (str[0] == '#' && str[1] == '/') {
         compile_symbol(llir->name);
         write_byte(OP_BY_GUID);
     } else {

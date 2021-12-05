@@ -163,11 +163,11 @@ int main(int argc, char** argv) {
 
     logger log{&std::cerr, &std::cout};
     interpreter inter{&log};
-    install_builtin(inter);
     // Important: configure logging after install_builtin. Usually don't want to
     // disassemble the standard library.
     inter.set_log_dis(opt.dis);
     inter.set_log_llir(opt.llir);
+    install_builtin(inter);
     // FIXME: this might cause a chunk to only be added to the allocator after
     // the allocator has been deleted, which is no bueno
     auto ws = inter.get_alloc()->add_working_set();

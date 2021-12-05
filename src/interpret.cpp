@@ -116,13 +116,16 @@ value interpreter::interpret_file(const string& path,
         sc = scanner{&in, fs::path{path}.filename()};
     }
 
-    bool resumable;
     // create namespace if necessary
     auto ns = globals.get_ns(ns_id);
     if (!ns.has_value()) {
         globals.create_ns(ns_id);
     }
+    bool resumable;
     auto res = interpret_from_scanner(&sc, ns_id, ws, &resumable, err);
+    if (err->happened) {
+        log_error(err);
+    }
     return res;
 
 }
@@ -158,8 +161,12 @@ value interpreter::interpret_main_file(const string& path,
     base_pkg = intern(pkg);
     string ns_str = pkg + "/" + p.stem().u8string();
     bool resumable;
-    return interpret_from_scanner(&sc, symtab.intern(ns_str), ws, &resumable,
-            err);
+    auto res = interpret_from_scanner(&sc, symtab.intern(ns_str), ws,
+            &resumable, err);
+    if (err->happened) {
+        log_error(err);
+    }
+    return res;
 }
 
 
