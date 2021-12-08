@@ -130,7 +130,7 @@ private:
     // perform an import using the top of the stack as the id. If the target
     // namespace is not already loaded, then this will cause execution to halt
     // with the waiting_for_import status.
-    void do_import(working_set* ws);
+    void do_import();
 
     // helper for arrange_call_stack. Takes the keyword table from the stack,
     // kw_tab, and returns a table matching call stack positions to values from
@@ -157,20 +157,20 @@ private:
     code_address make_call(working_set* ws, function* func);
     // Analogue to make_call() but for tail calls. This means the current call
     // frame is replaced rather than extended.
-    code_address make_tcall(working_set* ws, function* func);
+    code_address make_tcall(function* func);
     // returns the next addr to go to. num_args does not count the function or
     // the keyword table.
-    code_address call_kw(working_set* ws, local_address num_args);
+    code_address call_kw(local_address num_args);
     // like call, but replaces the current call frame rather than creating a new
     // one. Effectively it's call + return in a single instruction
-    code_address tcall_kw(working_set* ws, local_address num_args);
+    code_address tcall_kw(local_address num_args);
     // like call and tcall, but these are faster because they assume there's no
     // keyword table and hence do no keyword processing.
-    code_address call_no_kw(working_set* ws, local_address num_args);
-    code_address tcall_no_kw(working_set* ws, local_address num_args);
+    code_address call_no_kw(local_address num_args);
+    code_address tcall_no_kw(local_address num_args);
     // num_args does not count the function, the keyword table, or the argument
     // list.
-    code_address apply(working_set* ws,local_address num_args,bool tail=false);
+    code_address apply(local_address num_args,bool tail=false);
 
     // set up a newly created function (including taking init values off the
     // stack)

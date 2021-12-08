@@ -144,11 +144,14 @@ optional<value> vm_thread::try_import(symbol_id ns_id) {
     return std::nullopt;
 }
 
-void vm_thread::do_import(working_set* ws) {
-    auto ns_id = pop_to_ws(ws);
+void vm_thread::do_import() {
+    auto ns_id = peek(0);
     if (!vis_symbol(ns_id)) {
         runtime_error("OP_IMPORT name must be a symbol.");
     }
+    // since it's a symbol we don't need to worry about leaving it where the gc
+    // can see it.
+    pop();
     auto x = globals->get_ns(vsymbol(ns_id));
     if (!x.has_value()) {
         // this will be saved as the last pop before deferring control to the
@@ -429,8 +432,7 @@ code_address vm_thread::make_call(working_set* ws,
     }
 }
 
-code_address vm_thread::make_tcall(working_set* ws,
-        function* func) {
+code_address vm_thread::make_tcall(function* func) {
     auto stub = func->stub;
     // update the frame
     u8 sp = static_cast<u8>(stub->pos_params.size
@@ -446,9 +448,10 @@ code_address vm_thread::make_tcall(working_set* ws,
 }
 
 
-code_address vm_thread::call_no_kw(working_set* ws, local_address num_args) {
+code_address vm_thread::call_no_kw(local_address num_args) {
+    auto ws = alloc->add_working_set();
     // the function to call should be on top
-    auto callee = pop_to_ws(ws);
+    auto callee = pop_to_ws(&ws);
     if (v_tag(callee) != TAG_FUNC) {
         runtime_error("Error on call: callee is not a function");
         return ip + 2;
@@ -456,9 +459,9 @@ code_address vm_thread::call_no_kw(working_set* ws, local_address num_args) {
     auto func = vfunction(callee);
 
     // put function arguments in place
-    arrange_call_stack_no_kw(ws, func, num_args);
+    arrange_call_stack_no_kw(&ws, func, num_args);
     // make_call() will create the new stack frame
-    return make_call(ws, func);
+    return make_call(&ws, func);
 }
 
  
@@ -467,22 +470,24 @@ code_address vm_thread::call_no_kw(working_set* ws, local_address num_args) {
 // Calling convention: a call uses num_args + 2 elements on the stack. At the
 // very bottom we expect the callee, followed by num_args positional arguments,
 // and finally a table containing keyword arguments.
-code_address vm_thread::call_kw(working_set* ws, local_address num_args) {
+code_address vm_thread::call_kw(local_address num_args) {
+    auto ws = alloc->add_working_set();
     // the function to call should be on top
-    auto callee = pop_to_ws(ws);
+    auto callee = pop_to_ws(&ws);
     if (v_tag(callee) != TAG_FUNC) {
         runtime_error("Error on call: callee is not a function");
         return ip + 2;
     }
     auto func = vfunction(callee);
 
-    arrange_call_stack(ws, func, num_args);
-    return make_call(ws, func);
+    arrange_call_stack(&ws, func, num_args);
+    return make_call(&ws, func);
 }
 
-code_address vm_thread::tcall_kw(working_set* ws, local_address num_args) {
+code_address vm_thread::tcall_kw(local_address num_args) {
+    auto ws = alloc->add_working_set();
     // the function to call should be on top
-    auto callee = pop_to_ws(ws);
+    auto callee = pop_to_ws(&ws);
     if (v_tag(callee) != TAG_FUNC) {
         runtime_error("Error on call: callee is not a function");
         return ip + 2;
@@ -492,13 +497,13 @@ code_address vm_thread::tcall_kw(working_set* ws, local_address num_args) {
     // foreign calls are just normal calls
     if (stub->foreign != nullptr || frame->caller == nullptr) {
         push(callee);
-        return call_kw(ws, num_args);
+        return call_kw(num_args);
     }
 
     // save the values for the call operation
     dyn_array<value> saved_stack;
     for (i32 i = 0; i < num_args+1; ++i) {
-        saved_stack.push_back(pop_to_ws(ws));
+        saved_stack.push_back(pop_to_ws(&ws));
     }
 
     // time to obliterate the old call frame...
@@ -507,14 +512,15 @@ code_address vm_thread::tcall_kw(working_set* ws, local_address num_args) {
     for (i32 i = 0; i < num_args+1; ++i) {
         push(saved_stack[num_args - i]);
     }
-    arrange_call_stack(ws, func, num_args);
+    arrange_call_stack(&ws, func, num_args);
 
-    return make_tcall(ws, func);
+    return make_tcall(func);
 }
 
-code_address vm_thread::tcall_no_kw(working_set* ws, local_address num_args) {
+code_address vm_thread::tcall_no_kw(local_address num_args) {
+    auto ws = alloc->add_working_set();
     // the function to call should be on top
-    auto callee = pop_to_ws(ws);
+    auto callee = pop_to_ws(&ws);
     if (v_tag(callee) != TAG_FUNC) {
         runtime_error("Error on call: callee is not a function");
         return ip + 2;
@@ -524,14 +530,14 @@ code_address vm_thread::tcall_no_kw(working_set* ws, local_address num_args) {
     // foreign calls are just normal calls
     if (stub->foreign != nullptr || frame->caller == nullptr) {
         push(callee);
-        return call_no_kw(ws, num_args);
+        return call_no_kw(num_args);
     }
 
     // save the values for the call operation
     dyn_array<value> saved_stack;
     // Note a key difference here from tcall_kw: num_args, not num_args+1
     for (i32 i = 0; i < num_args; ++i) {
-        saved_stack.push_back(pop_to_ws(ws));
+        saved_stack.push_back(pop_to_ws(&ws));
     }
 
     // time to obliterate the old call frame...
@@ -540,20 +546,19 @@ code_address vm_thread::tcall_no_kw(working_set* ws, local_address num_args) {
     for (i32 i = 0; i < num_args; ++i) {
         push(saved_stack[num_args - i - 1]);
     }
-    arrange_call_stack_no_kw(ws, func, num_args);
-    return make_tcall(ws, func);
+    arrange_call_stack_no_kw(&ws, func, num_args);
+    return make_tcall(func);
 }
 
 
-code_address vm_thread::apply(working_set* ws,
-        local_address num_args,
-        bool tail) {
+code_address vm_thread::apply(local_address num_args, bool tail) {
+    auto ws = alloc->add_working_set();
     // all we need to do is expand the varargs. The rest will be taken care of
     // by call.
-    auto callee = pop_to_ws(ws);
-    auto kw_tab = pop_to_ws(ws);
+    auto callee = pop_to_ws(&ws);
+    auto kw_tab = pop_to_ws(&ws);
 
-    auto args = pop_to_ws(ws);
+    auto args = pop_to_ws(&ws);
     if (args != V_EMPTY && !vis_cons(args)) {
         runtime_error("OP_APPLY argument list not actually a list");
     }
@@ -566,7 +571,7 @@ code_address vm_thread::apply(working_set* ws,
     // put things back
     push(kw_tab);
     push(callee);
-    return tail ? tcall_kw(ws, num_args+list_len) : call_kw(ws, num_args+list_len);
+    return tail ? tcall_kw(num_args+list_len) : call_kw(num_args+list_len);
 }
 
 
@@ -620,8 +625,6 @@ inline void vm_thread::step() {
 
     upvalue_cell* u;
 
-    working_set ws{alloc};
-
     // note: when an instruction uses an argument that occurs in the bytecode, it is responsible for
     // updating the instruction pointer at the end of its exection (which should be after any
     // exceptions that might be raised).
@@ -642,8 +645,8 @@ inline void vm_thread::step() {
         ++ip;
         break;
     case OP_SET_LOCAL:
-        v1 = pop_to_ws(&ws);
-        set_local(chunk->read_byte(ip+1), v1);
+        set_local(chunk->read_byte(ip+1), peek(0));
+        pop();
         ++ip;
         break;
 
@@ -679,8 +682,12 @@ inline void vm_thread::step() {
     case OP_CLOSURE:
         id = chunk->read_short(ip+1);
         stub = chunk->get_function(chunk->read_short(ip+1));
-        v1 = ws.add_function(stub);
-        init_function(&ws, vfunction(v1));
+        // FIXME: rearchitect to not need the working_set here
+        {
+            auto ws = alloc->add_working_set();
+            v1 = ws.add_function(stub);
+            init_function(&ws, vfunction(v1));
+        }
         push(v1);
         ip += 2;
         break;
@@ -757,13 +764,17 @@ inline void vm_thread::step() {
 
     case OP_OBJ_GET:
         // key
-        v1 = pop_to_ws(&ws);
+        v1 = peek(0);
         // object
-        v2 = pop_to_ws(&ws);
+        v2 = peek(1);
         if (v_tag(v2) == TAG_TABLE) {
             if (vtable(v2)->contents.has_key(v1)) {
+                pop();
+                pop();
                 push(*vtable(v2)->contents.get(v1));
             } else {
+                pop();
+                pop();
                 push(V_NIL);
             }
             break;
@@ -786,7 +797,7 @@ inline void vm_thread::step() {
         break;
 
     case OP_IMPORT:
-        do_import(&ws);
+        do_import();
         break;
 
     case OP_JUMP:
@@ -808,37 +819,37 @@ inline void vm_thread::step() {
     case OP_CALL:
         num_args = chunk->read_byte(ip+1);
         jump = true;
-        addr = call_no_kw(&ws, num_args);
+        addr = call_no_kw(num_args);
         break;
 
     case OP_TCALL:
         num_args = chunk->read_byte(ip+1);
         jump = true;
-        addr = tcall_no_kw(&ws, num_args);
+        addr = tcall_no_kw(num_args);
         break;
 
     case OP_CALL_KW:
         num_args = chunk->read_byte(ip+1);
         jump = true;
-        addr = call_kw(&ws, num_args);
+        addr = call_kw(num_args);
         break;
 
     case OP_TCALL_KW:
         num_args = chunk->read_byte(ip+1);
         jump = true;
-        addr = tcall_kw(&ws, num_args);
+        addr = tcall_kw(num_args);
         break;
 
     case OP_APPLY:
         num_args = chunk->read_byte(ip+1);
         jump = true;
-        addr = apply(&ws, num_args);
+        addr = apply(num_args);
         break;
 
     case OP_TAPPLY:
         num_args = chunk->read_byte(ip+1);
         jump = true;
-        addr = apply(&ws, num_args, true);
+        addr = apply(num_args, true);
         break;
 
     case OP_RETURN:
@@ -863,7 +874,10 @@ inline void vm_thread::step() {
         break;
 
     case OP_TABLE:
-        push(ws.add_table());
+        {
+            auto ws = alloc->add_working_set();
+            push(ws.add_table());
+        }
         break;
 
     default:
