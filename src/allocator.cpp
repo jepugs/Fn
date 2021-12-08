@@ -21,7 +21,14 @@
 
 namespace fn {
 
-static constexpr u32 COLLECT_TH = 4096;
+// 1 MB for first collect. Actual usage will be a little bit higher because
+// tables/functions/chunks create some extra data depending on
+// entries/upvalues/code
+static constexpr u32 FIRST_COLLECT = 1024 * 1024 * 1024;
+static constexpr f64 COLLECT_SCALE_FACTOR = 2;
+// This essentially says no more than this amount of memory may be devoted to
+// persistent objects
+static constexpr f64 RESCALE_TH = 0.35;
 
 root_stack::root_stack()
     : pointer{0}
@@ -284,7 +291,7 @@ allocator::allocator(global_env* use_globals)
     , gc_enabled{true}
     , to_collect{false}
     , mem_usage{0}
-    , collect_threshold{COLLECT_TH}
+    , collect_threshold{FIRST_COLLECT}
     , count{0} {
 }
 
@@ -512,11 +519,8 @@ void allocator::collect() {
     if (mem_usage >= collect_threshold) {
         if (gc_enabled) {
             force_collect();
-            // increase the collection threshold in order to guarantee that it's more than twice the
-            // current usage. (this is meant to allow the program to grow by spacing out
-            // collections). 
-            while (2*mem_usage >= collect_threshold) {
-                collect_threshold <<= 1;
+            if (mem_usage >= RESCALE_TH * collect_threshold) {
+                collect_threshold *= COLLECT_SCALE_FACTOR;
             }
         } else {
             to_collect = true;
