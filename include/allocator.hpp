@@ -140,6 +140,12 @@ private:
     // note: we guarantee that every pointer in this array is actually memory
     // managed by this garbage collector
     std::list<gc_header*> objects;
+    // this is the list of objects minus values accessible from global values.
+    std::list<gc_header*> sweep_list;
+    // list of global objects with mutable cells. This is to handle the case
+    // where a globally accessible object ceases to be globally accessible.
+    std::list<gc_header*> mutable_globals;
+
     // holds global variables
     global_env* globals;
     // flag used to determine garbage collector behavior. starts out false to
@@ -174,11 +180,24 @@ private:
     // get a list of objects accessible from the given value
     forward_list<gc_header*> accessible(gc_header* o);
 
+    // helper for mark
     void mark_descend(gc_header* o);
-
+    // starting from roots and pins, set the mark on all accessible objects.
     void mark();
+
+    // sweeping iterates over the list of objects doing the following:
+    // - remove globally accessible objects from the sweep list
+    // - delete unmarked objects
+    // - remove the mark from marked objects
     void sweep();
 
+    // recursively mark an object as being global per the rules described in the
+    // comment below for designate_global(). This may call mark_weakly_global.
+    void mark_global(gc_header* o);
+    void mark_weakly_global(gc_header* o);
+    void marksweep_weak_globals(gc_header*);
+
+    // pinned objects act as temporary roots
     void pin_object(gc_header* o);
     void unpin_object(gc_header* o);
 
@@ -204,6 +223,20 @@ public:
     // create a root stack managed by this allocator
     root_stack* add_root_stack();
     working_set add_working_set();
+
+    // Designate an object as a global object. This prevents the GC from marking
+    // or sweeping this or any object it references. For safety, this should be
+    // used only on values not at risk of collection. Behavior depends on value
+    // type.
+    // - Strings and chunks are marked global and no further action is taken.
+    //   (The constant array of a chunk is *not* recursively marked. You have to
+    //   do that separately).
+    // - For lists, this means recursively marking referenced values as globals.
+    // - Since tables and functions can reference mutable values, these mutable
+    //   references are treated specially. The objects they refer to are
+    //   considered to be "weakly global", and are used as additional root
+    //   objects during collections.
+    void designate_global(gc_header* o);
 
     void print_status();
 };

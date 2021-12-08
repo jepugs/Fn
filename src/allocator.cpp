@@ -5,19 +5,19 @@
 
 // access parts of the gc_header
 #define gc_mark(h) (((h).bits & GC_MARK_BIT) == GC_MARK_BIT)
-#define gc_ignore(h) (((h).bits & GC_IGNORE_BIT) == GC_IGNORE_BIT)
 #define gc_global(h) (((h).bits & GC_GLOBAL_BIT) == GC_GLOBAL_BIT)
+#define gc_weak_global(h) (((h).bits & GC_WEAK_GLOBAL_BIT) == GC_WEAK_GLOBAL_BIT)
 #define gc_type(h) (((h).bits & GC_TYPE_BITMASK))
 
 #define gc_set_mark(h) \
     (((h).bits = ((h).bits | GC_MARK_BIT)))
 #define gc_unset_mark(h) (((h).bits = (h).bits & ~GC_MARK_BIT))
 
-#define gc_set_ignore(h) (((h).bits |= GC_IGNORE_BIT))
-#define gc_unset_ignore(h) (((h).bits &= ~GC_IGNORE_BIT))
-
 #define gc_set_global(h) (((h).bits |= GC_GLOBAL_BIT))
 #define gc_unset_global(h) (((h).bits &= ~GC_GLOBAL_BIT))
+
+#define gc_set_weak_global(h) (((h).bits |= GC_WEAK_GLOBAL_BIT))
+#define gc_unset_weak_global(h) (((h).bits &= ~GC_WEAK_GLOBAL_BIT))
 
 namespace fn {
 

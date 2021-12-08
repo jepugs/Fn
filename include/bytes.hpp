@@ -60,7 +60,9 @@ struct code_chunk {
     // overwrite 2 bytes in the chunk. Requires (where < size()-1)
     void write_short(u16 data, u32 where);
 
-    // add constants. No duplication checking is done.
+    // add constants. No duplication checking is done, and if the chunk has
+    // already been marked global in the allocator, newly added values have to
+    // be marked global themselves.
     constant_id add_constant(value v);
     // get a constant
     value get_constant(constant_id id) const;
