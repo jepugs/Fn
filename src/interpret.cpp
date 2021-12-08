@@ -389,9 +389,6 @@ ast_form* interpreter::expand_macro(symbol_id macro,
         chunk->write_short(chunk->add_constant(v));
     }
 
-    // TODO: catch runtime errors here to report them to the expander
-    chunk->write_byte(OP_TABLE);
-
     chunk->write_byte(OP_CONST);
     chunk->write_short(chunk->add_constant(vbox_symbol(macro)));
     chunk->write_byte(OP_MACRO);

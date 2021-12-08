@@ -147,12 +147,27 @@ private:
     void arrange_call_stack(working_set* ws,
             function* func,
             local_address num_args);
+    // Version of arrange_call_stack() which doesn't process keyword arguments.
+    void arrange_call_stack_no_kw(working_set* ws,
+            function* func,
+            local_address num_args);
+    // Called when a function is called, after arranging the function arguments
+    // on the stack. This creates the new call frame and returns the address to
+    // jump to for the call.
+    code_address make_call(working_set* ws, function* func);
+    // Analogue to make_call() but for tail calls. This means the current call
+    // frame is replaced rather than extended.
+    code_address make_tcall(working_set* ws, function* func);
     // returns the next addr to go to. num_args does not count the function or
     // the keyword table.
-    code_address call(working_set* ws, local_address num_args);
+    code_address call_kw(working_set* ws, local_address num_args);
     // like call, but replaces the current call frame rather than creating a new
     // one. Effectively it's call + return in a single instruction
-    code_address tcall(working_set* ws, local_address num_args);
+    code_address tcall_kw(working_set* ws, local_address num_args);
+    // like call and tcall, but these are faster because they assume there's no
+    // keyword table and hence do no keyword processing.
+    code_address call_no_kw(working_set* ws, local_address num_args);
+    code_address tcall_no_kw(working_set* ws, local_address num_args);
     // num_args does not count the function, the keyword table, or the argument
     // list.
     code_address apply(working_set* ws,local_address num_args,bool tail=false);

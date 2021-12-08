@@ -124,30 +124,40 @@ void compiler::compile_call(const llir_call* llir,
         compile_llir_generic(llir->pos_args[i], lex, false);
         return_on_err;
     }
-    // TODO: compile keyword table
-    write_byte(OP_TABLE);
-    ++lex->sp;
-    for (u32 i = 0; i < llir->num_kw_args; ++i) {
-        // copy the table for the set command
-        write_byte(OP_COPY);
-        write_byte(0);
+
+    if (llir->num_kw_args > 0) {
+        write_byte(OP_TABLE);
         ++lex->sp;
-        auto& k = llir->kw_args[i];
-        compile_symbol(k.nonkw_name);
-        ++lex->sp;
-        compile_llir_generic(k.value, lex, false);
-        write_byte(OP_OBJ_SET);
-        return_on_err;
-        lex->sp -= 3;
+        for (u32 i = 0; i < llir->num_kw_args; ++i) {
+            // copy the table for the set command
+            write_byte(OP_COPY);
+            write_byte(0);
+            ++lex->sp;
+            auto& k = llir->kw_args[i];
+            compile_symbol(k.nonkw_name);
+            ++lex->sp;
+            compile_llir_generic(k.value, lex, false);
+            write_byte(OP_OBJ_SET);
+            return_on_err;
+            lex->sp -= 3;
+        }
     }
 
     // compile callee
     compile_llir_generic(llir->callee, lex, false);
     return_on_err;
-    if (tail) {
-        write_byte(OP_TCALL);
+    if (llir->num_kw_args > 0) {
+        if (tail) {
+            write_byte(OP_TCALL_KW);
+        } else {
+            write_byte(OP_CALL_KW);
+        }
     } else {
-        write_byte(OP_CALL);
+        if (tail) {
+            write_byte(OP_TCALL);
+        } else {
+            write_byte(OP_CALL);
+        }
     }
     write_byte(llir->num_pos_args);
     lex->sp = 1+start_sp;

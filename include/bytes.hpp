@@ -165,9 +165,9 @@ constexpr u8 OP_TRUE  = 0x23;
 constexpr u8 OP_JUMP = 0x30;
 // cjump SHORT; if top of the stack is falsey, add signed SHORT to ip
 constexpr u8 OP_CJUMP = 0x31;
-// call BYTE; perform a function call. Uses BYTE+2 elements on the stack,
-// one for the function, one for each positional argument, and one for the
-// keyword table. -> [func] kw-table pos-arg-n ... pos-arg-1
+// call BYTE; perform a function call. Uses BYTE+1 elements on the stack,
+// one for the function, one for each positional argument.
+// -> [func] pos-arg-n ... pos-arg-1
 constexpr u8 OP_CALL = 0x32;
 // tcall BYTE; perform a tail call
 constexpr u8 OP_TCALL = 0x33;
@@ -177,6 +177,10 @@ constexpr u8 OP_TCALL = 0x33;
 constexpr u8 OP_APPLY = 0x34;
 // tail call version of apply
 constexpr u8 OP_TAPPLY = 0x35;
+// function calls with keyword tables. Uses BYTE+2 stack elements.
+// -> [func] kw-table pos-arg-n ... pos-arg-1
+constexpr u8 OP_CALL_KW = 0x36;
+constexpr u8 OP_TCALL_KW = 0x37;
 // return; return from the current function
 constexpr u8 OP_RETURN = 0x38;
 
