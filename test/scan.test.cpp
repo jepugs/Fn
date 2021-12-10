@@ -101,6 +101,9 @@ BOOST_AUTO_TEST_CASE( num_token_test ) {
     test_num_token("+2", 2);
     test_num_token("-2.0", -2.0);
     test_num_token("-2.0e2", -200.0);
+    test_num_token("+9e2", 9e2);
+    test_num_token("9e2", 9e2);
+    test_num_token("-9e2", -9e2);
     test_num_token("+12.5e-2", 0.125);
     test_num_token("+0.5e+2", 50);
     test_num_token("0xEf", 0xEf);

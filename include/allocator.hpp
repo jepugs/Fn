@@ -174,14 +174,15 @@ public:
 
 class allocator {
     friend class working_set;
+    friend class code_chunk;
 private:
     // note: we guarantee that every pointer in this array is actually memory
     // managed by this garbage collector
     std::list<gc_header*> objects;
-    // this is the list of objects minus globally accessible values.
-    std::list<gc_header*> sweep_list;
-    // list of global objects with mutable cells. This is to handle the case
-    // where a globally accessible object ceases to be globally accessible.
+    // globals are removed from the objects array
+    std::list<gc_header*> global_objects;
+    // list of global objects with mutable values. These mutable cells are
+    // used as gc roots
     std::list<gc_header*> mutable_globals;
 
     // holds global variables
@@ -228,7 +229,6 @@ private:
     // recursively mark an object as being global per the rules described in the
     // comment below for designate_global(). This may call mark_weakly_global.
     void mark_global(gc_header* o);
-    void mark_weakly_global(gc_header* o);
     void marksweep_weak_globals(gc_header*);
 
     // pinned objects act as temporary roots
@@ -266,10 +266,9 @@ public:
     //   (The constant array of a chunk is *not* recursively marked. You have to
     //   do that separately).
     // - For lists, this means recursively marking referenced values as globals.
-    // - Since tables and functions can reference mutable values, these mutable
-    //   references are treated specially. The objects they refer to are
-    //   considered to be "weakly global", and are used as additional root
-    //   objects during collections.
+    // - Since tables and functions can reference mutable values, they are added
+    //   to a list of mutable globals. Their mutable slots are treated as root
+    //   objects.
     void designate_global(gc_header* o);
 
     void add_constant(code_chunk* chunk, value c);

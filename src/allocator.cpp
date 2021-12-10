@@ -33,7 +33,7 @@ static constexpr u32 FIRST_COLLECT = 64 * 1024;
 static constexpr f64 COLLECT_SCALE_FACTOR = 2;
 // This essentially says no more than this proportion of available memory may be
 // devoted to persistent objects
-static constexpr f64 RESCALE_TH = 0.75;
+static constexpr f64 RESCALE_TH = 0.7;
 
 root_object::root_object(gc_header* obj)
     : obj{obj} {
@@ -287,7 +287,7 @@ code_chunk* working_set::add_chunk(symbol_id ns_id) {
         alloc->globals->create_ns(ns_id);
     }
 
-    auto res = mk_code_chunk(ns_id);
+    auto res = mk_code_chunk(alloc, ns_id);
 
     auto h = (gc_header*)res;
     pin(h);

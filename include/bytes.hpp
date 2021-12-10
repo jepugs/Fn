@@ -23,14 +23,14 @@ struct chunk_source_info {
     chunk_source_info* prev;
 };
 
-// IMPLNOTE: the structures below currently contain STL containers, but it might
-// be better to replace these with C-style ad-hoc containers, in case I want to
-// make C bindings later.
+class allocator;
 
 // A code_chunk is a dynamic array of bytecode instructions combined with all
 // constants and functions used by that chunk.
 struct code_chunk {
     gc_header h;
+    // we use this to track changes to the chunk's size
+    allocator* alloc;
 
     // namespace id
     symbol_id ns_id;
@@ -93,7 +93,7 @@ struct code_chunk {
 
 // Initialize a new code chunk at location dest. If dest=nullptr, then a new
 // code_chunk is allocated. Returns a pointer to the created object.
-code_chunk* mk_code_chunk(symbol_id ns_id);
+code_chunk* mk_code_chunk(allocator* use_alloc, symbol_id ns_id);
 
 // TODO: due to progress made since originally writing this, we should probably
 // just use a destructor instead of this function.

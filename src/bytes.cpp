@@ -1,4 +1,5 @@
 #include "bytes.hpp"
+#include "allocator.hpp"
 
 namespace fn {
 
@@ -13,7 +14,9 @@ u16 code_chunk::read_short(u32 where) const {
 }
 
 void code_chunk::write_byte(u8 data) {
+    auto start_size = code.capacity;
     code.push_back(data);
+    alloc->mem_usage += (code.capacity - start_size);
 }
 
 void code_chunk::write_byte(u8 data, u32 where) {
@@ -39,7 +42,11 @@ constant_id code_chunk::add_constant(value v) {
     if (x.has_value()) {
         return *x;
     }
+
+    auto start_size = constant_arr.capacity;
     constant_arr.push_back(v);
+    alloc->mem_usage += (constant_arr.capacity - start_size)*sizeof(value);
+
     auto id = constant_arr.size - 1;
     constant_table.insert(v, id);
     return id;
@@ -68,7 +75,14 @@ u16 code_chunk::add_function(local_address num_pos,
     for (u32 i = 0; i < num_pos; ++i) {
         s->pos_params.push_back(pos_params[i]);
     }
+
+    auto start_size = function_arr.capacity;
     function_arr.push_back(s);
+    alloc->mem_usage += (function_arr.capacity - start_size)*sizeof(value)
+        + sizeof(function_stub)
+        + s->pos_params.data_size()
+        + s->name.size();
+
     return function_arr.size - 1;
 }
 
@@ -91,7 +105,14 @@ u16 code_chunk::add_foreign_function(local_address num_pos,
     for (u32 i = 0; i < num_pos; ++i) {
         s->pos_params.push_back(pos_params[i]);
     }
+
+    auto start_size = function_arr.capacity;
     function_arr.push_back(s);
+    alloc->mem_usage += (function_arr.capacity - start_size)*sizeof(value)
+        + sizeof(function_stub)
+        + s->pos_params.data_size()
+        + s->name.size();
+
     return function_arr.size - 1;
 }
 
@@ -127,8 +148,9 @@ source_loc code_chunk::location_of(u32 addr) {
 
 // used to initialize the dynamic arrays
 static constexpr size_t init_array_size = 32;
-code_chunk* mk_code_chunk(symbol_id ns_id) {
+code_chunk* mk_code_chunk(allocator* use_alloc, symbol_id ns_id) {
     auto res = new code_chunk{
+        .alloc=use_alloc,
         .ns_id=ns_id,
         .source_info = new chunk_source_info{
             .start_addr=0,
