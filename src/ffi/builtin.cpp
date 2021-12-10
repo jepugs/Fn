@@ -694,10 +694,8 @@ void install_builtin(interpreter& inter) {
 
     // import remaining library from a file
     fault err;
-    inter.import_ns(inter.get_symtab()->intern("fn/builtin"), &err);
-    if (err.happened) {
-        inter.log_error(&err);
-    }
+    auto ws = inter.get_alloc()->add_working_set();
+    inter.import_ns(inter.get_symtab()->intern("fn/builtin"), &ws, &err);
     // FIXME: log error as a warning
 }
 

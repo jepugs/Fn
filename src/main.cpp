@@ -149,6 +149,9 @@ void process_args(int argc, char** argv, interpreter_options* opt) {
     opt->args_start = i+1;
 }
 
+// void do_interpret(interpreter *inter) {
+// }
+
 int main(int argc, char** argv) {
     interpreter_options opt;
     process_args(argc, argv, &opt);
@@ -214,8 +217,6 @@ int main(int argc, char** argv) {
         u32 bytes_used = 0;
         bool still_reading = false;
         while (!std::cin.eof()) {
-            // declared inside the loop so return values get garbage collected
-            auto ws = inter.get_alloc()->add_working_set();
             string line;
             if (still_reading) {
                 std::cout << " >> ";
@@ -231,6 +232,8 @@ int main(int argc, char** argv) {
                 //if(line[0] == ':')
             }
 
+            // declared inside the loop so return values get garbage collected
+            auto ws = inter.get_alloc()->add_working_set();
             bool resumable;
             fault err;
             vals = inter.partial_interpret_string(buf, ns_id, &ws,

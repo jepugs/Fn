@@ -25,6 +25,12 @@ vm_thread::vm_thread(allocator* use_alloc, global_env* use_globals,
     , ip{0}
     , frame{new call_frame{nullptr, 0, use_chunk, 0, nullptr}} {
     stack = alloc->add_root_stack();
+
+    // make sure the chunk isn't deleted, since it may not be accessible before
+    // this call
+    auto h = (gc_header*)chunk;
+    ++h->pin_count;
+    alloc->add_gc_root(new pinned_object{h});
 }
 
 vm_thread::~vm_thread() {
@@ -34,7 +40,11 @@ vm_thread::~vm_thread() {
         // TODO: ensure reference count for upvalue_slot is decremented
         delete frame;
         frame = tmp;
+
+        auto h = (gc_header*)chunk;
+        --h->pin_count;
     }
+    stack->kill();
 }
 
 vm_status vm_thread::check_status() const {
@@ -353,7 +363,7 @@ void vm_thread::arrange_call_stack(working_set* ws,
             var_list = ws->add_cons(peek(0), var_list);
             // peek/pop because we don't need to add the top of the list to the
             // working set (since it's accessible from the list)
-            stack->pop();
+            pop();
         }
     }
 
@@ -411,14 +421,14 @@ code_address vm_thread::make_call(working_set* ws,
             .err=err
         };
 
+
         auto result = stub->foreign(&handle, args);
         // can take args off the stack
         //pop_times(sp);
         if(err->happened) {
             status = vs_fault;
-        } else {
-            push(result);
         }
+        push(result);
         delete[] args;
         return ip + 2;
     } else { // native function call
@@ -687,8 +697,8 @@ inline void vm_thread::step() {
             auto ws = alloc->add_working_set();
             v1 = ws.add_function(stub);
             init_function(&ws, vfunction(v1));
+            push(v1);
         }
-        push(v1);
         ip += 2;
         break;
 

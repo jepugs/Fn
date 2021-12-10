@@ -17,7 +17,8 @@ interpreter::interpreter(logger* log)
 
     auto ws = alloc.add_working_set();
     ffi_chunk = ws.add_chunk(symtab.intern("fn/builtin"));
-    alloc.add_root_object((gc_header*)ffi_chunk);
+    ++ffi_chunk->h.pin_count;
+    alloc.add_gc_root(new pinned_object{(gc_header*)ffi_chunk});
 }
 
 interpreter::~interpreter() {
@@ -44,11 +45,11 @@ global_env* interpreter::get_global_env() {
 }
 
 void interpreter::interpret_to_end(vm_thread& vm, fault* err) {
+    auto ws = alloc.add_working_set();
     vm.execute(err);
     while (vm.check_status() == vs_waiting_for_import) {
-        import_ns(vm.get_pending_import_id(), err);
+        import_ns(vm.get_pending_import_id(), &ws, err);
         if (err->happened) {
-            log_error(err);
             break;
         }
         vm.execute(err);
@@ -124,7 +125,7 @@ value interpreter::interpret_file(const string& path,
     bool resumable;
     auto res = interpret_from_scanner(&sc, ns_id, ws, &resumable, err);
     if (err->happened) {
-        log_error(err);
+        //log_error(err);
     }
     return res;
 
@@ -195,6 +196,7 @@ dyn_array<value> interpreter::partial_interpret_string(const string& src,
         u32* bytes_used,
         bool* resumable,
         fault* err) {
+    auto ws2 = alloc.add_working_set();
     std::istringstream in{src};
     auto strloc = string{"<string in ns:"} + symtab[ns_id] + ">";
     scanner sc{&in, strloc};
@@ -205,7 +207,7 @@ dyn_array<value> interpreter::partial_interpret_string(const string& src,
     }
 
     auto ns_name = symtab.intern("fn/user/repl");
-    auto chunk = ws->add_chunk(ns_name);
+    auto chunk = ws2.add_chunk(ns_name);
 
     dyn_array<value> res;
     for (auto ast : forms) {
@@ -260,13 +262,11 @@ value interpreter::interpret_from_scanner(scanner* sc,
     }
 
     auto chunk = ws->add_chunk(ns_id);
-    // FIXME: this works around a semantic problem where the allocator can't see
-    // constants that are added to this chunk. working sets should automatically
-    // pin values.
-    ws->pin((gc_header*)chunk);
     value res = V_NIL;
 
-    for (auto ast : forms) {
+    u32 i;
+    for (i = 0; i < forms.size; ++i) {
+        auto ast = forms[i];
         expander ex{this, chunk};
         auto llir = ex.expand(ast, err);
         free_ast_form(ast);
@@ -294,6 +294,12 @@ value interpreter::interpret_from_scanner(scanner* sc,
 
         res = vm.last_pop(ws);
     }
+    // clean up extra forms in case of early termination
+    if (i < forms.size) {
+        for (i = i+1; i < forms.size; ++i) {
+            free_ast_form(forms[i]);
+        }
+    }
 
     if (log_dis) {
         std::cout << "Disassembled bytecode: \n";
@@ -303,7 +309,7 @@ value interpreter::interpret_from_scanner(scanner* sc,
     return res;
 }
 
-bool interpreter::import_ns(symbol_id ns_id, fault* err) {
+bool interpreter::import_ns(symbol_id ns_id, working_set* ws, fault* err) {
     // TODO: emit warning if import disagrees with file package declaration
     auto x = find_import_file(ns_id);
     if (!x.has_value()) {
@@ -313,9 +319,8 @@ bool interpreter::import_ns(symbol_id ns_id, fault* err) {
     if (!globals.get_ns(ns_id).has_value()) {
         globals.create_ns(ns_id);
     }
-    auto ws = alloc.add_working_set();
-    interpret_file(*x, ns_id, &ws, err);
-    return true;
+    interpret_file(*x, ns_id, ws, err);
+    return !err->happened;
 }
 
 optional<symbol_id> interpreter::read_pkg_decl(scanner* sc,
@@ -324,7 +329,6 @@ optional<symbol_id> interpreter::read_pkg_decl(scanner* sc,
     bool resumable;
     auto ast = parse_next_form(sc, &symtab, &resumable, err);
     if (err->happened) {
-        log_error(err);
         return {};
     }
     if (ast->kind != ak_list || ast->list_length == 0) {
@@ -340,7 +344,6 @@ optional<symbol_id> interpreter::read_pkg_decl(scanner* sc,
         set_fault(err, ast->loc, "interpreter",
                 "Incorrect arity in package declaration.");
         free_ast_form(ast);
-        log_error(err);
         return {};
     }
     auto name_form = ast->datum.list[1];
@@ -348,7 +351,6 @@ optional<symbol_id> interpreter::read_pkg_decl(scanner* sc,
         set_fault(err, name_form->loc, "interpreter",
                 "Package name must be a symbol.");
         free_ast_form(ast);
-        log_error(err);
         return {};
     }
     auto res = name_form->datum.sym;

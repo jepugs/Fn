@@ -16,10 +16,47 @@ namespace fn {
 
 struct allocator;
 
-// A root_stack is a stack of garbage collector root objects. These are used for
-// the virtual machine stack.
+struct gc_root {
+    // If this is set to false, this root object will be destroyed and removed
+    // on the next collection
+    bool alive = true;
 
-// TODO: replace the vector here with a manually-managed array
+    // The garbage collector calls this function after marking this object in
+    // order to recursively determine which objects are accessible. The function
+    // descend() is passed in by the allocator and should be called on each root
+    // gc_header* represented by this object.
+
+    // Since this is guaranteed to be invoked once every collection cycle, it's
+    // a good time to set the value of alive.
+    virtual void mark(std::function<void(gc_header*)> descend) = 0;
+    virtual ~gc_root() { }
+};
+
+// Creates a gc_root that will exist until kill() is called.
+struct root_object final : public gc_root {
+    gc_header* obj;
+
+    root_object(gc_header* obj);
+    void kill();
+    void mark(std::function<void(gc_header*)> descend) override;
+};
+
+// These are reference counted roots. When the reference count hits 0, they are
+// removed from the root objects list.
+struct pinned_object final : public gc_root {
+    gc_header* obj;
+
+    // note that this will not increment the pin count on its own
+    pinned_object(gc_header* obj);
+    ~pinned_object();
+    void mark(std::function<void(gc_header*)> descend) override;
+};
+
+
+// A root_stack is a stack of values treated as gc roots. These are used for the
+// virtual machine stack. This does not inherit from gc_root because it started
+// out this way and I'm worried about decreased performance due to virtual
+// method dispatch and the fact that the descend() call can't be inlined.
 struct root_stack {
     friend class allocator;
 private:
@@ -35,7 +72,7 @@ private:
 
 public:
     // no copying! These cannot be moved around in memory or else
-    // mark_for_deletion will not work properly.
+    // mark_for_deletion() will not work properly.
     root_stack(const root_stack& other) = delete;
     root_stack& operator=(const root_stack& other) = delete;
     root_stack(root_stack&& other) = delete;
@@ -77,7 +114,7 @@ public:
         return contents[offset];
     }
 
-    void mark_for_deletion();
+    void kill();
 };
 
 
@@ -94,8 +131,6 @@ private:
     bool released;
     allocator* alloc; // weak reference
 
-    // new objects allocated for this working set (not yet in the gc list)
-    forward_list<gc_header*> new_objects;
     // pinned objects are guaranteed to live during this working_set's life
     forward_list<gc_header*> pinned_objects;
 
@@ -127,20 +162,23 @@ public:
 
     // FIXME: pinning is not thread-safe
 
+    // pins are temporary root objects which are added and managed by
+    // working_sets. When an object's working_set reference count falls to 0, it
+    // is removed automatically.
+    void pin(gc_header* gc);
     // pin an existing value so it won't be collected for the lifetime of the
     // working_set. Returns v. The value is automagically unpinned if its
     // reference count hits 0.
     value pin_value(value v);
-    void pin(gc_header* gc);
 };
 
-struct allocator {
+class allocator {
     friend class working_set;
 private:
     // note: we guarantee that every pointer in this array is actually memory
     // managed by this garbage collector
     std::list<gc_header*> objects;
-    // this is the list of objects minus values accessible from global values.
+    // this is the list of objects minus globally accessible values.
     std::list<gc_header*> sweep_list;
     // list of global objects with mutable cells. This is to handle the case
     // where a globally accessible object ceases to be globally accessible.
@@ -161,13 +199,9 @@ private:
     u32 count;
 
     // roots for the mark and sweep algorithm
-    dyn_array<gc_header*> root_objects;
+    std::list<gc_root*> roots;
     // variable-size stacks of root objects. Used for vm stacks.
     std::list<root_stack*> root_stacks;
-    // pins are temporary root objects which are added and managed by
-    // working_sets. When an object's working_set reference count falls to 0, it
-    // is removed automatically.
-    std::list<gc_header*> pinned_objects;
 
     // IMPLNOTE: you may wonder why we have this roots/pins dichotomy. This way,
     // we can make root objects without any working_set, and also guarantee that
@@ -219,7 +253,7 @@ public:
     void force_collect();
 
     // add a value to the list of root values so it will not be collected
-    void add_root_object(gc_header* h);
+    void add_gc_root(gc_root* r);
     // create a root stack managed by this allocator
     root_stack* add_root_stack();
     working_set add_working_set();
@@ -237,6 +271,9 @@ public:
     //   considered to be "weakly global", and are used as additional root
     //   objects during collections.
     void designate_global(gc_header* o);
+
+    void add_constant(code_chunk* chunk, value c);
+    void table_set(fn_table* tab, value key, value val);
 
     void print_status();
 };

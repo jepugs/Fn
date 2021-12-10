@@ -72,6 +72,12 @@ struct dyn_array {
         return *this;
     }
 
+    // get the size of this array, including the contents of its buffer, in
+    // bytes
+    size_t mem_size() {
+        return sizeof(dyn_array<t>) + capacity*sizeof(t);
+    }
+
     void ensure_capacity(u32 min_cap) {
         if (capacity >= min_cap) {
             return;

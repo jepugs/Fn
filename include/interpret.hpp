@@ -126,7 +126,7 @@ public:
 
     // Import a namespace, performing full search. Returns false if no file is
     // found.
-    bool import_ns(symbol_id ns_id, fault* err);
+    bool import_ns(symbol_id ns_id, working_set* ws, fault* err);
     // read the package declaration from a file, if present. This will leave the
     // scanner where it left off, so it should be reinitialized if this returns
     // nullopt.

@@ -80,7 +80,7 @@ constexpr u8 GC_WEAK_GLOBAL_BIT = 0x04;
 constexpr u8 GC_TYPE_BITMASK    = 0xf0;
 
 // GC Types
-constexpr u8 GC_TYPE_CHUNK      = 0x00;
+constexpr u8 GC_TYPE_CHUNK      = 0x80;
 // NOTE: I want these four to line up with the type tags in values.hpp
 constexpr u8 GC_TYPE_STRING     = 0x10;
 constexpr u8 GC_TYPE_CONS       = 0x20;

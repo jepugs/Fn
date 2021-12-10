@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <iostream>
 
+// FIXME: these macros should probably be in a header, but not this one (so as
+// to not pollute the macro namespace)
+
 // access parts of the gc_header
 #define gc_mark(h) (((h).bits & GC_MARK_BIT) == GC_MARK_BIT)
 #define gc_global(h) (((h).bits & GC_GLOBAL_BIT) == GC_GLOBAL_BIT)
@@ -19,16 +22,45 @@
 #define gc_set_weak_global(h) (((h).bits |= GC_WEAK_GLOBAL_BIT))
 #define gc_unset_weak_global(h) (((h).bits &= ~GC_WEAK_GLOBAL_BIT))
 
+// #define GC_DEBUG
+
 namespace fn {
 
-// 1 MB for first collect. Actual usage will be a little bit higher because
+// 64KiB for first collect. Actual usage will be a somewhat higher because
 // tables/functions/chunks create some extra data depending on
 // entries/upvalues/code
-static constexpr u32 FIRST_COLLECT = 1024 * 1024 * 1024;
+static constexpr u32 FIRST_COLLECT = 64 * 1024;
 static constexpr f64 COLLECT_SCALE_FACTOR = 2;
-// This essentially says no more than this amount of memory may be devoted to
-// persistent objects
-static constexpr f64 RESCALE_TH = 0.35;
+// This essentially says no more than this proportion of available memory may be
+// devoted to persistent objects
+static constexpr f64 RESCALE_TH = 0.75;
+
+root_object::root_object(gc_header* obj)
+    : obj{obj} {
+}
+
+void root_object::kill() {
+    alive = false;
+}
+
+void root_object::mark(std::function<void(gc_header*)> descend) {
+    descend(obj);
+}
+
+pinned_object::~pinned_object() {
+}
+
+pinned_object::pinned_object(gc_header* obj)
+    : obj{obj} {
+}
+
+void pinned_object::mark(std::function<void(gc_header*)> descend) {
+    if (obj->pin_count <= 0) {
+        alive = false;
+    } else {
+        descend(obj);
+    }
+}
 
 root_stack::root_stack()
     : pointer{0}
@@ -136,18 +168,11 @@ void root_stack::do_return(u32 base_addr) {
     pop_function();
 }
 
-void root_stack::mark_for_deletion() {
+void root_stack::kill() {
     dead = true;
 }
 
 void working_set::add_to_gc() {
-    // add new objects to the allocator's list
-    for (auto h : new_objects) {
-        alloc->objects.push_front(h);
-    }
-
-    // decrease the reference count for pinned objects. The pinned_objects list
-    // is automatically pruned by the allocator.
     for (auto h : pinned_objects) {
         --h->pin_count;
     }
@@ -169,8 +194,6 @@ working_set::~working_set() {
 }
 
 
-// FIXME: this won't work lol. Should swap fields
-
 working_set& working_set::operator=(working_set&& other) noexcept {
     auto tmpr = released;
     released = other.released;
@@ -180,7 +203,6 @@ working_set& working_set::operator=(working_set&& other) noexcept {
     alloc = other.alloc;
     other.alloc = tmpa;
 
-    new_objects = std::move(other.new_objects);
     pinned_objects = std::move(other.pinned_objects);
 
     return *this;
@@ -192,8 +214,9 @@ value working_set::add_cons(value hd, value tl) {
     ++alloc->count;
     auto ptr = new cons{hd,tl};
     auto v = vbox_cons(ptr);
-    new_objects.push_front((gc_header*)ptr);
-    return pin_value(v);
+    pin_value(v);
+    alloc->objects.push_front((gc_header*)ptr);
+    return v;
 }
 
 value working_set::add_string(const string& s) {
@@ -202,11 +225,9 @@ value working_set::add_string(const string& s) {
     alloc->mem_usage += sizeof(fn_string) + s.length() + 1;
     ++alloc->count;
     auto ptr = new fn_string{s};
-    auto v = vbox_string(ptr);
-    new_objects.push_front((gc_header*)ptr);
-    // string return values don't need to be pinned right away because they
-    // don't refer to any other objects.
-    return v;
+    pin(&ptr->h);
+    alloc->objects.push_front((gc_header*)ptr);
+    return vbox_string(ptr);
 }
 
 value working_set::add_string(const fn_string& s) {
@@ -215,7 +236,8 @@ value working_set::add_string(const fn_string& s) {
     ++alloc->count;
     auto ptr = new fn_string{s};
     auto v = vbox_string(ptr);
-    new_objects.push_front((gc_header*)ptr);
+    pin(&ptr->h);
+    alloc->objects.push_front((gc_header*)ptr);
     return v;
 }
 
@@ -225,7 +247,8 @@ value working_set::add_string(u32 len) {
     ++alloc->count;
     auto ptr = new fn_string{len};
     auto v = vbox_string(ptr);
-    new_objects.push_front((gc_header*)ptr);
+    pin(&ptr->h);
+    alloc->objects.push_front((gc_header*)ptr);
     return v;
 }
 
@@ -235,17 +258,21 @@ value working_set::add_table() {
     ++alloc->count;
     auto ptr = new fn_table{};
     auto v = vbox_table(ptr);
-    new_objects.push_front((gc_header*)ptr);
-    return pin_value(v);
+    pin(&ptr->h);
+    alloc->objects.push_front((gc_header*)ptr);
+    return v;
 }
 
 value working_set::add_function(function_stub* stub) {
     alloc->collect();
-    alloc->mem_usage += sizeof(function);
+    alloc->mem_usage += sizeof(function)
+        + stub->num_upvals*sizeof(upvalue_cell)
+        + (stub->pos_params.size - stub->req_args)*sizeof(value);
     ++alloc->count;
     auto ptr = new function{stub};
     auto v = vbox_function(ptr);
-    new_objects.push_front((gc_header*)ptr);
+    pin(&ptr->h);
+    alloc->objects.push_front((gc_header*)ptr);
     return v;
 }
 
@@ -262,28 +289,26 @@ code_chunk* working_set::add_chunk(symbol_id ns_id) {
 
     auto res = mk_code_chunk(ns_id);
 
-    new_objects.push_front((gc_header*)res);
-    pin((gc_header*)res);
+    auto h = (gc_header*)res;
+    pin(h);
+    alloc->objects.push_front(h);
     return res;
 }
 
 value working_set::pin_value(value v) {
     if(vhas_header(v)) {
-        auto h = vheader(v);
-        if (h->pin_count++ == 0) {
-            // first time this object is pinned
-            alloc->pinned_objects.push_front(h);
-        }
-        pinned_objects.push_front(h);
+        pin(vheader(v));
     }
     return v;
 }
 
 void working_set::pin(gc_header* h) {
-    if (h->pin_count++ == 0) {
+    ++h->pin_count;
+    if (h->pin_count == 1) {
         // first time this object is pinned
-        alloc->pinned_objects.push_front(h);
+        alloc->add_gc_root(new pinned_object{h});
     }
+    pinned_objects.push_front(h);
 }
 
 allocator::allocator(global_env* use_globals)
@@ -296,6 +321,9 @@ allocator::allocator(global_env* use_globals)
 }
 
 allocator::~allocator() {
+    for (auto r : roots) {
+        delete r;
+    }
     for (auto s : root_stacks) {
         delete s;
     }
@@ -408,16 +436,6 @@ void allocator::mark_descend(gc_header* o) {
 }
 
 void allocator::mark() {
-    for (auto it = pinned_objects.begin(); it != pinned_objects.end();) {
-        auto h = *it;
-        if (h->pin_count == 0) {
-            it = pinned_objects.erase(it);
-        } else {
-            mark_descend(h);
-            ++it;
-        }
-    }
-
     // global namespaces
     for (auto k : globals->ns_table.keys()) {
         auto ns = *globals->get_ns(k);
@@ -434,11 +452,21 @@ void allocator::mark() {
         }
     }
 
-    for (auto h : root_objects) {
-        mark_descend(h);
+    // roots
+    for (auto it = roots.begin(); it != roots.end();) {
+        if ((*it)->alive) {
+            (*it)->mark([this](gc_header* obj) {
+                this->mark_descend(obj);
+            });
+            ++it;
+        } else {
+            delete *it;
+            it = roots.erase(it);
+        }
     }
 
-    for (auto it = root_stacks.begin(); it != root_stacks.end(); ++it) {
+    // stacks
+    for (auto it = root_stacks.begin(); it != root_stacks.end();) {
         if ((*it)->dead) {
             delete *it;
             it = root_stacks.erase(it);
@@ -456,13 +484,14 @@ void allocator::mark() {
             if (vhas_header(v)) {
                 mark_descend(vheader(v));
             }
+            ++it;
         }
     }
 
 }
 
 void allocator::sweep() {
-#ifdef GC_DEBUG
+#ifdef GC_LOG
     auto orig_ct = count;
     auto orig_sz = mem_usage;
 #endif
@@ -480,13 +509,7 @@ void allocator::sweep() {
     }
     objects.swap(more_objs);
 
-    // some pinned objects still belong to working sets, so they're not in the
-    // objects list to get unpinned
-    for (auto h : pinned_objects) {
-        gc_unset_mark(*h);
-    }
-
-#ifdef GC_DEBUG
+#ifdef GC_LOG
     auto ct = orig_ct - count;
     auto sz = orig_sz - mem_usage;
     std::cout << "swept " << ct << " objects ( " << sz << " bytes)\n";
@@ -544,8 +567,8 @@ void allocator::force_collect() {
     to_collect = false;
 }
 
-void allocator::add_root_object(gc_header* h) {
-    root_objects.push_back(h);
+void allocator::add_gc_root(gc_root* r) {
+    roots.push_back(r);
 }
 
 root_stack* allocator::add_root_stack() {
