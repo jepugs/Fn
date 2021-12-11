@@ -114,6 +114,23 @@ void root_stack::close(u32 base_addr) {
     contents.resize(base_addr);
 }
 
+void root_stack::close_for_tc(u32 n, u32 base_addr) {
+    auto old_ptr = pointer;
+
+    // time to obliterate the old call frame...
+    close(base_addr);
+
+    auto arg_offset = (old_ptr - n) - (base_addr);
+    auto end = n + base_addr;
+    for (u32 i = base_addr; i < end; ++i) {
+        contents[i] = contents[i + arg_offset];
+    }
+
+    pointer = base_addr + n;
+    contents.resize(pointer);
+}
+
+
 void root_stack::do_return(u32 base_addr) {
     pop();
     // NOTE! No stack operations can happen here, or last pop will get messed

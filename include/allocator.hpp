@@ -100,6 +100,10 @@ public:
     // involves copying its value to the heap and removing it from the list of
     // upvalues). This does not change last_pop.
     void close(u32 base_addr);
+    // close for tail call. This is like close, but the top n elements of the
+    // stack (which must all reside above the base pointer) are pushed back to
+    // the new call frame.
+    void close_for_tc(stack_address n, stack_address base_addr);
     // like close(), but first saves the top of the stack and pushes it back
     // after doing the close (so the final stack size is base_addr+1). This sets
     // last_pop to the return value.

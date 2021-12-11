@@ -109,6 +109,9 @@ struct dyn_array {
         ++size;
     }
 
+    // This resizes the array, but on decrease it will never actually shrink the
+    // array. The values which were past the end of the new array will be
+    // preserved until written over by push_back or something.
     void resize(u32 new_size) {
         ensure_capacity(new_size);
         for (u32 i = size; i < new_size; ++i) {

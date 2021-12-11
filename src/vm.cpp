@@ -24,7 +24,6 @@ vm_thread::vm_thread(allocator* use_alloc, global_env* use_globals,
     , status{vs_stopped}
     , ip{0}
     , frame{new call_frame{nullptr, 0, use_chunk, 0, nullptr}} {
-    //alloc->designate_global(&chunk->h);
     stack = alloc->add_root_stack();
 }
 
@@ -332,6 +331,50 @@ void vm_thread::arrange_call_stack_no_kw(working_set* ws,
     }
 }
 
+void vm_thread::arrange_call_stack_no_kw(working_set* ws,
+        function* func,
+        local_address num_args) {
+    auto num_pos_args = func->stub->pos_params.size;
+    auto has_vl = func->stub->vl_param.has_value();
+    auto has_vt = func->stub->vt_param.has_value();
+    auto req_args = func->stub->req_args;
+
+    // For the most part, positional arguments can get left where they are.
+    // Extra positional arguments go to the variadic list parameter
+    value var_list = V_EMPTY;
+    if (num_pos_args < num_args) {
+        if (!has_vl) {
+            runtime_error("Too many positional arguments to function.");
+        }
+        i32 m = num_args - num_pos_args;
+        for (auto i = 0; i < m; ++i) {
+            // this builds the list in the correct order
+            var_list = ws->add_cons(peek(0), var_list);
+            // peek/pop because we don't need to add the top of the list to the
+            // working set (since it's accessible from the list)
+            stack->pop();
+        }
+    }
+
+    u32 i = num_args;
+    if (i < req_args) {
+        runtime_error("Missing required argument in function call or apply.");
+    }
+
+    // push init vals
+    for (; i < num_pos_args; ++i) {
+        push(func->init_vals[i - req_args]);
+    }
+    // put variadic args
+    if (has_vl) {
+        push(var_list);
+    }
+    if (has_vt) {
+        push(ws->add_table());
+    }
+}
+
+
 void vm_thread::arrange_call_stack(working_set* ws,
         function* func,
         local_address num_args) {
@@ -446,9 +489,7 @@ code_address vm_thread::make_tcall(function* func) {
     frame->num_args = sp;
     frame->caller = func;
     chunk = stub->chunk;
-    // update the frame in the root_stack
-    stack->pop_function();
-    stack->push_function(func);
+
     return stub->addr;
 }
 
@@ -485,14 +526,17 @@ code_address vm_thread::call_kw(local_address num_args) {
     }
     auto func = vfunction(callee);
 
+    // we're officially done with the previous function now
+    stack->pop_function();
+    stack->push_function(func);
+
     arrange_call_stack(&ws, func, num_args);
     return make_call(&ws, func);
 }
 
 code_address vm_thread::tcall_kw(local_address num_args) {
-    auto ws = alloc->add_working_set();
     // the function to call should be on top
-    auto callee = pop_to_ws(&ws);
+    auto callee = peek();
     if (v_tag(callee) != TAG_FUNC) {
         runtime_error("Error on call: callee is not a function");
         return ip + 2;
@@ -501,31 +545,27 @@ code_address vm_thread::tcall_kw(local_address num_args) {
     auto stub = func->stub;
     // foreign calls are just normal calls
     if (stub->foreign != nullptr || frame->caller == nullptr) {
-        push(callee);
         return call_kw(num_args);
     }
 
-    // save the values for the call operation
-    dyn_array<value> saved_stack;
-    for (i32 i = 0; i < num_args+1; ++i) {
-        saved_stack.push_back(pop_to_ws(&ws));
-    }
+    // we're officially done with the previous function now
+    stack->pop_function();
+    // pushing the next function already lets us avoid adding it to a
+    // working_set
+    stack->push_function(func);
+    pop();
 
-    // time to obliterate the old call frame...
-    stack->close(frame->bp);
-    // set up the stack
-    for (i32 i = 0; i < num_args+1; ++i) {
-        push(saved_stack[num_args - i]);
-    }
-    arrange_call_stack(&ws, func, num_args);
+    // set up the call stack
+    stack->close_for_tc(num_args+1, frame->bp); // + 1 for the keyword table
+    auto ws = alloc->add_working_set();
+    arrange_call_stack_no_kw(&ws, func, num_args);
 
     return make_tcall(func);
 }
 
 code_address vm_thread::tcall_no_kw(local_address num_args) {
-    auto ws = alloc->add_working_set();
     // the function to call should be on top
-    auto callee = pop_to_ws(&ws);
+    auto callee = peek();
     if (v_tag(callee) != TAG_FUNC) {
         runtime_error("Error on call: callee is not a function");
         return ip + 2;
@@ -534,24 +574,19 @@ code_address vm_thread::tcall_no_kw(local_address num_args) {
     auto stub = func->stub;
     // foreign calls are just normal calls
     if (stub->foreign != nullptr || frame->caller == nullptr) {
-        push(callee);
         return call_no_kw(num_args);
     }
 
-    // save the values for the call operation
-    dyn_array<value> saved_stack;
-    // Note a key difference here from tcall_kw: num_args, not num_args+1
-    for (i32 i = 0; i < num_args; ++i) {
-        saved_stack.push_back(pop_to_ws(&ws));
-    }
+    // we're officially done with the previous function now
+    stack->pop_function();
+    stack->push_function(func);
+    pop();
 
-    // time to obliterate the old call frame...
-    stack->close(frame->bp);
-    // set up the stack
-    for (i32 i = 0; i < num_args; ++i) {
-        push(saved_stack[num_args - i - 1]);
-    }
+    // set up the call stack
+    stack->close_for_tc(num_args, frame->bp);
+    auto ws = alloc->add_working_set();
     arrange_call_stack_no_kw(&ws, func, num_args);
+
     return make_tcall(func);
 }
 
@@ -578,7 +613,6 @@ code_address vm_thread::apply(local_address num_args, bool tail) {
     push(callee);
     return tail ? tcall_kw(num_args+list_len) : call_kw(num_args+list_len);
 }
-
 
 
 void vm_thread::init_function(working_set* ws, function* f) {
@@ -614,14 +648,11 @@ inline void vm_thread::step() {
 
     // variable for use inside the switch
     value v1, v2, v3;
-    optional<value*> vp;
 
     bool jump = false;
     code_address addr = 0;
 
     local_address num_args;
-
-    function_stub* stub;
 
     local_address l;
     u16 id;
@@ -640,13 +671,11 @@ inline void vm_thread::step() {
         pop();
         break;
     case OP_COPY:
-        v1 = stack->peek(chunk->read_byte(ip+1));
-        push(v1);
+        push(stack->peek(chunk->read_byte(ip+1)));
         ++ip;
         break;
     case OP_LOCAL:
-        v1 = local(chunk->read_byte(ip+1));
-        push(v1);
+        push(local(chunk->read_byte(ip+1)));
         ++ip;
         break;
     case OP_SET_LOCAL:
@@ -686,9 +715,9 @@ inline void vm_thread::step() {
 
     case OP_CLOSURE:
         id = chunk->read_short(ip+1);
-        stub = chunk->get_function(chunk->read_short(ip+1));
         // FIXME: rearchitect to not need the working_set here
         {
+            auto stub = chunk->get_function(chunk->read_short(ip+1));
             auto ws = alloc->add_working_set();
             v1 = ws.add_function(stub);
             push(v1);
