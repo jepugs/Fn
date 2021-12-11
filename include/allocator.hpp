@@ -59,13 +59,17 @@ struct root_object final : public gc_root {
 
 // These are reference counted roots. When the reference count hits 0, they are
 // removed from the root objects list.
-struct pinned_object final : public gc_root {
+struct pinned_object {// : public gc_root {
+    // If this is set to false, this root object will be destroyed and removed
+    // on the next collection
+    bool alive = true;
+
     gc_header* obj;
 
     // note that this will not increment the pin count on its own
     pinned_object(gc_header* obj);
     ~pinned_object();
-    void mark(std::function<void(gc_header*)> descend) override;
+    // void mark(std::function<void(gc_header*)> descend);
 };
 
 
@@ -216,7 +220,7 @@ private:
     u32 count;
 
     // roots for the mark and sweep algorithm
-    std::list<gc_root*> roots;
+    std::list<gc_header*> roots;
     // variable-size stacks of root objects. Used for vm stacks.
     std::list<root_stack*> root_stacks;
 
@@ -270,7 +274,7 @@ public:
     void force_collect();
 
     // add a value to the list of root values so it will not be collected
-    void add_gc_root(gc_root* r);
+    void add_gc_root(gc_header* r);
     // create a root stack managed by this allocator
     root_stack* add_root_stack();
     working_set add_working_set();

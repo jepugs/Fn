@@ -159,6 +159,7 @@ code_chunk* mk_code_chunk(allocator* use_alloc, symbol_id ns_id) {
         }
     };
     mk_gc_header(GC_TYPE_CHUNK, &res->h);
+    res->h.pin_count = 0;
     return res;
 }
 

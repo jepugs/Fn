@@ -24,13 +24,8 @@ vm_thread::vm_thread(allocator* use_alloc, global_env* use_globals,
     , status{vs_stopped}
     , ip{0}
     , frame{new call_frame{nullptr, 0, use_chunk, 0, nullptr}} {
+    //alloc->designate_global(&chunk->h);
     stack = alloc->add_root_stack();
-
-    // make sure the chunk isn't deleted, since it may not be accessible before
-    // this call
-    auto h = (gc_header*)chunk;
-    ++h->pin_count;
-    alloc->add_gc_root(new pinned_object{h});
 }
 
 vm_thread::~vm_thread() {
@@ -40,9 +35,6 @@ vm_thread::~vm_thread() {
         // TODO: ensure reference count for upvalue_slot is decremented
         delete frame;
         frame = tmp;
-
-        auto h = (gc_header*)chunk;
-        --h->pin_count;
     }
     stack->kill();
 }

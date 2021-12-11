@@ -35,13 +35,13 @@ pinned_object::pinned_object(gc_header* obj)
     : obj{obj} {
 }
 
-void pinned_object::mark(std::function<void(gc_header*)> descend) {
-    if (obj->pin_count <= 0) {
-        alive = false;
-    } else {
-        descend(obj);
-    }
-}
+// void pinned_object::mark(std::function<void(gc_header*)> descend) {
+//     if (obj->pin_count <= 0) {
+//         alive = false;
+//     } else {
+//         descend(obj);
+//     }
+// }
 
 root_stack::root_stack()
     : pointer{0}
@@ -195,7 +195,7 @@ value working_set::add_cons(value hd, value tl) {
     ++alloc->count;
     auto ptr = new cons{hd,tl};
     auto v = vbox_cons(ptr);
-    pin_value(v);
+    pin(&ptr->h);
     alloc->objects.push_back((gc_header*)ptr);
     return v;
 }
@@ -287,7 +287,7 @@ void working_set::pin(gc_header* h) {
     ++h->pin_count;
     if (h->pin_count == 1) {
         // first time this object is pinned
-        alloc->add_gc_root(new pinned_object{h});
+        alloc->add_gc_root(h);
     }
     pinned_objects.push_front(h);
 }
@@ -302,9 +302,6 @@ allocator::allocator(global_env* use_globals)
 }
 
 allocator::~allocator() {
-    for (auto r : roots) {
-        delete r;
-    }
     for (auto s : root_stacks) {
         delete s;
     }
@@ -415,23 +412,12 @@ void allocator::mark_descend(gc_header* o) {
 void allocator::mark() {
     // roots
     for (auto it = roots.begin(); it != roots.end();) {
-        if ((*it)->alive) {
-            (*it)->mark([this](gc_header* obj) {
-                this->mark_descend(obj);
-            });
+        if ((*it)->pin_count > 0) {
+            mark_descend(*it);
             ++it;
         } else {
-            delete *it;
             it = roots.erase(it);
         }
-    }
-
-    // mutable globals
-    for (auto o : mutable_globals) {
-        // this line is very important (otherwise mark_descend just stops right
-        // away).
-        gc_unset_mark(*o);
-        this->mark_descend(o);
     }
 
     // stacks
@@ -527,7 +513,7 @@ void allocator::force_collect() {
     to_collect = false;
 }
 
-void allocator::add_gc_root(gc_root* r) {
+void allocator::add_gc_root(gc_header* r) {
     roots.push_back(r);
 }
 
@@ -544,9 +530,10 @@ working_set allocator::add_working_set() {
 void allocator::designate_global(gc_header* o) {
     if (!gc_global(*o)) {
         gc_set_global(*o);
-        if (++o->pin_count == 1) {
-            add_gc_root(new pinned_object{o});
+        if (o->pin_count == 0) {
+            add_gc_root(o);
         }
+        ++o->pin_count;
     }
 }
 
