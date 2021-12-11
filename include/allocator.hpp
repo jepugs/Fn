@@ -179,6 +179,8 @@ private:
     // list of global objects with mutable values. These mutable cells are
     // used as gc roots
     std::list<gc_header*> mutable_globals;
+    // list of objects to mark next. This is populate based on root objects.
+    std::forward_list<gc_header*> marking_list;
 
     // holds global variables
     global_env* globals;
@@ -206,7 +208,9 @@ private:
     forward_list<gc_header*> accessible(gc_header* o);
 
     // helpers for mark
-    void mark_descend_value(value v);
+    //void mark_descend_value(value v);
+    void add_mark_value(value v);
+    // this marks an object and adds accessible nodes to the marking_list.
     void mark_descend(gc_header* o);
     // starting from roots and pins, set the mark on all accessible objects.
     void mark();

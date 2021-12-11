@@ -325,11 +325,18 @@ void allocator::dealloc(gc_header* o) {
     --count;
 }
 
-void allocator::mark_descend_value(value v) {
+// void allocator::mark_descend_value(value v) {
+//     if (vhas_header(v)) {
+//         mark_descend(vheader(v));
+//     }
+// }
+
+void allocator::add_mark_value(value v) {
     if (vhas_header(v)) {
-        mark_descend(vheader(v));
+        marking_list.push_front(vheader(v));
     }
 }
+
 
 void allocator::mark_descend(gc_header* o) {
     if (gc_mark(*o)) {
@@ -343,21 +350,21 @@ void allocator::mark_descend(gc_header* o) {
         {
             auto x = (code_chunk*)o;
             for (auto v : x->constant_arr) {
-                mark_descend_value(v);
+                add_mark_value(v);
             }
         }
         break;
     case GC_TYPE_CONS:
-        mark_descend_value(((cons*)o)->head);
-        mark_descend_value(((cons*)o)->tail);
+        add_mark_value(((cons*)o)->head);
+        add_mark_value(((cons*)o)->tail);
         break;
     case GC_TYPE_TABLE:
         {
             auto x = ((fn_table*)o)->contents;
             for (u32 i = 0; i < x.cap; ++i) {
                 if (x.array[i] != nullptr) {
-                    mark_descend_value(x.array[i]->key);
-                    mark_descend_value(x.array[i]->val);
+                    add_mark_value(x.array[i]->key);
+                    add_mark_value(x.array[i]->val);
                 }
             }
         }
@@ -370,14 +377,14 @@ void allocator::mark_descend(gc_header* o) {
             for (local_address i = 0; i < m; ++i) {
                 auto cell = f->upvals[i];
                 if (cell->closed) {
-                    mark_descend_value(cell->closed_value);
+                    add_mark_value(cell->closed_value);
                 }
             }
             auto num_opt = f->stub->pos_params.size - f->stub->req_args;
             for (u32 i = 0; i < num_opt; ++i) {
-                mark_descend_value(f->init_vals[i]);
+                add_mark_value(f->init_vals[i]);
             }
-            mark_descend(&f->stub->chunk->h);
+            marking_list.push_front(&f->stub->chunk->h);
         }
         break;
     }
@@ -401,16 +408,24 @@ void allocator::mark() {
             it = root_stacks.erase(it);
         } else {
             for (u32 i = 0; i < (*it)->get_pointer(); ++i) {
-                mark_descend_value((*it)->contents[i]);
+                add_mark_value((*it)->contents[i]);
             }
             for (auto x : (*it)->function_stack) {
                 mark_descend((gc_header*)x);
             }
-            mark_descend_value((*it)->last_pop);
+            add_mark_value((*it)->last_pop);
             ++it;
         }
     }
 
+    while (true) {
+        if (marking_list.empty()) {
+            break;
+        }
+        auto x = marking_list.front();
+        marking_list.pop_front();
+        mark_descend(x);
+    }
 }
 
 void allocator::sweep() {
