@@ -16,32 +16,6 @@ static constexpr f64 COLLECT_SCALE_FACTOR = 2;
 // devoted to persistent objects
 static constexpr f64 RESCALE_TH = 0.7;
 
-root_object::root_object(gc_header* obj)
-    : obj{obj} {
-}
-
-void root_object::kill() {
-    alive = false;
-}
-
-void root_object::mark(std::function<void(gc_header*)> descend) {
-    descend(obj);
-}
-
-pinned_object::~pinned_object() {
-}
-
-pinned_object::pinned_object(gc_header* obj)
-    : obj{obj} {
-}
-
-// void pinned_object::mark(std::function<void(gc_header*)> descend) {
-//     if (obj->pin_count <= 0) {
-//         alive = false;
-//     } else {
-//         descend(obj);
-//     }
-// }
 
 root_stack::root_stack()
     : pointer{0}

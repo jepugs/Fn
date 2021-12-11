@@ -32,34 +32,9 @@ namespace fn {
 
 struct allocator;
 
-struct gc_root {
-    // If this is set to false, this root object will be destroyed and removed
-    // on the next collection
-    bool alive = true;
-
-    // The garbage collector calls this function after marking this object in
-    // order to recursively determine which objects are accessible. The function
-    // descend() is passed in by the allocator and should be called on each root
-    // gc_header* represented by this object.
-
-    // Since this is guaranteed to be invoked once every collection cycle, it's
-    // a good time to set the value of alive.
-    virtual void mark(std::function<void(gc_header*)> descend) = 0;
-    virtual ~gc_root() { }
-};
-
-// Creates a gc_root that will exist until kill() is called.
-struct root_object final : public gc_root {
-    gc_header* obj;
-
-    root_object(gc_header* obj);
-    void kill();
-    void mark(std::function<void(gc_header*)> descend) override;
-};
-
 // These are reference counted roots. When the reference count hits 0, they are
 // removed from the root objects list.
-struct pinned_object {// : public gc_root {
+struct pinned_object {
     // If this is set to false, this root object will be destroyed and removed
     // on the next collection
     bool alive = true;
@@ -224,11 +199,6 @@ private:
     // variable-size stacks of root objects. Used for vm stacks.
     std::list<root_stack*> root_stacks;
 
-    // IMPLNOTE: you may wonder why we have this roots/pins dichotomy. This way,
-    // we can make root objects without any working_set, and also guarantee that
-    // a working_set will never change the root objects list. So pins and roots
-    // operate entirely independently.
-
     // deallocate an object, rendering all references to it meaningless
     void dealloc(gc_header* o);
 
@@ -246,11 +216,6 @@ private:
     // - delete unmarked objects
     // - remove the mark from marked objects
     void sweep();
-
-    // recursively mark an object as being global per the rules described in the
-    // comment below for designate_global(). This may call mark_weakly_global.
-    void mark_global(gc_header* o);
-    void marksweep_weak_globals(gc_header*);
 
     // pinned objects act as temporary roots
     void pin_object(gc_header* o);
@@ -279,24 +244,13 @@ public:
     root_stack* add_root_stack();
     working_set add_working_set();
 
-    // Designate an object as a global object. This prevents the GC from marking
-    // or sweeping this or any object it references. For safety, this should be
-    // used only on values not at risk of collection. Behavior depends on value
-    // type.
-    // - Strings and chunks are marked global and no further action is taken.
-    //   (The constant array of a chunk is *not* recursively marked. You have to
-    //   do that separately).
-    // - For lists, this means recursively marking referenced values as globals.
-    // - Since tables and functions can reference mutable values, they are added
-    //   to a list of mutable globals. Their mutable slots are treated as root
-    //   objects.
+    // Designate an object as global by setting the global bit and pinning it.
+    // Right now this does little other than guarantee the object's safety. In
+    // the future I'm planning to add a feature to freeze globally accessible
+    // values.
     void designate_global(gc_header* o);
-    // this allows global variables to be mutated. Be careful, as this will
-    // require us to repaint all globally accessible objects.
+    // Once implemented, this will allow globals to be 
     void unset_global(gc_header* o);
-
-    void add_constant(code_chunk* chunk, value c);
-    void table_set(fn_table* tab, value key, value val);
 
     void print_status();
 };
