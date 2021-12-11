@@ -12,6 +12,22 @@
 
 #include <list>
 
+// FIXME: these macros should probably be in a header, but not this one (so as
+// to not pollute the macro namespace)
+
+// access parts of the gc_header
+#define gc_mark(h) (((h).bits & GC_MARK_BIT) == GC_MARK_BIT)
+#define gc_global(h) (((h).bits & GC_GLOBAL_BIT) == GC_GLOBAL_BIT)
+#define gc_type(h) (((h).bits & GC_TYPE_BITMASK))
+
+#define gc_set_mark(h) \
+    ((h).bits = ((h).bits | GC_MARK_BIT))
+#define gc_unset_mark(h) (((h).bits = (h).bits & ~GC_MARK_BIT))
+
+#define gc_set_global(h) ((h).bits = (h).bits | GC_GLOBAL_BIT)
+#define gc_unset_global(h) (((h).bits &= ~GC_GLOBAL_BIT))
+
+
 namespace fn {
 
 struct allocator;
@@ -215,7 +231,8 @@ private:
     // get a list of objects accessible from the given value
     forward_list<gc_header*> accessible(gc_header* o);
 
-    // helper for mark
+    // helpers for mark
+    void mark_descend_value(value v);
     void mark_descend(gc_header* o);
     // starting from roots and pins, set the mark on all accessible objects.
     void mark();
@@ -270,6 +287,9 @@ public:
     //   to a list of mutable globals. Their mutable slots are treated as root
     //   objects.
     void designate_global(gc_header* o);
+    // this allows global variables to be mutated. Be careful, as this will
+    // require us to repaint all globally accessible objects.
+    void unset_global(gc_header* o);
 
     void add_constant(code_chunk* chunk, value c);
     void table_set(fn_table* tab, value key, value val);

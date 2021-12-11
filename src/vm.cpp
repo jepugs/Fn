@@ -71,6 +71,9 @@ void vm_thread::add_global(value name, value v) {
     if (!vis_symbol(name)) {
         runtime_error("Variable names must be symbols.");
     }
+    if (vhas_header(v)) {
+        alloc->designate_global(vheader(v));
+    }
     auto ns_id = chunk->ns_id;
     auto ns = *globals->get_ns(ns_id);
     ns->set(vsymbol(name), v);
@@ -128,8 +131,8 @@ value vm_thread::by_guid(value name) {
 void vm_thread::add_macro(value name, value v) {
     if (!vis_function(v)) {
         runtime_error("op-macro value not a function.");
-        vheader(v);
     }
+    alloc->designate_global(vheader(v));
     auto ns_id = chunk->ns_id;
     auto ns = *globals->get_ns(ns_id);
     ns->set_macro(vsymbol(name), v);
@@ -696,8 +699,8 @@ inline void vm_thread::step() {
         {
             auto ws = alloc->add_working_set();
             v1 = ws.add_function(stub);
-            init_function(&ws, vfunction(v1));
             push(v1);
+            init_function(&ws, vfunction(v1));
         }
         ip += 2;
         break;

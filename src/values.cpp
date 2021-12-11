@@ -61,7 +61,8 @@ bool fn_string::operator==(const fn_string& s) const {
     return true;
 }
 
-fn_table::fn_table() {
+fn_table::fn_table()
+    : contents{} {
     mk_gc_header(GC_TYPE_TABLE, &h);
 }
 
@@ -182,23 +183,24 @@ bool value::operator!=(const value& v) const {
     return !(*this == v);
 }
 
-// FIXME: should probably pick a better hash function
-template<> u32 hash<value>(const value& v) {
+
+template<> u64 hash<value>(const value& v) {
     auto tag = v_tag(v);
     switch (tag) {
     case TAG_NUM:
-    case TAG_STRING:
+    case TAG_SYM:
     case TAG_NIL:
     case TAG_TRUE:
     case TAG_FALSE:
     case TAG_EMPTY:
-        return hash(v_to_string(v, nullptr)) + tag;
-    case TAG_SYM:
-        return vsymbol(v) + tag;
+        return hash(v.raw);
+    case TAG_STRING:
+        return hash(vstring(v)->as_string());
     case TAG_TABLE:
     case TAG_CONS:
     case TAG_FUNC:
     default:
+        // FIXME: need I say more?
         return 0;
     }
 }

@@ -3,25 +3,6 @@
 #include <algorithm>
 #include <iostream>
 
-// FIXME: these macros should probably be in a header, but not this one (so as
-// to not pollute the macro namespace)
-
-// access parts of the gc_header
-#define gc_mark(h) (((h).bits & GC_MARK_BIT) == GC_MARK_BIT)
-#define gc_global(h) (((h).bits & GC_GLOBAL_BIT) == GC_GLOBAL_BIT)
-#define gc_weak_global(h) (((h).bits & GC_WEAK_GLOBAL_BIT) == GC_WEAK_GLOBAL_BIT)
-#define gc_type(h) (((h).bits & GC_TYPE_BITMASK))
-
-#define gc_set_mark(h) \
-    (((h).bits = ((h).bits | GC_MARK_BIT)))
-#define gc_unset_mark(h) (((h).bits = (h).bits & ~GC_MARK_BIT))
-
-#define gc_set_global(h) (((h).bits |= GC_GLOBAL_BIT))
-#define gc_unset_global(h) (((h).bits &= ~GC_GLOBAL_BIT))
-
-#define gc_set_weak_global(h) (((h).bits |= GC_WEAK_GLOBAL_BIT))
-#define gc_unset_weak_global(h) (((h).bits &= ~GC_WEAK_GLOBAL_BIT))
-
 // #define GC_DEBUG
 
 namespace fn {
@@ -215,7 +196,7 @@ value working_set::add_cons(value hd, value tl) {
     auto ptr = new cons{hd,tl};
     auto v = vbox_cons(ptr);
     pin_value(v);
-    alloc->objects.push_front((gc_header*)ptr);
+    alloc->objects.push_back((gc_header*)ptr);
     return v;
 }
 
@@ -226,7 +207,7 @@ value working_set::add_string(const string& s) {
     ++alloc->count;
     auto ptr = new fn_string{s};
     pin(&ptr->h);
-    alloc->objects.push_front((gc_header*)ptr);
+    alloc->objects.push_back((gc_header*)ptr);
     return vbox_string(ptr);
 }
 
@@ -237,7 +218,7 @@ value working_set::add_string(const fn_string& s) {
     auto ptr = new fn_string{s};
     auto v = vbox_string(ptr);
     pin(&ptr->h);
-    alloc->objects.push_front((gc_header*)ptr);
+    alloc->objects.push_back((gc_header*)ptr);
     return v;
 }
 
@@ -248,7 +229,7 @@ value working_set::add_string(u32 len) {
     auto ptr = new fn_string{len};
     auto v = vbox_string(ptr);
     pin(&ptr->h);
-    alloc->objects.push_front((gc_header*)ptr);
+    alloc->objects.push_back((gc_header*)ptr);
     return v;
 }
 
@@ -259,7 +240,7 @@ value working_set::add_table() {
     auto ptr = new fn_table{};
     auto v = vbox_table(ptr);
     pin(&ptr->h);
-    alloc->objects.push_front((gc_header*)ptr);
+    alloc->objects.push_back((gc_header*)ptr);
     return v;
 }
 
@@ -272,7 +253,7 @@ value working_set::add_function(function_stub* stub) {
     auto ptr = new function{stub};
     auto v = vbox_function(ptr);
     pin(&ptr->h);
-    alloc->objects.push_front((gc_header*)ptr);
+    alloc->objects.push_back((gc_header*)ptr);
     return v;
 }
 
@@ -335,7 +316,9 @@ allocator::~allocator() {
 void allocator::dealloc(gc_header* o) {
     switch (gc_type(*o)) {
     case GC_TYPE_CHUNK:
-        // TODO: maybe track chunk mem_usage
+        // FIXME: this doesn't count the constants array
+        mem_usage -= sizeof(code_chunk);
+        mem_usage -= ((code_chunk*)o)->constant_arr.size * sizeof(constant_id);
         free_code_chunk((code_chunk*) o);
         break;
     case GC_TYPE_STRING:
@@ -371,57 +354,10 @@ void allocator::dealloc(gc_header* o) {
     --count;
 }
 
-// add a value's header to dest if it has one
-static void add_value_header(value v, forward_list<gc_header*>& dest) {
+void allocator::mark_descend_value(value v) {
     if (vhas_header(v)) {
-        dest.push_front(vheader(v));
+        mark_descend(vheader(v));
     }
-}
-
-forward_list<gc_header*> allocator::accessible(gc_header* o) {
-    forward_list<gc_header*> res;
-    switch (gc_type(*o)) {
-    case GC_TYPE_CHUNK:
-        {
-            auto x = (code_chunk*)o;
-            for (auto v : x->constant_arr) {
-                add_value_header(v, res);
-            }
-        }
-        break;
-    case GC_TYPE_CONS:
-        add_value_header(((cons*)o)->head, res);
-        add_value_header(((cons*)o)->tail, res);
-        break;
-    case GC_TYPE_TABLE:
-        {
-            auto x = (fn_table*)o;
-            for (auto k : x->contents.keys()) {
-                add_value_header(k, res);
-                add_value_header(*x->contents.get(k), res);
-            }
-        }
-        break;
-    case GC_TYPE_FUNCTION:
-        {
-            auto f = (function*)o;
-            auto m = f->num_upvals;
-            for (local_address i = 0; i < m; ++i) {
-                auto cell = f->upvals[i];
-                if (cell->closed) {
-                    add_value_header(cell->closed_value, res);
-                }
-            }
-            auto num_opt = f->stub->pos_params.size - f->stub->req_args;
-            for (u32 i = 0; i < num_opt; ++i) {
-                add_value_header(f->init_vals[i], res);
-            }
-            res.push_front((gc_header*)f->stub->chunk);
-        }
-        break;
-    }
-
-    return res;
 }
 
 void allocator::mark_descend(gc_header* o) {
@@ -430,28 +366,53 @@ void allocator::mark_descend(gc_header* o) {
         return;
     }
     gc_set_mark(*o);
-    for (auto h : accessible(o)) {
-        mark_descend(h);
+
+    switch (gc_type(*o)) {
+    case GC_TYPE_CHUNK:
+        {
+            auto x = (code_chunk*)o;
+            for (auto v : x->constant_arr) {
+                mark_descend_value(v);
+            }
+        }
+        break;
+    case GC_TYPE_CONS:
+        mark_descend_value(((cons*)o)->head);
+        mark_descend_value(((cons*)o)->tail);
+        break;
+    case GC_TYPE_TABLE:
+        {
+            auto x = ((fn_table*)o)->contents;
+            for (u32 i = 0; i < x.cap; ++i) {
+                if (x.array[i] != nullptr) {
+                    mark_descend_value(x.array[i]->key);
+                    mark_descend_value(x.array[i]->val);
+                }
+            }
+        }
+        break;
+    case GC_TYPE_FUNCTION:
+        {
+            auto f = (function*)o;
+            auto m = f->num_upvals;
+            // upvalues
+            for (local_address i = 0; i < m; ++i) {
+                auto cell = f->upvals[i];
+                if (cell->closed) {
+                    mark_descend_value(cell->closed_value);
+                }
+            }
+            auto num_opt = f->stub->pos_params.size - f->stub->req_args;
+            for (u32 i = 0; i < num_opt; ++i) {
+                mark_descend_value(f->init_vals[i]);
+            }
+            mark_descend(&f->stub->chunk->h);
+        }
+        break;
     }
 }
 
 void allocator::mark() {
-    // global namespaces
-    for (auto k : globals->ns_table.keys()) {
-        auto ns = *globals->get_ns(k);
-        for (auto k2 : ns->names()) {
-            auto x = *ns->get(k2);
-            if (vhas_header(x)) {
-                mark_descend(vheader(x));
-            }
-        }
-        for (auto k2 : ns->macro_names()) {
-            // these are all functions, so we don't need to check
-            auto x = ns->get_macro(k2);
-            mark_descend(vheader(*x));
-        }
-    }
-
     // roots
     for (auto it = roots.begin(); it != roots.end();) {
         if ((*it)->alive) {
@@ -465,6 +426,14 @@ void allocator::mark() {
         }
     }
 
+    // mutable globals
+    for (auto o : mutable_globals) {
+        // this line is very important (otherwise mark_descend just stops right
+        // away).
+        gc_unset_mark(*o);
+        this->mark_descend(o);
+    }
+
     // stacks
     for (auto it = root_stacks.begin(); it != root_stacks.end();) {
         if ((*it)->dead) {
@@ -472,18 +441,12 @@ void allocator::mark() {
             it = root_stacks.erase(it);
         } else {
             for (u32 i = 0; i < (*it)->get_pointer(); ++i) {
-                auto v = (*it)->contents[i];
-                if (vhas_header(v)) {
-                    mark_descend(vheader(v));
-                }
+                mark_descend_value((*it)->contents[i]);
             }
             for (auto x : (*it)->function_stack) {
                 mark_descend((gc_header*)x);
             }
-            auto v = (*it)->last_pop;
-            if (vhas_header(v)) {
-                mark_descend(vheader(v));
-            }
+            mark_descend_value((*it)->last_pop);
             ++it;
         }
     }
@@ -495,19 +458,16 @@ void allocator::sweep() {
     auto orig_ct = count;
     auto orig_sz = mem_usage;
 #endif
-    // FIXME: this is a doubly-linked list
 
-    // delete unmarked objects
-    std::list<gc_header*> more_objs;
-    for (auto h : objects) {
-        if (gc_mark(*h)) {
-            gc_unset_mark(*h);
-            more_objs.push_back(h);
+    for (auto it = objects.begin(); it != objects.end();) {
+        if (gc_mark(**it)) {
+            gc_unset_mark(**it);
+            ++it;
         } else {
-            dealloc(h);
+            dealloc(*it);
+            it = objects.erase(it);
         }
     }
-    objects.swap(more_objs);
 
 #ifdef GC_LOG
     auto ct = orig_ct - count;
@@ -579,6 +539,15 @@ root_stack* allocator::add_root_stack() {
 
 working_set allocator::add_working_set() {
     return working_set{this};
+}
+
+void allocator::designate_global(gc_header* o) {
+    if (!gc_global(*o)) {
+        gc_set_global(*o);
+        if (++o->pin_count == 1) {
+            add_gc_root(new pinned_object{o});
+        }
+    }
 }
 
 void allocator::print_status() {

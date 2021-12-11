@@ -44,8 +44,8 @@ typedef float f32; // note: this is not used anywhere at the time of writing
 static_assert(sizeof(double) == 8);
 typedef double f64;
 
-// this is implemented as needed
-template<typename T> u32 hash(const T& v);
+// this is implemented for std::string and unsigned integers
+template<typename T> u64 hash(const T& v);
 
 // naming convention: you can do arithmetic on types whose names end in
 // _address, but should not on types that end in _id.
@@ -68,8 +68,7 @@ constexpr u64 max_local_address = 255;
 // header for all objects managed by the garbage collector.
 struct alignas(16) gc_header {
     u8 bits;         // bitfield holding gc information
-    i8 pin_count=0;    // times pinned
-    i8 global_count; // references from global variables
+    i8 pin_count=0;  // times pinned
 };
 gc_header* mk_gc_header(u8 bits, gc_header* dest=nullptr);
 

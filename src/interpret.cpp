@@ -17,8 +17,7 @@ interpreter::interpreter(logger* log)
 
     auto ws = alloc.add_working_set();
     ffi_chunk = ws.add_chunk(symtab.intern("fn/builtin"));
-    ++ffi_chunk->h.pin_count;
-    alloc.add_gc_root(new pinned_object{(gc_header*)ffi_chunk});
+    alloc.designate_global(&ffi_chunk->h);
 }
 
 interpreter::~interpreter() {
@@ -262,6 +261,7 @@ value interpreter::interpret_from_scanner(scanner* sc,
     }
 
     auto chunk = ws->add_chunk(ns_id);
+    alloc.designate_global(&chunk->h);
     value res = V_NIL;
 
     u32 i;
@@ -563,6 +563,7 @@ void interpreter::add_builtin_function(const string& name,
     auto f = vfunction(ws.add_function(ffi_chunk->get_function(stub_id)));
     auto builtin = *globals.get_ns(symtab.intern("fn/builtin"));
     builtin->set(symtab.intern(name), vbox_function(f));
+    alloc.designate_global((gc_header*)f);
 }
 
 symbol_id interpreter::intern(const string& str) {

@@ -7,26 +7,11 @@ namespace fn {
 
 static const float REHASH_THRESHOLD = 0.3;
 
-// string hashing function
-template<> inline u32 hash<string>(const string& s) {
-    // prime: 16777619
-    // offset basis: 2166136261
-    u32 res = 2166136261;
-    for (u32 i=0; i<s.length(); ++i) {
-        res ^= (u32)s[i];
-        res *= 16777619;
-    }
-    return res;
-}
-
-// integer hashing
-template<> inline u32 hash<u32>(const u32& id) {
-    return id;
-}
-
+class allocator;
 
 /// hash table with string keys. uses linear probing.
 template <typename K, typename T> class table {
+    friend class allocator;
 private:
     // hash table entry
     struct entry {
