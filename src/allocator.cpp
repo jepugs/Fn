@@ -67,6 +67,34 @@ void root_stack::set(u32 offset, value v) {
     contents[offset] = v;
 }
 
+void root_stack::top_to_list(u32 n) {
+    if (n == 0) {
+        push(V_EMPTY);
+        return;
+    }
+
+    auto ptr = new cons{contents[pointer - 1], V_EMPTY};
+    contents[pointer - 1] = vbox_cons(ptr);
+    alloc->add_cons(ptr);
+
+    for (u32 i = 1; i < n; ++i) {
+        ptr = new cons{
+            contents[pointer - 1 - i],
+            contents[pointer - i]};
+        contents[pointer - 1 - i] = vbox_cons(ptr);
+        alloc->add_cons(ptr);
+    }
+
+    pointer = pointer - n + 1;
+    contents.resize(pointer);
+}
+
+void root_stack::push_table() {
+    auto ptr = new fn_table{};
+    push(vbox_table(ptr));
+    alloc->add_table(ptr);
+}
+
 void root_stack::push_function(function* callee) {
     function_stack.push_back(callee);
 }
@@ -93,7 +121,7 @@ upvalue_cell* root_stack::get_upvalue(stack_address pos) {
     return cell;
 }
 
-void root_stack::close(u32 base_addr) {
+void root_stack::close_upvalues(u32 base_addr) {
     // Warning: don't do any stack operations here so last_pop won't be
     // affected. (Otherwise do_return will break).
     for (auto it = upvals.begin(); it != upvals.end(); ) {
@@ -110,6 +138,11 @@ void root_stack::close(u32 base_addr) {
         }
         it = upvals.erase(it);
     }
+}
+
+void root_stack::close(u32 base_addr) {
+    close_upvalues(base_addr);
+
     pointer = base_addr;
     contents.resize(base_addr);
 }
@@ -117,8 +150,11 @@ void root_stack::close(u32 base_addr) {
 void root_stack::close_for_tc(u32 n, u32 base_addr) {
     auto old_ptr = pointer;
 
+    // FIXME: closing here will temporarily set the base address lower than it
+    // should be.
+
     // time to obliterate the old call frame...
-    close(base_addr);
+    close_upvalues(base_addr);
 
     auto arg_offset = (old_ptr - n) - (base_addr);
     auto end = n + base_addr;
@@ -468,6 +504,20 @@ void allocator::sweep() {
 #endif
 }
 
+void allocator::add_cons(cons* ptr) {
+    objects.push_back((gc_header*)ptr);
+    collect();
+    mem_usage += sizeof(cons);
+    ++count;
+}
+
+void allocator::add_table(fn_table* ptr) {
+    objects.push_back((gc_header*)ptr);
+    collect();
+    mem_usage += sizeof(fn_table);
+    ++count;
+}
+
 bool allocator::gc_is_enabled() const {
     return gc_enabled;
 }
@@ -525,6 +575,7 @@ void allocator::add_gc_root(gc_header* r) {
 
 root_stack* allocator::add_root_stack() {
     auto res = new root_stack{};
+    res->alloc = this;
     root_stacks.push_front(res);
     return res;
 }

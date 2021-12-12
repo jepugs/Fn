@@ -57,6 +57,7 @@ struct root_stack {
 private:
     // only the allocator is allowed to construct these
     root_stack();
+    allocator* alloc;
     u32 pointer;
     dyn_array<value> contents;
     dyn_array<function*> function_stack;
@@ -89,6 +90,13 @@ public:
     // set a value, indexed so 0 is the bottom
     void set(u32 offset, value v);
 
+    // replace the top element of the stack with a list consisting of the top n
+    // elements ordered from bottom to top. n must be greater than 0 and less
+    // than pointer.
+    void top_to_list(u32 n);
+
+    void push_table();
+
     // root_stack also maintains a stack of the functions in the call frame, in
     // order to make sure that they are visible.
     void push_function(function* callee);
@@ -99,6 +107,8 @@ public:
     // close all upvalues with stack addresses >= base_addr. (Closing an upvalue
     // involves copying its value to the heap and removing it from the list of
     // upvalues). This does not change last_pop.
+    void close_upvalues(u32 base_addr);
+    // like close_upvalues, but also rolls pointer back to base_addr
     void close(u32 base_addr);
     // close for tail call. This is like close, but the top n elements of the
     // stack (which must all reside above the base pointer) are pushed back to
@@ -173,6 +183,7 @@ public:
 
 class allocator {
     friend class working_set;
+    friend class root_stack;
     friend class code_chunk;
 private:
     // note: we guarantee that every pointer in this array is actually memory
@@ -228,6 +239,11 @@ private:
     // pinned objects act as temporary roots
     void pin_object(gc_header* o);
     void unpin_object(gc_header* o);
+
+    // create new objects. These must be already be accessible to the GC, or
+    // they will be swept
+    void add_cons(cons* ptr);
+    void add_table(fn_table* ptr);
 
 public:
     allocator(global_env* use_globals);

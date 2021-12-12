@@ -148,13 +148,12 @@ private:
             function* func,
             local_address num_args);
     // Version of arrange_call_stack() which doesn't process keyword arguments.
-    void arrange_call_stack_no_kw(working_set* ws,
-            function* func,
+    void arrange_call_stack_no_kw(function* func,
             local_address num_args);
     // Called when a function is called, after arranging the function arguments
     // on the stack. This creates the new call frame and returns the address to
     // jump to for the call.
-    code_address make_call(working_set* ws, function* func);
+    code_address make_call(function* func);
     // Analogue to make_call() but for tail calls. This means the current call
     // frame is replaced rather than extended.
     code_address make_tcall(function* func);
