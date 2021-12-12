@@ -199,6 +199,8 @@ public:
     void execute(fault* err);
     // get the instruction pointer
     code_address get_ip() const;
+    // set the instruction pointer. This is not bounds checked!
+    void set_ip(code_address ip);
 
     // get the last popped value (null if there isn't any)
     value last_pop(working_set* ws) const;

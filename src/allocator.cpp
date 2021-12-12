@@ -400,11 +400,8 @@ void allocator::mark_descend(gc_header* o) {
 
     switch (gc_type(*o)) {
     case GC_TYPE_CHUNK:
-        {
-            auto x = (code_chunk*)o;
-            for (auto v : x->constant_arr) {
-                add_mark_value(v);
-            }
+        for (auto v : ((code_chunk*)o)->constant_arr) {
+            add_mark_value(v);
         }
         break;
     case GC_TYPE_CONS:

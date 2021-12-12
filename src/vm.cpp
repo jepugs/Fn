@@ -54,6 +54,10 @@ u32 vm_thread::get_ip() const {
     return ip;
 }
 
+void vm_thread::set_ip(code_address new_ip)  {
+    ip = new_ip;
+}
+
 value vm_thread::last_pop(working_set* ws) const {
     return ws->pin_value(stack->get_last_pop());
 }
@@ -395,11 +399,6 @@ code_address vm_thread::make_call(function* func) {
             + stub->vt_param.has_value());
     if (stub->foreign != nullptr) { // foreign function call
         auto ws = alloc->add_working_set();
-        auto args = new value[sp];
-        for (i32 i = 0; i < sp; ++i) {
-            args[i] = peek(sp - i - 1);
-        }
-
         fn_handle handle{
             .vm=this,
             .ws=&ws,
@@ -408,7 +407,8 @@ code_address vm_thread::make_call(function* func) {
             .err=err
         };
 
-        auto result = stub->foreign(&handle, args);
+        auto start_args = &(*stack)[stack->get_pointer() - sp];
+        auto result = stub->foreign(&handle, start_args);
         // can take args off the stack
         pop_times(sp);
 
@@ -416,7 +416,7 @@ code_address vm_thread::make_call(function* func) {
             status = vs_fault;
         }
         push(result);
-        delete[] args;
+        //delete[] args;
         stack->pop_function();
         return ip + 2;
     } else { // native function call
@@ -661,14 +661,14 @@ inline void vm_thread::step() {
         break;
 
     case OP_CLOSURE:
-        id = chunk->read_short(ip+1);
         // FIXME: rearchitect to not need the working_set here
         {
-            auto stub = chunk->get_function(chunk->read_short(ip+1));
+            id = chunk->read_short(ip+1);
+            auto stub = chunk->get_function(id);
             auto ws = alloc->add_working_set();
             v1 = ws.add_function(stub);
-            push(v1);
             init_function(&ws, vfunction(v1));
+            push(v1);
         }
         ip += 2;
         break;

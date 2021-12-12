@@ -71,8 +71,8 @@ value interpreter::interpret_form(ast_form* ast,
     }
 
     if (log_llir) {
-        std::cout << "LLIR: \n";
-        print_llir(llir, symtab, chunk);
+        log->log_info("interpreter",
+                "LLIR: \n" + print_llir(llir, symtab, chunk));
     }
     compiler c{&symtab, &alloc, chunk};
     c.compile(llir, err);
@@ -124,7 +124,7 @@ value interpreter::interpret_file(const string& path,
     bool resumable;
     auto res = interpret_from_scanner(&sc, ns_id, ws, &resumable, err);
     if (err->happened) {
-        //log_error(err);
+        log_error(err);
     }
     return res;
 
@@ -209,6 +209,7 @@ dyn_array<value> interpreter::partial_interpret_string(const string& src,
     auto chunk = ws2.add_chunk(ns_name);
 
     dyn_array<value> res;
+    code_address chunk_start = 0;
     for (auto ast : forms) {
         expander ex{this, chunk};
         auto llir = ex.expand(ast, err);
@@ -237,7 +238,9 @@ dyn_array<value> interpreter::partial_interpret_string(const string& src,
         }
 
         vm_thread vm{&alloc, &globals, chunk};
+        vm.set_ip(chunk_start);
         interpret_to_end(vm, err);
+        chunk_start = vm.get_ip();
         if (err->happened) {
             log_error(err);
             *resumable = false;
@@ -265,6 +268,7 @@ value interpreter::interpret_from_scanner(scanner* sc,
     value res = V_NIL;
 
     u32 i;
+    code_address chunk_start = 0;
     for (i = 0; i < forms.size; ++i) {
         auto ast = forms[i];
         expander ex{this, chunk};
@@ -275,8 +279,8 @@ value interpreter::interpret_from_scanner(scanner* sc,
         }
 
         if (log_llir) {
-            std::cout << "LLIR: \n";
-            print_llir(llir, symtab, chunk);
+            log->log_info("interpreter",
+                    "LLIR: \n" + print_llir(llir, symtab, chunk));
         }
 
         compiler c{&symtab, &alloc, chunk};
@@ -287,7 +291,9 @@ value interpreter::interpret_from_scanner(scanner* sc,
         }
 
         vm_thread vm{&alloc, &globals, chunk};
+        vm.set_ip(chunk_start);
         interpret_to_end(vm, err);
+        chunk_start = vm.get_ip();
         if (err->happened) {
             break;
         }
