@@ -19,7 +19,7 @@ mostly unwritten.
 Upcoming section [[FFI]] details how to interface with C code from Fn.
 
 
-* Language Features
+* Language Reference
 
 Fn is a dynamically typed, garbage-collected, general-purpose programming
 language with Lisp-like syntax. A couple of its defining characteristics are:
@@ -533,85 +533,106 @@ variadic table parameter to catch the trailing arguments.
 
 ** Namespaces and Import
 
-A namespace is a collection of global definitions. Each namespace has
-a *package* and a *name*. Together these make up the full name or *global identifier*
-of the namespace. The global identifier is required to be unique.
+A *namespace* is a collection of global variable and macro definitions. All Fn
+code runs inside of some namespace.
 
-All code in Fn runs inside of some namespace.
+Namespaces are identified by a *name*, which is a string not containing any
+slashes, and a *package*, which is a string representing a logical collection of
+namespaces. They can be combined into the symbol ~<package>/<name>~, which is
+called the *identifier* or *ID* of the namespace. This ID is required to be globally
+unique.
 
-Global identifiers are written as *package/name*, where package can contain
-additional slashes, but the name may not. Some examples of namespace names are:
-#+BEGIN_SRC
-fn/builtin
-fn/ffi
-project/main
-project/subsystem/parser
-#+END_SRC
-
-By putting slashes in the package, we can further organize our code into
-*subpackages*. E.g. in the above, ~project/subsystem~ is a subpackage of ~project~.
-
-
-*** Namespace Determination
-
-When a file is run, the namespace is generally determined automatically. (See
-[[Command Line Interface]] for information about namespaces in other contexts).
-
-The namespace name for a file is simply the stem of its filename, e.g. ~util~ for
-~util.fn~. The package must be specified directly via a *package declaration* in the
-file. For example, the following file would have namespace
-~devco/product/db-auth~.
+*Examples of Namespace IDs:*
 #+BEGIN_SRC fn
-;; db-auth.fn
-(package devco/product)
+fn/builtin              ; package is "fn", name is "builtin"
+fn/internal/io          ; package is "fn/internal", name is "io"
+my-project/util/linalg  ; package is "my-project/util", name is "linalg"
+my-project/model        ; package is "my-project", name is "model"
 #+END_SRC
-The package declaration must be the first expression in the file. (In other
-contexts it would be treated like calling a function named ~package~).
 
-If there is no package declaration, the default package ~fn/user~ is used instead.
+When evaluating code from a file, the namespace name will always be the stem of
+the file. The package can be set via a package declaration, see [[Package
+Declarations]].
+
+The default REPL namespace is ~fn/interactive~. Fn source code passed in as a
+command line argument is also evaluated in this namespace.
 
 
-*** Importing Namespaces
+*** Import
 
-Importing a namespace brings its definitions into the current namespace. This is
-done with the import command,
+The ~import~ special form allows definitions from an external namespace to be
+copied into the current one. The syntax for import looks like this:
+
 #+BEGIN_SRC fn
-(import package/namespace)
+(import <namespace-id>)                  ; invocation 1
+(import <namespace-id> :as <alias>)      ; invocation 2
+(import <namespace-id> :no-prefix true)  ; invocation 3
 #+END_SRC
 
-Imported definitions have names consisting of the namespace name and the
-original definition name separated by a colon, e.g. ~namespace:definition~. For
-example,
+Say we have a namespace ~foo/bar/baz~ containing variables named ~bob~ and
+~alice~:
 #+BEGIN_SRC fn
-;; file export.fn
-(package example/demo)
-(def my-var 3.14)
-(defn my-fun (x)
-  (/ (log x) (log 10)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; file main.fn
-(import example/demo/export)
-export:my-var ; = 3.14
-export:my-fun ; function object
-(export:my-fun 1000) ; = 3
+;;; baz.fn
+(package foo/bar)
+(def alice "Alice")
+(def bob "Bob")
 #+END_SRC
 
-There are also ~:alias~ and ~:unqualified~ options to control the names of the
-import:
+We have three ways to import this namespace, shown above. All three cause the
+definitions from ~foo/bar/baz~ to be copied into the current namespace. However,
+in each case the created bindings will have different names. The three cases are
+illustrated below:
+
 #+BEGIN_SRC fn
-,(import example/demo/export :as ex)
-ex:my-var
-ex:my-fun
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(import package/namespace :unqualified true)
-my-var
-my-fun
+;;; main.fn
+
+;; invocation 1
+(import foo/bar/baz)
+; variables look like this:
+baz:alice
+baz:bob
+
+;; invocation 2
+(import foo/bar/baz :as b)
+; variables look like this:
+b:alice
+b:bob
+
+;; invocation 3
+(import foo/bar/baz :no-prefix true)
+; variables are imported directly (no colons)
+alice
+bob
 #+END_SRC
 
 
-*** Finding Namespace Sources
+*** Package Declarations
+
+The first expression of a file (not counting comments) may be a *package
+declaration*. These have the form ~(package <package-name>)~, where <package-name>
+is a symbol. This simply sets the package name for the file when it is
+interpreted. If no package declaration is present, the package ~fn/user~ is used.
+
+When a file is imported, a warning is generated if its package declaration
+disagrees with the package of the import. The import will still work, but some
+code may break.
+
+
+*** Global Identifiers for Definitions
+
+When a new definition is made in any namespace, it is given a global identifier
+of the form ~#/<namespace-id>:<symbol>~ (since namespace IDs are unique, this is
+unique among all global definitions). Global IDs may be used as variable names
+to reference the definition without explicitly importing it. For example,
+~#/fn/builtin:map~ refers to the function ~map~ in the ~fn/builtin~ namespace.
+
+
+*** Locating Namespace Sources
+
+*Note:* This section is a precise, technical description of how namespace search
+works. In reality, you don't have to think so hard about namespace import. It
+works the way you'd want it to. For instance, I do ~(import pkg/bar/baz)~ from ~pkg/foo~, it
+searches for a file ~bar/baz.fn~ in the directory of ~foo.fn~.
 
 The first time a namespace is imported, we must find and load its source file.
 Subsequent imports will reuse the created namespace.
@@ -657,19 +678,14 @@ http.fn we can import engine.fn and math.fn like this:
 #+END_SRC
 
 
-*** Global Identifiers for Definitions
-
-After a namespace has been imported once, its bindings can be referenced even
-without importing it explicitly. This is done by using symbols whose names are
-structured like with ~/<namespace>:<symbol>~. For example, ~/fn/builtin:map~
-refers to the function ~map~ in the ~fn/builtin~ namespace.
-
-
 ** TODO Macros
+
 
 *** Macro Basics
 
+
 *** Quasiquotation
+
 
 *** Variable Capture and ~gensym~
 
