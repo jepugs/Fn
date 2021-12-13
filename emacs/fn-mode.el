@@ -174,32 +174,34 @@ given context."
     (modify-syntax-entry ?\} "){" s)
     s))
 
-(let ((fn-symbol-regexp "[[:word:]?*&^%$#@!~:_=+<>\\-]"))
+(let ((fn-symbol-regexp "\\([[:word:]?*&^%$#@!~:_=+<>\\.-]\\|\\\\.\\)"))
   (defvar fn-mode-font-lock-defaults
     `(;; quoted symbols
-      (,(concat "'\\(\\.\\|"
+      (,(concat "'\\("
                 fn-symbol-regexp
                 "\\)+\\_>")
        0 font-lock-constant-face)
       ;; type names
       (,(concat "\\_<[[:upper:]]" fn-symbol-regexp "+\\_>")
        0 font-lock-type-face)
-      ;; keywords and &
+      ;; keywords, &, and global symbols
       (,(concat "\\_<:" fn-symbol-regexp "+\\_>")
        0 font-lock-builtin-face)
       ("\\_<&\\_>" . font-lock-builtin-face)
-      ;; variable and function names
+      (,(concat "\\_<#/" fn-symbol-regexp "+\\_>")
+       0 font-lock-builtin-face)
+      ;; function names
       (,(concat "([[:space:]]*\\_<\\(defn\\|defmacro\\|letfn\\)\\_>[[:space:]]+"
                 "\\(\\_<" fn-symbol-regexp "+\\_>\\)")
        (2 font-lock-function-name-face))
       ;; special operators
       (,(concat "([[:space:]]*\\_<\\(and\\|cond\\|def\\|defmacro\\|defn\\|do\\|"
-                "dot\\|dollar-fn\\|if\\|import\\|fn\\|let\\|letfn\\|or\\|"
-                "package\\|quasiquote\\|quote\\|unquote\\|unquote-splicing\\|"
-                "set!\\|with\\)\\_>")
+                "dot\\|dollar-fn\\|if\\|import\\|fn\\|let\\|"
+                "letfn\\|or\\|package\\|quasiquote\\|quote\\|unquote\\|"
+                "unquote-splicing\\|set!\\|with\\)\\_>")
        1 font-lock-keyword-face)
       ("\\_<\\(true\\|false\\|nil\\)\\_>" 1 font-lock-constant-face)
-      ("\\_<\\(this\\)\\(\\.\\|\\_>\\)" 1 font-lock-constant-face)
+      ("\\_<\\(self\\)\\(\\.\\|\\_>\\)" 1 font-lock-constant-face)
       ;; dollar syntax
       ("\\([$]\\)[([{`]" 1 font-lock-keyword-face)
       )))
