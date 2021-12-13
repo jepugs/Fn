@@ -368,7 +368,7 @@ My recommendation: just don't use symbol names that are syntactically legal
 numbers.
 
 
-** TODO Control Flow and Functions
+** Control Flow and Functions
 
 *** Conditional Execution
 
@@ -505,62 +505,92 @@ variadic table parameter to catch the trailing arguments.
 
 *** dollar-fn
 
-** TODO Namespaces and Import
+** Namespaces and Import
 
 *** Namespaces and Packages
 
-A namespace is a collection of global variables and macros. They are identified
-by a name which is required to be globally unique. All Fn code lives inside of
-some namespace.
+All code in Fn runs inside some namespace, which is used to hold currently
+visible global variables and macros.
 
-Some examples of namespace names are:
-#+BEGIN_SRC
-fn/builtin
-fn/repl
-project/main
-project/subsystem/parser
+A *namespace* is a collection of macro and variable definitions. Namespaces are
+identified by a *name*, which is a string not containing any slashes, and a
+*package*, which is a string representing a logical collection of namespaces.
+Finally, the symbol ~<package>/<name>~ is called the *identifier* or *ID* of the
+namespace. This ID is required to be globally unique.
+
+*Examples of Namespace IDs:*
+#+BEGIN_SRC fn
+fn/builtin              ; package is "fn", name is "builtin"
+fn/internal/io          ; package is "fn/internal", name is "io"
+my-project/util/linalg  ; package is "my-project/util", name is "linalg"
+my-project/model        ; package is "my-project", name is "model"
 #+END_SRC
 
-The slashes above are delimiters. In particular, everything to the left of the
-last slash is called the *package name*, and the part to the right is called the
-*short name*. For instance the namespace ~project/subsystem/parser~ has package
-~project/subsystem~ and short name ~parser~.
+When evaluating code from a file, the namespace name will always be the stem of
+the file. The package can be set via a package declaration, see [[Package
+Declarations]].
 
-We also have the concept of a *subpackage*. In the above examples,
-~project/subsystem~ is a subpackage of ~project~. That is, the subpackages of a
-~<pkg>~ are all packages with names of the form ~<pkg>/...~.
+The default REPL namespace is ~fn/interactive~. Fn source code passed in as a
+command line argument is also evaluated in this namespace.
 
 
-*** Namespace Determination
+*** Import
 
-When a file is interpreted, the short name of the namespace is set to the stem
-of the filename. There is no way to change this. The package, however, may be
-anything at all, and is specified by putting a ~package~ declaration at the top of
-the file:
+The ~import~ special form allows definitions from an external namespace to be
+copied into the current one. The syntax for import looks like this:
 
 #+BEGIN_SRC fn
-(package myproject/util)
+(import <namespace-id>)                  ; invocation 1
+(import <namespace-id> :as <alias>)      ; invocation 2
+(import <namespace-id> :no-prefix true)  ; invocation 3
 #+END_SRC
 
-If no package declaration is present, the package ~fn/user~ is used by default.
+Say we have a namespace ~foo/bar/baz~ containing variables named ~bob~ and
+~alice~:
+#+BEGIN_SRC fn
+;;; baz.fn
+(package foo/bar)
+(def alice "Alice")
+(def bob "Bob")
+#+END_SRC
 
-Unlike other special forms in Fn, there can only be one package declaration per
-file, and it must come at the beginning of the file, although it can be
-preceeded by comments and whitespace.
+We have three ways to import this namespace, shown above. All three cause the
+definitions from ~foo/bar/baz~ to be copied into the current namespace. However,
+in each case the created bindings will have different names. The three cases are
+illustrated below:
 
-The REPL allows the current namespace to be changed interactively. By default it
-uses the namespace ~fn/repl~.
+#+BEGIN_SRC fn
+;;; main.fn
+
+;; invocation 1
+(import foo/bar/baz)
+; variables look like this:
+baz:alice
+baz:bob
+
+;; invocation 2
+(import foo/bar/baz :as b)
+; variables look like this:
+b:alice
+b:bob
+
+;; invocation 3
+(import foo/bar/baz :no-prefix true)
+; variables are imported directly (no colons)
+alice
+bob
+#+END_SRC
 
 
-*** Importing Namespaces
+*** Package Declarations
 
-Importing a namespace means taking its bindings into the current namespace.
+The first expression of a file (not counting comments) may be a *package
+declaration*. These have the form ~(package <package-name>)~, where <package-name>
+is a symbol. This simply sets the package name for the file when it is
+interpreted. If no package declaration is present, the package ~fn/user~ is used.
 
-
-*** Builtin Namespace
-
-When a new namespace is created, an unqualified import of ~fn/builtin~ is
-automatically performed.
+When a file is imported, a warning is generated if its package declaration
+disagrees with the package of the import, however the import will still work.
 
 
 *** Global Names
@@ -571,7 +601,7 @@ structured like with ~/<namespace>:<symbol>~. For example, ~/fn/builtin:map~
 refers to the function ~map~ in the ~fn/builtin~ namespace.
 
 
-** TODO Macros
+** Macros
 
 *** Macro Basics
 
