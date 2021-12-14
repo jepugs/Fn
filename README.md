@@ -2,40 +2,39 @@
 
 **Fn** is a programming language which I am currently making for myself.
 
-Language documentation is provided in the file lang-spec.org (in Emacs org-mode
+Language documentation is provided in the file fn-manual.org (in Emacs org-mode
 format). Documentation is a work in progress.
 
 The rest of this README contains dubious claims about upcoming features,
 disorganized notes about development status, and instructions for building Fn.
 
+
 ## About Fn
 
-Fn is a highly idiosyncratic language consisting of ideas I've taken from
-other popular languages, plus a bunch of syntactic conveniences and an object
-model of my own contrivance. The most prominent influences present in Fn are
-Common Lisp and Python, although there are also ideas taken from Clojure,
-Haskell, Lua, and Javascript.
+Fn is a dynamically typed functional programming language in the Lisp family.
+This is not a toy language. It's meant to be used, if only by me. Fn is very
+much a work in progress. While the language is fully implemented, a great deal
+of work still remains in writing tests, developing the standard library, and
+improving error generation.
 
-Fn has the following primary goals:
-- **Dynamic Functional Programming** - Make a dynamically typed programming
-  language suitable for functional programming. This gives the expressive power
-  of functional programming without the burden of mandatory type annotations.
-- **Functional Programming in 2 Minutes or Less** - Unlike many functional
-  programming languages, Fn is meant for general utility scripting as opposed to
-  just application development. I want it to be easy to write and run Fn code
-  without having to set up a project and a build system first.
-- **Modernize Lisp** - Listen, you know those Lisp fellas must've been onto
-  *something*, what with all the hullabaloo. I've tried to make a very
-  convenient, modern language from a Lisp base, including preserving the
-  venerated macro system from Common Lisp. I think it's got heart.
-- **Good code management** - Fn's system of packages and namespaces makes it
+The key features of Fn are:
+- **It's Mostly Functional** - Fn aims to be an excellent building material for
+  functional programs. Global variables are immutable, as are lists and strings.
+  However, Fn provides mutable tables, as well as allowing functions to store
+  state via variable capture. The result is a language suited for functional
+  programming which doesn't fight you when you need to make an exception.
+- **It's Lightweight** - Fn is meant for general utility scripting as well as
+  application development. It's easy to write and run Fn code without having to
+  set up a project and a build system first.
+- **It's Dynamically Typed** - Dynamic typing allows expressive data
+  representations and intuitive runtime polymorphism.
+- **It's Modular** - Fn's system of packages and namespaces makes it
   easy to include dependencies both external and internal, while requiring very
   little configuration.
-- **Portability** - Building Fn depends only on a C++17 compiler and the
-  standard library. Future versions will run on Linux and POSIX-compliant OSes,
-  Windows, and I'm even gonna try to get it going on bare metal (on some ARM
-  MCUs)!
-  
+- **It's Lispy** - You know those Lisp fellas must've been onto *something*,
+  what with all the hullabaloo. Fn uses the classic parenthesized syntax from
+  Lisp, and preserves the venerated macro system from Common Lisp.
+
 Anyway, for all the marketing copy above, I'm really just making a programming
 language for myself. It'd be cool if someone else liked it though!
 
@@ -107,27 +106,23 @@ consumption.
 This is a one man show, and I have a busy life. Progress happens at
 unpredictable intervals.
 
-The big goal right now is to get the entire core language implemented. I'm
-really close to this. I just rewrote the compiler and interpreter pipeline to
-incorporate macroexpansion and accommodate the more difficult special forms. In
-particular, I've already implemented `dollar-fn`, which I expected to be the
-most difficult of the special forms.
+The entire language is implemented as described in the manual. There are some
+issues with error generation. In particular, the compiler will let you create
+variables with illegal names. Most of the CLI frontend is implemented as well.
+There's not much in the way of a standard library yet.
 
-The missing pieces right now are:
-- a good frontend
-- a couple of special forms
-- the import system
-- a few details around macroexpansion
-- a proper installation procedure in the CMake files
-- standard library (gotta rework the FFI one more time)
-- test suites for most parts of the interpreter
+Currently I'm working on these four things:
+- expanding the set of test cases
+- improving the FFI
+- designing/writing the standard library
+- tweaking the VM and GC for performance
 
-This will bring us up to an 0.1 release candidate. Once I'm done with this
-stuff, I'll probably get straight to work on pattern matching and data structure
-features for Fn, since those are very important. Other priorities include coming
-up with a good format to serialize Fn bytecode, adding more I/O stuff to the
-standard library, and separating the virtual machine into a separate program so
-I can try to force it into microcontroller RAM. We'll see how that goes :p.
+I thought at this point we'd be ready for an 0.1 release candidate, but there's
+a lot more I want to do before we're at that point.
+
+In more optimistic news, here are some features which are planned to be added:
+- pattern matching (including destructuring in definitions)
+- new data types: mutable/immutable vectors and immutable tables
 
 
 ## Building Fn
@@ -148,8 +143,12 @@ I'm not sure if I set it up correctly.
 
 ## Compatibility
 
-Fn officially supports x86_64 Linux environments. That's all I'll promise. It's
-developed and tested on Arch Linux, although I've successfully built and run it
-on macOS a couple of times out of curiosity. I'm trying to make it support any
-mostly UNIX-like environment, which means in theory it should build and run on
-everything from OpenBSD to macOS to Windows with MinGW.
+Fn officially supports Linux and POSIX-compliant operating systems on x86_64.
+- Development is done on Arch Linux.
+- Fn should work in any vaguely UNIX-y environment. I think that right now it
+  even works on Windows.
+- Building Fn depends only on CMake and a compiler supporting C++17 (e.g. g++,
+  clang).
+- Building the tests requires Boost.
+  
+
