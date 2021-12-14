@@ -132,24 +132,9 @@ private:
     // with the waiting_for_import status.
     void do_import();
 
-    // helper for arrange_call_stack. Takes the keyword table from the stack,
-    // kw_tab, and returns a table matching call stack positions to values from
-    // the table. num_args is number of arguments in the call. The var_table
-    // argument will be used to hold unrecognized/duplicate arguments if the
-    // provided function_stub supports a variadic table argument. (Otherwise
-    // such arguments cause a runtime error).
-    table<local_address,value> process_kw_table(function_stub* stub,
-            local_address num_args,
-            value kw_tab,
-            value var_table);
-    // helper for call. This arranges the arguments on the stack after a
-    // function call. It expects the call arguments to be on top of the stack.
-    void arrange_call_stack(working_set* ws,
-            function* func,
-            local_address num_args);
-    // Version of arrange_call_stack() which doesn't process keyword arguments.
-    void arrange_call_stack_no_kw(function* func,
-            local_address num_args);
+    // helper for call() and tcall(). moves arguments into their positions as
+    // local variables in the new call frame.
+    void arrange_call_stack(function* func, local_address num_args);
     // Called when a function is called, after arranging the function arguments
     // on the stack. This creates the new call frame and returns the address to
     // jump to for the call.
@@ -157,16 +142,11 @@ private:
     // Analogue to make_call() but for tail calls. This means the current call
     // frame is replaced rather than extended.
     code_address make_tcall(function* func);
-    // returns the next addr to go to. num_args does not count the function or
-    // the keyword table.
-    code_address call_kw(local_address num_args);
+    // returns the next addr to go to. num_args does not count the callee
+    code_address call(local_address num_args);
     // like call, but replaces the current call frame rather than creating a new
-    // one. Effectively it's call + return in a single instruction
-    code_address tcall_kw(local_address num_args);
-    // like call and tcall, but these are faster because they assume there's no
-    // keyword table and hence do no keyword processing.
-    code_address call_no_kw(local_address num_args);
-    code_address tcall_no_kw(local_address num_args);
+    // one. Effectively it's return + call in a single instruction
+    code_address tcall(local_address num_args);
     // num_args does not count the function, the keyword table, or the argument
     // list.
     code_address apply(local_address num_args,bool tail=false);
@@ -179,9 +159,7 @@ private:
     void runtime_error(const string& msg) const;
 
     // step a single instruction
-    // Note: experimented with inline here and found no difference whether I
-    // used -O2 or -O0. I'll leave it as a compiler hint anyway.
-    inline void step();
+    void step();
 
 public:
     // initialize the virtual machine

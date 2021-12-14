@@ -120,46 +120,20 @@ void compiler::compile_call(const llir_call* llir,
         bool tail) {
     auto start_sp = lex->sp;
     // compile positional arguments in ascending order
-    for (u32 i = 0; i < llir->num_pos_args; ++i) {
-        compile_llir_generic(llir->pos_args[i], lex, false);
+    for (u32 i = 0; i < llir->num_args; ++i) {
+        compile_llir_generic(llir->args[i], lex, false);
         return_on_err;
-    }
-
-    if (llir->num_kw_args > 0) {
-        write_byte(OP_TABLE);
-        ++lex->sp;
-        for (u32 i = 0; i < llir->num_kw_args; ++i) {
-            // copy the table for the set command
-            write_byte(OP_COPY);
-            write_byte(0);
-            ++lex->sp;
-            auto& k = llir->kw_args[i];
-            compile_symbol(k.nonkw_name);
-            ++lex->sp;
-            compile_llir_generic(k.value, lex, false);
-            write_byte(OP_OBJ_SET);
-            return_on_err;
-            lex->sp -= 3;
-        }
     }
 
     // compile callee
     compile_llir_generic(llir->callee, lex, false);
     return_on_err;
-    if (llir->num_kw_args > 0) {
-        if (tail) {
-            write_byte(OP_TCALL_KW);
-        } else {
-            write_byte(OP_CALL_KW);
-        }
+    if (tail) {
+        write_byte(OP_TCALL);
     } else {
-        if (tail) {
-            write_byte(OP_TCALL);
-        } else {
-            write_byte(OP_CALL);
-        }
+        write_byte(OP_CALL);
     }
-    write_byte(llir->num_pos_args);
+    write_byte(llir->num_args);
     lex->sp = 1+start_sp;
 }
 
@@ -343,24 +317,23 @@ void compiler::compile_llir(const llir_set* llir,
         auto call = (llir_call*)llir->target;
         auto op = call->callee;
         if (op->tag != lt_var
-                || call->num_kw_args != 0
-                || call->num_pos_args == 0
+                || call->num_args == 0
                 || ((llir_var*)op)->name != symtab->intern("get")) {
             c_fault(llir->target->origin, "Malformed 1st argument to set!.");
         }
         // compile the first argument
-        compile_llir_generic(call->pos_args[0], lex, false);
+        compile_llir_generic(call->args[0], lex, false);
         return_on_err;
         // iterate over the key forms, compiling as we go
         i32 i;
-        for (i = 1; i+1 < call->num_pos_args; ++i) {
-            compile_llir_generic(call->pos_args[i], lex, false);
+        for (i = 1; i+1 < call->num_args; ++i) {
+            compile_llir_generic(call->args[i], lex, false);
             return_on_err;
             // all but last call will be OBJ_GET
             write_byte(OP_OBJ_GET);
             --lex->sp;
         }
-        compile_llir_generic(call->pos_args[i], lex, false);
+        compile_llir_generic(call->args[i], lex, false);
         return_on_err;
         compile_llir_generic(llir->value, lex, false);
         return_on_err;

@@ -27,27 +27,20 @@ void free_llir_apply(llir_apply* obj) {
 
 llir_call* mk_llir_call(const source_loc& origin,
         llir_form* callee,
-        local_address num_pos_args,
-        local_address num_kw_args) {
+        local_address num_args) {
     return new llir_call {
         .header={.origin=origin, .tag=lt_call},
         .callee=callee,
-        .num_pos_args=num_pos_args,
-        .pos_args=new llir_form*[num_pos_args],
-        .num_kw_args=num_kw_args,
-        .kw_args=new llir_kw_arg[num_kw_args],
+        .num_args=num_args,
+        .args=new llir_form*[num_args]
     };
 }
 void clear_llir_call(llir_call* obj) {
     free_llir_form(obj->callee);
-    for (int i = 0; i < obj->num_pos_args; ++i) {
-        free_llir_form(obj->pos_args[i]);
+    for (int i = 0; i < obj->num_args; ++i) {
+        free_llir_form(obj->args[i]);
     }
-    for (int i = 0; i < obj->num_kw_args; ++i) {
-        free_llir_form(obj->kw_args[i].value);
-    }
-    delete[] obj->pos_args;
-    delete[] obj->kw_args;
+    delete[] obj->args;
 }
 void free_llir_call(llir_call* obj) {
     clear_llir_call(obj);
@@ -439,8 +432,8 @@ static string print_llir_offset(llir_form* form,
                 out << str << ' ';
                 noffset += str.size();
 
-                if (xcall->num_pos_args > 0) {
-                    out << print_llir_offset(xcall->pos_args[0], st, chunk,
+                if (xcall->num_args > 0) {
+                    out << print_llir_offset(xcall->args[0], st, chunk,
                             noffset, false);
                 }
                 i = 1;
@@ -448,21 +441,10 @@ static string print_llir_offset(llir_form* form,
                 out << print_llir_offset(xcall->callee, st, chunk, noffset,
                         false);
             }
-            for (; i < xcall->num_pos_args; ++i) {
+            for (; i < xcall->num_args; ++i) {
                 out << '\n'
-                    << print_llir_offset(xcall->pos_args[i], st, chunk,
+                    << print_llir_offset(xcall->args[i], st, chunk,
                             noffset, true);
-            }
-
-            if (xcall->num_kw_args > 0) {
-                out << '\n';
-                write_indent(out, noffset);
-                // TODO: print keyword too
-                out << ":kw { "
-                    << print_llir_offset(xcall->kw_args[0].value, st, chunk,
-                            noffset + 6, false)
-                    << '}';
-                    
             }
 
         out << ')';

@@ -262,51 +262,18 @@ void vm_thread::set_from_top(local_address i, value v) {
     stack->set(pos, v);
 }
 
-table<local_address,value> vm_thread::process_kw_table(function_stub* stub,
-        local_address num_args,
-        value kw_tab,
-        value var_table) {
-    auto& kw = vtable(kw_tab)->contents;
-    table<local_address,value> res;
-    for (auto k : kw.keys()) {
-        auto id = vsymbol(k);
-        // first, check if this is a positional argument we still need
-        bool found_pos = false;
-        for (auto i = num_args; i < stub->pos_params.size; ++i) {
-            if(stub->pos_params[i] == id) {
-                res.insert(i, *kw.get(k));
-                found_pos = true;
-                break;
-            }
-        }
-        if (found_pos) {
-            continue;
-        }
-        if (!stub->vt_param.has_value()) {
-            // if there's no variadic table argument, we have an error here
-            runtime_error("Unrecognized or redundant keyword in call.");
-        } else {
-            vtable(var_table)->contents.insert(k, *kw.get(k));
-        }
-    }
-    return res;
-}
-
-void vm_thread::arrange_call_stack_no_kw(function* func,
+void vm_thread::arrange_call_stack(function* func,
         local_address num_args) {
     auto req_args = func->stub->req_args;    
     auto num_pos_args = func->stub->pos_params.size;
+    auto has_vl = func->stub->vl_param.has_value();
+
+    // For the most part, positional arguments can get left where they are.
+    // Extra positional arguments go to the variadic parameter
 
     if (num_args < req_args) {
         runtime_error("Missing required argument in function call or apply.");
-    }
-
-    auto has_vl = func->stub->vl_param.has_value();
-    auto has_vt = func->stub->vt_param.has_value();
-
-    // For the most part, positional arguments can get left where they are.
-    // Extra positional arguments go to the variadic list parameter
-    if (num_args < num_pos_args) {
+    } else if (num_args < num_pos_args) {
         // push init vals
         for (u32 i = num_args; i < num_pos_args; ++i) {
             push(func->init_vals[i - req_args]);
@@ -321,73 +288,6 @@ void vm_thread::arrange_call_stack_no_kw(function* func,
         // in the case where num_pos_args == num_args and there's a variadic
         // list parameter, we need to do this
         push(V_EMPTY);
-    }
-
-    if (has_vt) {
-        stack->push_table();
-    }
-}
-
-void vm_thread::arrange_call_stack(working_set* ws,
-        function* func,
-        local_address num_args) {
-    auto num_pos_args = func->stub->pos_params.size;
-    auto has_vl = func->stub->vl_param.has_value();
-    auto has_vt = func->stub->vt_param.has_value();
-    auto req_args = func->stub->req_args;    
-
-    auto kw_tab = pop_to_ws(ws); // keyword argument table
-    if (v_tag(kw_tab) != TAG_TABLE) {
-        runtime_error("Malformed keyword table in function call.");
-    }
-
-    // For the most part, positional arguments can get left where they are.
-    // Extra positional arguments go to the variadic list parameter
-    value var_list = V_EMPTY;
-    if (num_pos_args < num_args) {
-        if (!has_vl) {
-            runtime_error("Too many positional arguments to function.");
-        }
-        i32 m = num_args - num_pos_args;
-        for (auto i = 0; i < m; ++i) {
-            // this builds the list in the correct order
-            var_list = ws->add_cons(peek(0), var_list);
-            // peek/pop because we don't need to add the top of the list to the
-            // working set (since it's accessible from the list)
-            pop();
-        }
-    }
-
-    // handle the keyword table
-    value var_tab = ws->add_table();
-    table<local_address,value> extra_pos =
-        process_kw_table(func->stub, num_args, kw_tab, var_tab);
-    // put positional args in place
-    u32 i;
-    for (i = num_args; i < req_args; ++i) {
-        auto x = extra_pos.get(i);
-        if (!x.has_value()) {
-            runtime_error("Missing required argument in function call or apply.");
-        } else {
-            push(*x);
-        }
-    }
-
-    // push init vals
-    for (; i < num_pos_args; ++i) {
-        auto x = extra_pos.get(i);
-        if (!x.has_value()) {
-            push(func->init_vals[i - req_args]);
-        } else {
-            push(*x);
-        }
-    }
-    // put variadic args
-    if (has_vl) {
-        push(var_list);
-    }
-    if (has_vt) {
-        push(var_tab);
     }
 }
 
@@ -442,8 +342,10 @@ code_address vm_thread::make_tcall(function* func) {
     return stub->addr;
 }
 
-
-code_address vm_thread::call_no_kw(local_address num_args) {
+// Calling convention: a call uses num_args + 1 elements on the stack. At the
+// very top is the callee, followed by num_args positional arguments, ordered so
+// the first argument is on the bottom.
+code_address vm_thread::call(local_address num_args) {
     // the function to call should be on top
     auto callee = peek();
     if (v_tag(callee) != TAG_FUNC) {
@@ -455,35 +357,14 @@ code_address vm_thread::call_no_kw(local_address num_args) {
     pop();
 
     // put function arguments in place
-    arrange_call_stack_no_kw(func, num_args);
+    arrange_call_stack(func, num_args);
 
     // make_call() will create the new stack frame
     return make_call(func);
 }
 
 
-// Calling convention: a call uses num_args + 2 elements on the stack. At the
-// very bottom we expect the callee, followed by num_args positional arguments,
-// and finally a table containing keyword arguments.
-code_address vm_thread::call_kw(local_address num_args) {
-    auto ws = alloc->add_working_set();
-    // the function to call should be on top
-    auto callee = pop_to_ws(&ws);
-    if (v_tag(callee) != TAG_FUNC) {
-        runtime_error("Error on call: callee is not a function");
-        return ip + 2;
-    }
-    auto func = vfunction(callee);
-
-    // we're officially done with the previous function now
-    stack->pop_function();
-    stack->push_function(func);
-
-    arrange_call_stack(&ws, func, num_args);
-    return make_call(func);
-}
-
-code_address vm_thread::tcall_kw(local_address num_args) {
+code_address vm_thread::tcall(local_address num_args) {
     // the function to call should be on top
     auto callee = peek();
     if (v_tag(callee) != TAG_FUNC) {
@@ -494,35 +375,7 @@ code_address vm_thread::tcall_kw(local_address num_args) {
     auto stub = func->stub;
     // foreign calls are just normal calls
     if (stub->foreign != nullptr || frame->caller == nullptr) {
-        return call_kw(num_args);
-    }
-
-    // we're officially done with the previous function now
-    stack->pop_function();
-    // pushing the next function already lets us avoid adding it to a
-    // working_set
-    stack->push_function(func);
-    pop();
-
-    // set up the call stack
-    stack->close_for_tc(num_args+1, frame->bp); // + 1 for the keyword table
-    arrange_call_stack_no_kw(func, num_args);
-
-    return make_tcall(func);
-}
-
-code_address vm_thread::tcall_no_kw(local_address num_args) {
-    // the function to call should be on top
-    auto callee = peek();
-    if (v_tag(callee) != TAG_FUNC) {
-        runtime_error("Error on call: callee is not a function");
-        return ip + 2;
-    }
-    auto func = vfunction(callee);
-    auto stub = func->stub;
-    // foreign calls are just normal calls
-    if (stub->foreign != nullptr || frame->caller == nullptr) {
-        return call_no_kw(num_args);
+        return call(num_args);
     }
 
     // we're officially done with the previous function now
@@ -532,7 +385,7 @@ code_address vm_thread::tcall_no_kw(local_address num_args) {
 
     // set up the call stack
     stack->close_for_tc(num_args, frame->bp);
-    arrange_call_stack_no_kw(func, num_args);
+    arrange_call_stack(func, num_args);
 
     return make_tcall(func);
 }
@@ -540,12 +393,12 @@ code_address vm_thread::tcall_no_kw(local_address num_args) {
 
 code_address vm_thread::apply(local_address num_args, bool tail) {
     auto ws = alloc->add_working_set();
-    // all we need to do is expand the varargs. The rest will be taken care of
-    // by call.
-    auto callee = pop_to_ws(&ws);
-    auto kw_tab = pop_to_ws(&ws);
 
+    // all we need to do is expand the varargs. The rest will be taken care of
+    // by call().
+    auto callee = pop_to_ws(&ws);
     auto args = pop_to_ws(&ws);
+
     if (args != V_EMPTY && !vis_cons(args)) {
         runtime_error("OP_APPLY argument list not actually a list");
     }
@@ -556,9 +409,8 @@ code_address vm_thread::apply(local_address num_args, bool tail) {
     }
 
     // put things back
-    push(kw_tab);
     push(callee);
-    return tail ? tcall_kw(num_args+list_len) : call_kw(num_args+list_len);
+    return tail ? tcall(num_args+list_len) : call(num_args+list_len);
 }
 
 
@@ -589,7 +441,7 @@ void vm_thread::init_function(working_set* ws, function* f) {
 }
 
 #define push_bool(b) push(b ? V_TRUE : V_FALSE);
-inline void vm_thread::step() {
+void vm_thread::step() {
 
     u8 instr = chunk->read_byte(ip);
 
@@ -800,25 +652,13 @@ inline void vm_thread::step() {
     case OP_CALL:
         num_args = chunk->read_byte(ip+1);
         jump = true;
-        addr = call_no_kw(num_args);
+        addr = call(num_args);
         break;
 
     case OP_TCALL:
         num_args = chunk->read_byte(ip+1);
         jump = true;
-        addr = tcall_no_kw(num_args);
-        break;
-
-    case OP_CALL_KW:
-        num_args = chunk->read_byte(ip+1);
-        jump = true;
-        addr = call_kw(num_args);
-        break;
-
-    case OP_TCALL_KW:
-        num_args = chunk->read_byte(ip+1);
-        jump = true;
-        addr = tcall_kw(num_args);
+        addr = tcall(num_args);
         break;
 
     case OP_APPLY:

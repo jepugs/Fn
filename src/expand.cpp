@@ -847,9 +847,9 @@ llir_form* expander::quasiquote_next_conc_arg(const source_loc& loc,
     *stopped_at = i;
 
     auto res = mk_llir_call(loc, (llir_form*)mk_llir_var(loc, intern("List")),
-            list_args.size, 0);
+            list_args.size);
     for (u32 i = 0; i < list_args.size; ++i) {
-        res->pos_args[i] = list_args[i];
+        res->args[i] = list_args[i];
     }
     return (llir_form*) res;
 }
@@ -880,9 +880,9 @@ llir_form* expander::expand_quasiquote_list(const source_loc& loc,
     } else {
         auto res = mk_llir_call(loc,
                 (llir_form*)mk_llir_var(loc, intern("concat")),
-                conc_args.size, 0);
+                conc_args.size);
         for (u32 i = 0; i < conc_args.size; ++i) {
-            res->pos_args[i] = conc_args[i];
+            res->args[i] = conc_args[i];
         }
         return (llir_form*) res;
     }
@@ -1008,76 +1008,31 @@ llir_form* expander::expand_call(const source_loc& loc,
         u32 len,
         ast_form** lst,
         expander_meta* meta) {
-    dyn_array<llir_form*> pos_args;
-    dyn_array<llir_kw_arg> kw_args;
+
+    dyn_array<llir_form*> args;
     u32 i;
-    bool failed = false;
     for (i = 1; i < len; ++i) {
-        if (lst[i]->kind == ak_symbol_atom
-                && is_keyword(lst[i]->datum.sym)) {
-            // first keyword
-            break;
-        } else { // positional argument
-            auto x = expand_meta(lst[i], meta);
-            if (!x) {
-                failed = true;
-                break;
+        auto x = expand_meta(lst[i], meta);
+        if (!x) {
+            for (auto x : args) {
+                free_llir_form(x);
             }
-            pos_args.push_back(x);
+            return nullptr;
         }
-    }
-    if (failed) {
-        for (auto x : pos_args) {
-            free_llir_form(x);
-        }
-        return nullptr;
-    }
-    for (; i < len; i += 2) {
-        if (lst[i]->kind == ak_symbol_atom
-                && is_keyword(lst[i]->datum.sym)) {
-            if (i + 1 >= len) {
-                e_fault(lst[i]->loc, "Keyword without any argument.");
-                failed = true;
-                break;
-            }
-            auto x = expand_meta(lst[i+1], meta);
-            if (!x) {
-                failed = true;
-                break;
-            }
-            auto name = inter->get_symtab()->symbol_name(lst[i]->datum.sym);
-            auto sym = intern(name.substr(1));
-            // check for duplicates
-            for (auto k : kw_args) {
-                if (k.nonkw_name == sym) {
-                    e_fault(lst[i]->loc, "Duplicate keyword argument.");
-                    failed = true;
-                    break;
-                }
-            }
-            kw_args.push_back(llir_kw_arg{sym,x});
-        } else {
-            e_fault(lst[i]->loc,
-                    "Positional arguments cannot follow keyword arguments.");
-            failed = true;
-            break;
-        }
+        args.push_back(x);
     }
 
-    llir_form* callee;
+    llir_form* callee = expand_meta(lst[0], meta);
     // carefully crafted conditional so expand_meta is only called if !failed
-    if (failed || !(callee = expand_meta(lst[0], meta))) {
-        for (auto x : kw_args) {
-            free_llir_form(x.value);
-        }
-        for (auto x : pos_args) {
+    if (!callee) {
+        for (auto x : args) {
             free_llir_form(x);
         }
         return nullptr;
     }
-    auto res = mk_llir_call(loc, callee, pos_args.size, kw_args.size);
-    memcpy(res->pos_args, pos_args.data, pos_args.size*sizeof(llir_form*));
-    memcpy(res->kw_args, kw_args.data, kw_args.size*sizeof(llir_kw_arg));
+
+    auto res = mk_llir_call(loc, callee, args.size);
+    memcpy(res->args, args.data, args.size*sizeof(llir_form*));
 
     return (llir_form*)res;
 }
