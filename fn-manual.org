@@ -396,7 +396,7 @@ below:
 (defn p-norm (x y (p 2))
   (let xp (** x p)
        yp (** y p))
-  (** (abs (+ xp yp)) (/ 1 p)))
+  (** (+ (abs xp) (abs yp)) (/ 1 p)))
 
 ; p-norm accepts either 2 or 3 arguments
 (p-norm 3 4)    ; => 5
