@@ -7,7 +7,7 @@ This is the official manual for Fn. It is not a /guide/ in the sense that it doe
 not attempt to teach Fn in a linear fashion. However, there should be enough
 here for any experienced programmer to get started.
 
-Section [[Language Features]] contains a description of all the major features of
+Section [[Language Reference]] contains a description of all the major features of
 the Fn language.
 
 Section [[Command Line Interface]] gives instructions on using the ~fn~ command line
@@ -400,7 +400,7 @@ second argument in the pair. Otherwise it proceeds to the next pair, returning
 ~nil~ if the end is reached.
 
 
-*** Creating Functions
+*** TODO Creating Functions
 
 Functions are created using ~fn~.
 
@@ -437,95 +437,171 @@ list arguments.
 
 Each of these parameters has an associated identifier (i.e. a symbol that is a
 legal name). In the function's body, the respective arguments are bound to these
-names. See subsection [[Function Calls]] for information about how argument lists
+names. See subsection [[Functions and Calls]] for information about how argument lists
 are processed during function calls.
 
 
-*** Function Calls
 
-Fn allows arguments to be named in function calls very similarly to Python.
-Named arguments are passed using keywords, which are simply symbols whose names
-begin with ~:~. These symbols are not legal identifiers, so their appearance in
-function calls is unambiguous. We also place the restriction that positional
-arguments may not follow named ones. (Believe me, I tried to make it work
-without that, and it's a mess at every level).
+*** TODO Functions and Calls
 
-First we will deal with the case where there are no variadic parameters. See the
-following example.
+Function calls have already been shown frequently in the manual prior to this
+point. For example, we've seen arithmetic with the functions ~+~, ~-~, ~*~, and ~/~:
 #+BEGIN_SRC fn
-;; this function has 3 positional parameters, the last of which is optional
-(defn arg-demo (x y (z 2))
-  (* z (+ x y)))
-
-;; here are a couple of ways we could call this function
-(arg-demo 2 3)            ; x = 2, y = 3, z = 2, result = 10
-(arg-demo 2 3 4)          ; x = 2, y = 3, z = 4, result = 20
-(arg-demo :x 2 :y 3)      ; x = 2, y = 3, z = 2, result = 10
-(arg-demo :z 2 :y 3 :x 2) ; x = 2, y = 3, z = 2, result = 10
-(arg-demo :z 3 1 2)       ; error! positional argument following named argument
+(+ 1 2 3)      ; => 6
+(- (/ 6 2) 3)  ; => 0
+(* 17 (- 2 7)) ; => -85
 #+END_SRC
 
-To be precise, function parameters (still considering the case where there are
-no variadic parameters) are bound using the following procedure:
-- the unnamed arguments are bound to positional parameters in order
-- the named arguments are bound to their respective parameters, raising an error
-  if any duplicates or unrecognized names are found
-- unbound optional parameters are set to their default values. If any required
-  parameters remain unbound, an error is raised
+As you may have already surmised, in each parenthesized list above, the first
+element is the function and the remaining ones are its arguments. All
+parenthesized forms in Fn are either special forms, macros, or function calls,
+with function calls being the "default" and by far the most common.
 
-Now, variadic arguments change some of the rules. We have two types of variadic
-parameters in Fn: variadic tables, and variadic lists.
+Functions are created with the ~fn~ special form, which requires a parameter list
+followed by a series of expressions that make up the function's body.
 
-For tables, the semantics are very simple. Functions with a variadic table
-parameter can accept any named argument, not just the names corresponding to
-their functions (duplicated names are still not allowed). Moreover, it's now
-possible for a named argument to have the same name as a positional argument.
 #+BEGIN_SRC fn
-;; demo function ignores first arg and returns table
-(def var-tab-demo ((x nil) :& tab) ; variadic table arguments denoted with :&
-  tab)
+; square a number
+(def square
+  (fn (x)
+    (* x x))
 
-(var-tab-demo 0)         ; result = {}
-(var-tab-demo :y 2 :x 1) ; result = {'y 1}
-(var-tab-demo 1 :x 2)    ; result = {'x 2}
+(square 2) ; => 4
+
+; compute sqrt(x^2 + y^2)
+(def 2-norm 
+  (fn (x y)
+    (sqrt (+ (square x) (square y)))))
+
+(2-norm 3 4)  ; => 5
+(2-norm 5 12) ; => 13
 #+END_SRC
 
-As can be seen above, the variadic table is constructed by taking all
-unrecognized named arguments and inserting them into the table as key-value
-pairs. Moreover, if a named argument is recognized, but was already provided as
-a positional argument, then that goes to the variadic table as well.
+The syntax ~(defn ...)~ is nothing more than a shorten way to say ~(def .. (fn
+...))~.
 
-Variadic lists are analogous to variadic tables, but where those act on trailing
-named arguments, variadic lists act on trailing positional arguments. As such,
-it is impossible to use named arguments while at the same time passing a
-non-empty variadic list argument, except in the case where there is also a
-variadic table parameter to catch the trailing arguments.
+Functions can accept varying numbers of arguments. For this Fn offers *optional
+parameters* and *variadic parameters*. Optional parameters have default values that
+they assume when not passed explicitly. Variadic parameters, on the other hand,
+allow a function to be called with more arguments than it has parameters. The
+trailing arguments are passed to the function as a list. These are illustrated
+below:
+
 #+BEGIN_SRC fn
-;; demo function ignores first arg and returns list
-(def var-lst-demo (x & list) ; variadic lists denoted with &
-  list)
+; compute the p-norm of (x,y), which is |x^p + y^p|^(1/p). 
+; default is p = 2
+(defn p-norm (x y (p 2))
+  (let xp (** x p)
+       yp (** y p))
+  (** (abs (+ xp yp)) (/ 1 p)))
 
-(var-lst-demo 0 1 2)  ;=> [1 2]
-(var-lst-demo 0)      ;=> []
-(var-lst-demo 0 :x 2) ;=> syntax error
-(var-lst-demo :x 0)   ;=> []
-(var-lst-demo :x 0 1) ;=> syntax error
+; p-norm accepts either 2 or 3 arguments
+(p-norm 3 4)    ; => 5
+(p-norm 3 4 2)  ; => 5 (same as default)
+(p-norm 3 4 1)  ; => 7 (now p = 1)
 
-;; demo function using both variadic parameters
-(def var-mixed-demo (x & list :& table)
-  [list table])
+; compute x1^2 + x2^2 + ...
+(defn sum-squared (& args)
+  ; see below for explanation of this line
+  (apply + (map square args)))
 
-;; names not explicitly in the parameter list get sent to the variadic table
-(var-mixed-demo :x 4 :y 2) ;=> [[] {'y 2}]
-;; with a variadic table argument, duplicate names are allowed if one is a 
-;; positional arg:
-(var-mixed-demo 'a 'b :x 4 :y 2) ;=> [['b] {'x 4 'y 2}]
-;; as always, keywords cannot precede positional arguments
-(var-mixed-demo :x 4 :y 2 'a 'b) ;=> syntax error
+; accepts any number of arguments
+(sum-squared)       ; => 0
+(sum-squared 1)     ; => 1
+(sum-squared 1 2)   ; => 5
+(sum-squared 1 2 4) ; => 21
 #+END_SRC
 
+Explanation of the function ~sum-squared~ above: ~map~ applies a function to every
+element of the list, in this case squaring each of the arguments. ~apply~,
+explained in [[~apply~]], passes the elements of a list to a function as positional
+arguments, in this case summing all the elements of the list.
 
-*** TODO Variable Capture
+As you can see, optional parameters, (of which there may be zero or more), are
+designated by putting them in parenthesized lists with a default value. Variadic
+parameters, (of which their may be zero or one), are designated by the special
+symbol ~&~. No additional parameters can follow variadic parameters.
+
+Variadic and optional parameters can be mixed, in which case the variadic
+parameter picks up where the optional parameters leave off.
+
+
+*** TODO ~apply~
+
+*** Variable Capture
+
+Functions can refer to local variables. Sometimes, a function object might
+outlive the scope of the local variable it references. For these cases, Fn
+implements *variable capture*.
+
+When the variable's normal lifetime ends, a copy of it is made and saved so that
+the function can continue to use that variable during future calls. If multiple
+functions refer to the same variable, then they share a reference to it. This
+behavior is exhibited below:
+
+#+BEGIN_SRC fn
+; simple variable capture example
+(with (x 7)
+  ; global function get-x captures x
+  (def get-x ()
+    x))
+
+; x is still accessible even though it's out of scope
+(get-x) ; => 7
+
+
+; variable capture between multiple functions
+(with (y 0)
+  (def get-y ()
+    y)
+  (def set-y (v)
+    (set! y v)))
+
+; reference to y is shared between get-y and set-y
+(get-y) ; => 0
+(set-y 17)
+(get-y) ; => 17
+; i.e. get-y sees the changes made by set-y
+#+END_SRC
+
+Variable capture in Fn can be used to implement something analogous to private
+members in object-oriented programming languages. This is by letting functions
+in a table capture a variable. When the table exits scopes, these functions will
+be the only means to access the variable. Here's an example of a counter that
+guards access to its value:
+
+#+BEGIN_SRC fn
+(defn Counter ()
+  "Construct a counter which is initialized to 0."
+  ; count is our "private member"
+  (let count 0)
+  (let self
+    ; the functions in this table control access to count
+    {'get
+     (fn () count)
+     'inc
+     (fn ()
+       (set! count (+ count 1)))
+     'reset
+     (fn ()
+       (set! count 0))})
+  self)
+
+; create a counter
+(def my-counter (Counter))
+(my-counter.get) ; => 0
+(my-counter.inc)
+(my-counter.inc)
+(my-counter.inc)
+(my-counter.get) ; => 3
+(my-counter.reset)
+(my-counter.get) ; => 0
+#+END_SRC
+
+As shown above, variable capture allows mutable state to be attached to a
+function or group of functions. This can be very powerful. However, as prolific
+mutation often leads to bad, buggy programs, this functionality should be used
+sparingly, and only after weighing alternative solutions.
 
 
 *** TODO dollar-fn
