@@ -7,19 +7,19 @@ This is the official manual for Fn. It is not a /guide/ in the sense that it doe
 not attempt to teach Fn in a linear fashion. However, there should be enough
 here for any experienced programmer to get started.
 
-Section [[Language Reference]] contains a description of all the major features of
-the Fn language.
+- [[Language Guide]] contains a walkthrough of all the major features of the Fn
+  language. It's meant to be something you can read in order.
 
-Section [[Command Line Interface]] gives instructions on using the ~fn~ command line
-tool to evaluate code.
+- [[Command Line Interface]] gives instructions on using the ~fn~ command line
+  tool to evaluate code.
 
-Section [[Builtin Functions]] contains a list of builtin functions. This section is
-mostly unwritten.
+- [[Builtin Functions]] contains a list of builtin functions. This section is
+  mostly unwritten.
 
-Upcoming section [[FFI]] details how to interface with C code from Fn.
+- [[FFI]] details how to interface with C code from Fn.
 
 
-* Language Reference
+* Language Guide
 
 Fn is a dynamically typed, garbage-collected, general-purpose programming
 language with Lisp-like syntax. A couple of its defining characteristics are:
@@ -33,15 +33,17 @@ language with Lisp-like syntax. A couple of its defining characteristics are:
 The syntax looks like this:
 
 #+BEGIN_SRC fn
-(def sqrt-precision 0.001)
+(def precision 0.001)
 (def approx-sqrt (x)
   (letfn iterate (guess)
-    (if (< (abs (- x (* guess guess)) sqrt-precision))
+    (if (< (abs (- x (* guess guess)) precision))
         guess
         (iterate (/ (+ guess (/ x guess) 2)))))
   (if (>= x 0)
       (iterate (/ x 2))
       (error "Cannot approximate square root of a negative number.")))
+
+(approx-sqrt 9) ; => 3
 #+END_SRC
 
 
@@ -302,67 +304,10 @@ key sets are equal (disregarding order), and for each key the corresponding
 values in each table are equal.
 
 
-*** Quoting
-
-"Quoting" refers to the process of converting Fn source code into native Fn
-data. This allows us to easily process and manipulate Fn source code using the
-same facilities as for normal data.
-
-Quoting is the secret sauce that makes Fn's macro system work. It's the main
-reason why Fn has the syntax it has.
-
-The ~quote~ special operator has syntax:
-#+BEGIN_SRC fn
-(quote <expr>) ;; or, equivalently
-'<expr>
-#+END_SRC
-where ~<expr>~ can be any expression (in fact, it need not be a legal expression
-by itself). These two notations are exactly the same. The interpreter expands
-the second into the first before evaluation.
-
-The value returned by quote is guaranteed to only consist of lists, symbols,
-numbers, and strings. We refer to the latter three as *atoms*. Here are some
-examples:
-#+BEGIN_SRC fn
-'(a b c) ;; returns ['a 'b 'c]
-'"string" ;; returns "string"
-'(+ a (/ x 2)) ;; returns ['+ 'a ['/ 'x 2]]
-
-''quot ;; is equivalent to
-(quote (quote quot)) ;; which returns ['quote 'quot]
-#+END_SRC
-
-Note that ~<expr>~ only needs to be syntactically valid (i.e. not freak out the
-parser). Illegal expressions can be quoted just fine:
-#+BEGIN_SRC fn
-'() ;; returns [] (the empty list)
-'(2 (3 4)) ;; returns [2 [3 4]]
-'(quote) ;; returns ['quote]
-#+END_SRC
-
-This makes ~quote~ very handy for creating nested lists of atoms. (~quote~ also has
-a big sister named ~quasiquote~, which is covered in the section on macros, and
-allows for much more flexibility).
-
-~quote~ is also the primary way to create symbols. As noted in subsection [[Simple
-Data Types]], this can lead to problems when we want a symbol whose name is a
-syntactically valid number. Adding an escape character to the symbol name
-designates to the parser that the token should be read as a symbol rather than a
-number. In fact, we can even use this trick to give variables numbers for names:
-#+BEGIN_SRC fn
-;; probably don't do this
-(def \2 3)
-2  ;; returns 2
-\2 ;; returns 3
-#+END_SRC
-
-My recommendation: just don't use symbol names that are syntactically legal
-numbers.
-
 
 ** TODO Control Flow and Functions
 
-*** Conditional Execution
+*** TODO Conditional Execution
 
 The conditional control flow primitives are ~if~ and ~cond~.
 
@@ -400,49 +345,7 @@ second argument in the pair. Otherwise it proceeds to the next pair, returning
 ~nil~ if the end is reached.
 
 
-*** TODO Creating Functions
-
-Functions are created using ~fn~.
-
-A short syntax is also provided for creating functions via the dollar sign,
-which expands into a ~dollar-fn~ special form.
-
-For example:
-#+BEGIN_SRC fn
-(fn (x) (* x x))
-$(* $ $)
-(dollar-fn (* $ $))
-#+END_SRC
-
-All three of the above take in a single argument and square it. Note that
-dollar-fn uses ~$~ (or equivalently, ~$0~) for the name of the first parameter.
-(Other positional parameters can be accessed with ~$1~, ~$2~, and so on). See
-subsection [[dollar-fn]] for more details.
-
-~fn~ on the other hand has an explicit parameter list. The syntax for parameter
-lists is this:
-#+BEGIN_SRC
-param-list      ::=  '(' <req-param>* <opt-param>* <var-params>? ')'
-req-param       ::= <identifier>
-opt-param       ::= (<identifier> <init-form>)
-var-params      ::= <var-list-param> <var-table-param>?
-                  | <var-table-param> <var-list-param>?
-var-list-param  ::= '&' <identifier>
-var-table-param ::= ':&' <identifier>
-#+END_SRC
-
-In other words, parameter lists consist of zero or more required parameters,
-zero or more optional parameters, and optionally end with variadic table and
-list arguments.
-
-Each of these parameters has an associated identifier (i.e. a symbol that is a
-legal name). In the function's body, the respective arguments are bound to these
-names. See subsection [[Functions and Calls]] for information about how argument lists
-are processed during function calls.
-
-
-
-*** TODO Functions and Calls
+*** Functions and Calls
 
 Function calls have already been shown frequently in the manual prior to this
 point. For example, we've seen arithmetic with the functions ~+~, ~-~, ~*~, and ~/~:
@@ -525,8 +428,24 @@ symbol ~&~. No additional parameters can follow variadic parameters.
 Variadic and optional parameters can be mixed, in which case the variadic
 parameter picks up where the optional parameters leave off.
 
+**** Checking for Optional Arguments
 
-*** TODO ~apply~
+Sometimes, it is desirable to know whether an optional parameter was passed, or
+just set to the default value. To check whether an optional parameter was
+passed, you can use the name of that parameter prefixed with a question mark.
+For example,
+
+#+BEGIN_SRC fn
+; this returns yes if called with an argument, no otherwise
+(defn arg-checker ((x nil))
+  (if ?x
+      "yes"
+      "no"))
+
+(arg-checker)    ; => "no"
+(arg-checker 1)  ; => "yes"
+#+END_SRC
+
 
 *** Variable Capture
 
@@ -603,6 +522,8 @@ function or group of functions. This can be very powerful. However, as prolific
 mutation often leads to bad, buggy programs, this functionality should be used
 sparingly, and only after weighing alternative solutions.
 
+
+*** TODO ~apply~
 
 *** TODO dollar-fn
 
@@ -754,17 +675,70 @@ http.fn we can import engine.fn and math.fn like this:
 #+END_SRC
 
 
-** TODO Macros
+** TODO Quoting and Macros
+
+*** TODO Quoting
+
+"Quoting" refers to the process of converting Fn source code into native Fn
+data. This allows us to easily process and manipulate Fn source code using the
+same facilities as for normal data.
+
+Quoting is the secret sauce that makes Fn's macro system work. It's the main
+reason why Fn has the syntax it has.
+
+The ~quote~ special operator has syntax:
+#+BEGIN_SRC fn
+(quote <expr>) ;; or, equivalently
+'<expr>
+#+END_SRC
+where ~<expr>~ can be any expression (in fact, it need not be a legal expression
+by itself). These two notations are exactly the same. The interpreter expands
+the second into the first before evaluation.
+
+The value returned by quote is guaranteed to only consist of lists, symbols,
+numbers, and strings. We refer to the latter three as *atoms*. Here are some
+examples:
+#+BEGIN_SRC fn
+'(a b c) ;; returns ['a 'b 'c]
+'"string" ;; returns "string"
+'(+ a (/ x 2)) ;; returns ['+ 'a ['/ 'x 2]]
+
+''quot ;; is equivalent to
+(quote (quote quot)) ;; which returns ['quote 'quot]
+#+END_SRC
+
+Note that ~<expr>~ only needs to be syntactically valid (i.e. not freak out the
+parser). Illegal expressions can be quoted just fine:
+#+BEGIN_SRC fn
+'() ;; returns [] (the empty list)
+'(2 (3 4)) ;; returns [2 [3 4]]
+'(quote) ;; returns ['quote]
+#+END_SRC
+
+This makes ~quote~ very handy for creating nested lists of atoms. (~quote~ also has
+a big sister named ~quasiquote~, which is covered [[Quasiquotation]], and allows for
+much more flexibility).
+
+~quote~ is also the primary way to create symbols. As noted in [[Simple Data Types]],
+this can lead to problems when we want a symbol whose name is a syntactically
+valid number. Adding an escape character to the symbol name designates to the
+parser that the token should be read as a symbol rather than a number. In fact,
+we can even use this trick to give variables numbers for names:
+#+BEGIN_SRC fn
+;; probably don't do this
+(def \2 3)
+2  ;; returns 2
+\2 ;; returns 3
+#+END_SRC
 
 
-*** Macro Basics
+*** TODO Macro Basics
 
 
-*** Quasiquotation
+*** TODO Quasiquotation
 
 
-*** Variable Capture and ~gensym~
-
+*** TODO Macro Hygiene
 
 * Command Line Interface
 
