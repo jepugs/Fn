@@ -91,7 +91,7 @@ u16 code_chunk::add_foreign_function(local_address num_pos,
         local_address req_args,
         optional<symbol_id> vl_param,
         optional<symbol_id> vt_param,
-        value (*foreign_func)(fn_handle*, value*),
+        void (*foreign_func)(fn_handle*, value*),
         const string& name) {
     auto s = new function_stub {
         .req_args=req_args,

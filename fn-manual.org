@@ -1,6 +1,7 @@
 #+TITLE: Fn Programming Language Manual (pre-0.1)
 #+AUTHOR: Jack Pugmire
 
+
 * Introduction
 
 This is the official manual for Fn. It is not a /guide/ in the sense that it does
@@ -23,27 +24,46 @@ here for any experienced programmer to get started.
 
 Fn is a dynamically typed, garbage-collected, general-purpose programming
 language with Lisp-like syntax. A couple of its defining characteristics are:
-- The core language has relatively few operators, with special care taken to
+- The core language has relatively few operations, with special care taken to
   ensure they have consistent and concise syntax.
 - Fn is designed for a "mostly functional" programming style, where immutability
   and referential transparency are favored, but not required.
 - The native macro system allows definition of new syntax (and even entire
   domain-specific languages) using regular Fn code and data structures.
 
-The syntax looks like this:
+To get started, let's take a look at the basic syntax. Fn uses *parenthesized
+prefix notation*, meaning expressions are between parentheses and the operation
+comes first (it's a prefix to its arguments). This is what that looks like:
 
 #+BEGIN_SRC fn
-(def precision 0.001)
-(def approx-sqrt (x)
-  (letfn iterate (guess)
-    (if (< (abs (- x (* guess guess)) precision))
-        guess
-        (iterate (/ (+ guess (/ x guess) 2)))))
-  (if (>= x 0)
-      (iterate (/ x 2))
-      (error "Cannot approximate square root of a negative number.")))
+; the basic syntax is
+(<operator> <arguments> ...)
 
-(approx-sqrt 9) ; => 3
+; this syntax used for language primitives
+(def x 42)        ; => defines a global variable
+(fn (x) (* x 2))  ; => creates a function
+
+; it is also used for function calls
+
+; this is how you do arithmetic in Fn
+(+ 6 7)         ; => 13
+(- 2 3)         ; => -1
+(* 6 8)         ; => 48
+(/ 7 7)         ; => 1
+
+; function calls can be nested
+(- (/ 6 2) 3)       ; => 0
+(* (+ 2 3) (+ 5 9))  ; => 70
+
+; arithmetic functions can accept varying numbers of arguments:
+(- 1)       ; => -1
+(+ 1 2 3 4) ; => 10
+(/ 0.5)     ; => 2
+(/ 6 3 2)   ; => 1     read as (6 / 3) / 2 in infix notation
+
+
+; functions can have side effects
+(println "Hello, world!")   ; need I say what this does?
 #+END_SRC
 
 
@@ -57,7 +77,7 @@ different syntax for programmer convenience. Function parameters are also
 treated as local variables within the function body.
 
 Before proceeding, we note that the full story about local variables involves
-variable capture semantics, which are covered in a later section. Variable
+variable capture semantics, which are covered in [[Variable Capture]]. Variable
 capture doesn't affect any of the concepts discussed in the rest of this section.
 
 ~let~ is the most elementary way to create a local variable. It defines one or
@@ -70,7 +90,7 @@ more new variables in the current lexical environment.
 (let a 16
      b (reverse "string")
      ;; value expressions can refer to variables from earlier in the same let
-     c (+ a (length b))
+     c (+ a (length b)))
 #+END_SRC
 
 ~with~ is similar to ~let~, but rather than creating definitions in the containing
@@ -104,7 +124,7 @@ like this:
 #+END_SRC
 
 Note that attempting to ~set!~ a global variable will result in an error.
-
+ 
 [fn:let-other-lisp] In Fn, the ~with~ operator provides the functionality of what
 most Lisp-like languages call ~let~, while Fn's ~let~ is quite different, as it acts
 on the surrounding environment.
@@ -116,6 +136,8 @@ Global variables in Fn are created using ~def~ or ~defn~. E.g.
 
 #+BEGIN_SRC fn
 (def my-global 'special-constant)
+(def my-other-global (+ 21 69))
+
 (def my-other-global (+ 21 69))
 #+END_SRC
 
@@ -131,55 +153,88 @@ recommended that you abuse it.
 
 ** Data Types
 
+This section provides a fairly exhaustive overview of the types built in to Fn.
+It's only crucial to read [[Checking Types]] and the opening paragraphs of [[Lists]] and
+[[Tables]].
+
 Fn provides the following builtin data types (type names in Fn are
 ~Capitalized-Like-This~):
 
-- ~Nil~ :: The special constant ~nil~, used to indicate no value.
-- ~Bool~ :: The special boolean constants ~true~ and ~false~.
-- ~Num~ :: Floating-point numbers. (These are almost IEEE 64-bit floats, but we
-  truncate the significand by four bits to fit type information).
-- ~Symbol~ :: Internalized strings. These are essentially strings with a faster
-  equality test, at the expensive of slower access to the characters of the
-  string. They are used extensively by the macro system.
-- ~String~ :: (Immutable) sequences of bytes. Usually these are UTF-8 encoded
-  character streams.
-- ~List~ :: (Immutable) singley-linked lists.
+- ~Nil~ :: The special constant ~nil~, used to indicate the absence of a value.
+- ~Bool~ :: The boolean values ~true~ and ~false~.
+- ~Num~ :: Floating-point numbers. (These are 60-bit floats, obtained by
+  truncating the significand of an IEEE double by four bits to fit type
+  information).
+- ~Sym~ :: Internalized strings, a.k.a symbols. These are essentially strings with
+  a fast equality test, useful for ad-hoc enumerations and as keys for tables.
+  They are used extensively by the macro system.
+- ~Str~ :: Immutable sequences of bytes. When holding text, these are UTF-8
+  encoded by default.
+- ~List~ :: Immutable singley-linked lists.
 - ~Table~ :: Mutable key-value stores.
+- ~Func~ :: Function data type
 
-Of these, only lists and tables logically contain other values. (Substrings can
-be extracted from strings, but this actually creates a new string object and
-just copies in data from the other string). So, we call ~List~ and ~Table~ the two
-*compound data types*, and call the rest of them *simple data types*.
+Objects of type Nil, Bool, Num, Sym, and Str are called *atoms*. These are defined
+by the fact that they do not contains references to any other objects. List and
+Table are *container types*, and Func is the odd-one-out as the *function type*.
 
-*** Simple Data Types
-Here is what the syntax looks like for the simple data types:
+Support for user-defined types is not currently implemented. However, a
+description of how they will work can be found in [[Structure Types]].
+
+*** Checking Types
+
+Types can be checked at runtime using a variety of builtin type predicates.
+These are functions of a single argument which return true or false depending on
+its type. These are:
 
 #+BEGIN_SRC fn
-;; numbers are pretty much what you'd expect
+bool?
+num?
+sym?
+str?
+list?
+table?
+func?
+
+; examples
+(bool? nil)  ; => false
+(num? 32)    ; => true
+(list? [])   ; => true
+#+END_SRC
+
+
+*** Atomic Types
+
+Here is what the syntax looks like for atoms:
+
+#+BEGIN_SRC fn
+; numbers are pretty much what you'd expect. (The same formats as in C++17 are
+; accepted).
 2
 -6
-3.14159
-2.0e-6 ;; we have scientific notation
-0xFf ;; hexadecimal, even!
+3.14159  ; all numbers are 60-bit floating-point. Not quite doubles
+2.0e-6   ; we have scientific notation
+0xFf     ; hexadecimal, even!
 
-;; strings are enclosed within matched double quotes
+; strings are enclosed within matched double quotes
 "string"
 "Fn uses escape codes from C, e.g. \\ \"\n"
 ""
 
-;; symbols are prefixed by a single quote.
+; symbols are created with a single quote
 'sym1
 'sym2
-;; symbols can contain whitespace and syntax characters, provided they are 
-;; escaped with a backslash
+; symbols can contain arbitrary characters, but whitespace and syntax characters
+; must be escaped with backslashes
 'sym\ with\ \"escapes\"
-;; be careful about the quote operator. If the quoted expression is a number,
-;; it will result in a number instead of a symbol. You can get around this 
-;; with escapes:
+; be careful about the quote operator. If the quoted expression is a number,
+; it will result in a number instead of a symbol. You can get around this 
+; with escapes:
 '0xb8  ;; this is a number
 '\0xb8 ;; this is a symbol
+; recommendation: minimize use of symbols whose names are valid numbers
 
-;; booleans and nil are called by name
+; booleans and nil are called by name
 true
 false
 nil
@@ -198,44 +253,48 @@ created using square brackets or by using the ~List~ function.
 ['a 'b] ; list of two symbols
 [1 'a "str"] ; lists may contain objects of arbitrary type
 
-;; List is identical to square bracket syntax
+; The List function behaves identically to square bracket syntax
 [1 2 3]
 (List 1 2 3)
 #+END_SRC
 
-Lists can be manipulated with builtin functions:
+A variety of builtin functions are provided that can operate on lists.
 
 #+BEGIN_SRC fn
+; create some demo lists
 (def list1 [["str" 2] 'a 'b])
 (def list2 [0 2 4 6 8 10])
 
-;; head and tail access the head and tail of the list
-(head list1) ;=> ["str" 2]
-(head list2) ;=> 0
-(tail list1) ;=> ['a 'b]
+; head accesses the first element of a list
+(head list1) ; => ["str" 2]
+(head list2) ; => 0
+; tail returns the list without the first element
+(tail list1) ; => ['a 'b]
 
-(tail [])    ;=> []
-(head [])    ;=> error (empty list has no head)
+; behavior on empty list:
+(head [])    ; => error (empty list has no head)
+(tail [])    ; => []
 
-;; nth allows random access:
-(nth list1 2) ;=> 'b
-(nth list2 1) ;=> 2
+; nth allows random access:
+(nth list1 2) ; => 'b
+(nth list2 1) ; => 2
+(nth list1 5) ; => error (out of bounds)
 
-;; length gives the length of a list
+; length gives the length of a list
 (length []) ;=> 0
 (length list1) ;=> 3
 (length list2) ;=> 6
 
-;; cons prepends elements
+; cons prepends elements
 (cons 2 []) ;=> [2]
-(cons nil list1) ;=> [nil ["str" 2] 'a 'b]
+(cons 'foo list1) ;=> ['foo ["str" 2] 'a 'b]
 
-;; concat concatenates two or more lists
+; concat concatenates two or more lists
 (concat [1 2 3] [4 5 6]) ;=> [1 2 3 4 5 6]
 (concat [37] ['foo] ["bar"]) ;=> [37 'foo "bar"]
 (concat list2 list1) ;=> [0 2 4 6 8 10 ["str" 2] 'a 'b]
 
-;; reverse reverse the direction of a list
+; reverse reverses the direction of a list
 (reverse list2) => [10 8 6 4 2 0]
 #+END_SRC
 
@@ -302,6 +361,23 @@ Lists and tables are compared componentwise. That is, two lists are equal if and
 only if all their respective entries are equal. Two tables are equal if their
 key sets are equal (disregarding order), and for each key the corresponding
 values in each table are equal.
+
+
+*** Structure Types
+
+*Note:* User types and metatables are not yet implemented. For now it is
+recommended to emulate this behavior by putting methods directly into slots in
+the table.
+
+*Structure types* are Fn's mechanism for allowing new data types to be defined on
+the fly. Structure types are just normal tables in Fn, and their contents
+provides two things:
+- a schema describing the fields of the structure
+- methods provided by the structure
+
+*Structures* are implemented as tables with particular entries in their
+metatables. The *metatable* is a secondary key-value store that is attached to
+every table. It can be used to change the behavior of the table as an object.
 
 
 
@@ -675,6 +751,9 @@ http.fn we can import engine.fn and math.fn like this:
 #+END_SRC
 
 
+** Pattern Matching
+
+
 ** TODO Quoting and Macros
 
 *** TODO Quoting
@@ -719,7 +798,7 @@ This makes ~quote~ very handy for creating nested lists of atoms. (~quote~ also 
 a big sister named ~quasiquote~, which is covered [[Quasiquotation]], and allows for
 much more flexibility).
 
-~quote~ is also the primary way to create symbols. As noted in [[Simple Data Types]],
+~quote~ is also the primary way to create symbols. As noted in [[Atomic Types]],
 this can lead to problems when we want a symbol whose name is a syntactically
 valid number. Adding an escape character to the symbol name designates to the
 parser that the token should be read as a symbol rather than a number. In fact,

@@ -6,11 +6,13 @@
 
 namespace fn {
 
+struct vm_thread;
+struct root_stack;
 
 struct fn_handle {
-    // Shhh! This secretly holds a pointer to a vm_thread object.
-    void* vm;
-    void* ws;
+    vm_thread* vm;
+    root_stack* stack;
+
     // used in error generation
     string func_name;
     source_loc origin;
@@ -33,41 +35,53 @@ struct fn_handle {
     // assert that a value is an integer
     void assert_integer(value v);
 
-
-    // value creation
-
-    // create a new string
-    value add_string(const char* str);
-    value add_string(const string& str);
-    // create a string with the specified length and uninitialized data.
-    value add_string(u32 len);
-    // create a new cons
-    value add_cons(value hd, value tl);
+    // symbol creation
     // get a symbol with the specified name
     value intern(const char* str);
     // generate a unique unnamed symbol (mainly for macros)
     value gensym();
-    // create a new table
-    value add_table();
 
-    // These utility functions ARE NOT TYPE CHECKED. They belong here because
-    // they require the symbol table or allocator. If you want type checking, do
-    // it yourself.
 
-    // string functions
-    value substr(value a, u32 start);
-    value substr(value a, u32 start, u32 len);
+    // creating values on the stack
+
+    // objects that need to be seen by the GC get created directly on the stack.
+    // You can choose to create them by pushing to the top of the stack, or by
+    // overwriting an existing position on the stack to the new object. The
+    // stack is indexed from the top in these functions.
+
+    // create a new string
+    value push_string(const string& str);
+    value make_string(local_address offset, const string& str);
+
+    // create a new cons
+    value push_cons(value hd, value tl);
+    value make_cons(local_address offset, value hd, value tl);
+
+    // create a new, empty table
+    value push_table();
+    value make_table(local_address offset);
+
+    // basic stack manipulation
+    value peek(local_address offset=0);
+    void push(value v);
+    void pop();
+    void set(local_address offset, value v);
+
+    // additional functions which create new values on top of the stack:
+
+    // additional functions that create strings:
+    value substr(local_address offset, value a, u32 start);
+    value substr(local_address offset, value a, u32 start, u32 len);
+    value symname(local_address offset, value a);
+
+    // concatenation. This creates a new structure and pushes it to the top of
+    // the list.
+    value string_concat(local_address offset, value l, value r);
+    value list_concat(local_address offset, value l, value r);
+    value table_concat(local_address offset, value l, value r);
+
+    // format a value as a C++ string
     string as_string(value a);
-    value string_concat(value l, value r);
-
-    // symbol functions
-    value symname(value a);
-
-    // list functions
-    value list_concat(value l, value r);
-
-    // table functions
-    value table_concat(value l, value r);
 };
 
 

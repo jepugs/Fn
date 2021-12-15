@@ -97,7 +97,8 @@ private:
     // Returns false on error.
     bool expand_params(ast_form* ast,
             llir_fn_params* params,
-            expander_meta* meta);    llir_form* expand_fn(const source_loc& loc,
+            expander_meta* meta);
+    llir_form* expand_fn(const source_loc& loc,
             u32 length,
             ast_form** lst,
             expander_meta* meta);

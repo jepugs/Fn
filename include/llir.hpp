@@ -148,8 +148,6 @@ struct llir_fn_params {
     // variadic table and list args
     bool has_var_list_arg;
     symbol_id var_list_arg;
-    bool has_var_table_arg;
-    symbol_id var_table_arg;
     // number of required args
     local_address req_args;
     // init forms for optional args
@@ -164,7 +162,6 @@ struct llir_fn {
 llir_fn* mk_llir_fn(const source_loc& origin,
         local_address num_pos_args,
         bool has_var_list_arg,
-        bool has_var_table_arg,
         local_address req_args,
         const string& name,
         llir_form* body,

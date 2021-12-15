@@ -117,29 +117,27 @@
    (table? coll)  (table-iter (get-keys coll))
    otherwise      (error "contains? argument must be a list or table.")))
 
-(defn apply (fun arg0 arg1 & args)
-  (letfn iter (acc rem)
-    (if (empty? (tail (tail rem)))
-        [(concat (reverse acc) (head rem))
-         (head (tail rem))]
-        (iter (cons (head rem) acc)
-              (tail rem))))
-  (let result (iter [] (cons arg0 (cons arg1 args))))
-  (apply fun (nth 0 result) (nth 1 result)))
+; (defn apply (fun arg0 & args)
+;   (letfn iter (acc rem)
+;     (if (empty? (tail (tail rem)))
+;         [(concat (reverse acc) (head rem))
+;          (head (tail rem))]
+;         (iter (cons (head rem) acc)
+;               (tail rem))))
+;   (let result (iter [] (cons arg0 args)))
+;   (apply fun (nth 0 result)))
 
-(defn partial (fun & args :& kwargs)
-  (fn (& more-args :& more-kwargs)
+(defn partial (fun & args)
+  (fn (& more-args)
     (apply fun
-           (concat args more-args)
-           (concat kwargs more-kwargs))))
+           (concat args more-args))))
 
 (defn comp (fun & funs)
   (if (empty? funs)
       fun
-      (fn (& args :& kwargs)
-        (fun (apply (apply comp funs {})
-                    args
-                    kwargs)))))
+      (fn (& args)
+        (fun (apply (apply comp funs)
+                    args)))))
 
 (defmacro -> (val & args)
   (letfn f (acc in)
@@ -199,7 +197,7 @@
       nil))
 
 (defn mapcat (fun list)
-  (apply 'concat (map fun list) {}))
+  (apply concat (map fun list)))
 
 (defmacro match (& clauses)
   (macro-assert (= 2 (length clauses)))

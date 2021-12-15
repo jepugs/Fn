@@ -7,7 +7,7 @@
 #define fn_fun(name, namestr, params) \
     const char* fn_params__ ## name = params; \
     const char* fn_name__ ## name = namestr; \
-    static value fn__ ## name(fn_handle* h, value* args)
+    static void fn__ ## name(fn_handle* h, value* args)
 #define fn_add_builtin(inter, name) \
     (inter).add_builtin_function( fn_name__ ## name, fn_params__ ## name, \
             fn__ ## name );
@@ -19,79 +19,82 @@ namespace fn {
 
 fn_fun(eq, "=", "(& args)") {
     if (args[0] == V_EMPTY) {
-        return V_TRUE;
+        return;
     }
 
     auto x = vhead(args[0]);
     fn_for_list(it, vtail(args[0])) {
         if (vhead(it) != x) {
-            return V_FALSE;
+            h->push(V_FALSE);
+            return;
         }
     }
-    return V_TRUE;
+    h->push(V_TRUE);
 }
 
 fn_fun(same_q, "same?", "(& args)") {
     if (args[0] == V_EMPTY) {
-        return V_TRUE;
+        return;
     }
     auto x = vhead(args[0]);
     fn_for_list(it, vtail(args[0])) {
         if (!vsame(vhead(it),x)) {
-            return V_FALSE;
+            h->push(V_FALSE);
+            return;
         }
     }
-    return V_TRUE;
+    h->push(V_TRUE);
+    return;
 }
 
 fn_fun(number_q, "number?", "(x)") {
-    return vis_number(args[0]) ? V_TRUE : V_FALSE;
+    h->push(vis_number(args[0]) ? V_TRUE : V_FALSE);
 }
 
 fn_fun(string_q, "string?", "(x)") {
-    return vis_string(args[0]) ? V_TRUE : V_FALSE;
+    h->push(vis_string(args[0]) ? V_TRUE : V_FALSE);
 }
 
 fn_fun(list_q, "list?", "(x)") {
     if (args[0] == V_EMPTY || vis_cons(args[0])) {
-        return V_TRUE;
+        h->push(V_TRUE);
     } else {
-        return V_FALSE;
+        h->push(V_FALSE);
     }
 }
 
 fn_fun(table_q, "table?", "(x)") {
-    return vis_table(args[0]) ? V_TRUE : V_FALSE;
+    h->push(vis_table(args[0]) ? V_TRUE : V_FALSE);
 }
 fn_fun(function_q, "function?", "(x)") {
-    return vis_function(args[0]) ? V_TRUE : V_FALSE;
+    h->push(vis_function(args[0]) ? V_TRUE : V_FALSE);
 }
 fn_fun(symbol_q, "symbol?", "(x)") {
-    return vis_symbol(args[0]) ? V_TRUE : V_FALSE;
+    h->push(vis_symbol(args[0]) ? V_TRUE : V_FALSE);
 }
 fn_fun(bool_q, "bool?", "(x)") {
-    return vis_bool(args[0]) ? V_TRUE : V_FALSE;
+    h->push(vis_bool(args[0]) ? V_TRUE : V_FALSE);
 }
 
 fn_fun(intern, "intern", "(str)") {
     h->assert_type(TAG_STRING, args[0]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
-    return h->intern(vstring(args[0])->data);
+    h->push(h->intern(vstring(args[0])->data));
 }
 
 fn_fun(symname, "symname", "(sym)") {
     h->assert_type(TAG_SYM, args[0]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
     auto str = ((vm_thread*)h->vm)->get_symtab()->symbol_name(vsymbol(args[0]));
-    return h->add_string(str);
+    h->push_string(str);
 }
 
 fn_fun(gensym, "gensym", "()") {
-    return h->gensym();
+    h->push(h->gensym());
 }
 
 fn_fun(add, "+", "(& args)") {
@@ -101,40 +104,40 @@ fn_fun(add, "+", "(& args)") {
         auto hd = vhead(it);
         h->assert_type(TAG_NUM, hd);
         if (h->failed()) {
-            return V_NIL;
+            return;
         }
         res += vnumber(hd);
     }
-    return vbox_number(res);
+    h->push(vbox_number(res));
 }
 
 fn_fun(sub, "-", "(& args)") {
     if (args[0] == V_EMPTY) {
-        return vbox_number(0.0);
+        h->push(vbox_number(0.0));
     } else if (vtail(args[0]) == V_EMPTY) {
         auto x = vhead(args[0]);
         h->assert_type(TAG_NUM, x);
         if (h->failed()) {
-            return V_NIL;
+            return;
         }
-        return vbox_number(-vnumber(x));
+        h->push(vbox_number(-vnumber(x)));
     }
 
     auto x = vhead(args[0]);
     h->assert_type(TAG_NUM, x);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
     auto res = vnumber(x);
     fn_for_list(it, vtail(args[0])) {
         auto hd = vhead(it);
         h->assert_type(TAG_NUM, hd);
         if (h->failed()) {
-            return V_NIL;
+            return;
         }
         res -= vnumber(hd);
     }
-    return vbox_number(res);
+    h->push(vbox_number(res));
 }
 
 fn_fun(mul, "*", "(& args)") {
@@ -143,58 +146,58 @@ fn_fun(mul, "*", "(& args)") {
         auto hd = vhead(it);
         h->assert_type(TAG_NUM, hd);
         if (h->failed()) {
-            return V_NIL;
+            return;
         }
         res *= vnumber(hd);
     }
-    return vbox_number(res);
+    h->push(vbox_number(res));
 }
 
 fn_fun(div, "/", "(& args)") {
     if (args[0] == V_EMPTY) {
-        return vbox_number(1.0);
+        h->push(vbox_number(1.0));
     } else if (vtail(args[0]) == V_EMPTY) {
         auto x = vhead(args[0]);
         h->assert_type(TAG_NUM, x);
         if (h->failed()) {
-            return V_NIL;
+            return;
         }
-        return vbox_number(1/vnumber(x));
+        h->push(vbox_number(1/vnumber(x)));
     }
 
     auto x = vhead(args[0]);
     h->assert_type(TAG_NUM, x);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
     auto res = vnumber(x);
     fn_for_list(it, vtail(args[0])) {
         auto hd = vhead(it);
         h->assert_type(TAG_NUM, hd);
         if (h->failed()) {
-            return V_NIL;
+            return;
         }
         res /= vnumber(hd);
     }
-    return vbox_number(res);
+    h->push(vbox_number(res));
 }
 
 fn_fun(abs, "abs", "(x)") {
     h->assert_type(TAG_NUM, args[0]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
-    return vbox_number(fabs(vnumber(args[0])));
+    h->push(vbox_number(fabs(vnumber(args[0]))));
 }
 
 fn_fun(mod, "mod", "(x y)") {
     h->assert_type(TAG_NUM, args[0]);
     h->assert_type(TAG_NUM, args[1]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
     auto x = vnumber(args[0]);
     auto y = vnumber(args[1]);
@@ -203,170 +206,181 @@ fn_fun(mod, "mod", "(x y)") {
     if (y != y_int) {
         h->error("modulus must be an integer");
     }
-    return vbox_number((f64)(x_int % y_int) + (x - x_int));
+    h->push(vbox_number((f64)(x_int % y_int) + (x - x_int)));
 }
 
 fn_fun(pow, "**", "(x y)") {
     h->assert_type(TAG_NUM, args[0]);
     h->assert_type(TAG_NUM, args[1]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
-    return vbox_number(pow(vnumber(args[0]), vnumber(args[1])));
+    h->push(vbox_number(pow(vnumber(args[0]), vnumber(args[1]))));
 }
 
 fn_fun(exp, "exp", "(x)") {
     h->assert_type(TAG_NUM, args[0]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
-    return vbox_number(exp(vnumber(args[0])));
+    h->push(vbox_number(exp(vnumber(args[0]))));
 }
 
 fn_fun(log, "log", "(x)") {
     h->assert_type(TAG_NUM, args[0]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
-    return vbox_number(log(vnumber(args[0])));
+    h->push(vbox_number(log(vnumber(args[0]))));
 }
 
 fn_fun(integer_q, "integer?", "(x)") {
     if (!vis_number(args[0])) {
-        return V_FALSE;
+        return;
     }
     auto num = vnumber(args[0]);
-    return (num == (i64) num) ? V_TRUE : V_FALSE;
+    h->push((num == (i64) num) ? V_TRUE : V_FALSE);
 }
 
 fn_fun(floor, "floor", "(x)") {
     h->assert_type(TAG_NUM, args[0]);
-    return vbox_number(floor(vnumber(args[0])));
+    h->push(vbox_number(floor(vnumber(args[0]))));
 }
 
 fn_fun(ceil, "ceil", "(x)") {
     h->assert_type(TAG_NUM, args[0]);
-    return vbox_number(ceil(vnumber(args[0])));
+    h->push(vbox_number(ceil(vnumber(args[0]))));
 }
 
 fn_fun(frac_part, "frac-part", "(x)") {
     h->assert_type(TAG_NUM, args[0]);
-    return vbox_number(vnumber(args[0]) - floor(vnumber(args[0])));
+    h->push(vbox_number(vnumber(args[0]) - floor(vnumber(args[0]))));
 }
 
 fn_fun(lt, "<", "(& args)") {
     if (args[0] == V_EMPTY) {
-        return V_TRUE;
+        h->push(V_TRUE);
+        return;
     }
 
     auto prev = vhead(args[0]);
     h->assert_type(TAG_NUM, prev);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
 
     fn_for_list(it, vtail(args[0])) {
         auto hd = vhead(it);
         h->assert_type(TAG_NUM, hd);
         if (h->failed()) {
-            return V_NIL;
+            return;
         }
         if (vnumber(prev) < vnumber(hd)) {
             prev = hd;
         } else {
-            return V_FALSE;
+            h->push(V_FALSE);
+            return;
         }
     }
-    return V_TRUE;
+    h->push(V_TRUE);
 }
 
 fn_fun(gt, ">", "(& args)") {
     if (args[0] == V_EMPTY) {
-        return V_TRUE;
+        h->push(V_TRUE);
+        return;
     }
 
     auto prev = vhead(args[0]);
     h->assert_type(TAG_NUM, prev);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
 
     fn_for_list(it, vtail(args[0])) {
         auto hd = vhead(it);
         h->assert_type(TAG_NUM, hd);
         if (h->failed()) {
-            return V_NIL;
+            return;
         }
         if (vnumber(prev) > vnumber(hd)) {
             prev = hd;
         } else {
-            return V_FALSE;
+            h->push(V_FALSE);
+            return;
         }
     }
-    return V_TRUE;
+    h->push(V_TRUE);
+    return;
 }
 
 
 fn_fun(le, "<=", "(& args)") {
     if (args[0] == V_EMPTY) {
-        return V_TRUE;
+        h->push(V_TRUE);
+        return;
     }
 
     auto prev = vhead(args[0]);
     h->assert_type(TAG_NUM, prev);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
 
     fn_for_list(it, vtail(args[0])) {
         auto hd = vhead(it);
         h->assert_type(TAG_NUM, hd);
         if (h->failed()) {
-            return V_NIL;
+            return;
         }
         if (vnumber(prev) <= vnumber(hd)) {
             prev = hd;
         } else {
-            return V_FALSE;
+            h->push(V_FALSE);
+            return;
         }
     }
-    return V_TRUE;
+    h->push(V_TRUE);
+    return;
 }
 
 fn_fun(ge, ">=", "(& args)") {
     if (args[0] == V_EMPTY) {
-        return V_TRUE;
+        h->push(V_TRUE);
+        return;
     }
 
     auto prev = vhead(args[0]);
     h->assert_type(TAG_NUM, prev);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
 
     fn_for_list(it, vtail(args[0])) {
         auto hd = vhead(it);
         h->assert_type(TAG_NUM, hd);
         if (h->failed()) {
-            return V_NIL;
+            return;
         }
         if (vnumber(prev) >= vnumber(hd)) {
             prev = hd;
         } else {
-            return V_FALSE;
+            h->push(V_FALSE);
+            return;
         }
     }
-    return V_TRUE;
+    h->push(V_TRUE);
 }
 
 fn_fun (fn_not, "not", "(x)") {
-    return vtruth(args[0]) ? V_FALSE : V_TRUE;
+    h->push(vtruth(args[0]) ? V_FALSE : V_TRUE);
         
 }
 
 fn_fun (String, "String", "(& args)") {
     if (args[0] == V_EMPTY) {
-        return h->add_string("");
+        h->push_string("");
+        return;
     }
 
     auto res = v_to_string(vhead(args[0]), ((vm_thread*)h->vm)->get_symtab());
@@ -374,21 +388,21 @@ fn_fun (String, "String", "(& args)") {
         res = res + v_to_string(vhead(it),
                 ((vm_thread*)h->vm)->get_symtab());
     }
-    return h->add_string(res);
+    h->push_string(res);
 }
 
 fn_fun (substring, "substring", "(str pos len)") {
     h->assert_type(TAG_STRING, args[0]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
     h->assert_integer(args[1]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
     h->assert_integer(args[2]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
 
     auto str = vstring(args[0]);
@@ -404,53 +418,54 @@ fn_fun (substring, "substring", "(str pos len)") {
     } else if (len + pos > str->len) {
         len = str->len - pos;
     }
-    return h->substr(args[0], pos, len);
+    h->push(V_NIL);
+    h->substr(0, args[0], pos, len);
 }
 
 
 fn_fun(List, "List", "(& args)") {
-    return args[0];
+    h->push(args[0]);
 }
 
 fn_fun(cons, "cons", "(hd tl)") {
     h->assert_list(args[1]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
-    return h->add_cons(args[0], args[1]);
+    h->push_cons(args[0], args[1]);
 }
 
 fn_fun(head, "head", "(x)") {
     if (args[0] == V_EMPTY) {
-        return V_NIL;
+        return;
     } else {
         h->assert_type(TAG_CONS, args[0]);
         if (h->failed()) {
-            return V_NIL;
+            return;
         }
-        return vcons(args[0])->head;
+        h->push(vcons(args[0])->head);
     }
 }
 
 fn_fun(tail, "tail", "(x)") {
     if (args[0] == V_EMPTY) {
-        return V_NIL;
+        return;
     } else {
         h->assert_type(TAG_CONS, args[0]);
         if (h->failed()) {
-            return V_NIL;
+            return;
         }
-        return vcons(args[0])->tail;
+        h->push(vcons(args[0])->tail);
     }
 }
 
 fn_fun(nth, "nth", "(n list)") {
     h->assert_type(TAG_NUM, args[0]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
     auto num = vnumber(args[0]);
     if (num != (i64) num) {
@@ -460,30 +475,33 @@ fn_fun(nth, "nth", "(n list)") {
 
     h->assert_type(TAG_CONS, args[1]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
     auto lst = args[1];
     while (n != 0) {
         if (lst == V_EMPTY) {
-            return V_NIL;
+            return;
         }
         lst = vtail(lst);
         --n;
     }
-    return vhead(lst);
+    h->push(vhead(lst));
 }
 
 fn_fun(empty_q, "empty?", "(x)") {
     switch (v_tag(args[0])) {
     case TAG_CONS:
-        return V_FALSE;
+        h->push(V_FALSE);
+        break;
     case TAG_EMPTY:
-        return V_TRUE;
+        h->push(V_TRUE);
+        break;
     case TAG_TABLE:
-        return vtable(args[0])->contents.get_size() == 0 ? V_TRUE : V_FALSE;
+        h->push(vtable(args[0])->contents.get_size() == 0 ? V_TRUE : V_FALSE);
+        break;
     default:
         h->error("empty? argument must be a list or a table.");
-        return V_NIL;
+        break;
     }
 }
 
@@ -494,76 +512,78 @@ fn_fun(length, "length", "(x)") {
         fn_for_list(it, args[0]) {
             ++res; 
         }
-        return vbox_number(res);
+        h->push(vbox_number(res));
     } else if (tag == TAG_EMPTY) {
-        return vbox_number(0);
+        h->push(vbox_number(0));
     } else if (tag == TAG_TABLE) {
-        return vbox_number(vtable(args[0])->contents.get_size());
+        h->push(vbox_number(vtable(args[0])->contents.get_size()));
     } else if (tag == TAG_STRING) {
-        return vbox_number(vstring(args[0])->len);
+        h->push(vbox_number(vstring(args[0])->len));
+    } else {
+        h->error("length argument must be a string or collection.");
     }
-
-    h->error("length argument must be a string or collection.");
-    return V_NIL;
 }
 
 fn_fun(concat, "concat", "(& colls)") {
     if (args[0] == V_EMPTY) {
-        return V_EMPTY;
+        h->push(V_EMPTY);
+        return;
     }
-    auto res = vhead(args[0]);
-    if (res == V_EMPTY || vis_cons(res)) {
+    auto hd = vhead(args[0]);
+    if (hd == V_EMPTY || vis_cons(hd)) {
+        h->push(hd);
         fn_for_list(it, vtail(args[0])) {
-            auto hd = vhead(it);
+            hd = vhead(it);
             h->assert_list(hd);
             if (h->failed()) {
-                return V_NIL;
+                return;
             }
-            res = h->list_concat(res, hd);
+            h->list_concat(0, h->peek(), hd);
         }
-    } else if (vis_string(res)) {
-        fn_for_list(it, vtail(args[0])) {
-            auto hd = vhead(it);
-            h->assert_type(TAG_STRING, hd);
-            if (h->failed()) {
-                return V_NIL;
-            }
-            res = h->string_concat(res, hd);
-        }
-    } else if (vis_table(res)) {
-        fn_for_list(it, vtail(args[0])) {
-            auto hd = vhead(it);
-            res = h->table_concat(res, hd);
-        }
+    // } else if (vis_string(res)) {
+    //     fn_for_list(it, vtail(args[0])) {
+    //         auto hd = vhead(it);
+    //         h->assert_type(TAG_STRING, hd);
+    //         if (h->failed()) {
+    //             return;
+    //         }
+    //         res = h->string_concat(0, res, hd);
+    //     }
+    // } else if (vis_table(res)) {
+    //     fn_for_list(it, vtail(args[0])) {
+    //         auto hd = vhead(it);
+    //         res = h->table_concat(0, res, hd);
+    //     }
     } else {
         h->error("concat arguments must be collections");
+        return;
     }
-    return res;
 }
 
 fn_fun(print, "print", "(x)") {
     std::cout << h->as_string(args[0]);
-    return V_NIL;
+    h->push(V_NIL);
+    return;
 }
 
 fn_fun(println, "println", "(x)") {
     std::cout << h->as_string(args[0])
               << '\n';
-    return V_NIL;
+    h->push(V_NIL);
+    return;
 }
 
 fn_fun(Table, "Table", "(& args)") {
-    auto res = h->add_table();
+    auto res = h->push_table();
     fn_for_list(it, args[0]) {
         auto tl = vtail(it);
         if (tl == V_EMPTY) {
             h->error("Table requires an even number of arguments.");
-            return V_NIL;
+            return;
         }
         vtable(res)->contents.insert(vhead(it), vhead(tl));
         it = tl;
     }
-    return res;
 }
 
 fn_fun(get, "get", "(table & keys)") {
@@ -571,7 +591,7 @@ fn_fun(get, "get", "(table & keys)") {
     fn_for_list(it, args[1]) {
         h->assert_type(TAG_TABLE, res);
         if (h->failed()) {
-            return V_NIL;
+            return;
         }
         auto x = vtable(res)->contents.get(vhead(it));
         if (x.has_value()) {
@@ -580,49 +600,48 @@ fn_fun(get, "get", "(table & keys)") {
             res = V_NIL;
         }
     }
-    return res;
+    h->push(res);
 }
 
 fn_fun(get_default, "get-default", "(table key default)") {
     h->assert_type(TAG_TABLE, args[0]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
     auto x = vtable(args[0])->contents.get(args[1]);
     if (x.has_value()) {
-        return *x;
+        h->push(*x);
     } else {
-        return args[2];
+        h->push(args[2]);
     }
 }
 
 fn_fun(has_key_q, "has-key?", "(table key)") {
     h->assert_type(TAG_TABLE, args[0]);
     if (h->failed()) {
-        return V_NIL;
+        return;
     }
     auto x = vtable(args[0])->contents.get(args[1]);
-    if (x.has_value()) {
-        return V_TRUE;
-    } else {
-        return V_FALSE;
-    }
+    h->push(x.has_value() ? V_TRUE : V_FALSE);
 }
 
 fn_fun(get_keys, "get-keys", "(table)") {
     h->assert_type(TAG_TABLE, args[0]);
+    // FIXME: there's a better way to iterate over this
     auto keys = vtable(args[0])->contents.keys();
-    auto res = V_EMPTY;
+    u32 len = 0;
+    h->push(V_EMPTY);
     for (auto k : keys) {
-        res = h->add_cons(k, res);
+        ++len;
+        h->make_cons(0, k, h->peek());
     }
-    return res;
 }
 
 fn_fun(error, "error", "(message)") {
     h->assert_type(TAG_STRING, args[0]);
     h->error(vstring(args[0])->data);
-    return V_NIL;
+    h->push(V_NIL);
+    return;
 }
 
 

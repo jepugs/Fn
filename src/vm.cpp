@@ -295,29 +295,26 @@ code_address vm_thread::make_call(function* func) {
     auto stub = func->stub;
     // stack pointer (equal to number of parameter variables)
     u8 sp = static_cast<u8>(stub->pos_params.size
-            + stub->vl_param.has_value()
-            + stub->vt_param.has_value());
+            + stub->vl_param.has_value());
     if (stub->foreign != nullptr) { // foreign function call
-        auto ws = alloc->add_working_set();
         fn_handle handle{
             .vm=this,
-            .ws=&ws,
+            .stack=stack,
             .func_name=stub->name,
             .origin=chunk->location_of(ip),
             .err=err
         };
 
+        auto ret_place = stack->get_pointer() - sp;
         auto start_args = &(*stack)[stack->get_pointer() - sp];
-        auto result = stub->foreign(&handle, start_args);
+        stub->foreign(&handle, start_args);
         // can take args off the stack
-        pop_times(sp);
+        stack->do_return(ret_place);
 
         if(err->happened) {
             status = vs_fault;
         }
-        push(result);
-        //delete[] args;
-        stack->pop_function();
+        stack->pop_callee();
         return ip + 2;
     } else { // native function call
         // base pointer
@@ -333,8 +330,7 @@ code_address vm_thread::make_tcall(function* func) {
     auto stub = func->stub;
     // update the frame
     u8 sp = static_cast<u8>(stub->pos_params.size
-            + stub->vl_param.has_value()
-            + stub->vt_param.has_value());
+            + stub->vl_param.has_value());
     frame->num_args = sp;
     frame->caller = func;
     chunk = stub->chunk;
@@ -353,7 +349,7 @@ code_address vm_thread::call(local_address num_args) {
         return ip + 2;
     }
     auto func = vfunction(callee);
-    stack->push_function(func);
+    stack->push_callee(func);
     pop();
 
     // put function arguments in place
@@ -379,8 +375,8 @@ code_address vm_thread::tcall(local_address num_args) {
     }
 
     // we're officially done with the previous function now
-    stack->pop_function();
-    stack->push_function(func);
+    stack->pop_callee();
+    stack->push_callee(func);
     pop();
 
     // set up the call stack
@@ -392,55 +388,34 @@ code_address vm_thread::tcall(local_address num_args) {
 
 
 code_address vm_thread::apply(local_address num_args, bool tail) {
-    auto ws = alloc->add_working_set();
-
     // all we need to do is expand the varargs. The rest will be taken care of
     // by call().
-    auto callee = pop_to_ws(&ws);
-    auto args = pop_to_ws(&ws);
+    auto callee = peek(0);
+    auto args = peek(1);
 
-    if (args != V_EMPTY && !vis_cons(args)) {
-        runtime_error("OP_APPLY argument list not actually a list");
+    if (!vis_function(callee)) {
+        runtime_error("OP_APPLY first argument not a function.");
+    } else if (!vis_cons(args) && args != V_EMPTY) {
+        runtime_error("OP_APPLY last argument not a list.");
     }
+
+    auto func = vfunction(callee);
+    stack->push_callee(func);
+    pop();
+
     u32 list_len = 0;
     for (auto it = args; it != V_EMPTY; it = vtail(it)) {
-        push(vhead(it));
+        push(vtail(it));
+        set_from_top(1, vhead(it));
         ++list_len;
     }
 
-    // put things back
-    push(callee);
-    return tail ? tcall(num_args+list_len) : call(num_args+list_len);
+    pop();
+    arrange_call_stack(func, num_args + list_len);
+    return make_call(func);
+    //return tail ? tcall(num_args+list_len) : call(num_args+list_len);
 }
 
-
-void vm_thread::init_function(working_set* ws, function* f) {
-    auto stub = f->stub;
-
-    // Add init values
-    // DANGER! Init vals are popped right off the stack, so they better be there
-    // when this function gets initialized!
-    auto len = stub->pos_params.size - stub->req_args;
-    for (u32 i = 0; i < len; ++i) {
-        f->init_vals[i] = pop_to_ws(ws);
-    }
-
-    // set upvalues
-    for (auto i = 0; i < stub->num_upvals; ++i) {
-        auto pos = stub->upvals[i];
-        if (stub->upvals_direct[i]) {
-            auto u = stack->get_upvalue(frame->bp + pos);
-            u->reference();
-            f->upvals[i] = u;
-        } else {
-            auto u = frame->caller->upvals[pos];
-            u->reference();
-            f->upvals[i] = u;
-        }
-    }
-}
-
-#define push_bool(b) push(b ? V_TRUE : V_FALSE);
 void vm_thread::step() {
 
     u8 instr = chunk->read_byte(ip);
@@ -513,15 +488,9 @@ void vm_thread::step() {
         break;
 
     case OP_CLOSURE:
-        // FIXME: rearchitect to not need the working_set here
-        {
-            id = chunk->read_short(ip+1);
-            auto stub = chunk->get_function(id);
-            auto ws = alloc->add_working_set();
-            v1 = ws.add_function(stub);
-            init_function(&ws, vfunction(v1));
-            push(v1);
-        }
+        id = chunk->read_short(ip+1);
+        v1 = stack->create_function(chunk->get_function(id), frame->bp);
+
         ip += 2;
         break;
 
@@ -664,7 +633,7 @@ void vm_thread::step() {
     case OP_APPLY:
         num_args = chunk->read_byte(ip+1);
         jump = true;
-        addr = apply(num_args);
+        addr = apply(num_args, false);
         break;
 
     case OP_TAPPLY:
@@ -687,6 +656,7 @@ void vm_thread::step() {
         num_args = frame->num_args;
         // do the return manipulation on the stack
         stack->do_return(frame->bp);
+        stack->pop_callee();
         tmp = frame;
         // TODO: restore stack pointer
         frame = tmp->prev;
@@ -817,12 +787,6 @@ void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& ou
         break;
     case OP_TCALL:
         out << "tcall " << (i32)((code.read_byte(ip+1)));;
-        break;
-    case OP_CALL_KW:
-        out << "call-kw " << (i32)((code.read_byte(ip+1)));;
-        break;
-    case OP_TCALL_KW:
-        out << "tcall-kw " << (i32)((code.read_byte(ip+1)));;
         break;
     case OP_APPLY:
         out << "apply " << (i32)((code.read_byte(ip+1)));;

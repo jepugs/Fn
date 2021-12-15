@@ -115,7 +115,7 @@ struct function_stub {
 
     // if foreign != nullptr, then all following fields are ignored, and calling
     // this function will be deferred to this
-    value (*foreign)(fn_handle*,value*);
+    void (*foreign)(fn_handle*,value*);
 
     code_chunk* chunk;             // chunk containing the function
     string name;                   // optional name for debugging info

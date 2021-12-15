@@ -44,7 +44,6 @@ struct pinned_object {
     // note that this will not increment the pin count on its own
     pinned_object(gc_header* obj);
     ~pinned_object();
-    // void mark(std::function<void(gc_header*)> descend);
 };
 
 
@@ -60,7 +59,7 @@ private:
     allocator* alloc;
     u32 pointer;
     dyn_array<value> contents;
-    dyn_array<function*> function_stack;
+    dyn_array<function*> callee_stack;
     // open upvalues in descending order by stack position
     std::list<upvalue_cell*> upvals;
     bool dead; // if true, stack will be deleted when garbage is collected
@@ -88,19 +87,50 @@ public:
     void pop_times(u32 n);
     void push(value v);
     // set a value, indexed so 0 is the bottom
-    void set(u32 offset, value v);
+    void set(stack_address offset, value v);
+    // set a value, indexed counting backward from the top of the stack
+    void set_from_top(stack_address offset, value v);
 
+
+    // Value creation on the stack
+
+    // These functions are used to create values directly on the stack so they
+    // are visible to the GC. The push_ functions extend the stack one position,
+    // whereas the set_ functions replace an existing stack value, indexed so 0
+    // is the bottom.
+
+    // strings
+    value push_string(const string& str);
+    value make_string(stack_address place, const string& str);
+
+    // lists
+    value push_cons(value hd, value tl);
+    value make_cons(stack_address place, value hd, value tl);
     // replace the top element of the stack with a list consisting of the top n
     // elements ordered from bottom to top. n must be greater than 0 and less
     // than pointer.
     void top_to_list(u32 n);
 
-    void push_table();
+    // tables
+    value push_table();
+    value make_table(stack_address place);
 
-    // root_stack also maintains a stack of the functions in the call frame, in
-    // order to make sure that they are visible.
-    void push_function(function* callee);
-    void pop_function();
+    // Create a function on top of the stack. Uses the given function stub and
+    // base pointer (needed to initialize the function). If the function
+    // requires any initial values, they will be popped right off the stack, so
+    // make sure they're there, ok? This also sets up the upvalues using the top
+    // of the callee stack. We do all of this in one step inside the root stack
+    // class so that the object will become visible to the GC as soon as it's
+    // fully initialized, and no sooner.
+    value create_function(function_stub* func, stack_address bp);
+
+    // root_stack also maintains a record of the functions in the call stack.
+    // This is so that the function can safely be popped off of the main call
+    // stack. The function on top of the stack is also used for setting upvalues
+    // of newly created functions.
+    void push_callee(function* callee);
+    void pop_callee();
+    function* peek_callee();
 
     // set the upvalues of a function object with the given base pointer
     upvalue_cell* get_upvalue(stack_address loc);
@@ -111,8 +141,8 @@ public:
     // like close_upvalues, but also rolls pointer back to base_addr
     void close(u32 base_addr);
     // close for tail call. This is like close, but the top n elements of the
-    // stack (which must all reside above the base pointer) are pushed back to
-    // the new call frame.
+    // stack (which must all reside above the base pointer) are pushed back so
+    // they start at base_addr (preserving their order on the stack)
     void close_for_tc(stack_address n, stack_address base_addr);
     // like close(), but first saves the top of the stack and pushes it back
     // after doing the close (so the final stack size is base_addr+1). This sets
@@ -242,8 +272,10 @@ private:
 
     // create new objects. These must be already be accessible to the GC, or
     // they will be swept
+    void add_string(fn_string* ptr);
     void add_cons(cons* ptr);
     void add_table(fn_table* ptr);
+    void add_function(function* ptr);
 
 public:
     allocator(global_env* use_globals);

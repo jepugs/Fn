@@ -153,7 +153,6 @@ void free_llir_if(llir_if* obj) {
 llir_fn* mk_llir_fn(const source_loc& origin,
         local_address num_pos_args,
         bool has_var_list_arg,
-        bool has_var_table_arg,
         local_address req_args,
         const string& name,
         llir_form* body,
@@ -167,7 +166,6 @@ llir_fn* mk_llir_fn(const source_loc& origin,
             .num_pos_args=num_pos_args,
             .pos_args=new symbol_id[num_pos_args],
             .has_var_list_arg=has_var_list_arg,
-            .has_var_table_arg=has_var_table_arg,
             .req_args=req_args,
             .inits=new llir_form*[num_pos_args-req_args]
         },
@@ -468,9 +466,6 @@ static string print_llir_offset(llir_form* form,
             }
             if (params.has_var_list_arg) {
                 out << "& " << st.nice_name(params.var_list_arg) << ' ';
-            }
-            if (params.has_var_table_arg) {
-                out << ":& " << st.nice_name(params.var_table_arg) << ' ';
             }
             // body
             out << ")\n"

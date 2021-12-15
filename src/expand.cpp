@@ -71,8 +71,8 @@ llir_form* expander::expand_apply(const source_loc& loc,
         u32 length,
         ast_form** lst,
         expander_meta* meta) {
-    if (length < 4) {
-        e_fault(loc, "apply requires at least 3 arguments.");
+    if (length < 3) {
+        e_fault(loc, "apply requires at least 2 arguments.");
         return nullptr;
     }
 
@@ -453,7 +453,7 @@ llir_form* expander::expand_dollar_fn(const source_loc& loc,
         body = (llir_form*) body2;
     }
 
-    auto res = mk_llir_fn(loc, m+1, false, false, m+1, "", body);
+    auto res = mk_llir_fn(loc, m+1, false, m+1, "", body);
     for (i32 i = 0; i < m+1; ++i) {
         res->params.pos_args[i] = intern("$" + std::to_string(i));
     }
@@ -499,7 +499,6 @@ bool expander::expand_params(ast_form* ast,
 
     auto len = ast->list_length;
     auto amp_sym = intern("&");
-    auto colamp_sym = intern(":&");
     auto& lst = ast->datum.list;
 
     dyn_array<symbol_id> positional;
@@ -509,108 +508,74 @@ bool expander::expand_params(ast_form* ast,
     for (num_pos = 0; num_pos < len; ++num_pos) {
         auto& x = lst[num_pos];
         if (!x->is_symbol()) {
+            if (x->kind != ak_list) {                
+                e_fault(x->loc,
+                        "Malformed item in parameter list.");
+                return false;
+            }
             break;
         }
         auto& sym = x->datum.sym;
-        if (sym == amp_sym || sym == colamp_sym) {
+        if (sym == amp_sym) {
             break;
         }
         positional.push_back(sym);
     }
     u32 num_req = num_pos;
 
-    // positional/optional
-    for (; num_pos < len; ++num_pos) {
-        auto& x = lst[num_pos];
-        if (x->kind != ak_list) {
-            break;
-        } else if (x->list_length != 2 || !x->datum.list[0]->is_symbol()) {
-            // clean up
-            for (auto x : inits) {
-                free_llir_form(x);
-            }
-            e_fault(x->loc,
-                    "Malformed optional parameter in parameter list.");
-            return false;
-        }
-        auto y = expand_meta(x->datum.list[1], meta);
-        if (!y) {
-            for (auto x : inits) {
-                free_llir_form(x);
-            }
-            return false;
-        }
-        inits.push_back(y);
-        positional.push_back(x->datum.list[0]->datum.sym);
-    }
-
-    // var args
-    params->has_var_list_arg = false;
-    params->has_var_table_arg = false;
-
-    // this was a doozy to write. I tried to avoid backtracking or
-    // doublechecking as much as possible. That's why the code is so explicit
-    // and gross. Plz lmk if there's a much better way to accomplish this kind
-    // of control flow. -- Jack
-    bool malformed = false;
-    if (num_pos < len) {
-        auto x = lst[num_pos];
-        if (x->is_symbol()
-                && (x->datum.sym == amp_sym || x->datum.sym == colamp_sym)
-                && (len == 2 + num_pos || len == 4 + num_pos)) {
-            for (u32 i = num_pos; i + 1 < len; ++i) {
-                if (!lst[i]->is_symbol()) {
-                    malformed = true;
-                    break;
-                }
-            }
-
-            if (malformed) {
-                // do nothing
-            } else if (len == 2 + num_pos) {
-                auto var = lst[num_pos+1]->datum.sym;
+    // optional
+    if (num_pos < len && lst[num_pos]->kind == ak_list) {
+        // skip to the varargs test
+        for (; num_pos < len; ++num_pos) {
+            auto& x = lst[num_pos];
+            if (x->kind == ak_symbol_atom) {
                 if (x->datum.sym == amp_sym) {
-                    params->has_var_list_arg = true;
-                    params->has_var_table_arg = false;
-                    params->var_list_arg = var;
-                } else if (x->datum.sym == colamp_sym) {
-                    params->has_var_list_arg = false;
-                    params->has_var_table_arg = true;
-                    params->var_table_arg = var;
+                    break;
                 } else {
-                    malformed = true;
+                    e_fault(x->loc, "Malformed item in parameter list.");
+                    return false;
                 }
-            } else if (len == 4 + num_pos) {
-                auto var1 = lst[num_pos+1]->datum.sym;
-                auto var2 = lst[num_pos+3]->datum.sym;
-                if (x->datum.sym == amp_sym
-                        && lst[num_pos+2]->datum.sym == colamp_sym) {
-                    params->has_var_list_arg = true;
-                    params->has_var_table_arg = true;
-                    params->var_list_arg = var1;
-                    params->var_table_arg = var2;
-                } else if (x->datum.sym == colamp_sym
-                        && lst[num_pos+2]->datum.sym == amp_sym) {
-                    params->has_var_list_arg = true;
-                    params->has_var_table_arg = true;
-                    params->var_list_arg = var2;
-                    params->var_table_arg = var1;
-                } else {
-                    malformed = true;
+            } else if (x->kind != ak_list
+                    || x->list_length != 2
+                    || !x->datum.list[0]->is_symbol()) {
+                // clean up
+                for (auto x : inits) {
+                    free_llir_form(x);
                 }
+                e_fault(x->loc,
+                        "Malformed optional parameter in parameter list.");
+                return false;
             }
-        } else {
-            malformed = true;
+            auto y = expand_meta(x->datum.list[1], meta);
+            if (!y) {
+                for (auto x : inits) {
+                    free_llir_form(x);
+                }
+                return false;
+            }
+            inits.push_back(y);
+            positional.push_back(x->datum.list[0]->datum.sym);
         }
     }
 
-    if (malformed) {
-        for (auto x : inits) {
-            free_llir_form(x);
+    params->has_var_list_arg = false;
+    if (num_pos < len) {
+        // at this point, there would have been an error already if anything
+        // other than the ampersand symbol was next.
+        if (len - num_pos != 2
+            || lst[num_pos+1]->kind != ak_symbol_atom) {
+            for (auto x : inits) {
+                free_llir_form(x);
+            }
+            e_fault(lst[num_pos]->loc,
+                    "Malformed variadic parameter in parameter list.");
+            return false;
+        } else {
+            params->has_var_list_arg = true;
+            params->var_list_arg = lst[num_pos+1]->datum.sym;
         }
-        e_fault(loc, "Malformed parameter list.");
-        return false;
     }
+
 
     // TODO: check if we exceed maximum arguments
     params->num_pos_args = num_pos;

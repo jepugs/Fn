@@ -480,7 +480,7 @@ void interpreter::runtime_error(const string& msg,
 
 void interpreter::add_builtin_function(const string& name,
         const string& params,
-        value (*foreign_func)(fn_handle*, value*)) {
+        void (*foreign_func)(fn_handle*, value*)) {
     // Have to extract the params manually, as the expander method could execute
     // code if it encounters an initform that has a macro in it.
     fault err;

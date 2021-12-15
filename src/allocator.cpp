@@ -47,7 +47,7 @@ value root_stack::pop() {
 }
 
 void root_stack::pop_times(u32 n) {
-    if (n >= 0) {
+    if (n > 0) {
         pointer -= n;
         last_pop = contents[pointer];
         contents.resize(pointer);
@@ -67,6 +67,38 @@ void root_stack::set(u32 offset, value v) {
     contents[offset] = v;
 }
 
+value root_stack::push_string(const string& str) {
+    auto ptr = new fn_string{str};
+    auto v = vbox_string(ptr);
+    push(v);
+    alloc->add_string(ptr);
+    return v;
+}
+
+value root_stack::make_string(stack_address place, const string& str) {
+    auto ptr = new fn_string{str};
+    auto v = vbox_string(ptr);
+    set(place, v);
+    alloc->add_string(ptr);
+    return v;
+}
+
+value root_stack::push_cons(value hd, value tl) {
+    auto ptr = new cons{hd, tl};
+    auto v = vbox_cons(ptr);
+    push(v);
+    alloc->add_cons(ptr);
+    return v;
+}
+
+value root_stack::make_cons(stack_address place, value hd, value tl) {
+    auto ptr = new cons{hd, tl};
+    auto v = vbox_cons(ptr);
+    set(place, v);
+    alloc->add_cons(ptr);
+    return v;
+}
+
 void root_stack::top_to_list(u32 n) {
     if (n == 0) {
         push(V_EMPTY);
@@ -74,14 +106,14 @@ void root_stack::top_to_list(u32 n) {
     }
 
     auto ptr = new cons{contents[pointer - 1], V_EMPTY};
-    contents[pointer - 1] = vbox_cons(ptr);
     alloc->add_cons(ptr);
+    contents[pointer - 1] = vbox_cons(ptr);
 
     for (u32 i = 1; i < n; ++i) {
         ptr = new cons{
-            contents[pointer - 1 - i],
+            contents[pointer - i - 1],
             contents[pointer - i]};
-        contents[pointer - 1 - i] = vbox_cons(ptr);
+        contents[pointer - i - 1] = vbox_cons(ptr);
         alloc->add_cons(ptr);
     }
 
@@ -89,18 +121,62 @@ void root_stack::top_to_list(u32 n) {
     contents.resize(pointer);
 }
 
-void root_stack::push_table() {
+value root_stack::push_table() {
     auto ptr = new fn_table{};
-    push(vbox_table(ptr));
+    auto v = vbox_table(ptr);
+    push(v);
     alloc->add_table(ptr);
+    return v;
 }
 
-void root_stack::push_function(function* callee) {
-    function_stack.push_back(callee);
+value root_stack::make_table(stack_address place) {
+    auto ptr = new fn_table{};
+    auto v = vbox_table(ptr);
+    set(place, v);
+    alloc->add_table(ptr);
+    return v;
 }
 
-void root_stack::pop_function() {
-    function_stack.resize(function_stack.size-1);
+value root_stack::create_function(function_stub* stub, stack_address bp) {
+    auto f = new function{stub};
+
+    // set up initial values
+    auto len = stub->pos_params.size - stub->req_args;
+    for (u32 i = 0; i < len; ++i) {
+        f->init_vals[i] = peek(i);
+    }
+    pop_times(len);
+
+    // set upvalues
+    for (auto i = 0; i < stub->num_upvals; ++i) {
+        auto pos = stub->upvals[i];
+        if (stub->upvals_direct[i]) {
+            auto u = get_upvalue(bp + pos);
+            u->reference();
+            f->upvals[i] = u;
+        } else {
+            auto u = peek_callee()->upvals[pos];
+            u->reference();
+            f->upvals[i] = u;
+        }
+    }
+
+    auto v = vbox_function(f);
+    push(v);
+    alloc->add_function(f);
+    return v;
+}
+
+void root_stack::push_callee(function* callee) {
+    callee_stack.push_back(callee);
+}
+
+void root_stack::pop_callee() {
+    callee_stack.resize(callee_stack.size-1);
+}
+
+function* root_stack::peek_callee() {
+    return callee_stack[callee_stack.size-1];
 }
 
 upvalue_cell* root_stack::get_upvalue(stack_address pos) {
@@ -116,6 +192,7 @@ upvalue_cell* root_stack::get_upvalue(stack_address pos) {
         ++it;
     }
     // create a new upvalue
+    // FIXME: these should really come from a resource pool in the allocator
     auto cell = new upvalue_cell{pos};
     upvals.insert(it, cell);
     return cell;
@@ -150,10 +227,6 @@ void root_stack::close(u32 base_addr) {
 void root_stack::close_for_tc(u32 n, u32 base_addr) {
     auto old_ptr = pointer;
 
-    // FIXME: closing here will temporarily set the base address lower than it
-    // should be.
-
-    // time to obliterate the old call frame...
     close_upvalues(base_addr);
 
     auto arg_offset = (old_ptr - n) - (base_addr);
@@ -167,13 +240,11 @@ void root_stack::close_for_tc(u32 n, u32 base_addr) {
 }
 
 
-void root_stack::do_return(u32 base_addr) {
-    pop();
-    // NOTE! No stack operations can happen here, or last pop will get messed
-    // up.
-    close(base_addr);
-    push(last_pop);
-    pop_function();
+void root_stack::do_return(u32 ret_pos) {
+    close_upvalues(ret_pos);
+    contents[ret_pos] = contents[pointer - 1];
+    pointer = ret_pos + 1;
+    contents.resize(pointer);
 }
 
 void root_stack::kill() {
@@ -460,7 +531,7 @@ void allocator::mark() {
             for (u32 i = 0; i < (*it)->get_pointer(); ++i) {
                 add_mark_value((*it)->contents[i]);
             }
-            for (auto x : (*it)->function_stack) {
+            for (auto x : (*it)->callee_stack) {
                 mark_descend((gc_header*)x);
             }
             add_mark_value((*it)->last_pop);
@@ -508,9 +579,26 @@ void allocator::add_cons(cons* ptr) {
     ++count;
 }
 
+void allocator::add_string(fn_string* ptr) {
+    objects.push_back((gc_header*)ptr);
+    collect();
+    // FIXME: count string size here
+    mem_usage += sizeof(fn_string);
+    ++count;
+}
+
 void allocator::add_table(fn_table* ptr) {
     objects.push_back((gc_header*)ptr);
     collect();
+    // FIXME: count table size here
+    mem_usage += sizeof(fn_table);
+    ++count;
+}
+
+void allocator::add_function(function* ptr) {
+    objects.push_back((gc_header*)ptr);
+    collect();
+    // FIXME: count function size here
     mem_usage += sizeof(fn_table);
     ++count;
 }

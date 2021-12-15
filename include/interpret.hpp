@@ -71,7 +71,7 @@ public:
     // adds a foreign function to fn/builtin
     void add_builtin_function(const string& name,
             const string& args,
-            value (*foreign_func)(fn_handle*,value*));
+            void (*foreign_func)(fn_handle*,value*));
 
     // Evaluate a source file in an empty chunk. Returns the value from the last
     // expression (or null for an empty file). A warning will be generated if

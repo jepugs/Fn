@@ -131,6 +131,39 @@
                         (if (empty? ,rem)
                             ,val
                             (,lp (do (let ,var (head ,rem)) ,@body)
-                                  (tail ,rem))))
+                                 (tail ,rem))))
                       (,lp nil ,lst)))
     true 'nil))
+
+;; example loop usage:
+(do
+  (let sum 0)
+  (loop for x in (list-range 1 100)
+        do (set! sum (+ x sum)))
+  sum)
+
+;; I'm thinking of adding #-syntax for gensyms in quasiquotes. It would look like
+;; this:
+; (defmacro loop (cmd & args)
+;   (cond
+;     (= cmd 'while) (do
+;                      (let expr (head args)
+;                           body (tail (tail args)))
+;                      `(do
+;                         (letfn #lp (,val)
+;                             (if ,expr
+;                                 (#lp (do ,@body))
+;                                 #val))
+;                         (,lp nil)))
+;     (= cmd 'for) (do
+;                    (let var (head args)
+;                         lst (nth 2 args)
+;                         body (drop 4 args))
+;                    `(do
+;                       (letfn #lp (#val #rem)
+;                         (if (empty? #rem)
+;                             #val
+;                             (#lp (do (let var (head #rem)) #@body)
+;                                   (tail #rem))))
+;                       (#lp nil ,lst)))
+;     true 'nil))

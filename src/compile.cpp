@@ -110,8 +110,8 @@ void compiler::compile_apply(const llir_apply* llir,
     return_on_err;
 
     write_byte(tail ? OP_TAPPLY : OP_APPLY);
-    // the instruction doesn't count the list and table arguments at the end
-    write_byte(llir->num_args - 2);
+    // the instruction doesn't count the list at the end
+    write_byte(llir->num_args - 1);
     lex->sp = 1+start_sp;
 }
 
@@ -229,9 +229,6 @@ void compiler::compile_fn(const llir_fn* llir,
         var_list = params.var_list_arg;
     }
     optional<symbol_id> var_table = std::nullopt;
-    if (params.has_var_table_arg) {
-        var_table = params.var_table_arg;
-    }
     auto func_id = dest->add_function(params.num_pos_args,
             params.pos_args,
             params.req_args,
@@ -249,13 +246,6 @@ void compiler::compile_fn(const llir_fn* llir,
     if (params.has_var_list_arg) {
         lex2.vars.insert(params.var_list_arg, params.num_pos_args);
         ++lex2.sp;
-        if (params.has_var_table_arg) {
-            lex2.vars.insert(params.var_table_arg, params.num_pos_args+1);
-            ++lex2.sp;
-        }
-    } else if (params.has_var_table_arg) {
-        ++lex2.sp;
-        lex2.vars.insert(params.var_table_arg, params.num_pos_args);
     }
 
     compile_llir_generic(llir->body, &lex2, true);

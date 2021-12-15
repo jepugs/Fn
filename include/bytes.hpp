@@ -80,7 +80,7 @@ struct code_chunk {
             local_address req_args,
             optional<symbol_id> vl_param,
             optional<symbol_id> vt_param,
-            value (*foreign_func)(fn_handle*, value*),
+            void (*foreign_func)(fn_handle*, value*),
             const string& name);
     function_stub* get_function(u16 id);
     const function_stub* get_function(u16 id) const;
@@ -173,16 +173,12 @@ constexpr u8 OP_CJUMP = 0x31;
 constexpr u8 OP_CALL = 0x32;
 // tcall BYTE; perform a tail call
 constexpr u8 OP_TCALL = 0x33;
-// apply BYTE; apply function. Uses BYTE+3 stack elements. ->[func] kw-table
-// args pos-arg-n ... pos-arg-1. Like call, but expands the list args to provide
+// apply BYTE; apply function. Uses BYTE+2 stack elements. ->[func] args
+// pos-arg-n ... pos-arg-1. Like call, but expands the list args to provide
 // additional positional arguments to the function.
 constexpr u8 OP_APPLY = 0x34;
 // tail call version of apply
 constexpr u8 OP_TAPPLY = 0x35;
-// function calls with keyword tables. Uses BYTE+2 stack elements.
-// -> [func] kw-table pos-arg-n ... pos-arg-1
-constexpr u8 OP_CALL_KW = 0x36;
-constexpr u8 OP_TCALL_KW = 0x37;
 // return; return from the current function
 constexpr u8 OP_RETURN = 0x38;
 
