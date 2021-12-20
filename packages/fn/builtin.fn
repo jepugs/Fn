@@ -77,7 +77,7 @@
   (if (or (empty? list)
           (not (pred (head list))))
       list
-      (drop pred (tail list))))
+      (drop-while pred (tail list))))
 
 (defn split-after (n list)
   "Take elements from a list as long as pred is true."
