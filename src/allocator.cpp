@@ -106,8 +106,8 @@ void root_stack::top_to_list(u32 n) {
     }
 
     auto ptr = new cons{contents[pointer - 1], V_EMPTY};
-    alloc->add_cons(ptr);
     contents[pointer - 1] = vbox_cons(ptr);
+    alloc->add_cons(ptr);
 
     for (u32 i = 1; i < n; ++i) {
         ptr = new cons{
