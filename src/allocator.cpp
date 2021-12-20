@@ -19,6 +19,7 @@ static constexpr f64 RESCALE_TH = 0.7;
 
 root_stack::root_stack()
     : pointer{0}
+    , contents{512}
     , dead{false}
     , last_pop{V_NIL} {
 }
@@ -288,78 +289,53 @@ working_set& working_set::operator=(working_set&& other) noexcept {
 }
 
 value working_set::add_cons(value hd, value tl) {
-    alloc->collect();
-    alloc->mem_usage += sizeof(cons);
-    ++alloc->count;
     auto ptr = new cons{hd,tl};
     auto v = vbox_cons(ptr);
     pin(&ptr->h);
-    alloc->objects.push_back((gc_header*)ptr);
+    alloc->add_cons(ptr);
     return v;
 }
 
 value working_set::add_string(const string& s) {
-    alloc->collect();
-    // +1 for null terminator
-    alloc->mem_usage += sizeof(fn_string) + s.length() + 1;
-    ++alloc->count;
     auto ptr = new fn_string{s};
     pin(&ptr->h);
-    alloc->objects.push_back((gc_header*)ptr);
+    alloc->add_string(ptr);
     return vbox_string(ptr);
 }
 
 value working_set::add_string(const fn_string& s) {
-    alloc->collect();
-    alloc->mem_usage += sizeof(fn_string) + s.len + 1;
-    ++alloc->count;
     auto ptr = new fn_string{s};
     auto v = vbox_string(ptr);
     pin(&ptr->h);
-    alloc->objects.push_back((gc_header*)ptr);
+    alloc->add_string(ptr);
     return v;
 }
 
 value working_set::add_string(u32 len) {
-    alloc->collect();
-    alloc->mem_usage += sizeof(fn_string) + len + 1;
-    ++alloc->count;
     auto ptr = new fn_string{len};
     auto v = vbox_string(ptr);
     pin(&ptr->h);
-    alloc->objects.push_back((gc_header*)ptr);
+    alloc->add_string(ptr);
     return v;
 }
 
 value working_set::add_table() {
-    alloc->collect();
-    alloc->mem_usage += sizeof(fn_table);
-    ++alloc->count;
     auto ptr = new fn_table{};
     auto v = vbox_table(ptr);
     pin(&ptr->h);
-    alloc->objects.push_back((gc_header*)ptr);
+    alloc->add_table(ptr);
     return v;
 }
 
 value working_set::add_function(function_stub* stub) {
-    alloc->collect();
-    alloc->mem_usage += sizeof(function)
-        + stub->num_upvals*sizeof(upvalue_cell)
-        + (stub->pos_params.size - stub->req_args)*sizeof(value);
-    ++alloc->count;
     auto ptr = new function{stub};
     auto v = vbox_function(ptr);
     pin(&ptr->h);
-    alloc->objects.push_back((gc_header*)ptr);
+    alloc->add_function(ptr);
     return v;
 }
 
 code_chunk* working_set::add_chunk(symbol_id ns_id) {
-    alloc->collect();
-    alloc->mem_usage += sizeof(code_chunk);
-    ++alloc->count;
-
     // ensure namespace exists
     auto x = alloc->globals->get_ns(ns_id);
     if (!x.has_value()) {
@@ -370,7 +346,7 @@ code_chunk* working_set::add_chunk(symbol_id ns_id) {
 
     auto h = (gc_header*)res;
     pin(h);
-    alloc->objects.push_front(h);
+    alloc->add_chunk(res);
     return res;
 }
 
@@ -403,8 +379,10 @@ allocator::~allocator() {
     for (auto s : root_stacks) {
         delete s;
     }
-    for (auto o : objects) {
-        dealloc(o);
+    for (auto h = first_obj; h != nullptr;) {
+        auto tmp = h->next_obj;
+        dealloc(h);
+        h = tmp;
     }
 }
 
@@ -448,12 +426,6 @@ void allocator::dealloc(gc_header* o) {
     }
     --count;
 }
-
-// void allocator::mark_descend_value(value v) {
-//     if (vhas_header(v)) {
-//         mark_descend(vheader(v));
-//     }
-// }
 
 void allocator::add_mark_value(value v) {
     if (vhas_header(v)) {
@@ -555,13 +527,16 @@ void allocator::sweep() {
     auto orig_sz = mem_usage;
 #endif
 
-    for (auto it = objects.begin(); it != objects.end();) {
-        if (gc_mark(**it)) {
-            gc_unset_mark(**it);
-            ++it;
+    auto prev_ptr = &first_obj;
+    for (auto h = first_obj; h != nullptr;) {
+        if (gc_mark(*h)) {
+            gc_unset_mark(*h);
+            prev_ptr = &h->next_obj;
+            h = h->next_obj;
         } else {
-            dealloc(*it);
-            it = objects.erase(it);
+            *prev_ptr = h->next_obj;
+            dealloc(h);
+            h = *prev_ptr;
         }
     }
 
@@ -573,14 +548,14 @@ void allocator::sweep() {
 }
 
 void allocator::add_cons(cons* ptr) {
-    objects.push_back((gc_header*)ptr);
+    add_to_obj_list((gc_header*)ptr);
     collect();
     mem_usage += sizeof(cons);
     ++count;
 }
 
 void allocator::add_string(fn_string* ptr) {
-    objects.push_back((gc_header*)ptr);
+    add_to_obj_list((gc_header*)ptr);
     collect();
     // FIXME: count string size here
     mem_usage += sizeof(fn_string);
@@ -588,7 +563,7 @@ void allocator::add_string(fn_string* ptr) {
 }
 
 void allocator::add_table(fn_table* ptr) {
-    objects.push_back((gc_header*)ptr);
+    add_to_obj_list((gc_header*)ptr);
     collect();
     // FIXME: count table size here
     mem_usage += sizeof(fn_table);
@@ -596,11 +571,24 @@ void allocator::add_table(fn_table* ptr) {
 }
 
 void allocator::add_function(function* ptr) {
-    objects.push_back((gc_header*)ptr);
+    add_to_obj_list((gc_header*)ptr);
     collect();
     // FIXME: count function size here
     mem_usage += sizeof(fn_table);
     ++count;
+}
+
+void allocator::add_chunk(code_chunk* ptr) {
+    add_to_obj_list((gc_header*)ptr);
+    collect();
+    // FIXME: count chunk size here
+    mem_usage += sizeof(code_chunk);
+    ++count;
+}
+
+void allocator::add_to_obj_list(gc_header* h) {
+    h->next_obj = first_obj;
+    first_obj = h;
 }
 
 bool allocator::gc_is_enabled() const {

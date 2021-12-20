@@ -10,7 +10,6 @@
 #include "namespace.hpp"
 #include "values.hpp"
 
-#include <list>
 
 // FIXME: these macros should probably be in a header, but not this one (so as
 // to not pollute the macro namespace)
@@ -216,15 +215,9 @@ class allocator {
     friend class root_stack;
     friend class code_chunk;
 private:
-    // note: we guarantee that every pointer in this array is actually memory
-    // managed by this garbage collector
-    std::list<gc_header*> objects;
-    // globals are removed from the objects array
-    std::list<gc_header*> global_objects;
-    // list of global objects with mutable values. These mutable cells are
-    // used as gc roots
-    std::list<gc_header*> mutable_globals;
-    // list of objects to mark next. This is populate based on root objects.
+    gc_header* first_obj=nullptr;
+    // list of objects to mark next. This is populated based on root objects.
+    // FIXME: this could be replaced by a local variable in mark()
     std::forward_list<gc_header*> marking_list;
 
     // holds global variables
@@ -248,9 +241,6 @@ private:
 
     // deallocate an object, rendering all references to it meaningless
     void dealloc(gc_header* o);
-
-    // get a list of objects accessible from the given value
-    forward_list<gc_header*> accessible(gc_header* o);
 
     // helpers for mark
     //void mark_descend_value(value v);
@@ -276,6 +266,9 @@ private:
     void add_cons(cons* ptr);
     void add_table(fn_table* ptr);
     void add_function(function* ptr);
+    void add_chunk(code_chunk* ptr);
+
+    void add_to_obj_list(gc_header* h);
 
 public:
     allocator(global_env* use_globals);

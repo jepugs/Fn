@@ -27,6 +27,12 @@ struct dyn_array {
         , size{0}
         , data{(t*)malloc(sizeof(t)*capacity)} {
     }
+    dyn_array(u32 capacity)
+        : capacity{capacity}
+        , size{0}
+        , data{(t*)malloc(sizeof(t)*capacity)} {
+    }
+
     dyn_array(const dyn_array<t>& other)
         : capacity{other.capacity}
         , size{other.size}

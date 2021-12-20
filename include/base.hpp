@@ -69,13 +69,13 @@ constexpr u64 max_local_address = 255;
 struct alignas(16) gc_header {
     u8 bits;         // bitfield holding gc information
     i8 pin_count=0;  // times pinned
+    gc_header* next_obj; // next gc_header (intrusive linked list)
 };
 gc_header* mk_gc_header(u8 bits, gc_header* dest=nullptr);
 
 // Values for the gc_header bits
 constexpr u8 GC_MARK_BIT        = 0x01;
 constexpr u8 GC_GLOBAL_BIT      = 0x02;
-constexpr u8 GC_WEAK_GLOBAL_BIT = 0x04;
 constexpr u8 GC_TYPE_BITMASK    = 0xf0;
 
 // GC Types
