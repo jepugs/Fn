@@ -1,0 +1,57 @@
+#+TITLE: Features Missing from the Current Interpreter
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="style.css"/>
+#+HTML_HEAD_EXTRA: <link rel="stylesheet-alternate" type="text/css" href="style.css"/>
+
+* Features Missing from the Current Interpreter
+
+I'm in the process of finalizing the implementation of Fn language. As a result,
+there are situations in which the behavior of the current version interpreter
+differs from the ultimate plan for Fn. This is my attempt to fully document
+those disparities.
+
+In the lists below, an item marked with (*) indicates behavior that contradicts
+the Fn manual.
+
+
+** Variables and Mutability
+
+- (*) Variable names are not checked for validity. At the moment anything goes.
+- (*) It's possible to mutate global variables with ~def~ and ~defn~.
+- (*) The syntax ~#name~ for getting global variable names is not implemented.
+
+
+** Imports
+
+- (*) The FN_SEARCH_PATH environment variable is not used
+- No warning is emitted when importing a file whose package declaration
+  disagrees with the on in the import expression
+- (*) The as and no-prefix options are not currently supported
+- Syntax highlighting is not implemented for ~as~ an ~no-prefix~ import qualifiers
+
+
+** Standard Library
+
+- Add a file I/O library wrapping all C stdio functionality
+- Add IPC and socket libraries to allow Fn programs
+- Write unit tests for the standard library functions. For primitive foreign
+  functions such as equality, these tests will be written in C++. For others,
+  the tests can be written in Fn directly, which should make development go
+  faster.
+- Add threading/async libraries based on cooperative multithreading
+
+
+** FFI
+
+- Implement a standalone C/C++ library that can be used to write foreign
+  functions for Fn
+- Introduce a namespace
+
+
+** Internals
+
+- Provide an execution mode for the VM that avoids marking and sweeping values
+  accessible from global variables. This will involve "freezing" namespaces that
+  have already been imported
+- Implement
+- Implement pool allocators for conses and linked list cells. (Or, alternatively
+  move the linked list structure inside the gc_header).

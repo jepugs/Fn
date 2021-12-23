@@ -1,29 +1,30 @@
-#+TITLE: Fn Programming Language Manual (pre-0.1)
+#+TITLE: Fn Programming Language Manual 0.1 (WIP)
 #+AUTHOR: Jack Pugmire
-
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="style.css"/>
+#+HTML_HEAD_EXTRA: <link rel="stylesheet-alternate" type="text/css" href="style.css"/>
 
 * Introduction
 
-This is the official manual for Fn. It is not a /guide/ in the sense that it does
-not attempt to teach Fn in a linear fashion. However, there should be enough
-here for any experienced programmer to get started.
+This is the official manual for Fn. It is /almost entirely/ accurate to the
+current implementation of Fn in this repository. A list of disparities and
+missing functionality is in the file [[./implementation-progress.org]].
+
+The structure of this manual is as follows:
 
 - [[Language Guide]] contains a walkthrough of all the major features of the Fn
-  language. It's meant to be something you can read in order.
+  language. An experienced programmer should be able to skim over this section
+  and get enough of an idea to start using Fn.
 
 - [[Command Line Interface]] gives instructions on using the ~fn~ command line
-  tool to evaluate code.
+  tool to run code.
 
-- [[Builtin Functions]] contains a list of builtin functions. This section is
-  mostly unwritten.
+- [[Builtin Functions]] contains a list of functions included in the ~fn/builtin~
+  namespace.
 
 - [[FFI]] details how to interface with C code from Fn.
 
-
-* Language Guide
-
 Fn is a dynamically typed, garbage-collected, general-purpose programming
-language with Lisp-like syntax. A couple of its defining characteristics are:
+language with Lisp-derived syntax.
 - The core language has relatively few operations, with special care taken to
   ensure they have consistent and concise syntax.
 - Fn is designed for a "mostly functional" programming style, where immutability
@@ -31,19 +32,82 @@ language with Lisp-like syntax. A couple of its defining characteristics are:
 - The native macro system allows definition of new syntax (and even entire
   domain-specific languages) using regular Fn code and data structures.
 
-To get started, let's take a look at the basic syntax. Fn uses *parenthesized
+
+** Notes for Those Familiar with Lisp
+
+This little section is only for people who are already fluent in another dialect
+of Lisp such as Common Lisp, Clojure, or Scheme. Other readers should skip it
+(unless you're curious).
+
+Fn is a Lisp, so if you have experience with other languages in the
+family, you should find Fn to be quite comfortable. That said, you must tread
+with caution. I changed a lot with no regard for history.
+
+Fn is a case-sensitive Lisp-1 with unhygienic macros. Name collision problems
+are solved by organizing code into namespaces, and giving every global
+definition a unique *global identifier*. E.g., a macroexpansion using the builtin
+~map~ function should refer to it by its global identifier ~#/fn/builtin:map~.
+Language facilities are provided to make this more convenient.
+
+Here are a couple of the ways I've broken with traditional Lisp:
+
+1. ~car~, ~cdr~ and the rest are completely absent, replaced by ~head~, ~tail~, and ~nth~.
+   I acknowledge that ~cadadr~ and company are good for tree traversal, but the
+   names are sooooo bad. I hope to capture this lost functionality with a
+   pattern matching solution.
+2. Dotted pairs are also gone. The tail of every ~cons~ cell is required to be a
+   list. The dot operator has been repurposed as an accessor.
+3. Fn's ~cond~ has the syntax of Clojure's ~cond~, rather than that from CL or
+   Scheme. That is, we've dropped the inner parentheses, so you'd say ~(cond test
+   expr)~ instead of ~(cond (test expr))~. As a consequence, multiple-expression
+   clauses must be wrapped in a ~do~ block.
+4. ~do~ is not a looping construct, but rather the Fn analogue for ~progn~ or ~begin~.
+   This is also something which was done in Clojure.
+5. The most egregious change I've made is to ~let~. ~let~ expressions no longer
+   contain a body. Instead, they occur within ~do~ blocks or function bodies and
+6. Fn provides a special form called ~with~ which has syntax and semantics like
+   ~letrec~, although the inner parentheses in the binding form have been dropped.
+
+With respect to points 5 and 6 above, this is how ~let~ and ~with~ work:
+#+BEGIN_SRC fn
+(do
+  (let x 6)
+  (+ x 7))   ; => 13
+
+(with (x 7
+       y 8)
+  (* x y))    ; => 56
+#+END_SRC
+
+
+* Language Guide
+
+
+** Basics
+
+This section introduces some elementary aspects of Fn's syntax and semantics so
+that they can be used in the examples throughout the rest of the guide. It
+should also give you an idea of the general flavor of Fn.
+
+
+*** Basic Syntax
+
+To get started, let's take a look at Fn's syntax. Fn uses *parenthesized
 prefix notation*, meaning expressions are between parentheses and the operation
 comes first (it's a prefix to its arguments). This is what that looks like:
 
 #+BEGIN_SRC fn
+; note: comments begin with semicolons
+
 ; the basic syntax is
 (<operator> <arguments> ...)
 
 ; this syntax used for language primitives
-(def x 42)        ; => defines a global variable
+(def x 42)        ; => defines a global variable named x
 (fn (x) (* x 2))  ; => creates a function
 
 ; it is also used for function calls
+(length [1 2 3])  ; => 3, i.e. the length of the list [1 2 3]
 
 ; this is how you do arithmetic in Fn
 (+ 6 7)         ; => 13
@@ -66,10 +130,403 @@ comes first (it's a prefix to its arguments). This is what that looks like:
 (println "Hello, world!")   ; need I say what this does?
 #+END_SRC
 
+Fn also has some syntactic sugar to make certain common operations more
+convenient. For example, the ~quote~ operation (used to construct certain objects)
+can be written like this:
+#+BEGIN_SRC fn
+'quoted-form
+#+END_SRC
+This is expanded into the following before compilation:
+#+BEGIN_SRC fn
+(quote quoted-form)
+#+END_SRC
+This means that all Fn code can be expanded to be written in prefix notation. As
+a consequence, it's quite easy to represent Fn source code as a tree. This idea
+is explored in more detail in [[Quoting and Macros]]. (As an additional note, the
+code in the example above simply creates a symbol object named "quoted-form".
+For the basics of symbols, see [[Overview of Data Model]]).
+
+
+*** Overview of Data Model
+
+In Fn, an *object* or *value* is the result of an expression. Fn has no distinction
+between expressions and statements. Every form is an expression that returns a
+value. Expressions with no logical return value should return the special
+constant ~nil~.
+
+Fn's data types can be divided into *atomic* and *non-atomic* types. (Instances of
+atomic types are called *atoms*). Atomic types are defined by the fact that they
+do not reference any other objects.
+
+Strings, (floating-point) numbers, symbols, booleans, and the nil value are the
+atomic data types in Fn. Tables and lists are the non-atomic types. This is what
+the syntax for atoms looks like:
+
+#+BEGIN_SRC fn
+; numbers are pretty much what you'd expect. (The same formats as in C++17 are
+; accepted).
+2
+-6
+2.0e-6   ; we have scientific notation
+0xFf     ; hexadecimal, even!
+
+; strings are enclosed within matched double quotes
+"string"
+"Fn uses escape codes from C, e.g. \\ \"\n"
+""
+
+; symbols are created with a single quote
+'sym1
+'sym2
+; symbols can contain arbitrary characters, but whitespace and syntax characters
+; must be escaped with backslashes
+'sym\ with\ \"escapes\"
+
+; it will result in a number instead of a symbol. You can get around this 
+; with escapes:
+'0xb8  ;; this is a number
+'\0xb8 ;; this is a symbol
+; recommendation: minimize use of symbols whose names are valid numbers
+
+; booleans and nil are called by name
+true
+false
+nil
+#+END_SRC
+
+
+*** TODO First Functions on Atoms
+
+Recall that function calls in Fn are of the form ~(function arguments ...)~.
+
+
+**** Numbers
+
+- +, -, /, ~*~, ~**~
+- mod
+- integer?
+- even?, odd?
+- floor, ceil
+
+
+**** Strings
+
+- ~Str~
+- substr
+- reverse
+- concat
+- intern
+
+
+**** Symbols
+
+- symbol-name
+
+
+*** Lists and Tables
+
+Lists and tables, on the other hand, are containers which can hold other data
+types. Lists are immutable singley-linked lists, and tables are mutable
+key-value stores.
+
+Lists are created using square brackets or equivalently by using the function
+~List~.
+#+BEGIN_SRC fn
+[1 2 3]
+(List 1 2 3)  ; desugared version of prev line
+
+[]                  ; empty list
+["string" 1 false]  ; lists can contain values of different types
+#+END_SRC
+
+Some common functions to operate on lists are:
+- ~length~ :: get the length of a list
+- ~head~ :: get the first element of a list
+- ~tail~ :: get the tail of the list, i.e. a list containing everything except the
+  head
+- ~reverse~ :: you can guess this one
+- ~concat~ :: concatenate two or more lists end to end
+
+Tables are created using braces (or the equivalent Table function). They must be
+passed an even number of arguments. The first, 3rd, 5th, etc are keys, and the
+2nd, 4th, 6th are corresponding values. 
+#+BEGIN_SRC fn
+; here's a table mapping numbers to strings:
+{1 "one"
+ 2 "two"
+ 3 "three"}
+; the above syntax is equivalent to this
+(Table 1 "one"
+       2 "two"
+       3 "three")
+
+; this table maps the symbols a,b,c to various values
+{'a "str" 'b 2 'c false}
+
+; keys can also be of mixed types. This table maps empty objects to a symbol
+; representing their type
+{[] 'List
+ {} 'Table  ; here {} is a table acting as a key value for another table
+ "" 'Str}
+#+END_SRC
+
+Values of the table can be accessed with the ~get~ function:
+#+BEGIN_SRC fn
+(get {1 "one" 2 "two"} 1) ; => "one"
+(get {1 "one" 2 "two"} 1) ; => "two"
+#+END_SRC
+When the key is a symbol, the special form ~dot~ can be used in place of ~get~.
+#+BEGIN_SRC fn
+(dot {'hello "world" 'goodbye "moon"} hello) ; => "world"
+; the above is equivalent to
+(get {'hello "world" 'goodbye "moon"} 'hello)
+#+END_SRC
+There are two differences between ~get~ and ~dot~. First of all, ~get~ is a normal
+function and may be used as such, while ~dot~ is a syntactic form that behaves
+differently from a function. Secondly, the argument to ~dot~ is automatically
+quoted, i.e. we don't need to put a quote character before the symbol. There is
+also special syntax for the ~dot~ form, but that will be introduced after we
+introduce variables.
+
+Common functions on tables include:
+- ~length~ :: get the length of a table
+- ~table-keys~ :: get a list of keys belonging to a table
+- ~concat~ :: combine two or more tables. In the case that multiple tables include
+  the same key, the last table in the argument list takes precedent.
+
+
+** TODO Control Flow and Functions
+
+
+*** TODO Conditional Execution
+
+The conditional control flow primitives are ~if~ and ~cond~.
+
+~if~ takes exactly three arguments: a test expression, an expression to evaluate
+if the test is true, and an expression to evaluate if the test is false. In Fn,
+~nil~ and ~false~ are considered to be false values, while all others are treated as
+~true~.
+#+BEGIN_SRC fn
+;; if and cond syntax
+
+;; cond takes pairs of expressions and consequences
+(cond
+  false 1
+  nil   2
+  'foo  3
+  true  4)
+; => returns 3, because 'foo is the first true value
+
+(defn fizzbuzz (x)
+  (cond
+    (= (mod x 15) 0) 'FizzBuzz
+    (= (mod x 5) 0)  'Buzz
+    (= (mod x 3) 0)  'Fizz
+    true             x))
+(fizzbuzz 6)  ; = Fizz
+(fizzbuzz 7)  ; = 7
+(fizzbuzz 45) ; = FizzBuzz
+(fizzbuzz 65) ; = Buzz
+#+END_SRC
+
+~cond~ is an alternative conditional syntax which is analogous to "if/else if"
+blocks in other programming languages. ~cond~ takes pairs of arguments and treats
+the first one as a test. If the test is true, it returns the result of the
+second argument in the pair. Otherwise it proceeds to the next pair, returning
+~nil~ if the end is reached.
+
+
+*** Functions and Calls
+
+Function calls have already been shown frequently in the manual prior to this
+point. For example, we've seen arithmetic with the functions ~+~, ~-~, ~*~, and ~/~:
+#+BEGIN_SRC fn
+(+ 1 2 3)      ; => 6
+(- (/ 6 2) 3)  ; => 0
+(* 17 (- 2 7)) ; => -85
+#+END_SRC
+
+As you may have already surmised, in each parenthesized list above, the first
+element is the function and the remaining ones are its arguments. All
+parenthesized forms in Fn are either special forms, macros, or function calls,
+with function calls being the "default" and by far the most common.
+
+Functions are created with the ~fn~ special form, which requires a parameter list
+followed by a series of expressions that make up the function's body.
+
+#+BEGIN_SRC fn
+; square a number
+(def square
+  (fn (x)     ; x is bound as a local variable
+    (* x x))
+; the above is exactly equivalent to
+(defn square (x)
+  (* x x))
+
+(square 2) ; => 4
+
+; compute sqrt(x^2 + y^2)
+(def 2-norm 
+  (fn (x y)
+    (sqrt (+ (square x) (square y)))))
+
+(2-norm 3 4)  ; => 5
+(2-norm 5 12) ; => 13
+#+END_SRC
+
+The syntax ~(defn ...)~ is nothing more than a shorten way to say ~(def .. (fn
+...))~.
+
+Functions can accept varying numbers of arguments. For this Fn offers *optional
+parameters* and *variadic parameters*. Optional parameters have default values that
+they assume when not passed explicitly. Variadic parameters, on the other hand,
+allow a function to be called with more arguments than it has parameters. The
+trailing arguments are passed to the function as a list. These are illustrated
+below:
+
+#+BEGIN_SRC fn
+; compute the p-norm of (x,y), which is |x^p + y^p|^(1/p). 
+; default is p = 2
+(defn p-norm (x y (p 2))
+  (let xp (** x p)
+       yp (** y p))
+  (** (+ (abs xp) (abs yp)) (/ 1 p)))
+
+; p-norm accepts either 2 or 3 arguments
+(p-norm 3 4)    ; => 5
+(p-norm 3 4 2)  ; => 5 (same as default)
+(p-norm 3 4 1)  ; => 7 (now p = 1)
+
+; compute x1^2 + x2^2 + ...
+(defn sum-squared (& args)
+  ; see below for explanation of this line
+  (apply + (map square args)))
+
+; accepts any number of arguments
+(sum-squared)       ; => 0
+(sum-squared 1)     ; => 1
+(sum-squared 1 2)   ; => 5
+(sum-squared 1 2 4) ; => 21
+#+END_SRC
+
+Explanation of the function ~sum-squared~ above: ~map~ applies a function to every
+element of the list, in this case squaring each of the arguments. ~apply~,
+explained in [[apply]], passes the elements of a list to a function as positional
+arguments, in this case summing all the elements of the list.
+
+As you can see, optional parameters, (of which there may be zero or more), are
+designated by putting them in parenthesized lists with a default value. Variadic
+parameters, (of which their may be zero or one), are designated by the special
+symbol ~&~. No additional parameters can follow variadic parameters.
+
+Variadic and optional parameters can be mixed, in which case the variadic
+parameter picks up where the optional parameters leave off.
+
+
+**** Checking for Optional Arguments
+
+Sometimes, it is desirable to know whether an optional parameter was passed, or
+just set to the default value. To check whether an optional parameter was
+passed, you can use the name of that parameter prefixed with a question mark.
+For example,
+
+#+BEGIN_SRC fn
+; this returns yes if called with an argument, no otherwise
+(defn arg-checker ((x nil))
+  (if ?x
+      "yes"
+      "no"))
+
+(arg-checker)    ; => "no"
+(arg-checker 1)  ; => "yes"
+#+END_SRC
+
+
+*** Variable Capture
+
+Functions can refer to local variables. Sometimes, a function object might
+outlive the scope of the local variable it references. For these cases, Fn
+implements *variable capture*.
+
+When the variable's normal lifetime ends, a copy of it is made and saved so that
+the function can continue to use that variable during future calls. If multiple
+functions refer to the same variable, then they share a reference to it. This
+behavior is exhibited below:
+
+#+BEGIN_SRC fn
+; simple variable capture example
+(with (x 7)
+  ; global function get-x captures x
+  (def get-x ()
+    x))
+
+; x is still accessible even though it's out of scope
+(get-x) ; => 7
+
+
+; variable capture between multiple functions
+(with (y 0)
+  (def get-y ()
+    y)
+  (def set-y (v)
+    (set! y v)))
+
+; reference to y is shared between get-y and set-y
+(get-y) ; => 0
+(set-y 17)
+(get-y) ; => 17
+; i.e. get-y sees the changes made by set-y
+#+END_SRC
+
+Variable capture in Fn can be used to implement something analogous to private
+members in object-oriented programming languages. This is by letting functions
+in a table capture a variable. When the table exits scopes, these functions will
+be the only means to access the variable. Here's an example of a counter that
+guards access to its value:
+
+#+BEGIN_SRC fn
+(defn Counter ()
+  "Construct a counter which is initialized to 0."
+  ; count is our "private member"
+  (let count 0)
+  (let self
+    ; the functions in this table control access to count
+    {'get
+     (fn () count)
+     'inc
+     (fn ()
+       (set! count (+ count 1)))
+     'reset
+     (fn ()
+       (set! count 0))})
+  self)
+
+; create a counter
+(def my-counter (Counter))
+(my-counter.get) ; => 0
+(my-counter.inc)
+(my-counter.inc)
+(my-counter.inc)
+(my-counter.get) ; => 3
+(my-counter.reset)
+(my-counter.get) ; => 0
+#+END_SRC
+
+As shown above, variable capture allows mutable state to be attached to a
+function or group of functions. This can be very powerful. However, as prolific
+mutation often leads to bad, buggy programs, this functionality should be used
+sparingly, and only after weighing alternative solutions.
+
+
+*** TODO apply
+
+
+*** TODO dollar-fn
+
 
 ** Variables and Mutation
 
-*** Local Variables
+*** TODO Local Variables
 
 Local variables can be created using one of the special operators ~let~, ~letfn~, or
 ~with~.[fn:let-other-lisp] They all bind variables in the same way, but with
@@ -108,7 +565,7 @@ environment, it creates a new lexical environment.
 #+END_SRC
 
 ~letfn~ has a streamlined syntax for creating functions, but otherwise behaves
-like ~let~. See the documentation below for details.
+like ~let~.
 
 All local variables can have their value changed with ~set!~. The exclamation
 point is because mutation is not to be taken lightly. The syntax for ~set!~ is
@@ -130,7 +587,7 @@ most Lisp-like languages call ~let~, while Fn's ~let~ is quite different, as it 
 on the surrounding environment.
 
 
-*** Global Variables
+*** TODO Global Variables
 
 Global variables in Fn are created using ~def~ or ~defn~. E.g.
 
@@ -151,11 +608,234 @@ associated to a global variable. This is intended behavior, however, it is not
 recommended that you abuse it.
 
 
-** Data Types
+** Namespaces and Import
+
+A *namespace* is a collection of global variable and macro definitions. All Fn
+code runs inside of some namespace. External namespaces can be *imported*, which
+allows their definitions to be accessed from the current namespace.
+
+Namespaces are identified by a *name*, which is a string not containing any
+slashes, and a *package*, which is a string representing a logical collection of
+namespaces. They can be combined into the symbol ~<package>/<name>~, which is
+called the *identifier* or *ID* of the namespace. This ID is required to be globally
+unique.
+
+*Examples of Namespace IDs:*
+#+BEGIN_SRC fn
+fn/builtin              ; package is "fn", name is "builtin"
+fn/internal/io          ; package is "fn/internal", name is "io"
+my-project/util/linalg  ; package is "my-project/util", name is "linalg"
+my-project/model        ; package is "my-project", name is "model"
+#+END_SRC
+
+When evaluating code from a file, the namespace name will always be the stem of
+the file. The package can be set via a package declaration, see [[Package
+Declarations]].
+
+The default REPL namespace is ~fn/interactive~. Fn source code passed in as a
+command line argument is also evaluated in this namespace.
+
+*** Package Declarations
+
+When you run the ~fn~ command on a file, by default, the package is set to
+~fn/user~. Obviously, we'd like to be able to decide the package ourselves. This is
+done via a *package declaration*. The syntax for package declarations is:
+#+BEGIN_SRC fn
+(package package-name)
+#+END_SRC
+
+That's it. There can only be one package declaration per file, and it must be
+the first expression in the file (not including comments and whitespace).
+
+In general, the main file of an application should have a package declaration,
+as should files intended to be exported as part of a library. In other
+situations, the ~import~ form can often automatically deduce the package, and this
+may lead to code which is slightly easier to refactor. It's your call.
+
+
+*** Import
+
+The ~import~ special form allows definitions from an external namespace to be
+copied into the current one. There are three different ways to invoke of ~import~,
+depending on what you want the imported definitions to be named.
+
+#+BEGIN_SRC fn
+(import <namespace-id>)                 ; invocation 1
+(import <namespace-id> as <alias>)      ; invocation 2
+(import <namespace-id> no-prefix)       ; invocation 3
+#+END_SRC
+
+Invocation 1 will name the imported definitions like this:
+~<namespace-name>:<definition-name>~ (recall that the namespace /name/ does not
+include the package, as opposed to the namespace /ID/).
+
+Using invocation 2 above replaces the namespace name with ~<alias>~ in the
+imported definitions, and invocation 3 drops the prefix entirely as the
+invocation suggests.
+
+The clearest way to illustrate this behavior is by example. Say we have a
+namespace ~foo/bar/baz~ containing variables named ~bob~ and ~alice~:
+#+BEGIN_SRC fn
+;;; baz.fn
+(package foo/bar)
+(def alice "Alice")
+(def bob "Bob")
+#+END_SRC
+
+We have three ways to import this namespace, shown above. All three cause the
+definitions from ~foo/bar/baz~ to be copied into the current namespace. However,
+in each case the created bindings will have different names. The three cases are
+illustrated below:
+
+#+BEGIN_SRC fn
+;;; main.fn
+
+;; invocation 1
+(import foo/bar/baz)
+; variables look like this:
+baz:alice
+baz:bob
+
+;; invocation 2
+(import foo/bar/baz as b)
+; variables look like this:
+b:alice
+b:bob
+
+;; invocation 3
+(import foo/bar/baz no-prefix)
+; variables are imported directly (no colons)
+alice
+bob
+#+END_SRC
+
+
+*** Global Identifiers
+
+Each global definition is assigned a unique *global identifier* (global ID) which
+allows it to be accessed unambiguously even without being imported. These are of
+the form ~#/<namespace-id>:<definition-name>~.
+
+Examples:
+#+BEGIN_SRC fn
+; these functions lives in fn/builtin
+#/fn/builtin:concat
+#/fn/builtin:map
+#/fn/builtin:filter
+
+; continuation of the example from the previous section
+#/foo/bar/baz:alice
+#/foo/bar/baz:bob
+#+END_SRC
+
+On the other hand, prefixing a symbol with a hash character will cause it to
+automatically be expanded into its full global ID by the compiler. This happens
+when syntactic sugar is expanded, i.e. before the main compilation step.
+
+#+BEGIN_SRC fn
+#concat     ; expands to #/fn/builtin:concat
+#map        ; => #/fn/builtin:map
+#filter     ; => #/fn/builtin:filter
+
+; assume we're in namespace fn/user/main
+#baz:alice  ; => #/fn/user/main:baz:alice
+#baz:bob    ; => #/fn/user/main:baz:bob
+#+END_SRC
+
+
+*** Finding Namespace Files
+
+The first time a namespace is imported, the import system searches for an
+appropriate file and evaluates it to create the definitions. Subsequent uses of
+import will reuse these definitions, so the namespace code only gets run once.
+
+To find this file, we check the following places, in order
+1. Where applicable, we search using a relative path calculated by comparing the
+   current package to the desired namespace ID. For instance, when importing
+   ~foo/bar~ from ~foo/baz~, it will look for files name "baz.fn" in the same
+   directory as "bar.fn". If we import ~foo/bat/oof~, it looks for "bat/oof.fn".
+   - When the interpreter starts, it selects a base directory based on the
+     command line options. No directory above the base directory will be
+     searched. This is for security reasons. Generally, you don't have to think
+     about this caveat, but it's explained in full in [[Import Search]] in the
+     documentation for the command line interface.
+2. A list of paths extracted from the environment variable ~FN_SEARCH_PATH~ are
+   searched. This is colon-delimited like most search paths. These directories
+   are searched based on the full namespace ID, so e.g. ~(import my/pkg/ns)~ will
+   search for files named "my/pkg/ns.fn".
+3. The system library directory is searched. This is set at compile time; by
+   default it is ~/usr/local/lib/fn/packages~.
+
+
+** Quoting and Macros
+
+*** Quoting
+
+"Quoting" refers to the process of converting Fn source code into native Fn
+data. This allows us to easily process and manipulate Fn source code using the
+same facilities as for normal data.
+
+Quoting is the secret sauce that makes Fn's macro system work. It's the main
+reason why Fn has the syntax it has.
+
+The ~quote~ special operator has syntax:
+#+BEGIN_SRC fn
+(quote <expr>) ;; or, equivalently
+'<expr>
+#+END_SRC
+where ~<expr>~ can be any expression (in fact, it need not be a legal expression
+by itself). These two notations are exactly the same. The interpreter expands
+the second into the first before evaluation.
+
+The value returned by quote is guaranteed to only consist of lists, symbols,
+numbers, and strings. We refer to the latter three as *atoms*. Here are some
+examples:
+#+BEGIN_SRC fn
+'(a b c) ;; returns ['a 'b 'c]
+'"string" ;; returns "string"
+'(+ a (/ x 2)) ;; returns ['+ 'a ['/ 'x 2]]
+
+''quot ;; is equivalent to
+(quote (quote quot)) ;; which returns ['quote 'quot]
+#+END_SRC
+
+Note that ~<expr>~ only needs to be syntactically valid (i.e. not freak out the
+parser). Illegal expressions can be quoted just fine:
+#+BEGIN_SRC fn
+'() ;; returns [] (the empty list)
+'(2 (3 4)) ;; returns [2 [3 4]]
+'(quote) ;; returns ['quote]
+#+END_SRC
+
+This makes ~quote~ very handy for creating nested lists of atoms. (~quote~ also has
+a big sister named ~quasiquote~, which is covered [[Quasiquotation]], and allows for
+much more flexibility).
+
+~quote~ is also the primary way to create symbols. As noted in [[Atomic Types]],
+this can lead to problems when we want a symbol whose name is a syntactically
+valid number. Adding an escape character to the symbol name designates to the
+parser that the token should be read as a symbol rather than a number. In fact,
+we can even use this trick to give variables numbers for names:
+#+BEGIN_SRC fn
+;; probably don't do this
+(def \2 3)
+2  ;; returns 2
+\2 ;; returns 3
+#+END_SRC
+
+
+*** TODO Macro Basics
+
+
+*** TODO Quasiquotation
+
+
+*** TODO Macro Hygiene
+
+
+** Data Types In Depth
 
 This section provides a fairly exhaustive overview of the types built in to Fn.
-It's only crucial to read [[Checking Types]] and the opening paragraphs of [[Lists]] and
-[[Tables]].
 
 Fn provides the following builtin data types (type names in Fn are
 ~Capitalized-Like-This~):
@@ -227,7 +907,7 @@ Here is what the syntax looks like for atoms:
 ; symbols can contain arbitrary characters, but whitespace and syntax characters
 ; must be escaped with backslashes
 'sym\ with\ \"escapes\"
-; be careful about the quote operator. If the quoted expression is a number,
+
 ; it will result in a number instead of a symbol. You can get around this 
 ; with escapes:
 '0xb8  ;; this is a number
@@ -380,444 +1060,6 @@ metatables. The *metatable* is a secondary key-value store that is attached to
 every table. It can be used to change the behavior of the table as an object.
 
 
-
-** TODO Control Flow and Functions
-
-*** TODO Conditional Execution
-
-The conditional control flow primitives are ~if~ and ~cond~.
-
-~if~ takes exactly three arguments: a test expression, an expression to evaluate
-if the test is true, and an expression to evaluate if the test is false. In Fn,
-~nil~ and ~false~ are considered to be false values, while all others are treated as
-~true~.
-#+BEGIN_SRC fn
-;; if and cond syntax
-
-;; cond takes pairs of expressions and consequences
-(cond
-  false 1
-  nil   2
-  'foo  3
-  true  4)
-; => returns 3, because 'foo is the first true value
-
-(defn fizzbuzz (x)
-  (cond
-    (= (mod x 15) 0) 'FizzBuzz
-    (= (mod x 5) 0)  'Buzz
-    (= (mod x 3) 0)  'Fizz
-    true             x))
-(fizzbuzz 6)  ; = Fizz
-(fizzbuzz 7)  ; = 7
-(fizzbuzz 45) ; = FizzBuzz
-(fizzbuzz 65) ; = Buzz
-#+END_SRC
-
-~cond~ is an alternative conditional syntax which is analogous to "if/else if"
-blocks in other programming languages. ~cond~ takes pairs of arguments and treats
-the first one as a test. If the test is true, it returns the result of the
-second argument in the pair. Otherwise it proceeds to the next pair, returning
-~nil~ if the end is reached.
-
-
-*** Functions and Calls
-
-Function calls have already been shown frequently in the manual prior to this
-point. For example, we've seen arithmetic with the functions ~+~, ~-~, ~*~, and ~/~:
-#+BEGIN_SRC fn
-(+ 1 2 3)      ; => 6
-(- (/ 6 2) 3)  ; => 0
-(* 17 (- 2 7)) ; => -85
-#+END_SRC
-
-As you may have already surmised, in each parenthesized list above, the first
-element is the function and the remaining ones are its arguments. All
-parenthesized forms in Fn are either special forms, macros, or function calls,
-with function calls being the "default" and by far the most common.
-
-Functions are created with the ~fn~ special form, which requires a parameter list
-followed by a series of expressions that make up the function's body.
-
-#+BEGIN_SRC fn
-; square a number
-(def square
-  (fn (x)
-    (* x x))
-
-(square 2) ; => 4
-
-; compute sqrt(x^2 + y^2)
-(def 2-norm 
-  (fn (x y)
-    (sqrt (+ (square x) (square y)))))
-
-(2-norm 3 4)  ; => 5
-(2-norm 5 12) ; => 13
-#+END_SRC
-
-The syntax ~(defn ...)~ is nothing more than a shorten way to say ~(def .. (fn
-...))~.
-
-Functions can accept varying numbers of arguments. For this Fn offers *optional
-parameters* and *variadic parameters*. Optional parameters have default values that
-they assume when not passed explicitly. Variadic parameters, on the other hand,
-allow a function to be called with more arguments than it has parameters. The
-trailing arguments are passed to the function as a list. These are illustrated
-below:
-
-#+BEGIN_SRC fn
-; compute the p-norm of (x,y), which is |x^p + y^p|^(1/p). 
-; default is p = 2
-(defn p-norm (x y (p 2))
-  (let xp (** x p)
-       yp (** y p))
-  (** (+ (abs xp) (abs yp)) (/ 1 p)))
-
-; p-norm accepts either 2 or 3 arguments
-(p-norm 3 4)    ; => 5
-(p-norm 3 4 2)  ; => 5 (same as default)
-(p-norm 3 4 1)  ; => 7 (now p = 1)
-
-; compute x1^2 + x2^2 + ...
-(defn sum-squared (& args)
-  ; see below for explanation of this line
-  (apply + (map square args)))
-
-; accepts any number of arguments
-(sum-squared)       ; => 0
-(sum-squared 1)     ; => 1
-(sum-squared 1 2)   ; => 5
-(sum-squared 1 2 4) ; => 21
-#+END_SRC
-
-Explanation of the function ~sum-squared~ above: ~map~ applies a function to every
-element of the list, in this case squaring each of the arguments. ~apply~,
-explained in [[~apply~]], passes the elements of a list to a function as positional
-arguments, in this case summing all the elements of the list.
-
-As you can see, optional parameters, (of which there may be zero or more), are
-designated by putting them in parenthesized lists with a default value. Variadic
-parameters, (of which their may be zero or one), are designated by the special
-symbol ~&~. No additional parameters can follow variadic parameters.
-
-Variadic and optional parameters can be mixed, in which case the variadic
-parameter picks up where the optional parameters leave off.
-
-**** Checking for Optional Arguments
-
-Sometimes, it is desirable to know whether an optional parameter was passed, or
-just set to the default value. To check whether an optional parameter was
-passed, you can use the name of that parameter prefixed with a question mark.
-For example,
-
-#+BEGIN_SRC fn
-; this returns yes if called with an argument, no otherwise
-(defn arg-checker ((x nil))
-  (if ?x
-      "yes"
-      "no"))
-
-(arg-checker)    ; => "no"
-(arg-checker 1)  ; => "yes"
-#+END_SRC
-
-
-*** Variable Capture
-
-Functions can refer to local variables. Sometimes, a function object might
-outlive the scope of the local variable it references. For these cases, Fn
-implements *variable capture*.
-
-When the variable's normal lifetime ends, a copy of it is made and saved so that
-the function can continue to use that variable during future calls. If multiple
-functions refer to the same variable, then they share a reference to it. This
-behavior is exhibited below:
-
-#+BEGIN_SRC fn
-; simple variable capture example
-(with (x 7)
-  ; global function get-x captures x
-  (def get-x ()
-    x))
-
-; x is still accessible even though it's out of scope
-(get-x) ; => 7
-
-
-; variable capture between multiple functions
-(with (y 0)
-  (def get-y ()
-    y)
-  (def set-y (v)
-    (set! y v)))
-
-; reference to y is shared between get-y and set-y
-(get-y) ; => 0
-(set-y 17)
-(get-y) ; => 17
-; i.e. get-y sees the changes made by set-y
-#+END_SRC
-
-Variable capture in Fn can be used to implement something analogous to private
-members in object-oriented programming languages. This is by letting functions
-in a table capture a variable. When the table exits scopes, these functions will
-be the only means to access the variable. Here's an example of a counter that
-guards access to its value:
-
-#+BEGIN_SRC fn
-(defn Counter ()
-  "Construct a counter which is initialized to 0."
-  ; count is our "private member"
-  (let count 0)
-  (let self
-    ; the functions in this table control access to count
-    {'get
-     (fn () count)
-     'inc
-     (fn ()
-       (set! count (+ count 1)))
-     'reset
-     (fn ()
-       (set! count 0))})
-  self)
-
-; create a counter
-(def my-counter (Counter))
-(my-counter.get) ; => 0
-(my-counter.inc)
-(my-counter.inc)
-(my-counter.inc)
-(my-counter.get) ; => 3
-(my-counter.reset)
-(my-counter.get) ; => 0
-#+END_SRC
-
-As shown above, variable capture allows mutable state to be attached to a
-function or group of functions. This can be very powerful. However, as prolific
-mutation often leads to bad, buggy programs, this functionality should be used
-sparingly, and only after weighing alternative solutions.
-
-
-*** TODO ~apply~
-
-*** TODO dollar-fn
-
-
-** Namespaces and Import
-
-A *namespace* is a collection of global variable and macro definitions. All Fn
-code runs inside of some namespace.
-
-Namespaces are identified by a *name*, which is a string not containing any
-slashes, and a *package*, which is a string representing a logical collection of
-namespaces. They can be combined into the symbol ~<package>/<name>~, which is
-called the *identifier* or *ID* of the namespace. This ID is required to be globally
-unique.
-
-*Examples of Namespace IDs:*
-#+BEGIN_SRC fn
-fn/builtin              ; package is "fn", name is "builtin"
-fn/internal/io          ; package is "fn/internal", name is "io"
-my-project/util/linalg  ; package is "my-project/util", name is "linalg"
-my-project/model        ; package is "my-project", name is "model"
-#+END_SRC
-
-When evaluating code from a file, the namespace name will always be the stem of
-the file. The package can be set via a package declaration, see [[Package
-Declarations]].
-
-The default REPL namespace is ~fn/interactive~. Fn source code passed in as a
-command line argument is also evaluated in this namespace.
-
-
-*** Import
-
-The ~import~ special form allows definitions from an external namespace to be
-copied into the current one. The syntax for import looks like this:
-
-#+BEGIN_SRC fn
-(import <namespace-id>)                  ; invocation 1
-(import <namespace-id> :as <alias>)      ; invocation 2
-(import <namespace-id> :no-prefix true)  ; invocation 3
-#+END_SRC
-
-Say we have a namespace ~foo/bar/baz~ containing variables named ~bob~ and
-~alice~:
-#+BEGIN_SRC fn
-;;; baz.fn
-(package foo/bar)
-(def alice "Alice")
-(def bob "Bob")
-#+END_SRC
-
-We have three ways to import this namespace, shown above. All three cause the
-definitions from ~foo/bar/baz~ to be copied into the current namespace. However,
-in each case the created bindings will have different names. The three cases are
-illustrated below:
-
-#+BEGIN_SRC fn
-;;; main.fn
-
-;; invocation 1
-(import foo/bar/baz)
-; variables look like this:
-baz:alice
-baz:bob
-
-;; invocation 2
-(import foo/bar/baz :as b)
-; variables look like this:
-b:alice
-b:bob
-
-;; invocation 3
-(import foo/bar/baz :no-prefix true)
-; variables are imported directly (no colons)
-alice
-bob
-#+END_SRC
-
-
-*** Package Declarations
-
-The first expression of a file (not counting comments) may be a *package
-declaration*. These have the form ~(package <package-name>)~, where <package-name>
-is a symbol. This simply sets the package name for the file when it is
-interpreted. If no package declaration is present, the package ~fn/user~ is used.
-
-When a file is imported, a warning is generated if its package declaration
-disagrees with the package of the import. The import will still work, but some
-code may break.
-
-
-*** Global Identifiers for Definitions
-
-When a new definition is made in any namespace, it is given a global identifier
-of the form ~#/<namespace-id>:<symbol>~ (since namespace IDs are unique, this is
-unique among all global definitions). Global IDs may be used as variable names
-to reference the definition without explicitly importing it. For example,
-~#/fn/builtin:map~ refers to the function ~map~ in the ~fn/builtin~ namespace.
-
-
-*** Locating Namespace Sources
-
-*Note:* This section is a precise, technical description of how namespace search
-works. In reality, you don't have to think so hard about namespace import. It
-works the way you'd want it to. For instance, I do ~(import pkg/bar/baz)~ from ~pkg/foo~, it
-searches for a file ~bar/baz.fn~ in the directory of ~foo.fn~.
-
-The first time a namespace is imported, we must find and load its source file.
-Subsequent imports will reuse the created namespace.
-
-When a file is run, its package is set as the *root package* and the file's
-directory is set as the *working directory*. When a new import is encountered, the
-following locations are searched:
-- If the imported namespace is in the root package, then we search for the file
-  ~name.fn~ in the working directory.
-- If the imported package is in a subspace of the root package, say
-  ~root/subpackage/name~, then we look for the file ~subpackage/name.fn~ in the
-  working directory.
-- If the environment variable FN_SEARCH_PATH is set to a colon-delimited
-  sequence of directories, then we search each directory in the order provided.
-  The file we look for is ~package/fn~, where slashes in the package are converted
-  into subdirectories in the search.
-- Finally, the system namespace directory ~${PREFIX}/ns~ is searched. ~${PREFIX}~ is
-  usually ~/usr/local/lib/fn/~.
-
-Example: We have the following files:
-- project/main.fn
-- project/engine.fn
-- project/util/http.fn
-- project/util/math.fn
-
-Suppose main.fn has the following package declaration:
-#+BEGIN_SRC fn
-(package devco/product)
-#+END_SRC
-
-If we run the file main.fn, we can import all the other files like this:
-#+BEGIN_SRC fn
-(import devco/product/engine)
-(import devco/product/util/http)
-(import devco/product/util/math)
-#+END_SRC
-
-Furthermore, these names are preserved in nested imports. For instance, in
-http.fn we can import engine.fn and math.fn like this:
-#+BEGIN_SRC fn
-(import devco/product/engine)
-(import devco/product/util/math)
-#+END_SRC
-
-
-** Pattern Matching
-
-
-** TODO Quoting and Macros
-
-*** TODO Quoting
-
-"Quoting" refers to the process of converting Fn source code into native Fn
-data. This allows us to easily process and manipulate Fn source code using the
-same facilities as for normal data.
-
-Quoting is the secret sauce that makes Fn's macro system work. It's the main
-reason why Fn has the syntax it has.
-
-The ~quote~ special operator has syntax:
-#+BEGIN_SRC fn
-(quote <expr>) ;; or, equivalently
-'<expr>
-#+END_SRC
-where ~<expr>~ can be any expression (in fact, it need not be a legal expression
-by itself). These two notations are exactly the same. The interpreter expands
-the second into the first before evaluation.
-
-The value returned by quote is guaranteed to only consist of lists, symbols,
-numbers, and strings. We refer to the latter three as *atoms*. Here are some
-examples:
-#+BEGIN_SRC fn
-'(a b c) ;; returns ['a 'b 'c]
-'"string" ;; returns "string"
-'(+ a (/ x 2)) ;; returns ['+ 'a ['/ 'x 2]]
-
-''quot ;; is equivalent to
-(quote (quote quot)) ;; which returns ['quote 'quot]
-#+END_SRC
-
-Note that ~<expr>~ only needs to be syntactically valid (i.e. not freak out the
-parser). Illegal expressions can be quoted just fine:
-#+BEGIN_SRC fn
-'() ;; returns [] (the empty list)
-'(2 (3 4)) ;; returns [2 [3 4]]
-'(quote) ;; returns ['quote]
-#+END_SRC
-
-This makes ~quote~ very handy for creating nested lists of atoms. (~quote~ also has
-a big sister named ~quasiquote~, which is covered [[Quasiquotation]], and allows for
-much more flexibility).
-
-~quote~ is also the primary way to create symbols. As noted in [[Atomic Types]],
-this can lead to problems when we want a symbol whose name is a syntactically
-valid number. Adding an escape character to the symbol name designates to the
-parser that the token should be read as a symbol rather than a number. In fact,
-we can even use this trick to give variables numbers for names:
-#+BEGIN_SRC fn
-;; probably don't do this
-(def \2 3)
-2  ;; returns 2
-\2 ;; returns 3
-#+END_SRC
-
-
-*** TODO Macro Basics
-
-
-*** TODO Quasiquotation
-
-
-*** TODO Macro Hygiene
 
 * Command Line Interface
 
