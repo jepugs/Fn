@@ -289,12 +289,26 @@ void vm_thread::arrange_call_stack(function* func,
         // list parameter, we need to do this
         push(V_EMPTY);
     }
+
+    // push indicator args
+    u32 i;
+    // m clamps num_args to the number of positional parameters so we don't push
+    // more indicator args than necessary.
+    auto m = num_args < num_pos_args ? num_args : num_pos_args;
+    for (i = req_args; i < m; ++i) {
+        push(V_TRUE);
+    }
+    for (; i < num_pos_args; ++i) {
+        push(V_FALSE);
+    }
 }
 
 code_address vm_thread::make_call(function* func) {
     auto stub = func->stub;
+    auto num_opt = stub->pos_params.size - stub->req_args;
     // stack pointer (equal to number of parameter variables)
     u8 sp = static_cast<u8>(stub->pos_params.size
+            + num_opt // for indicators
             + stub->vl_param.has_value());
     if (stub->foreign != nullptr) { // foreign function call
         fn_handle handle{
@@ -329,7 +343,10 @@ code_address vm_thread::make_call(function* func) {
 code_address vm_thread::make_tcall(function* func) {
     auto stub = func->stub;
     // update the frame
+    auto num_opt = stub->pos_params.size - stub->req_args;
+    // stack pointer (equal to number of parameter variables)
     u8 sp = static_cast<u8>(stub->pos_params.size
+            + num_opt // for indicators
             + stub->vl_param.has_value());
     frame->num_args = sp;
     frame->caller = func;
@@ -412,7 +429,7 @@ code_address vm_thread::apply(local_address num_args, bool tail) {
 
     pop();
     arrange_call_stack(func, num_args + list_len);
-    return make_call(func);
+    return tail ? make_tcall(func) : make_call(func);
     //return tail ? tcall(num_args+list_len) : call(num_args+list_len);
 }
 

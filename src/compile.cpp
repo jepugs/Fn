@@ -241,12 +241,17 @@ void compiler::compile_fn(const llir_fn* llir,
     for (u32 i = 0; i < params.num_pos_args; ++i) {
         lex2.vars.insert(params.pos_args[i], i);
     }
-    lex2.sp = params.num_pos_args;
-    // var list comes before var table, but there may be var table without var list
+    // variadic parameter
     if (params.has_var_list_arg) {
-        lex2.vars.insert(params.var_list_arg, params.num_pos_args);
         ++lex2.sp;
+        lex2.vars.insert(params.var_list_arg, params.num_pos_args);
     }
+    // indicator parameters
+    for (u32 i = params.req_args; i < params.num_pos_args; ++i) {
+        ++lex2.sp;
+        lex2.vars.insert(symtab->intern("?" + (*symtab)[params.pos_args[i]]), lex2.sp);
+    }
+    lex2.sp = params.num_pos_args;
 
     compile_llir_generic(llir->body, &lex2, true);
     return_on_err;
