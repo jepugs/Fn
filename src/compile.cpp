@@ -238,20 +238,19 @@ void compiler::compile_fn(const llir_fn* llir,
     auto stub = dest->get_function(func_id);
     auto lex2 = extend_lex_env(lex, stub);
     // compile function body with a new lexical environment
-    for (u32 i = 0; i < params.num_pos_args; ++i) {
-        lex2.vars.insert(params.pos_args[i], i);
+    lex2.sp = 0;
+    while (lex2.sp < params.num_pos_args) {
+        lex2.vars.insert(params.pos_args[lex2.sp], lex2.sp);
+        ++lex2.sp;
     }
     // variadic parameter
     if (params.has_var_list_arg) {
-        ++lex2.sp;
-        lex2.vars.insert(params.var_list_arg, params.num_pos_args);
+        lex2.vars.insert(params.var_list_arg, lex2.sp++);
     }
     // indicator parameters
     for (u32 i = params.req_args; i < params.num_pos_args; ++i) {
-        ++lex2.sp;
-        lex2.vars.insert(symtab->intern("?" + (*symtab)[params.pos_args[i]]), lex2.sp);
+        lex2.vars.insert(symtab->intern("?" + (*symtab)[params.pos_args[i]]), lex2.sp++);
     }
-    lex2.sp = params.num_pos_args;
 
     compile_llir_generic(llir->body, &lex2, true);
     return_on_err;
