@@ -7,7 +7,12 @@
 
 This is the official manual for Fn. It is /almost entirely/ accurate to the
 current implementation of Fn in this repository. A list of disparities and
-missing functionality is in the file [[./implementation-progress.org]].
+missing functionality is in the file [[./implementation-progress.org]]. At the time
+of writing, the base language is fully implemented barring some details about
+namespace imports, but not all the functionality is documented here yet.
+
+Sections marked *TODO* are works in progress. I'm rewriting a lot of this to make
+it more readable, since the first pass was overly dense and technical.
 
 The structure of this manual is as follows:
 
@@ -65,6 +70,7 @@ Here are a couple of the ways I've broken with traditional Lisp:
    This is also something which was done in Clojure.
 5. The most egregious change I've made is to ~let~. ~let~ expressions no longer
    contain a body. Instead, they occur within ~do~ blocks or function bodies and
+   introduce new variables without increasing the level of indentation.
 6. Fn provides a special form called ~with~ which has syntax and semantics like
    ~letrec~, although the inner parentheses in the binding form have been dropped.
 
@@ -82,52 +88,52 @@ With respect to points 5 and 6 above, this is how ~let~ and ~with~ work:
 
 * Language Guide
 
+** Basic Syntax
 
-** Basics
-
-This section introduces some elementary aspects of Fn's syntax and semantics so
-that they can be used in the examples throughout the rest of the guide. It
-should also give you an idea of the general flavor of Fn.
-
-
-*** Basic Syntax
+This section introduces some elementary aspects of Fn's syntax so that they can
+be used in the examples throughout the rest of the guide. It should also give
+you an idea of the general flavor of Fn.
 
 To get started, let's take a look at Fn's syntax. Fn uses *parenthesized
 prefix notation*, meaning expressions are between parentheses and the operation
-comes first (it's a prefix to its arguments). This is what that looks like:
+comes first (it's a prefix to its arguments). This is what it looks like:
 
 #+BEGIN_SRC fn
 ; note: comments begin with semicolons
 
-; the basic syntax is
-(<operator> <arguments> ...)
+; the basic syntax is (<operator> <arguments> ...)
 
-; this syntax used for language primitives
-(def x 42)        ; => defines a global variable named x
-(fn (x) (* x 2))  ; => creates a function
+; this syntax used for defining variables
+(def x 42) ; => defines a global variable named x
 
-; it is also used for function calls
+; parenthesized prefix notation is also used for function calls
 (length [1 2 3])  ; => 3, i.e. the length of the list [1 2 3]
 
 ; this is how you do arithmetic in Fn
-(+ 6 7)         ; => 13
-(- 2 3)         ; => -1
-(* 6 8)         ; => 48
-(/ 7 7)         ; => 1
+(+ 6 7)  ; => 13
+(- 2 3)  ; => -1
+(* 6 8)  ; => 48
+(/ 7 7)  ; => 1
 
 ; function calls can be nested
-(- (/ 6 2) 3)       ; => 0
-(* (+ 2 3) (+ 5 9))  ; => 70
+(- (/ 6 2) 3)        ; => 0
+(* (+ 2 3) (+ 5 5))  ; => 50
 
-; arithmetic functions can accept varying numbers of arguments:
-(- 1)       ; => -1
-(+ 1 2 3 4) ; => 10
-(/ 0.5)     ; => 2
-(/ 6 3 2)   ; => 1     read as (6 / 3) / 2 in infix notation
+; arithmetic functions accept varying numbers of arguments:
+(+ 1 2 3 4)  ; => 10
+(/ 6 3 2)    ; => 1  read as (6 / 3) / 2 in infix notation
 
+; some functions have side effects like performing I/O
+(println "Hello, World!")   ; need I say what this does?
 
-; functions can have side effects
-(println "Hello, world!")   ; need I say what this does?
+; functions are created with the fn operator
+(fn (x) (* x 2))   ; => 1-argument function that multiplies an
+                   ;    argument by 2
+(fn (x y) (/ y x)) ; => 2-argument function that divides y by x
+
+; defn is a portmanteau of def and fn for defining functions
+(defn times2 (x)
+  (* x 2))
 #+END_SRC
 
 Fn also has some syntactic sugar to make certain common operations more
@@ -144,10 +150,16 @@ This means that all Fn code can be expanded to be written in prefix notation. As
 a consequence, it's quite easy to represent Fn source code as a tree. This idea
 is explored in more detail in [[Quoting and Macros]]. (As an additional note, the
 code in the example above simply creates a symbol object named "quoted-form".
-For the basics of symbols, see [[Overview of Data Model]]).
+For the basics of symbols, see [[Working with Atoms]]).
+
+One more thing that makes Fn (and the Lisp family in general) a little different
+is that variable names may contain some punctuation characters such as ~?~ and ~-~
+which are prohibited in many languages. There's no sense going into the fine
+details here, but don't be confused when you see names including these
+characters, as they don't have any special meaning.
 
 
-*** Overview of Data Model
+** Overview of Data Model
 
 In Fn, an *object* or *value* is the result of an expression. Fn has no distinction
 between expressions and statements. Every form is an expression that returns a
@@ -156,74 +168,169 @@ constant ~nil~.
 
 Fn's data types can be divided into *atomic* and *non-atomic* types. (Instances of
 atomic types are called *atoms*). Atomic types are defined by the fact that they
-do not reference any other objects.
+do not reference any other objects. Atoms in Fn consist of *strings*,
+(floating-point) *numbers*, *symbols* (which are internalized strings), *booleans*,
+and the *nil* value.
 
-Strings, (floating-point) numbers, symbols, booleans, and the nil value are the
-atomic data types in Fn. Tables and lists are the non-atomic types. This is what
-the syntax for atoms looks like:
+Non-atomic values in Fn consist of *lists*, *tables*, and *functions*.
 
+*** Working with Atoms
+
+**** Numbers
+
+Numbers are pretty much what you'd expect. We use the same syntax as in C/C++,
+(excluding octal numbers). Here are a few examples:
 #+BEGIN_SRC fn
-; numbers are pretty much what you'd expect. (The same formats as in C++17 are
-; accepted).
 2
 -6
 2.0e-6   ; we have scientific notation
 0xFf     ; hexadecimal, even!
-
-; strings are enclosed within matched double quotes
-"string"
-"Fn uses escape codes from C, e.g. \\ \"\n"
-""
-
-; symbols are created with a single quote
-'sym1
-'sym2
-; symbols can contain arbitrary characters, but whitespace and syntax characters
-; must be escaped with backslashes
-'sym\ with\ \"escapes\"
-
-; it will result in a number instead of a symbol. You can get around this 
-; with escapes:
-'0xb8  ;; this is a number
-'\0xb8 ;; this is a symbol
-; recommendation: minimize use of symbols whose names are valid numbers
-
-; booleans and nil are called by name
-true
-false
-nil
 #+END_SRC
 
+Here are a few elementary functions for working with numbers:
+#+begin_src fn
+; We've already met the arithmetic functions +, -, *, and /
+(* (+ 2 2) (- 12 10) (/ 16 4))  ; => 32
+; These can be called with arbitrarily many arguments
+(+ 1 2 3 4) ; => 10 (read as 1 + 2 + 3 + 4)
+(/ 8 2 2 2) ; => 1  (read as 8 / 2 / 2 / 2)
 
-*** TODO First Functions on Atoms
+; - and / have special behavior when called with a single argument
+(- 6) ; => -6 (i.e. additive inverse)
+(/ 2) ; => 0.5 (i.e. multiplicative inverse)
 
-Recall that function calls in Fn are of the form ~(function arguments ...)~.
+; ** is the exponentiation function
+(** 4 2)   ; => 16
+(** 4 0.5) ; => 2
 
+; mod computes modulus by an integer.
+(mod 27 4)  ; => 3
+(mod 8 2)   ; => 0
+; first argument need not be an integer
+(mod 6.5 2) ; => 0.5
 
-**** Numbers
+; floor and ceil are the floor and ceiling functions
+(floor 0.8) ; => 0
+(ceil 0.8)  ; => 1
 
-- +, -, /, ~*~, ~**~
-- mod
-- integer?
-- even?, odd?
-- floor, ceil
+; integer? returns true for integers, false otherwise
+(integer? -7)  ; => true
+(integer? 0.2) ; => false
+
+; even? and odd? check the parity of their argument
+(even? 6) ; => true
+(odd? 6)  ; => false
+; both return false on non-integral numbers
+(even? 1.2) ; => false
+(odd? 1.2)  ; => false
+#+end_src
 
 
 **** Strings
 
-- ~Str~
-- substr
-- reverse
-- concat
-- intern
+Strings in Fn are enclosed in double quotes and use the same escape characters
+as C/C++, e.g. ~\n~ for newline, ~\r~ for carriage return, ~\t~ for tab. Some
+examples include:
+#+begin_src fn
+; a few examples of strings
+"Hello, World!"
+""                        ; empty string
+"Multi-\nline\nString\n"
+#+end_src
+
+The Str function allows strings to be constructed from other types of objects.
+#+begin_src fn
+(Str 123)     ; => 123
+(Str 'symbol) ; => "symbol"
+(Str "str")   ; => "str"
+
+; Str can accept multiple arguments
+(Str "7 plus 7 is" (+ 7 7))   ; => "7 plus 7 is 14"
+(Str "Hello, I'm " 'Jack ".") ; => "Hello, I'm Jack."
+#+end_src
+
+Here are some other common functions for working with strings:
+#+begin_src fn
+; length gives the length of a string
+(length "")     ; => 0
+(length "str")  ; => 3
+
+; substr creates substrings. It takes 2 or 3 arguments: a
+; string followed by a starting position and (optionally)
+; an ending position
+(substr "Hello" 2)        ; => "llo" (default ending position is
+                          ;    the end of the string)
+(substr "Hello" 2 3)      ; => "l"
+(substr "my string" 0 2)  ; => "my"
+
+; there's a function named reverse
+(reverse "gnirts")  ; => "string"
+
+; concat concatenates string
+(concat "cat " "test")             ; => "cat test"
+; concat accepts more than two arguments
+(concat "triple " "cat " "test")   ; => "triple cat test"
+#+end_src
+
+Strings in Fn are really just sequences of bytes, hence they can store arbitrary
+data. When encoding text, it's recommended to use UTF-8. Future standard library
+support for text manipulation will focus on UTF-8.
 
 
 **** Symbols
 
-- symbol-name
+Symbols are internalized strings. For the uninitiated, this means that the
+symbol's name is hashed, and the symbol value itself is simply a reference to
+the hashed value. *This means that comparisons between symbols as fast as
+comparisons between integers.* As a result, symbols are quite useful for making
+ad-hoc enum types.
+
+Symbols can be created in two ways: by using the ~intern~ function on a string, or
+by using the ~quote~ special operator, which is far more common (and more
+performant, since then the hashing is done at compile time).
+#+begin_src fn
+; both of these create a symbol from the string "hello"
+(intern "hello")
+'hello
+; the previous line's syntax is sugar for this
+(quote hello)
+
+; symbols can include the same characters as variable names
+'dashed-symbol
+(quote dashed-symbol) ; again, the line above is exactly the
+                      ; same as this (quote ...) form
+'am-I-a-symbol?
+'%!^$symbol
+
+; symbol-name is the inverse of intern
+(symbol-name 'hello)             ; => "hello"
+(symbol-name (intern "string"))  ; => "string"
+#+end_src
+
+It bears mentioning that ~quote~ can actually do a lot more than creating symbols.
+When using quote, keep the following rule in mind:
+
+*quote is guaranteed to return a symbol when followed by a legal variable name.*
+
+There are ways, using escape characters, to use ~quote~ to create symbols which
+are not variable names. See [[Quoting]] for this syntax, as well as an explanation
+of why ~quote~'s semantics work the way they do.
 
 
-*** Lists and Tables
+**** TODO Booleans and ~nil~
+
+The boolean values ~true~ and ~false~, as well as the ~nil~ value, are special
+constants in Fn. ~nil~ should exclusively be used to indicate the absence of a
+value.
+
+Both ~nil~ and ~false~ are logically false. Any other value is logically true.
+
+Functions whose names end in a question mark should always return ~true~ or ~false~.
+
+- ~and~, ~or~ :: conditional operators
+
+
+*** TODO Lists and Tables
 
 Lists and tables, on the other hand, are containers which can hold other data
 types. Lists are immutable singley-linked lists, and tables are mutable
@@ -296,7 +403,6 @@ Common functions on tables include:
 
 
 ** TODO Control Flow and Functions
-
 
 *** TODO Conditional Execution
 
@@ -1065,7 +1171,7 @@ every table. It can be used to change the behavior of the table as an object.
 
 All functionality is accessed via the ~fn~ command line program.
 
-** Invocation and Namespace Determination
+** TODO Invocation and Namespace Determination
 
 The fn command line tool has the following interface:
 #+begin_src
