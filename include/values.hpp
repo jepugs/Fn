@@ -25,19 +25,37 @@ constexpr u64 TAG_WIDTH     = 4;
 constexpr u64 TAG_MASK      = (1 << TAG_WIDTH) - 1;
 
 
-constexpr u64 TAG_NUM       = 0;
+// NOTE (Future extension): Variable length tags:
 
-// NOTE: These four must line up with the GC_TYPE tags in base.hpp
-constexpr u64 TAG_STRING    = 1;
-constexpr u64 TAG_CONS      = 2;
-constexpr u64 TAG_TABLE     = 3;
-constexpr u64 TAG_FUNC      = 4;
+// Pointers can be 32-byte aligned, so we can use up to 5 bits for type
+// information on those. Symbols and constants can use many more bits for type
+// information. Variable width tags would allow us to fit many more types in.
+// I'd eventually like to use two 2-bit tags for floats and fixnums, increasing
+// floating pointer precision and leaving us with 16 available 5-bit tags to
+// use. One of these can be used as an extension tag for symbols and all the
+// constants. This gives us up to 15 pointer types, which is perfect because
+// that's also the number of possible GC tags. Currently there are only four
+// pointer types.
 
-constexpr u64 TAG_SYM       = 5;
-constexpr u64 TAG_NIL       = 6;
-constexpr u64 TAG_TRUE      = 7;
-constexpr u64 TAG_FALSE     = 8;
-constexpr u64 TAG_EMPTY     = 9;
+// The pointer types I'd add are: bignums, rational numbers, complex numbers,
+// vectors, foreign structures/bitvectors, and hash tries (which could actually
+// replace mutable tables). This would still leave us with 5 or 6 unused pointer
+// types for future extensions.
+
+constexpr u64 TAG_NUM       = 0x00;
+
+// NOTE: I want these to line up with the GC_TYPE tags in base.hpp
+constexpr u64 TAG_STRING    = 0x01;
+constexpr u64 TAG_CONS      = 0x02;
+constexpr u64 TAG_TABLE     = 0x03;
+constexpr u64 TAG_FUNC      = 0x04;
+constexpr u64 TAG_BIGNUM    = 0x05;
+
+constexpr u64 TAG_SYM       = 0x06;
+constexpr u64 TAG_NIL       = 0x07;
+constexpr u64 TAG_TRUE      = 0x08;
+constexpr u64 TAG_FALSE     = 0x09;
+constexpr u64 TAG_EMPTY     = 0x0a;
 
 struct fn_string;
 struct cons;

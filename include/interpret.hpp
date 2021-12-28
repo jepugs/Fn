@@ -28,7 +28,7 @@ private:
     code_chunk* ffi_chunk;
 
     string base_dir;
-    symbol_id base_pkg;
+    string main_prefix;
 
     // logging settings. For now these just go to cout.
     bool log_llir = false;
@@ -99,10 +99,10 @@ public:
             working_set* ws,
             fault* err);
     // Interpret input from a scanner object. When scanning a file, this scanner
-    // should start after the package declaration (i.e. at the position it's
-    // left at by read_pkg_decl()). If an error occurs, *resumable is set to
-    // true for errors that could be prevented by extending the input stream,
-    // and false otherwise.
+    // should start after the namespace declaration (i.e. at the position it's
+    // left at by read_ns_decl()). If an error occurs, *resumable is set to true
+    // for errors that could be prevented by extending the input stream, and
+    // false otherwise.
     value interpret_from_scanner(scanner* sc,
             symbol_id ns_id,
             working_set* ws,
@@ -127,10 +127,10 @@ public:
     // Import a namespace, performing full search. Returns false if no file is
     // found.
     bool import_ns(symbol_id ns_id, working_set* ws, fault* err);
-    // read the package declaration from a file, if present. This will leave the
-    // scanner where it left off, so it should be reinitialized if this returns
-    // nullopt.
-    optional<symbol_id> read_pkg_decl(scanner* sc,
+    // read the namespace declaration from a file, if present. This will leave
+    // the scanner where it left off, so it should be reinitialized if this
+    // returns nullopt.
+    optional<symbol_id> read_ns_decl(scanner* sc,
             working_set* ws,
             fault* err);
     // search for the file, first relative to the base package, then in the

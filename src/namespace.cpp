@@ -66,33 +66,33 @@ fn_namespace* global_env::create_ns(symbol_id name) {
     return res;
 }
 
-void ns_name(const string& global_name, string* pkg, string* name) {
-    if (global_name.size() == 0) {
-        *name = "";
-        *pkg = "";
+void ns_id_destruct(const string& ns_id, string* prefix, string* stem) {
+    if (ns_id.size() == 0) {
+        *stem = "";
+        *prefix = "";
         return;
     }
     i64 last_slash = -1;
-    for (u32 i = 0; i < global_name.size(); ++i) {
-        if (global_name[i] == '/') {
+    for (u32 i = 0; i < ns_id.size(); ++i) {
+        if (ns_id[i] == '/') {
             last_slash = i;
         }
     }
     if (last_slash == -1) {
-        *pkg = "";
+        *prefix = "";
     } else {
-        *pkg = global_name.substr(0, last_slash);
+        *prefix = ns_id.substr(0, last_slash);
     }
-    *name = global_name.substr(last_slash+1);
+    *stem = ns_id.substr(last_slash+1);
 }
 
-bool is_subpkg(const string& sub, const string& pkg) {
-    if (sub.size() < pkg.size()) {
+bool is_subns(const string& sub, const string& ns) {
+    if (sub.size() < ns.size()) {
         return false;
     }
     u32 i;
-    for (i = 0; i < pkg.size(); ++i) {
-        if (sub[i] != pkg[i]) {
+    for (i = 0; i < ns.size(); ++i) {
+        if (sub[i] != ns[i]) {
             return false;
         }
     }
@@ -103,11 +103,11 @@ bool is_subpkg(const string& sub, const string& pkg) {
     }
 }
 
-string subpkg_rel_path(const string& sub, const string& pkg) {
-    if (sub.size() == pkg.size()) {
+string subns_rel_path(const string& sub, const string& ns) {
+    if (sub.size() == ns.size()) {
         return ".";
     } else {
-        return sub.substr(pkg.size()+1);
+        return sub.substr(ns.size()+1);
     }
 }
 

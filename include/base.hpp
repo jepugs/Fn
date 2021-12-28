@@ -79,12 +79,13 @@ constexpr u8 GC_GLOBAL_BIT      = 0x02;
 constexpr u8 GC_TYPE_BITMASK    = 0xf0;
 
 // GC Types
-constexpr u8 GC_TYPE_CHUNK      = 0x80;
-// NOTE: I want these four to line up with the type tags in values.hpp
+constexpr u8 GC_TYPE_CHUNK      = 0x00;
+// NOTE: I want these five to line up with the type tags in values.hpp
 constexpr u8 GC_TYPE_STRING     = 0x10;
 constexpr u8 GC_TYPE_CONS       = 0x20;
 constexpr u8 GC_TYPE_TABLE      = 0x30;
 constexpr u8 GC_TYPE_FUNCTION   = 0x40;
+constexpr u8 GC_TYPE_BIGNUM     = 0x50;
 
 
 // Used to track debugging information. An empty string for the filename

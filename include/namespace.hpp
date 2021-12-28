@@ -45,14 +45,14 @@ struct global_env {
 
 };
 
-// global name destructuring
-void ns_name(const string& global_name, string* pkg, string* name);
-// tell if sub is a subpackage of pkg
-bool is_subpkg(const string& sub, const string& pkg);
+// namespace id destructuring
+void ns_id_destruct(const string& global_name, string* prefix, string* stem);
+// tell if sub is a subns of pkg
+bool is_subns(const string& sub, const string& ns);
 // Returns the suffix of sub which distinguishes it from superpackage pkg. If
 // this would be the empty string, returns ".". This will not work properly if
 // sub is not a subpackage of pkg.
-string subpkg_rel_path(const string& sub, const string& pkg);
+string subns_rel_path(const string& sub, const string& ns);
 
 
 // import bindings src into dest. The new bindings' names consist

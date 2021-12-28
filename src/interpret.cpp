@@ -13,7 +13,7 @@ interpreter::interpreter(logger* log)
     , alloc{&globals}
     , log{log}
     , base_dir{"."}
-    , base_pkg{symtab.intern("fn/user")} {
+    , main_prefix{""} {
 
     auto ws = alloc.add_working_set();
     ffi_chunk = ws.add_chunk(symtab.intern("fn/builtin"));
@@ -105,7 +105,7 @@ value interpreter::interpret_file(const string& path,
     // FIXME: check whether the declared package matches the given one
 
     // Skip package declaration
-    auto x = read_pkg_decl(&sc, ws, err);
+    auto x = read_ns_decl(&sc, ws, err);
     if (err->happened) {
         log_error(err);
         return V_NIL;
@@ -127,7 +127,6 @@ value interpreter::interpret_file(const string& path,
         log_error(err);
     }
     return res;
-
 }
 
 value interpreter::interpret_main_file(const string& path,
@@ -142,9 +141,9 @@ value interpreter::interpret_main_file(const string& path,
         base_dir = ".";
     }
 
-    source_loc start;
-    auto x = read_pkg_decl(&sc, ws, err);
+    auto x = read_ns_decl(&sc, ws, err);
     // TODO: validate package name
+    string ns_str;
     string pkg;
     if (!x.has_value()) {
         if (err->happened) {
@@ -154,14 +153,21 @@ value interpreter::interpret_main_file(const string& path,
         // no package declaration, so reinitialize the scanner
         in = std::ifstream{path};
         sc = scanner{&in, p.filename()};
-        pkg = "fn/user";
+        ns_str = p.stem().u8string();
+        main_prefix = "";
     } else {
-        pkg = symtab[*x];
+        ns_str = symtab[*x];
+        string prefix;
+        string stem;
+        ns_id_destruct(ns_str, &prefix, &stem);
+        if (stem != p.stem().u8string()) {
+            set_fault(err, sc.get_loc(), "interpreter",
+                    "Namespace stem doesn't match filename stem.");
+        }
+        main_prefix = prefix;
     }
-    base_pkg = intern(pkg);
-    string ns_str = pkg + "/" + p.stem().u8string();
     bool resumable;
-    auto res = interpret_from_scanner(&sc, symtab.intern(ns_str), ws,
+    auto res = interpret_from_scanner(&sc, intern(ns_str), ws,
             &resumable, err);
     if (err->happened) {
         log_error(err);
@@ -329,7 +335,7 @@ bool interpreter::import_ns(symbol_id ns_id, working_set* ws, fault* err) {
     return !err->happened;
 }
 
-optional<symbol_id> interpreter::read_pkg_decl(scanner* sc,
+optional<symbol_id> interpreter::read_ns_decl(scanner* sc,
         working_set* ws,
         fault* err) {
     bool resumable;
@@ -342,13 +348,13 @@ optional<symbol_id> interpreter::read_pkg_decl(scanner* sc,
         return {};
     }
     auto op = ast->datum.list[0];
-    if (op->kind != ak_symbol_atom || op->datum.sym != intern("package")) {
+    if (op->kind != ak_symbol_atom || op->datum.sym != intern("namespace")) {
         free_ast_form(ast);
         return {};
     }
     if (ast->list_length != 2) {
         set_fault(err, ast->loc, "interpreter",
-                "Incorrect arity in package declaration.");
+                "Incorrect arity in namespace declaration.");
         free_ast_form(ast);
         return {};
     }
@@ -365,17 +371,17 @@ optional<symbol_id> interpreter::read_pkg_decl(scanner* sc,
 }
 
 optional<string> interpreter::find_import_file(symbol_id ns_id) {
-    string pkg, ns;
-    ns_name(symtab[ns_id], &pkg, &ns);
-    string base = symtab[base_pkg];
-    if (is_subpkg(pkg, base)) {
-        auto str = subpkg_rel_path(pkg, base);
-        auto res = str + "/" + ns + ".fn";
+    auto ns_str = symtab[ns_id];
+    // FIXME: should validate the ns_id. But here, or elsewhere?
+
+    if (is_subns(ns_str, main_prefix)) {
+        auto str = subns_rel_path(ns_str, main_prefix);
+        auto res = str + ".fn";
         return res;
     }
     // system path
-    auto str = string{PREFIX} + "/lib/fn/packages/" +  symtab[ns_id] + ".fn";
-    fs::path p{str};
+    auto filename = string{PREFIX} + "/lib/fn/packages/" +  ns_str + ".fn";
+    fs::path p{filename};
     if (fs::exists(p) && !fs::is_directory(p)) {
         return p.u8string();
     }

@@ -221,6 +221,8 @@ public:
     // get stream position from running tellg on the input stream
     size_t tellg();
 
+    source_loc get_loc();
+
 private:
     std::istream *input;
     // if true, the stream is closed when the scanner ends

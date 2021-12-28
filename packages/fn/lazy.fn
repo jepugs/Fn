@@ -1,4 +1,4 @@
-(package fn)
+(namespace fn/lazy)
 
 ; fun here is required to accept 0 arguments and return either nil or a pair of
 ; the form [value Lazy-List].

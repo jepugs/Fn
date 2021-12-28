@@ -279,11 +279,10 @@ support for text manipulation will focus on UTF-8.
 
 **** Symbols
 
-Symbols are internalized strings. For the uninitiated, this means that the
-symbol's name is hashed, and the symbol value itself is simply a reference to
-the hashed value. *This means that comparisons between symbols as fast as
-comparisons between integers.* As a result, symbols are quite useful for making
-ad-hoc enum types.
+Symbols are internalized strings. That is, the symbol's name is hashed, and the
+symbol value itself is simply a reference to the hashed value. *This means that
+comparisons between symbols as fast as comparisons between integers.* As a
+result, symbols are quite useful for making ad-hoc enum types.
 
 Symbols can be created in two ways: by using the ~intern~ function on a string, or
 by using the ~quote~ special operator, which is far more common (and more
@@ -720,43 +719,50 @@ A *namespace* is a collection of global variable and macro definitions. All Fn
 code runs inside of some namespace. External namespaces can be *imported*, which
 allows their definitions to be accessed from the current namespace.
 
-Namespaces are identified by a *name*, which is a string not containing any
-slashes, and a *package*, which is a string representing a logical collection of
-namespaces. They can be combined into the symbol ~<package>/<name>~, which is
-called the *identifier* or *ID* of the namespace. This ID is required to be globally
-unique.
+Namespaces are identified by a *namespace ID*, which is a symbol segmented by
+slash (~/~) characters. It is illegal to have empty segments (i.e. namespace IDs
+cannot contain the substring "//"). We call the last part of the namespace ID
+its *stem*. Namespace IDs look like paths in a filesystem. This is very
+deliberate, and suggestive of the way that ~import~ finds the file corresponding
+to a namespace.
 
 *Examples of Namespace IDs:*
 #+BEGIN_SRC fn
-fn/builtin              ; package is "fn", name is "builtin"
-fn/internal/io          ; package is "fn/internal", name is "io"
-my-project/util/linalg  ; package is "my-project/util", name is "linalg"
-my-project/model        ; package is "my-project", name is "model"
+fn/builtin               ; stem is builtin
+fn/internal/io           ; stem is io
+my-project/model         ; stem is model
+my-project/util/linalg   ; stem is linalg
 #+END_SRC
 
-When evaluating code from a file, the namespace name will always be the stem of
-the file. The package can be set via a package declaration, see [[Package
-Declarations]].
+When evaluating code from a file, the namespace stem must always be the stem of
+the filename. E.g. ~my-project/model~ must be in a file named ~model.fn~.
 
-The default REPL namespace is ~fn/interactive~. Fn source code passed in as a
+The default REPL namespace is ~fn/user~. Fn source code passed in as a
 command line argument is also evaluated in this namespace.
 
-*** Package Declarations
 
-When you run the ~fn~ command on a file, by default, the package is set to
-~fn/user~. Obviously, we'd like to be able to decide the package ourselves. This is
-done via a *package declaration*. The syntax for package declarations is:
+*** Namespace Declarations
+
+When you run the ~fn~ command on a file, by default, the namespace ID is set to
+the stem of the file by itself. This is obviously no bueno for libraries, as it
+would make name collisions inevitable. To add a prefix to a namespace ID, use a
+*namespace declaration*. The syntax for namespace declarations is:
 #+BEGIN_SRC fn
-(package package-name)
+(namespace <id>)
+; e.g.
+(namespace fn/builtin)
 #+END_SRC
 
-That's it. There can only be one package declaration per file, and it must be
-the first expression in the file (not including comments and whitespace).
+That's it. There can only be one namespace declaration per file, it must be
+the first expression in the file (not including comments and whitespace), and
+the namespace stem must match the filename stem, e.g. a file named ~model.fn~ must
+have the stem of its namespace set to ~model~.
 
-In general, the main file of an application should have a package declaration,
+In general, the main file of an application should have a namespace declaration,
 as should files intended to be exported as part of a library. In other
-situations, the ~import~ form can often automatically deduce the package, and this
-may lead to code which is slightly easier to refactor. It's your call.
+situations, the ~import~ form can often automatically deduce the prefix based on
+the file's path, and this may lead to code which is slightly easier to refactor.
+It's your call.
 
 
 *** Import
@@ -772,26 +778,25 @@ depending on what you want the imported definitions to be named.
 #+END_SRC
 
 Invocation 1 will name the imported definitions like this:
-~<namespace-name>:<definition-name>~ (recall that the namespace /name/ does not
-include the package, as opposed to the namespace /ID/).
+~<stem>:<definition-name>~.
 
-Using invocation 2 above replaces the namespace name with ~<alias>~ in the
-imported definitions, and invocation 3 drops the prefix entirely as the
-invocation suggests.
+Using invocation 2 above replaces the stem with ~<alias>~ in the imported
+definitions, and invocation 3 drops the prefix entirely as the invocation
+suggests.
 
 The clearest way to illustrate this behavior is by example. Say we have a
 namespace ~foo/bar/baz~ containing variables named ~bob~ and ~alice~:
 #+BEGIN_SRC fn
 ;;; baz.fn
-(package foo/bar)
+(namespace foo/bar)
 (def alice "Alice")
 (def bob "Bob")
 #+END_SRC
 
-We have three ways to import this namespace, shown above. All three cause the
-definitions from ~foo/bar/baz~ to be copied into the current namespace. However,
-in each case the created bindings will have different names. The three cases are
-illustrated below:
+As shown above, there are three ways to import this namespace. All three cause
+the definitions from ~foo/bar/baz~ to be copied into the current namespace.
+However, in each case the created bindings will have different names. These
+differences are illustrated below:
 
 #+BEGIN_SRC fn
 ;;; main.fn
@@ -849,29 +854,7 @@ when syntactic sugar is expanded, i.e. before the main compilation step.
 #+END_SRC
 
 
-*** Finding Namespace Files
-
-The first time a namespace is imported, the import system searches for an
-appropriate file and evaluates it to create the definitions. Subsequent uses of
-import will reuse these definitions, so the namespace code only gets run once.
-
-To find this file, we check the following places, in order
-1. Where applicable, we search using a relative path calculated by comparing the
-   current package to the desired namespace ID. For instance, when importing
-   ~foo/bar~ from ~foo/baz~, it will look for files name "baz.fn" in the same
-   directory as "bar.fn". If we import ~foo/bat/oof~, it looks for "bat/oof.fn".
-   - When the interpreter starts, it selects a base directory based on the
-     command line options. No directory above the base directory will be
-     searched. This is for security reasons. Generally, you don't have to think
-     about this caveat, but it's explained in full in [[Import Search]] in the
-     documentation for the command line interface.
-2. A list of paths extracted from the environment variable ~FN_SEARCH_PATH~ are
-   searched. This is colon-delimited like most search paths. These directories
-   are searched based on the full namespace ID, so e.g. ~(import my/pkg/ns)~ will
-   search for files named "my/pkg/ns.fn".
-3. The system library directory is searched. This is set at compile time; by
-   default it is ~/usr/local/lib/fn/packages~.
-
+*** TODO Finding Namespace Files
 
 ** Quoting and Macros
 
@@ -1106,9 +1089,9 @@ used instead. This is how this looks:
 
 #+BEGIN_SRC fn
 (def tab1 {'name "Mr. Table"
-          'occupation "Holds data"
-          'child {'name "Table Jr." 
-                  'occupation "Holds less data"}})
+           'occupation "Holds data"
+           'child {'name "Table Jr." 
+                   'occupation "Holds less data"}})
 (def tab2 {0 'zero 1 'one 2 'two 3 'three 4 'four})
 
 ;; these all return "Mr. Table"
@@ -1167,7 +1150,7 @@ every table. It can be used to change the behavior of the table as an object.
 
 
 
-* Command Line Interface
+* TODO Command Line Interface
 
 All functionality is accessed via the ~fn~ command line program.
 

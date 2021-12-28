@@ -1,4 +1,4 @@
-(package fn)
+(namespace fn/builtin)
 
 (defn even? (x)
   (= (mod x 2) 0))

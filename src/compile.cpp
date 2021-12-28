@@ -249,7 +249,8 @@ void compiler::compile_fn(const llir_fn* llir,
     }
     // indicator parameters
     for (u32 i = params.req_args; i < params.num_pos_args; ++i) {
-        lex2.vars.insert(symtab->intern("?" + (*symtab)[params.pos_args[i]]), lex2.sp++);
+        lex2.vars.insert(symtab->intern("?" + (*symtab)[params.pos_args[i]]),
+                lex2.sp++);
     }
 
     compile_llir_generic(llir->body, &lex2, true);
@@ -261,7 +262,7 @@ void compiler::compile_fn(const llir_fn* llir,
     patch_jump(end_addr - start - 3, start + 1, llir->header.origin);
     return_on_err;
 
-    // TODO compile init forms
+    // compile init forms
     auto init_len = params.num_pos_args - params.req_args;
     for (auto i = 0; i < init_len; ++i) {
         compile_llir_generic(params.inits[i], lex, false);

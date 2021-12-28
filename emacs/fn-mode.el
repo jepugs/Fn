@@ -197,7 +197,7 @@ given context."
       ;; special operators
       (,(concat "([[:space:]]*\\_<\\(and\\|cond\\|def\\|defmacro\\|defn\\|do\\|"
                 "dot\\|dollar-fn\\|if\\|import\\|fn\\|let\\|"
-                "letfn\\|or\\|package\\|quasiquote\\|quote\\|unquote\\|"
+                "letfn\\|or\\|namespace\\|quasiquote\\|quote\\|unquote\\|"
                 "unquote-splicing\\|set!\\|with\\)\\_>")
        1 font-lock-keyword-face)
       ("\\_<\\(true\\|false\\|nil\\)\\_>" 1 font-lock-constant-face)

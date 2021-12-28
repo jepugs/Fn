@@ -81,6 +81,10 @@ scanner::~scanner() {
     }
 }
 
+source_loc scanner::get_loc() {
+    return source_loc{filename, line, col};
+}
+
 // increment the scanner position, keeping track of lines and columns
 void scanner::advance(char ch) {
     if (ch == '\n') {

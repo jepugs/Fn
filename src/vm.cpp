@@ -167,10 +167,10 @@ void vm_thread::do_import() {
         pending_import_id = vsymbol(ns_id);
         status = vs_waiting_for_import;
     } else {
-        string pkg, name;
-        ns_name((*symtab)[vsymbol(ns_id)], &pkg, &name);
+        string prefix, stem;
+        ns_id_destruct((*symtab)[vsymbol(ns_id)], &prefix, &stem);
         // FIXME: maybe check for overwrites?
-        copy_defs(*symtab, **globals->get_ns(chunk->ns_id), **x, name + ":");
+        copy_defs(*symtab, **globals->get_ns(chunk->ns_id), **x, stem + ":");
     }
 }
 
@@ -705,10 +705,10 @@ void vm_thread::execute(fault* err) {
                     "Import failed (no namespace created).");
             return;
         }
-        string pkg, name;
-        ns_name((*symtab)[pending_import_id], &pkg, &name);
+        string prefix, stem;
+        ns_id_destruct((*symtab)[pending_import_id], &prefix, &stem);
         // FIXME: maybe check for overwrites?
-        copy_defs(*symtab, **globals->get_ns(chunk->ns_id), **x, name + ":");
+        copy_defs(*symtab, **globals->get_ns(chunk->ns_id), **x, stem + ":");
     }
     status = vs_running;
     try {
