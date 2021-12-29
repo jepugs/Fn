@@ -150,6 +150,12 @@ constexpr u8 OP_SET_MACRO = 0x15;
 // get global by its full name, e.g. /fn/builtin:map
 constexpr u8 OP_BY_GUID = 0x16;
 
+// dot; perform a dot operation (i.e. a get with metatable lookup as a
+// fallback). stack arguments: ->[symbol] obj
+constexpr u8 OP_DOT = 0x17;
+// TODO: implementing the below opcode could allow faster method calls
+// constexpr u8 OP_DOT_CALL = 0x18;
+
 
 // const SHORT; push a constant, identified by its 16-bit id
 constexpr u8 OP_CONST = 0x20;
@@ -167,6 +173,7 @@ constexpr u8 OP_TRUE  = 0x23;
 constexpr u8 OP_JUMP = 0x30;
 // cjump SHORT; if top of the stack is falsey, add signed SHORT to ip
 constexpr u8 OP_CJUMP = 0x31;
+// FIXME: changing the order of function arguments would help performance
 // call BYTE; perform a function call. Uses BYTE+1 elements on the stack,
 // one for the function, one for each positional argument.
 // -> [func] pos-arg-n ... pos-arg-1

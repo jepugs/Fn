@@ -145,6 +145,15 @@ value vm_thread::get_macro(value name) {
     return *res;
 }
 
+void vm_thread::push_wrapped_method(value tab, value method, value name) {
+    if (!vis_function(method)) {
+        runtime_error("dot cannot access non-methods from metatable.");
+    }
+    auto res = stack->push_wrapped_function(vfunction(method), 1);
+    vfunction(res)->upvals[0]->closed_value = tab;
+    // vtable(tab)->methods.insert(name, res);
+}
+
 
 
 optional<value> vm_thread::try_import(symbol_id ns_id) {
@@ -255,7 +264,7 @@ void vm_thread::set_local(local_address i, value v) {
 }
 
 void vm_thread::set_from_top(local_address i, value v) {
-    stack_address pos = stack->get_pointer() - i;
+    stack_address pos = stack->get_pointer() - i - 1;
     if (pos < frame->bp) {
         runtime_error("out of stack bounds on set-local.");
     }
@@ -365,7 +374,13 @@ code_address vm_thread::call(local_address num_args) {
         runtime_error("Error on call: callee is not a function");
         return ip + 2;
     }
+
     auto func = vfunction(callee);
+    if (func->wraps) {
+        stack->unwrap_fun(num_args);
+        // FIXME: maybe this shouldn't use recursion?
+        return call(num_args + func->num_upvals);
+    }
     stack->push_callee(func);
     pop();
 
@@ -385,6 +400,11 @@ code_address vm_thread::tcall(local_address num_args) {
         return ip + 2;
     }
     auto func = vfunction(callee);
+    if (func->wraps) {
+        stack->unwrap_fun(num_args);
+        // FIXME: maybe this shouldn't use recursion?
+        return tcall(num_args  + func->num_upvals);
+    }
     auto stub = func->stub;
     // foreign calls are just normal calls
     if (stub->foreign != nullptr || frame->caller == nullptr) {
@@ -417,8 +437,15 @@ code_address vm_thread::apply(local_address num_args, bool tail) {
     }
 
     auto func = vfunction(callee);
-    stack->push_callee(func);
-    pop();
+    if (tail) {
+        stack->pop_callee();
+        stack->push_callee(func);
+        pop();
+        stack->close_for_tc(num_args + 1, frame->bp);
+    } else {
+        stack->push_callee(func);
+        pop();
+    }
 
     u32 list_len = 0;
     for (auto it = args; it != V_EMPTY; it = vtail(it)) {
@@ -428,9 +455,13 @@ code_address vm_thread::apply(local_address num_args, bool tail) {
     }
 
     pop();
-    arrange_call_stack(func, num_args + list_len);
-    return tail ? make_tcall(func) : make_call(func);
-    //return tail ? tcall(num_args+list_len) : call(num_args+list_len);
+    if(tail) {
+        arrange_call_stack(func, num_args + list_len);
+        return make_tcall(func);
+    } else {
+        arrange_call_stack(func, num_args + list_len);
+        return make_call(func);
+    }
 }
 
 void vm_thread::step() {
@@ -613,6 +644,47 @@ void vm_thread::step() {
         }
         vtable(v2)->contents.insert(v1,v3);
         stack->pop_times(3);
+        break;
+
+    case OP_DOT:
+        // key
+        v1 = peek(0);
+        // object
+        v2 = peek(1);
+        if (v_tag(v2) == TAG_TABLE) {
+            v3 = vtable(v2)->metatable;
+            if (!vis_table(v3)) {
+                // FIXME: duplicated from OP_OBJ_GET. put this in a function
+                if (vtable(v2)->contents.has_key(v1)) {
+                    pop();
+                    // FIXME: use a set instead of a pop and push
+                    pop();
+                    // FIXME: this computes the hash twice :(
+                    push(*vtable(v2)->contents.get(v1));
+                } else {
+                    pop();
+                    pop();
+                    push(V_NIL);
+                }
+            } else {
+                if (vtable(v3)->contents.has_key(v1)) {
+                    push_wrapped_method(v2, *vtable(v3)->contents.get(v1), v1);
+                    set_from_top(1, peek());
+                    pop();
+                } else if (vtable(v2)->contents.has_key(v1)) {
+                    pop();
+                    pop();
+                    // FIXME: this computes the hash twice :(
+                    push(*vtable(v2)->contents.get(v1));
+                } else {
+                    pop();
+                    pop();
+                    push(V_NIL);
+                }
+            }
+            break;
+        } 
+        runtime_error("OP_DOT operand not a table.");
         break;
 
     case OP_IMPORT:

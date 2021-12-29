@@ -627,6 +627,9 @@ fn_fun(has_key_q, "has-key?", "(table key)") {
 
 fn_fun(get_keys, "get-keys", "(table)") {
     h->assert_type(TAG_TABLE, args[0]);
+    if (h->failed()) {
+        return;
+    }
     // FIXME: there's a better way to iterate over this
     auto keys = vtable(args[0])->contents.keys();
     u32 len = 0;
@@ -637,8 +640,31 @@ fn_fun(get_keys, "get-keys", "(table)") {
     }
 }
 
+fn_fun(metatable, "metatable", "(table)") {
+    h->assert_type(TAG_TABLE, args[0]);
+    if (h->failed()) {
+        return;
+    }
+    h->push(vtable(args[0])->metatable);
+}
+
+fn_fun(with_metatable, "with-metatable", "(meta table)") {
+    h->assert_type(TAG_TABLE, args[0]);
+    h->assert_type(TAG_TABLE, args[1]);
+    if (h->failed()) {
+        return;
+    }
+    auto x = vtable(h->push_table());
+    x->contents = vtable(args[1])->contents;
+    x->metatable = args[0];
+}
+
+
 fn_fun(error, "error", "(message)") {
     h->assert_type(TAG_STRING, args[0]);
+    if (h->failed()) {
+        return;
+    }
     h->error(vstring(args[0])->data);
     h->push(V_NIL);
     return;
@@ -703,6 +729,9 @@ void install_builtin(interpreter& inter) {
     fn_add_builtin(inter, get_default);
     fn_add_builtin(inter, has_key_q);
     fn_add_builtin(inter, get_keys);
+
+    fn_add_builtin(inter, metatable);
+    fn_add_builtin(inter, with_metatable);
 
     fn_add_builtin(inter, error);
 

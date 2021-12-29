@@ -27,6 +27,36 @@
       (or (head args)
           (iter (head args) (tail args)))))
 
+(defmacro when (test & body)
+  `(if ,test
+       (do ,@body)
+       nil))
+
+; FIXME: implement the dot special form directly in the compiler
+; (defmacro dot (tab & keys)
+;   (letfn dot-one (tab-var key)
+;     (let meta-var (gensym)
+;          method-var (gensym)
+;          args-var (gensym))
+;     `(do-inline
+;        (let ,meta-var (metatable ,tab-var))
+;        (if ,meta-var
+;          (with (,method-var (get ,meta-var ',key))
+;            (if ,method-var
+;                (fn (& ,args-var)
+;                  (apply ,method-var ,tab-var ,args-var))
+;                (get ,tab-var ',key)))
+;          (get ,tab-var ',key))))
+;   (when (empty? keys)
+;     (error "dot requires at least two arguments."))
+;   (letfn red (prev-dot key)
+;     (let tab-var (gensym))
+;     `(do-inline
+;        (let ,tab-var ,prev-dot)
+;        ,(dot-one tab-var key)))
+;   (foldl red tab (reverse keys)))
+
+
 (defn nand (& args)
   (not (apply and args {})))
 ; (defmacro nand (& args)
@@ -182,7 +212,6 @@
 
 (defn filter (pred list)
   (letfn iter (acc rem)
-    (println "itebr")
     (cond
       (empty? rem) (reverse acc)
       (pred (head rem)) (iter (conj (head rem) acc)
@@ -199,14 +228,14 @@
 (defn mapcat (fun list)
   (apply concat (map fun list)))
 
-(defmacro match (& clauses)
-  (macro-assert (= 2 (length clauses)))
-  (let bindings (pattern-bindings (head clauses) (nth 1 clauses))
-       names (head bindings)
-       body (nth 1 bindings))
-  `(do (let ,@(mapcat $`(,$ nil) bindings))
-     ,(nth 1 values)
-     ,(nth 1 clauses)))
+; (defmacro match (& clauses)
+;   (macro-assert (= 2 (length clauses)))
+;   (let bindings (pattern-bindings (head clauses) (nth 1 clauses))
+;        names (head bindings)
+;        body (nth 1 bindings))
+;   `(do (let ,@(mapcat $`(,$ nil) bindings))
+;      ,(nth 1 values)
+;      ,(nth 1 clauses)))
 
 
 (defn list-range (start stop)
@@ -271,8 +300,7 @@
         (seq-map pred seq)))
   (let seq-filter filter)
   (defn filter (pred seq)
-    (if (and (table? seq)
-             (has-key? seq 'filter))
+    (if (table? seq)
         (seq.filter pred)
         (seq-filter pred seq))))
 

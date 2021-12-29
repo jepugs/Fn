@@ -112,8 +112,14 @@ struct alignas(32) fn_string {
     bool operator==(const fn_string& s) const;
 };
 
+// TODO: maybe add a way to cache table methods so they don't need to be
+// recomputed
 struct alignas(32) fn_table {
     gc_header h;
+    value metatable;
+    // this is a cached table of methods wrapping this table as the first
+    // argument.
+    table<value,value> methods;
     table<value,value> contents;
 
     fn_table();
@@ -185,6 +191,9 @@ struct upvalue_cell {
 struct alignas(32) function {
     gc_header h;
     function_stub* stub;
+    // if this is non-nil, this is a wrapper function, meaning it calls another
+    // function but passes its upvalues in as the initial arguments
+    function* wraps;
     local_address num_upvals;
     // it is important that these pointers get set to null for foreign
     // functions. Since the function stub is not necessarily available at the
@@ -199,6 +208,11 @@ struct alignas(32) function {
     // field in stub. However, it is the responsibility of the function creator
     // to allocate it.
     function(function_stub* stub);
+    // FIXME: wrapped functions have totally different semantics. We can do
+    // better here by making all functions with variable capture into wrapped
+    // functions, and functions without into a different structure. That way
+    // seems more elegant.
+    function(function* wraps, local_address num_upvals);
     ~function();
 };
 

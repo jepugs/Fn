@@ -123,6 +123,12 @@ public:
     // fully initialized, and no sooner.
     value create_function(function_stub* func, stack_address bp);
 
+    // create a wrapped function on top of the stack. The upvalues of the
+    // function will be closed and initialized to V_NIL, so they must be set
+    // by the caller
+    value push_wrapped_function(function* to_wrap, local_address num_upvals);
+
+
     // root_stack also maintains a record of the functions in the call stack.
     // This is so that the function can safely be popped off of the main call
     // stack. The function on top of the stack is also used for setting upvalues
@@ -147,6 +153,11 @@ public:
     // after doing the close (so the final stack size is base_addr+1). This sets
     // last_pop to the return value.
     void do_return(u32 base_addr);
+
+    // this assumes that the top of the stack is a wrapped function. It unwraps
+    // it by inserting the wrapped upvalues before the function's arguments and
+    // replacing the top of the stack with the function being wrapped.
+    void unwrap_fun(local_address num_args);
 
     value& operator[](u32 offset) {
         return contents[offset];

@@ -1,38 +1,22 @@
 (namespace fn/lazy)
 
-; fun here is required to accept 0 arguments and return either nil or a pair of
-; the form [value Lazy-List].
-(defn Lazy-List (fun)
-  (let is-empty nil
-       empty-method (fn ()
-                      (force)
-                      (res.empty?))
-       hd (fn ()
-            (force)
-            (res.head))
-       tl (fn ()
-            (force)
-            (res.tail))
-       force (fn ()
-               (let x (fun))
-               (if (= x nil)
-                   (do
-                     (set! res.empty? (fn () true))
-                     (set! res.head (fn () nil))
-                     (set! res.tail (fn () res)))
-                   (do
-                     (set! res.empty? (fn () false))
-                     (let v (head x))
-                     (set! res.head (fn () v))
-                     (let n (nth 1 x))
-                     (set! res.tail (fn () n)))))
-       res {'class Lazy-List
-            'empty? empty-method
-            'head hd
-            'tail tl
-            'map $(lmap $ res)
-            'filter $(lfilter $ res)})
-  res)
+(def Lazy-List-Meta
+  {'force (fn (self)
+            (self.force-value))
+   'head (fn (self)
+           (head (self.force-value)))
+   'tail (fn (self)
+           (nth 1 (self.force-value)))
+   'empty? (fn (self)
+             (= (self.force-value) nil))
+   'map (fn (self fun)
+          (lmap fun self))
+   'filter (fn (self fun)
+             (lfilter fun self))})
+
+(defn Lazy-List (force-value)
+  (with-metatable Lazy-List-Meta
+    {'force-value force-value}))
 
 (defn list->lazy (list)
   (if (empty? list)
@@ -97,11 +81,11 @@
                        [$0 (next-int (+ $0 1))])))
     (next-int 0)))
 
-(defmacro defer-list (expr)
-  (let x (gensym))
-  `(Lazy-List (fn ()
-                (with (,x ,expr)
-                  [(head ,x) (tail ,x)]))))
+; (defmacro defer-list (expr)
+;   (let x (gensym))
+;   `(Lazy-List (fn ()
+;                 (with (,x ,expr)
+;                   [(head ,x) (tail ,x)]))))
 
 (defn lmap (fun lazy)
   (if (lazy.empty?)
