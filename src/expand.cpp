@@ -897,6 +897,7 @@ llir_form* expander::expand_set(const source_loc& loc,
     }
     auto val = expand_meta(lst[2], meta);
     if (!val) {
+        free_llir_form(tar);
         return nullptr;
     }
 
