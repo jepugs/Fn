@@ -62,7 +62,8 @@ bool fn_string::operator==(const fn_string& s) const {
 }
 
 fn_table::fn_table()
-    : contents{} {
+    : metatable{V_NIL}
+    , contents{} {
     mk_gc_header(GC_TYPE_TABLE, &h);
 }
 

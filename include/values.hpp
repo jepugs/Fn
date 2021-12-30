@@ -114,6 +114,7 @@ struct alignas(32) fn_string {
 
 struct alignas(32) fn_table {
     gc_header h;
+    value metatable;
     table<value,value> contents;
 
     fn_table();
