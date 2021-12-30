@@ -231,37 +231,6 @@ void vm_thread::pop_times(stack_address n) {
     stack->pop_times(n);
 }
 
-value vm_thread::peek(stack_address i) const {
-    if (i >= stack->get_pointer()) {
-        runtime_error("peek out of stack bounds");
-    }
-    return stack->peek(i);
-}
-
-value vm_thread::local(local_address i) const {
-    stack_address pos = i + frame->bp;
-    if (pos >= stack->get_pointer()) {
-        runtime_error("out of stack bounds on local");
-    }
-    return stack->peek_bottom(pos);
-}
-
-void vm_thread::set_local(local_address i, value v) {
-    stack_address pos = i + frame->bp;
-    if (pos >= stack->get_pointer()) {
-        runtime_error("out of stack bounds on set-local.");
-    }
-    stack->set(pos, v);
-}
-
-void vm_thread::set_from_top(local_address i, value v) {
-    stack_address pos = stack->get_pointer() - i - 1;
-    if (pos < frame->bp) {
-        runtime_error("out of stack bounds on set-local.");
-    }
-    stack->set(pos, v);
-}
-
 void vm_thread::arrange_call_stack(function* func,
         local_address num_args) {
     auto req_args = func->stub->req_args;    
@@ -438,6 +407,38 @@ code_address vm_thread::apply(local_address num_args, bool tail) {
     return tail ? make_tcall(func) : make_call(func);
 }
 
+
+value vm_thread::peek(stack_address i) const {
+    if (i >= stack->get_pointer()) {
+        runtime_error("peek out of stack bounds");
+    }
+    return stack->peek(i);
+}
+
+value vm_thread::local(local_address i) const {
+    stack_address pos = i + frame->bp;
+    if (pos >= stack->get_pointer()) {
+        runtime_error("out of stack bounds on local");
+    }
+    return stack->peek_bottom(pos);
+}
+
+void vm_thread::set_local(local_address i, value v) {
+    stack_address pos = i + frame->bp;
+    if (pos >= stack->get_pointer()) {
+        runtime_error("out of stack bounds on set-local.");
+    }
+    stack->set(pos, v);
+}
+
+void vm_thread::set_from_top(local_address i, value v) {
+    stack_address pos = stack->get_pointer() - i - 1;
+    if (pos < frame->bp) {
+        runtime_error("out of stack bounds on set-local.");
+    }
+    stack->set(pos, v);
+}
+
 void vm_thread::step() {
 
     u8 instr = chunk->read_byte(ip);
@@ -567,6 +568,29 @@ void vm_thread::step() {
         stack->pop_times(2);
         break;
 
+    case OP_METHOD:
+        v1 = stack->peek();  // symbol
+        if (v_tag(v1) != TAG_SYM) {
+            runtime_error("Method lookup failed. Method name must be a symbol.");
+        }
+        v2 = stack->peek(1);
+        if (v_tag(v2) != TAG_TABLE) {
+            runtime_error("Method lookup failed. Target object is not a table.");
+        }
+        {
+            auto mt = vtable(v2)->metatable;
+            if (v_tag(mt) != TAG_TABLE) {
+                runtime_error("Method lookup failed. Target object has no metatable.");
+            }
+            auto x = vtable(mt)->contents.get(v1);
+            if (!x.has_value()) {
+                runtime_error("Method lookup failed. No such method found.");
+            }
+            pop();
+            set_from_top(0, *x);
+        }
+        break;
+
     case OP_CONST:
         id = chunk->read_short(ip+1);
         if (id >= chunk->constant_arr.size) {
@@ -592,10 +616,10 @@ void vm_thread::step() {
         // object
         v2 = peek(1);
         if (v_tag(v2) == TAG_TABLE) {
-            if (vtable(v2)->contents.has_key(v1)) {
+            auto x = vtable(v2)->contents.get(v1);
+            if (x.has_value()) {
                 pop();
-                pop();
-                push(*vtable(v2)->contents.get(v1));
+                set_from_top(0, *x);
             } else {
                 pop();
                 pop();
@@ -794,6 +818,9 @@ void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& ou
         break;
     case OP_SET_MACRO:
         out << "set-macro";
+        break;
+    case OP_METHOD:
+        out << "method";
         break;
     case OP_IMPORT:
         out << "import";

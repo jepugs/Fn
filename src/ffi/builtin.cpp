@@ -668,6 +668,8 @@ fn_fun(with_metatable, "with-metatable", "(meta table)") {
     auto x = vtable(h->push_table());
     x->contents = vtable(args[1])->contents;
     x->metatable = args[0];
+    //h->push(args[1]);
+    //vtable(args[1])->metatable = args[0];
 }
 
 fn_fun(error, "error", "(message)") {

@@ -103,7 +103,7 @@ void free_llir_defmacro(llir_defmacro* obj) {
 
 llir_dot* mk_llir_dot(const source_loc& origin,
         llir_form* obj,
-        local_address num_keys,
+        symbol_id key,
         llir_dot* dest) {
     if (dest == nullptr) {
         dest = new llir_dot;
@@ -111,13 +111,11 @@ llir_dot* mk_llir_dot(const source_loc& origin,
     (*dest) = {
         .header={.origin=origin, .tag=lt_dot},
         .obj=obj,
-        .num_keys=num_keys,
-        .keys=new symbol_id[num_keys]
+        .key=key
     };
     return dest;
 }
 void clear_llir_dot(llir_dot* obj) {
-    delete[] obj->keys;
     free_llir_form(obj->obj);
 }
 void free_llir_dot(llir_dot* obj) {
@@ -412,10 +410,7 @@ static string print_llir_offset(llir_form* form,
             print_llir_offset(xdot->obj, st, chunk, offset + 5, false);
             out << '\n';
             write_indent(out, offset+4);
-            for (u32 i = 0; i < xdot->num_keys; ++i) {
-                out << ' ' << st[xdot->keys[i]];
-            }
-            out << ')';
+            out << ' ' << st[xdot->key] << ')';
         }
         break;
     case lt_call:

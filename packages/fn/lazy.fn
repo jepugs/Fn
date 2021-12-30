@@ -2,37 +2,60 @@
 
 ; fun here is required to accept 0 arguments and return either nil or a pair of
 ; the form [value Lazy-List].
+; (defn Lazy-List (fun)
+;   (let is-empty nil
+;        empty-method (fn ()
+;                       (force)
+;                       (res.empty?))
+;        hd (fn ()
+;             (force)
+;             (res.head))
+;        tl (fn ()
+;             (force)
+;             (res.tail))
+;        force (fn ()
+;                (let x (fun))
+;                (if (= x nil)
+;                    (do
+;                      (set! res.empty? (fn () true))
+;                      (set! res.head (fn () nil))
+;                      (set! res.tail (fn () res)))
+;                    (do
+;                      (set! res.empty? (fn () false))
+;                      (let v (head x))
+;                      (set! res.head (fn () v))
+;                      (let n (nth 1 x))
+;                      (set! res.tail (fn () n)))))
+;        res {'class Lazy-List
+;             'empty? empty-method
+;             'head hd
+;             'tail tl
+;             'map $(lmap $ res)
+;             'filter $(lfilter $ res)})
+;   res)
+
+(def Lazy-List-Meta
+  {'force (fn (self)
+            ((get self 'force)))
+   'empty? (fn (self)
+             (= ((get self 'force)) nil))
+   'head (fn (self)
+           (head ((get self 'force))))
+   'tail (fn (self)
+           (nth 1 ((get self 'force))))
+   'map (fn (self fun)
+          (lmap fun self))
+   'filter (fn (self fun)
+             (lfilter fun self))})
+
 (defn Lazy-List (fun)
-  (let is-empty nil
-       empty-method (fn ()
-                      (force)
-                      (res.empty?))
-       hd (fn ()
-            (force)
-            (res.head))
-       tl (fn ()
-            (force)
-            (res.tail))
-       force (fn ()
-               (let x (fun))
-               (if (= x nil)
-                   (do
-                     (set! res.empty? (fn () true))
-                     (set! res.head (fn () nil))
-                     (set! res.tail (fn () res)))
-                   (do
-                     (set! res.empty? (fn () false))
-                     (let v (head x))
-                     (set! res.head (fn () v))
-                     (let n (nth 1 x))
-                     (set! res.tail (fn () n)))))
-       res {'class Lazy-List
-            'empty? empty-method
-            'head hd
-            'tail tl
-            'map $(lmap $ res)
-            'filter $(lfilter $ res)})
-  res)
+  (let self (with-metatable Lazy-List-Meta
+              {'force (fn ()
+                        (let val (fun))
+                        (set! (get self 'force)
+                              (fn () val))
+                        val)}))
+  self)
 
 (defn list->lazy (list)
   (if (empty? list)

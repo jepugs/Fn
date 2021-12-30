@@ -465,8 +465,11 @@ llir_form* expander::expand_dot(const source_loc& loc,
         u32 length,
         ast_form** lst,
         expander_meta* meta) {
-    if (length < 3) {
-        e_fault(loc, "dot requires at least 2 arguments.");
+    if (length != 3) {
+        e_fault(loc, "dot requires exactly 2 arguments.");
+        return nullptr;
+    } else if (!lst[2]->is_symbol()) {
+        e_fault(loc, "dot keys must be symbols.");
         return nullptr;
     }
 
@@ -474,17 +477,8 @@ llir_form* expander::expand_dot(const source_loc& loc,
     if (!x) {
         return nullptr;
     }
+    auto res = mk_llir_dot(loc, x, lst[2]->datum.sym);
 
-    auto res = mk_llir_dot(loc, x, length - 2);
-    for (u32 i = 0; i + 2 < length; ++i) {
-        if (!lst[i+2]->is_symbol()) {
-            e_fault(loc, "dot keys must be symbols.");
-            free_llir_dot(res);
-            return nullptr;
-        } else {
-            res->keys[i] = lst[i+2]->datum.sym;
-        }
-    }
     return (llir_form*) res;
 }
 

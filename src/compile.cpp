@@ -119,6 +119,20 @@ void compiler::compile_call(const llir_call* llir,
         lexical_env* lex,
         bool tail) {
     auto start_sp = lex->sp;
+
+    // argument index
+    bool dot_call = false;
+    // check if this is a method call. If so, compile and insert the argument
+    // first.
+    auto callee = llir->callee;
+    if (llir->callee->tag == lt_dot) {
+        dot_call = true;
+        // insert the dot object
+        auto l2 = (llir_dot*)callee;
+        compile_llir_generic(l2->obj, lex, false);
+        return_on_err;
+    }
+
     // compile positional arguments in ascending order
     for (u32 i = 0; i < llir->num_args; ++i) {
         compile_llir_generic(llir->args[i], lex, false);
@@ -126,25 +140,33 @@ void compiler::compile_call(const llir_call* llir,
     }
 
     // compile callee
-    compile_llir_generic(llir->callee, lex, false);
-    return_on_err;
+    if (dot_call) {
+        // put the callee on top of the stack for method lookup
+        write_byte(OP_COPY);
+        write_byte(llir->num_args);
+        compile_symbol(((llir_dot*)callee)->key);
+        write_byte(OP_METHOD);
+    } else {
+        compile_llir_generic(callee, lex, false);
+        return_on_err;
+    }
     if (tail) {
         write_byte(OP_TCALL);
     } else {
         write_byte(OP_CALL);
     }
-    write_byte(llir->num_args);
+    write_byte(llir->num_args + dot_call);
     lex->sp = 1+start_sp;
 }
 
-void compiler::compile_llir(const llir_const* llir,
+void compiler::compile_const(const llir_const* llir,
         lexical_env* lex) {
     write_byte(OP_CONST);
     write_short(llir->id);
     ++lex->sp;
 }
 
-void compiler::compile_llir(const llir_def* llir,
+void compiler::compile_def(const llir_def* llir,
         lexical_env* lex) {
     // TODO: check legal variable name
     write_byte(OP_CONST);
@@ -159,7 +181,7 @@ void compiler::compile_llir(const llir_def* llir,
     lex->sp -= 2;
 }
 
-void compiler::compile_llir(const llir_defmacro* llir,
+void compiler::compile_defmacro(const llir_defmacro* llir,
         lexical_env* lex) {
     // TODO: check legal variable name
     write_byte(OP_CONST);
@@ -174,15 +196,17 @@ void compiler::compile_llir(const llir_defmacro* llir,
     lex->sp -= 2;
 }
 
-void compiler::compile_llir(const llir_dot* llir,
+void compiler::compile_dot(const llir_dot* llir,
         lexical_env* lex) {
-    compile_llir_generic(llir->obj, lex, false);
-    return_on_err;
+    c_fault(llir->header.origin,
+            "dot expressions can only occur as operators for functions.");
+    // compile_llir_generic(llir->obj, lex, false);
+    //return_on_err;
 
-    for (u32 i = 0; i < llir->num_keys; ++i) {
-        compile_symbol(llir->keys[i]);
-        write_byte(OP_OBJ_GET);
-    }
+    // for (u32 i = 0; i < llir->num_keys; ++i) {
+    //     compile_symbol(llir->keys[i]);
+    //     write_byte(OP_OBJ_GET);
+    // }
 }
 
 void compiler::compile_if(const llir_if* llir,
@@ -284,7 +308,7 @@ void compiler::compile_import(const llir_import* llir,
     ++lex->sp;
 }
 
-void compiler::compile_llir(const llir_set* llir,
+void compiler::compile_set(const llir_set* llir,
         lexical_env* lex) {
     if (llir->target->tag == lt_var) { // variable set
         auto var = (llir_var*)llir->target;
@@ -330,26 +354,6 @@ void compiler::compile_llir(const llir_set* llir,
         }
         compile_llir_generic(call->args[i], lex, false);
         return_on_err;
-        compile_llir_generic(llir->value, lex, false);
-        return_on_err;
-        write_byte(OP_OBJ_SET);
-        write_byte(OP_NIL);
-        lex->sp -= 2;
-    } else if (llir->target->tag == lt_dot) { // (set! (dot ...) v)
-        // this is like the previous case, but easier since our keys are just
-        // symbols
-        auto dot = (llir_dot*)llir->target;
-        compile_llir_generic(dot->obj, lex);
-        return_on_err;
-        // iterate over the key forms, compiling as we go
-        i32 i;
-        for (i = 0; i < dot->num_keys - 1; ++i) {
-            compile_symbol(dot->keys[i]);
-            // all but last call will be OBJ_GET
-            write_byte(OP_OBJ_GET);
-        }
-        compile_symbol(dot->keys[i]);
-        ++lex->sp;
         compile_llir_generic(llir->value, lex, false);
         return_on_err;
         write_byte(OP_OBJ_SET);
@@ -444,16 +448,16 @@ void compiler::compile_llir_generic(const llir_form* llir,
         compile_call((llir_call*)llir, lex, tail);
         break;
     case lt_const:
-        compile_llir((llir_const*)llir, lex);
+        compile_const((llir_const*)llir, lex);
         break;
     case lt_def:
-        compile_llir((llir_def*)llir, lex);
+        compile_def((llir_def*)llir, lex);
         break;
     case lt_defmacro:
-        compile_llir((llir_defmacro*)llir, lex);
+        compile_defmacro((llir_defmacro*)llir, lex);
         break;
     case lt_dot:
-        compile_llir((llir_dot*)llir, lex);
+        compile_dot((llir_dot*)llir, lex);
         break;
     case lt_if:
         compile_if((llir_if*)llir, lex, tail);
@@ -465,7 +469,7 @@ void compiler::compile_llir_generic(const llir_form* llir,
         compile_import((llir_import*)llir, lex);
         break;
     case lt_set:
-        compile_llir((llir_set*)llir, lex);
+        compile_set((llir_set*)llir, lex);
         break;
     case lt_var:
         compile_var((llir_var*)llir, lex);

@@ -117,12 +117,11 @@ void free_llir_defmacro(llir_defmacro* obj);
 struct llir_dot {
     llir_form header;
     llir_form* obj;
-    local_address num_keys;
-    symbol_id* keys;
+    symbol_id key;
 };
 llir_dot* mk_llir_dot(const source_loc& origin,
         llir_form* obj,
-        local_address num_keys,
+        symbol_id key,
         llir_dot* dest=nullptr);
 void clear_llir_dot(llir_dot* obj);
 void free_llir_dot(llir_dot* obj);

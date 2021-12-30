@@ -150,6 +150,9 @@ constexpr u8 OP_SET_MACRO = 0x15;
 // get global by its full name, e.g. /fn/builtin:map
 constexpr u8 OP_BY_GUID = 0x16;
 
+// look up a method (in an object's metatable). Stack arugments ->[sym] obj
+constexpr u8 OP_METHOD = 0x17;
+
 
 // const SHORT; push a constant, identified by its 16-bit id
 constexpr u8 OP_CONST = 0x20;

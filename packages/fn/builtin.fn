@@ -182,13 +182,11 @@
 
 (defn filter (pred list)
   (letfn iter (acc rem)
-    (println "itebr")
     (cond
       (empty? rem) (reverse acc)
       (pred (head rem)) (iter (conj (head rem) acc)
                               (tail rem))
       true (iter acc (tail rem))))
-  (println list)
   (iter [] list))
 
 (defn macro-assert (condition msg)
@@ -234,11 +232,11 @@
     (if (list? seq)
         (list-tail seq)
         (seq.tail)))
-  ; (defn empty? (seq)
-  ;   (if (or (list? seq)
-  ;           (table? seq))
-  ;       (list-empty? seq)
-  ;       (seq.empty?)))
+  (defn empty? (seq)
+    (if (or (list? seq)
+            (= (metatable seq) nil))
+        (list-empty? seq)
+        (seq.empty?)))
   (defn conj (elt seq)
     (if (list? seq)
         (cons elt seq)
@@ -265,15 +263,12 @@
   ; can override those though.
   (let seq-map map)
   (defn map (pred seq)
-    (if (and (table? seq)
-             (has-key? seq 'map))
+    (if (table? seq)
         (seq.map pred)
         (seq-map pred seq)))
   (let seq-filter filter)
   (defn filter (pred seq)
-    (if (and (table? seq)
-             (has-key? seq 'filter))
+    (if (table? seq)
         (seq.filter pred)
         (seq-filter pred seq))))
-
 
