@@ -236,12 +236,11 @@ string v_to_string(value v, const symbol_table* symbols, bool code_format) {
             t = vtable(v);
             auto keys = t->contents.keys();
             if (keys.empty()) {
-                res = "{}";
-                break;
+                return "{}";
             }
             res = "{";
             auto k = keys.front();
-            res += v_to_string(k,symbols) + " "
+            res += v_to_string(k,symbols,code_format) + " "
                 + v_to_string(*t->contents.get(k),symbols,code_format);
             keys.pop_front();
             for (auto k : keys) {
