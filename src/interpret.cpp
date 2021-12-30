@@ -377,7 +377,10 @@ optional<string> interpreter::find_import_file(symbol_id ns_id) {
     if (is_subns(ns_str, main_prefix)) {
         auto str = subns_rel_path(ns_str, main_prefix);
         auto res = str + ".fn";
-        return res;
+        fs::path p{res};
+        if (fs::exists(p) && !fs::is_directory(p)) {
+            return p.u8string();
+        }
     }
     // system path
     auto filename = string{PREFIX} + "/lib/fn/packages/" +  ns_str + ".fn";
