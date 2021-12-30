@@ -255,7 +255,7 @@ void vm_thread::set_local(local_address i, value v) {
 }
 
 void vm_thread::set_from_top(local_address i, value v) {
-    stack_address pos = stack->get_pointer() - i;
+    stack_address pos = stack->get_pointer() - i - 1;
     if (pos < frame->bp) {
         runtime_error("out of stack bounds on set-local.");
     }
@@ -417,7 +417,13 @@ code_address vm_thread::apply(local_address num_args, bool tail) {
     }
 
     auto func = vfunction(callee);
-    stack->push_callee(func);
+    if (tail) {
+        stack->pop_callee();
+        stack->push_callee(func);
+        stack->close_for_tc(num_args + 1, frame->bp);
+    } else {
+        stack->push_callee(func);
+    }
     pop();
 
     u32 list_len = 0;
@@ -430,7 +436,6 @@ code_address vm_thread::apply(local_address num_args, bool tail) {
     pop();
     arrange_call_stack(func, num_args + list_len);
     return tail ? make_tcall(func) : make_call(func);
-    //return tail ? tcall(num_args+list_len) : call(num_args+list_len);
 }
 
 void vm_thread::step() {
