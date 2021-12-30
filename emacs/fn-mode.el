@@ -174,7 +174,7 @@ given context."
     (modify-syntax-entry ?\} "){" s)
     s))
 
-(let ((fn-symbol-regexp "\\([[:word:]?*&^%$#@!~:_=+<>\\.-]\\|\\\\.\\)"))
+(let ((fn-symbol-regexp "\\([[:word:]/?*&^%$#@!~:_=+<>\\.-]\\|\\\\.\\)"))
   (defvar fn-mode-font-lock-defaults
     `(;; quoted symbols
       (,(concat "'\\("
