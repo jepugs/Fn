@@ -121,6 +121,7 @@ fn_fun(sub, "-", "(& args)") {
             return;
         }
         h->push(vbox_number(-vnumber(x)));
+        return;
     }
 
     auto x = vhead(args[0]);
@@ -163,6 +164,7 @@ fn_fun(div, "/", "(& args)") {
             return;
         }
         h->push(vbox_number(1/vnumber(x)));
+        return;
     }
 
     auto x = vhead(args[0]);
