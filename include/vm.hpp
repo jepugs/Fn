@@ -125,11 +125,6 @@ private:
     value get_macro(value name);
     value by_guid(value name);
 
-    // push a wrapped method on top of the stack. Specifically, this created a
-    // wrapped function with one wrapped argument, which will be the provided
-    // table. This also caches the method in the table
-    void push_wrapped_method(value tab, value method, value name);
-
     // attempt an import without escaping to interpreter
     optional<value> try_import(symbol_id ns_id);
     // perform an import using the top of the stack as the id. If the target

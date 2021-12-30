@@ -71,13 +71,13 @@ private:
     void compile_call(const llir_call* llir,
             lexical_env* lex,
             bool tail);
-    void compile_const(const llir_const* llir,
+    void compile_llir(const llir_const* llir,
             lexical_env* lex);
-    void compile_def(const llir_def* llir,
+    void compile_llir(const llir_def* llir,
             lexical_env* lex);
-    void compile_defmacro(const llir_defmacro* llir,
+    void compile_llir(const llir_defmacro* llir,
             lexical_env* lexn);
-    void compile_dot(const llir_dot* llir,
+    void compile_llir(const llir_dot* llir,
             lexical_env* lex);
     void compile_if(const llir_if* llir,
             lexical_env* lex,
@@ -86,7 +86,7 @@ private:
             lexical_env* lex);
     void compile_import(const llir_import* llir,
             lexical_env* lex);
-    void compile_set(const llir_set* llir,
+    void compile_llir(const llir_set* llir,
             lexical_env* lex);
     void compile_var(const llir_var* llir,
             lexical_env* lex);

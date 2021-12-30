@@ -89,8 +89,6 @@ void ns_id_destruct(const string& ns_id, string* prefix, string* stem) {
 bool is_subns(const string& sub, const string& ns) {
     if (sub.size() < ns.size()) {
         return false;
-    } else if (ns.size() == 0) {
-        return true;
     }
     u32 i;
     for (i = 0; i < ns.size(); ++i) {
@@ -108,8 +106,6 @@ bool is_subns(const string& sub, const string& ns) {
 string subns_rel_path(const string& sub, const string& ns) {
     if (sub.size() == ns.size()) {
         return ".";
-    } else if (ns.size() == 0) {
-        return sub;
     } else {
         return sub.substr(ns.size()+1);
     }

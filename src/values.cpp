@@ -62,8 +62,7 @@ bool fn_string::operator==(const fn_string& s) const {
 }
 
 fn_table::fn_table()
-    : metatable{V_NIL}
-    , contents{} {
+    : contents{} {
     mk_gc_header(GC_TYPE_TABLE, &h);
 }
 
@@ -133,7 +132,6 @@ local_address function_stub::add_upvalue(u8 addr, bool direct) {
 
 function::function(function_stub* stub)
     : stub{stub}
-    , wraps{nullptr}
     , upvals{nullptr}
     , init_vals{nullptr} {
     mk_gc_header(GC_TYPE_FUNCTION, &h);
@@ -146,16 +144,6 @@ function::function(function_stub* stub)
         init_vals = new value[stub->pos_params.size - stub->req_args];
     }
 }
-
-function::function(function* wraps, local_address num_upvals)
-    : stub{nullptr}
-    , wraps{wraps}
-    , num_upvals{num_upvals}
-    , upvals{new upvalue_cell*[num_upvals]}
-    , init_vals{nullptr} {
-    mk_gc_header(GC_TYPE_FUNCTION, &h);
-}
-
 
 // TODO: use refcount on upvalues
 function::~function() {
@@ -248,11 +236,12 @@ string v_to_string(value v, const symbol_table* symbols, bool code_format) {
             t = vtable(v);
             auto keys = t->contents.keys();
             if (keys.empty()) {
-                return "{}";
+                res = "{}";
+                break;
             }
             res = "{";
             auto k = keys.front();
-            res += v_to_string(k,symbols,code_format) + " "
+            res += v_to_string(k,symbols) + " "
                 + v_to_string(*t->contents.get(k),symbols,code_format);
             keys.pop_front();
             for (auto k : keys) {

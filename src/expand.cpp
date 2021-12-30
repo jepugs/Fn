@@ -891,19 +891,12 @@ llir_form* expander::expand_set(const source_loc& loc,
         e_fault(loc, "set! requires exactly 2 argument.");
         return nullptr;
     }
-    // if the target is a dot form, we don't do macroexpansion
-    llir_form* tar;
-    if (is_operator_list("dot", lst[1])) {
-        tar = expand_dot(lst[1]->loc, lst[1]->list_length, lst[1]->datum.list, meta);
-    } else {
-        tar = expand_meta(lst[1], meta);
-        if (!tar) {
-            return nullptr;
-        }        
+    auto tar = expand_meta(lst[1], meta);
+    if (!tar) {
+        return nullptr;
     }
     auto val = expand_meta(lst[2], meta);
     if (!val) {
-        free_llir_form(tar);
         return nullptr;
     }
 

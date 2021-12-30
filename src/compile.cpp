@@ -110,7 +110,6 @@ void compiler::compile_apply(const llir_apply* llir,
     return_on_err;
 
     write_byte(tail ? OP_TAPPLY : OP_APPLY);
-    // write_byte(OP_APPLY);
     // the instruction doesn't count the list at the end
     write_byte(llir->num_args - 1);
     lex->sp = 1+start_sp;
@@ -138,14 +137,14 @@ void compiler::compile_call(const llir_call* llir,
     lex->sp = 1+start_sp;
 }
 
-void compiler::compile_const(const llir_const* llir,
+void compiler::compile_llir(const llir_const* llir,
         lexical_env* lex) {
     write_byte(OP_CONST);
     write_short(llir->id);
     ++lex->sp;
 }
 
-void compiler::compile_def(const llir_def* llir,
+void compiler::compile_llir(const llir_def* llir,
         lexical_env* lex) {
     // TODO: check legal variable name
     write_byte(OP_CONST);
@@ -160,7 +159,7 @@ void compiler::compile_def(const llir_def* llir,
     lex->sp -= 2;
 }
 
-void compiler::compile_defmacro(const llir_defmacro* llir,
+void compiler::compile_llir(const llir_defmacro* llir,
         lexical_env* lex) {
     // TODO: check legal variable name
     write_byte(OP_CONST);
@@ -175,14 +174,14 @@ void compiler::compile_defmacro(const llir_defmacro* llir,
     lex->sp -= 2;
 }
 
-void compiler::compile_dot(const llir_dot* llir,
+void compiler::compile_llir(const llir_dot* llir,
         lexical_env* lex) {
     compile_llir_generic(llir->obj, lex, false);
     return_on_err;
 
     for (u32 i = 0; i < llir->num_keys; ++i) {
         compile_symbol(llir->keys[i]);
-        write_byte(OP_DOT);
+        write_byte(OP_OBJ_GET);
     }
 }
 
@@ -285,7 +284,7 @@ void compiler::compile_import(const llir_import* llir,
     ++lex->sp;
 }
 
-void compiler::compile_set(const llir_set* llir,
+void compiler::compile_llir(const llir_set* llir,
         lexical_env* lex) {
     if (llir->target->tag == lt_var) { // variable set
         auto var = (llir_var*)llir->target;
@@ -445,16 +444,16 @@ void compiler::compile_llir_generic(const llir_form* llir,
         compile_call((llir_call*)llir, lex, tail);
         break;
     case lt_const:
-        compile_const((llir_const*)llir, lex);
+        compile_llir((llir_const*)llir, lex);
         break;
     case lt_def:
-        compile_def((llir_def*)llir, lex);
+        compile_llir((llir_def*)llir, lex);
         break;
     case lt_defmacro:
-        compile_defmacro((llir_defmacro*)llir, lex);
+        compile_llir((llir_defmacro*)llir, lex);
         break;
     case lt_dot:
-        compile_dot((llir_dot*)llir, lex);
+        compile_llir((llir_dot*)llir, lex);
         break;
     case lt_if:
         compile_if((llir_if*)llir, lex, tail);
@@ -466,7 +465,7 @@ void compiler::compile_llir_generic(const llir_form* llir,
         compile_import((llir_import*)llir, lex);
         break;
     case lt_set:
-        compile_set((llir_set*)llir, lex);
+        compile_llir((llir_set*)llir, lex);
         break;
     case lt_var:
         compile_var((llir_var*)llir, lex);

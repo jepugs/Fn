@@ -174,7 +174,7 @@ given context."
     (modify-syntax-entry ?\} "){" s)
     s))
 
-(let ((fn-symbol-regexp "\\([[:word:]/?*&^%$#@!~:_=+<>\\.-]\\|\\\\.\\)"))
+(let ((fn-symbol-regexp "\\([[:word:]?*&^%$#@!~:_=+<>\\.-]\\|\\\\.\\)"))
   (defvar fn-mode-font-lock-defaults
     `(;; quoted symbols
       (,(concat "'\\("
@@ -195,8 +195,8 @@ given context."
                 "\\(\\_<" fn-symbol-regexp "+\\_>\\)")
        (2 font-lock-function-name-face))
       ;; special operators
-      (,(concat "([[:space:]]*\\_<\\(and\\|cond\\|def\\|defmacro\\|defn\\|"
-                "defstruct\\|do\\|do-inline\\|dot\\|dollar-fn\\|if\\|import\\|fn\\|let\\|"
+      (,(concat "([[:space:]]*\\_<\\(and\\|cond\\|def\\|defmacro\\|defn\\|do\\|"
+                "dot\\|dollar-fn\\|if\\|import\\|fn\\|let\\|"
                 "letfn\\|or\\|namespace\\|quasiquote\\|quote\\|unquote\\|"
                 "unquote-splicing\\|set!\\|with\\)\\_>")
        1 font-lock-keyword-face)

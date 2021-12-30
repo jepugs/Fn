@@ -27,7 +27,7 @@ void fn_handle::assert_list(u64 tag, value v) {
 }
 
 value fn_handle::add_string(const char* str) {
-    return ws->add_string(str);
+    return ws->add_strgin(str);
 }
 
 value fn_handle::substr(value a, u32 start) {

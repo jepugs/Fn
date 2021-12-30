@@ -68,11 +68,6 @@ void root_stack::set(u32 offset, value v) {
     contents[offset] = v;
 }
 
-void root_stack::set_from_top(stack_address i, value v) {
-    stack_address pos = get_pointer() - i - 1;
-    set(pos, v);
-}
-
 value root_stack::push_string(const string& str) {
     auto ptr = new fn_string{str};
     auto v = vbox_string(ptr);
@@ -173,19 +168,6 @@ value root_stack::create_function(function_stub* stub, stack_address bp) {
     return v;
 }
 
-value root_stack::push_wrapped_function(function* to_wrap, local_address num_upvals) {
-    auto f = new function{to_wrap, num_upvals};
-    for (local_address i = 0; i < num_upvals; ++i) {
-        f->upvals[i] = new upvalue_cell{0};
-        f->upvals[i]->closed = true;
-        f->upvals[i]->closed_value = V_NIL;
-    }
-    auto v = vbox_function(f);
-    push(v);
-    alloc->add_function(f);
-    return v;
-}
-
 void root_stack::push_callee(function* callee) {
     callee_stack.push_back(callee);
 }
@@ -264,21 +246,6 @@ void root_stack::do_return(u32 ret_pos) {
     contents[ret_pos] = contents[pointer - 1];
     pointer = ret_pos + 1;
     contents.resize(pointer);
-}
-
-void root_stack::unwrap_fun(local_address num_args) {
-    auto fun = vfunction(peek());
-    // FIXME: bounds check
-    auto m = fun->num_upvals;
-    pointer += m;
-    contents.resize(pointer);
-    for (local_address i = 0; i < num_args; ++i) {
-        set_from_top(i, peek(i + m));
-    }
-    for (local_address i = 0; i < m; ++i) {
-        set_from_top(num_args + 1 + i, fun->upvals[m - i - 1]->closed_value);
-    }
-    set_from_top(0, vbox_function(fun->wraps));
 }
 
 void root_stack::kill() {
@@ -493,15 +460,6 @@ void allocator::mark_descend(gc_header* o) {
                     add_mark_value(x.array[i]->val);
                 }
             }
-            add_mark_value(((fn_table*)o)->metatable);
-            // cached methods
-            x = ((fn_table*)o)->methods;
-            for (u32 i = 0; i < x.cap; ++i) {
-                if (x.array[i] != nullptr) {
-                    add_mark_value(x.array[i]->key);
-                    add_mark_value(x.array[i]->val);
-                }
-            }
         }
         break;
     case GC_TYPE_FUNCTION:
@@ -515,15 +473,11 @@ void allocator::mark_descend(gc_header* o) {
                     add_mark_value(cell->closed_value);
                 }
             }
-            if (f->wraps) {
-                marking_list.push_front(&f->wraps->h);
-            } else {
-                auto num_opt = f->stub->pos_params.size - f->stub->req_args;
-                for (u32 i = 0; i < num_opt; ++i) {
-                    add_mark_value(f->init_vals[i]);
-                }
-                marking_list.push_front(&f->stub->chunk->h);
+            auto num_opt = f->stub->pos_params.size - f->stub->req_args;
+            for (u32 i = 0; i < num_opt; ++i) {
+                add_mark_value(f->init_vals[i]);
             }
+            marking_list.push_front(&f->stub->chunk->h);
         }
         break;
     }

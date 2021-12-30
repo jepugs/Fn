@@ -149,6 +149,9 @@ void process_args(int argc, char** argv, interpreter_options* opt) {
     opt->args_start = i+1;
 }
 
+// void do_interpret(interpreter *inter) {
+// }
+
 int main(int argc, char** argv) {
     interpreter_options opt;
     process_args(argc, argv, &opt);
