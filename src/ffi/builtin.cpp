@@ -244,16 +244,25 @@ fn_fun(integer_q, "integer?", "(x)") {
 
 fn_fun(floor, "floor", "(x)") {
     h->assert_type(TAG_NUM, args[0]);
+    if (h->failed()) {
+        return;
+    }
     h->push(vbox_number(floor(vnumber(args[0]))));
 }
 
 fn_fun(ceil, "ceil", "(x)") {
     h->assert_type(TAG_NUM, args[0]);
+    if (h->failed()) {
+        return;
+    }
     h->push(vbox_number(ceil(vnumber(args[0]))));
 }
 
 fn_fun(frac_part, "frac-part", "(x)") {
     h->assert_type(TAG_NUM, args[0]);
+    if (h->failed()) {
+        return;
+    }
     h->push(vbox_number(vnumber(args[0]) - floor(vnumber(args[0]))));
 }
 
@@ -627,6 +636,9 @@ fn_fun(has_key_q, "has-key?", "(table key)") {
 
 fn_fun(get_keys, "get-keys", "(table)") {
     h->assert_type(TAG_TABLE, args[0]);
+    if (h->failed()) {
+        return;
+    }
     // FIXME: there's a better way to iterate over this
     auto keys = vtable(args[0])->contents.keys();
     u32 len = 0;
@@ -639,6 +651,9 @@ fn_fun(get_keys, "get-keys", "(table)") {
 
 fn_fun(error, "error", "(message)") {
     h->assert_type(TAG_STRING, args[0]);
+    if (h->failed()) {
+        return;
+    }
     h->error(vstring(args[0])->data);
     h->push(V_NIL);
     return;
