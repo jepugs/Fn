@@ -104,93 +104,96 @@ void free_code_chunk(code_chunk* obj);
 
 /// instruction opcodes
 
-// note: whenever an instruction uses a value on the stack, that value is popped off.
+// note: whenever an instruction uses a value on the stack, that value is popped
+// off unless otherwise specified
 
-// nop; do absolutely nothing
-constexpr u8 OP_NOP = 0x00;
+enum OPCODES : u8 {
+    // nop, do absolutely nothing
+    OP_NOP,
 
-// pop; pop one element off the top of the stack
-constexpr u8 OP_POP = 0x01;
-// local BYTE; access the BYTEth element of the stack, indexed from the bottom
-constexpr u8 OP_LOCAL = 0x02;
-// set-local BYTE; set the BYTEth element of the stack to the current top of the stack
-constexpr u8 OP_SET_LOCAL = 0x03;
-// copy BYTE; works like OP_LOCAL but its indices count down from the top of the stack
-constexpr u8 OP_COPY = 0x04;
+    // pop, pop one element off the top of the stack
+    OP_POP,
+    // local BYTE, access the BYTEth element of the stack, indexed from the bottom
+    OP_LOCAL,
+    // set-local BYTE, set the BYTEth element of the stack to the current top of the stack
+    OP_SET_LOCAL,
+    // copy BYTE, works like OP_LOCAL but its indices count down from the top of the stack
+    OP_COPY,
 
-// upvalue BYTE; get the BYTEth upvalue
-constexpr u8 OP_UPVALUE = 0x05;
-// set-upvalue BYTE; set the BYTEth upvalue to the value on top of the stack
-constexpr u8 OP_SET_UPVALUE = 0x06;
-// closure SHORT; instantiate a closure using SHORT as the function id. Also
-// takes the function's init values as arguments on the stack. Init vals are
-// ordered with the last one in the parameter list on the top of the stack.
-constexpr u8 OP_CLOSURE = 0x07;
-// close BYTE; pop the stack BYTE times, closing any open upvalues in the
-// process
-constexpr u8 OP_CLOSE = 0x08;
+    // upvalue BYTE, get the BYTEth upvalue
+    OP_UPVALUE,
+    // set-upvalue BYTE, set the BYTEth upvalue to the value on top of the stack
+    OP_SET_UPVALUE,
+    // closure SHORT. instantiate a closure using SHORT as the function id. Also
+    // takes the function's init values as arguments on the stack. Init vals are
+    // ordered with the last one in the parameter list on the top of the stack.
+    OP_CLOSURE,
+    // close BYTE. pop the stack BYTE times, closing any open upvalues in the
+    // process
+    OP_CLOSE,
 
-// NOTE: might be better if set_macro, set_global had argument orders switched
+    // NOTE: might be better if set_macro, set_global had argument orders switched
 
-// global; get a global variable based on a string on top of the stack
-constexpr u8 OP_GLOBAL = 0x10;
-// set-global; set a global variable. stack arguments ->[value] symbol ...
-constexpr u8 OP_SET_GLOBAL = 0x11;
-// obj-get;  stack arguments ->[key] obj; get the value of a property.
-constexpr u8 OP_OBJ_GET = 0x12;
-// obj-set; add or update the value of a property. stack arguments ->[new-value]
-// key obj ...
-constexpr u8 OP_OBJ_SET = 0x13;
-// macro-get; get the function associated to a symbol, raising an error if there
-// is none. stack arguments ->[symbol]
-constexpr u8 OP_MACRO = 0x14;
-// macro-set; set the macro function associated to a symbol. stack arguments:
-// ->[function] symbol.
-constexpr u8 OP_SET_MACRO = 0x15;
-// get global by its full name, e.g. /fn/builtin:map
-constexpr u8 OP_BY_GUID = 0x16;
+    // global. get a global variable. stack arguments ->[symbol]
+    OP_GLOBAL,
+    // set-global. set a global variable. stack arguments ->[value] symbol
+    OP_SET_GLOBAL,
+    // obj-get. get the value of a property. stack arguments ->[key] obj
+    OP_OBJ_GET,
+    // obj-set. add or update an entry. stack arguments ->[new-value] key obj
+    // ...
+    OP_OBJ_SET,
+    // macro-get, get the function associated to a symbol, raising an error if there
+    // is none. stack arguments ->[symbol]
+    OP_MACRO,
+    // macro-set, set the macro function associated to a symbol. stack arguments:
+    // ->[function] symbol.
+    OP_SET_MACRO,
+    // get global by its full name, e.g. /fn/builtin:map
+    OP_BY_GUID,
 
-// look up a method (in an object's metatable). Stack arugments ->[sym] obj
-constexpr u8 OP_METHOD = 0x17;
-
-
-// const SHORT; push a constant, identified by its 16-bit id
-constexpr u8 OP_CONST = 0x20;
-// nil; push nil value
-constexpr u8 OP_NIL  = 0x21;
-// false; push false value
-constexpr u8 OP_FALSE = 0x22;
-// true; push true value
-constexpr u8 OP_TRUE  = 0x23;
+    // look up a method (in an object's metatable). Stack arugments ->[sym] obj
+    OP_METHOD,
 
 
-// control flow & function calls
-
-// jump SHORT; add signed SHORT to ip
-constexpr u8 OP_JUMP = 0x30;
-// cjump SHORT; if top of the stack is falsey, add signed SHORT to ip
-constexpr u8 OP_CJUMP = 0x31;
-// call BYTE; perform a function call. Uses BYTE+1 elements on the stack,
-// one for the function, one for each positional argument.
-// -> [func] pos-arg-n ... pos-arg-1
-constexpr u8 OP_CALL = 0x32;
-// tcall BYTE; perform a tail call
-constexpr u8 OP_TCALL = 0x33;
-// apply BYTE; apply function. Uses BYTE+2 stack elements. ->[func] args
-// pos-arg-n ... pos-arg-1. Like call, but expands the list args to provide
-// additional positional arguments to the function.
-constexpr u8 OP_APPLY = 0x34;
-// tail call version of apply
-constexpr u8 OP_TAPPLY = 0x35;
-// return; return from the current function
-constexpr u8 OP_RETURN = 0x38;
+    // const SHORT, push a constant, identified by its 16-bit id
+    OP_CONST,
+    // nil, push nil value
+    OP_NIL,
+    // false, push false value
+    OP_FALSE,
+    // true, push true value
+    OP_TRUE,
 
 
-// import; stack arguments ->[ns_id]; perform an import using the given
-// namespace id (symbol).
-constexpr u8 OP_IMPORT = 0x40;
+    // control flow & function calls
 
-constexpr u8 OP_TABLE = 0x50;
+    // jump SHORT, add signed SHORT to ip
+    OP_JUMP,
+    // cjump SHORT, if top of the stack is falsey, add signed SHORT to ip
+    OP_CJUMP,
+    // call BYTE, perform a function call. Uses BYTE+1 elements on the stack,
+    // one for the function, one for each positional argument.
+    // -> [func] pos-arg-n ... pos-arg-1
+    OP_CALL,
+    // tcall BYTE, perform a tail call
+    OP_TCALL,
+    // apply BYTE, apply function. Uses BYTE+2 stack elements. ->[func] args
+    // pos-arg-n ... pos-arg-1. Like call, but expands the list args to provide
+    // additional positional arguments to the function.
+    OP_APPLY,
+    // tail call version of apply
+    OP_TAPPLY,
+    // return, return from the current function
+    OP_RETURN,
+
+
+    // import, stack arguments ->[ns_id], perform an import using the given
+    // namespace id (symbol).
+    OP_IMPORT,
+
+    OP_TABLE
+};
 
 
 // gives the width of an instruction + its operands in bytes
