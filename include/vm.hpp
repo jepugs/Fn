@@ -35,7 +35,8 @@ struct call_frame {
     local_address num_args;
     // since this is the main reason we use the callee, it makes sense to put it
     // here directly.
-    upvalue_cell** upvals;
+    // upvalue_cell** upvals;
+    bool tail;
 
     call_frame(call_frame* prev,
                code_address ret_addr,
@@ -48,10 +49,11 @@ struct call_frame {
         , ret_chunk{ret_chunk}
         , bp{bp}
         , caller{caller}
-        , num_args{num_args} {
-        if (caller) {
-            upvals = caller->upvals;
-        }
+        , num_args{num_args}
+        , tail{false} {
+        // if (caller) {
+        //     upvals = caller->upvals;
+        // }
     }
 };
 
@@ -61,6 +63,7 @@ struct call_frame {
 // possible statuses for a vm_thread
 enum vm_status {
     vs_stopped,
+    vs_return,
     vs_running,
     vs_waiting_for_import,
     vs_fault
@@ -92,8 +95,11 @@ private:
 
     // instruction pointer and stack
     code_address ip;
-    call_frame* frame;
     root_stack* stack;
+
+    // call frame
+    u32 bp;
+    function* callee;
 
 
     // stack operations

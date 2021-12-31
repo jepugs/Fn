@@ -23,18 +23,19 @@ vm_thread::vm_thread(allocator* use_alloc, global_env* use_globals,
     , chunk{use_chunk}
     , status{vs_stopped}
     , ip{0}
-    , frame{new call_frame{nullptr, 0, use_chunk, 0, nullptr}} {
+    , bp{0}
+    , callee{nullptr} {
     stack = alloc->add_root_stack();
 }
 
 vm_thread::~vm_thread() {
     // delete all call frames
-    while (frame != nullptr) {
-        auto tmp = frame->prev;
-        // TODO: ensure reference count for upvalue_slot is decremented
-        delete frame;
-        frame = tmp;
-    }
+    // while (frame != nullptr) {
+    //     auto tmp = frame->prev;
+    //     // TODO: ensure reference count for upvalue_slot is decremented
+    //     delete frame;
+    //     frame = tmp;
+    // }
     stack->kill();
 }
 
@@ -193,8 +194,8 @@ void vm_thread::runtime_error(const string& msg) const {
     // FIXME: this sort of information should probably not go to the user. We
     // could log it instead if we had a logger.
     string s = "{ip:" + std::to_string(ip) + "} ";
-    if (frame->caller && frame->caller->stub->name.size() > 0) {
-        s = s + "(In function: " + frame->caller->stub->name + ") ";
+    if (callee && callee->stub->name.size() > 0) {
+        s = s + "(In function: " + callee->stub->name + ") ";
     }
     s = s + msg;
     set_fault(err, chunk->location_of(ip), "vm", s);
@@ -209,14 +210,14 @@ void vm_thread::push(value v) {
 }
 
 void vm_thread::pop() {
-    if (frame->bp >= stack->get_pointer()) {
+    if (bp >= stack->get_pointer()) {
         runtime_error("pop on empty call frame");
     }
     stack->pop();
 }
 
 value vm_thread::pop_to_ws(working_set* ws) {
-    if (frame->bp >= stack->get_pointer()) {
+    if (bp >= stack->get_pointer()) {
         runtime_error("pop on empty call frame");
     }
     auto res = ws->pin_value(stack->peek());
@@ -225,7 +226,7 @@ value vm_thread::pop_to_ws(working_set* ws) {
 }
 
 void vm_thread::pop_times(stack_address n) {
-    if (frame->bp >= stack->get_pointer() - n + 1) {
+    if (bp >= stack->get_pointer() - n + 1) {
         runtime_error("pop on empty call frame");
     }
     stack->pop_times(n);
@@ -300,26 +301,50 @@ code_address vm_thread::make_call(function* func) {
         stack->pop_callee();
         return ip + 2;
     } else { // native function call
-        // base pointer
-        u32 bp = stack->get_pointer() - sp;
         // extend the call frame
-        frame = new call_frame{frame, ip+2, chunk, bp, func, sp};
+        //frame = new call_frame{frame, ip+2, chunk, bp, func, sp};
+
+        // save previous frame
+        auto ret_addr = ip + 2;
+        auto ret_chunk = chunk;
+        auto ret_bp = bp;
+        auto ret_fun = callee;
+
+        ip = stub->addr;
         chunk = stub->chunk;
-        return stub->addr;
+        // base pointer
+        bp = stack->get_pointer() - sp;
+        callee = func;
+
+        // perform the call
+        execute(this->err);
+
+        if (status == vs_return) {
+            // resume running
+            status = vs_running;
+            // put back the call frame
+            ip = ret_addr;
+            chunk = ret_chunk;
+            bp = ret_bp;
+            callee = ret_fun;
+        } else {
+            // FIXME: generate stack trace
+        }
+        return ret_addr;
     }
 }
 
 code_address vm_thread::make_tcall(function* func) {
     auto stub = func->stub;
-    // update the frame
+    chunk = stub->chunk;
+    callee = func;
+
     auto num_opt = stub->pos_params.size - stub->req_args;
     // stack pointer (equal to number of parameter variables)
     u8 sp = static_cast<u8>(stub->pos_params.size
             + num_opt // for indicators
             + stub->vl_param.has_value());
-    frame->num_args = sp;
-    frame->caller = func;
-    chunk = stub->chunk;
+    bp = stack->get_pointer() - sp;
 
     return stub->addr;
 }
@@ -348,15 +373,15 @@ code_address vm_thread::call(local_address num_args) {
 
 code_address vm_thread::tcall(local_address num_args) {
     // the function to call should be on top
-    auto callee = peek();
-    if (v_tag(callee) != TAG_FUNC) {
+    auto new_callee = peek();
+    if (v_tag(new_callee) != TAG_FUNC) {
         runtime_error("Error on call: callee is not a function");
         return ip + 2;
     }
-    auto func = vfunction(callee);
+    auto func = vfunction(new_callee);
     auto stub = func->stub;
     // foreign calls are just normal calls
-    if (stub->foreign != nullptr || frame->caller == nullptr) {
+    if (stub->foreign != nullptr || callee == nullptr) {
         return call(num_args);
     }
 
@@ -366,7 +391,7 @@ code_address vm_thread::tcall(local_address num_args) {
     pop();
 
     // set up the call stack
-    stack->close_for_tc(num_args, frame->bp);
+    stack->close_for_tc(num_args, bp);
     arrange_call_stack(func, num_args);
 
     return make_tcall(func);
@@ -389,7 +414,7 @@ code_address vm_thread::apply(local_address num_args, bool tail) {
     if (tail) {
         stack->pop_callee();
         stack->push_callee(func);
-        stack->close_for_tc(num_args + 1, frame->bp);
+        stack->close_for_tc(num_args + 1, bp);
     } else {
         stack->push_callee(func);
     }
@@ -416,7 +441,7 @@ value vm_thread::peek(stack_address i) const {
 }
 
 value vm_thread::local(local_address i) const {
-    stack_address pos = i + frame->bp;
+    stack_address pos = i + bp;
     if (pos >= stack->get_pointer()) {
         runtime_error("out of stack bounds on local");
     }
@@ -424,7 +449,7 @@ value vm_thread::local(local_address i) const {
 }
 
 void vm_thread::set_local(local_address i, value v) {
-    stack_address pos = i + frame->bp;
+    stack_address pos = i + bp;
     if (pos >= stack->get_pointer()) {
         runtime_error("out of stack bounds on set-local.");
     }
@@ -433,7 +458,7 @@ void vm_thread::set_local(local_address i, value v) {
 
 void vm_thread::set_from_top(local_address i, value v) {
     stack_address pos = stack->get_pointer() - i - 1;
-    if (pos < frame->bp) {
+    if (pos < bp) {
         runtime_error("out of stack bounds on set-local.");
     }
     stack->set(pos, v);
@@ -453,8 +478,6 @@ void vm_thread::step() {
 
     local_address l;
     u16 id;
-
-    call_frame *tmp;
 
     upvalue_cell* u;
 
@@ -484,11 +507,11 @@ void vm_thread::step() {
     case OP_UPVALUE:
         l = chunk->read_byte(ip+1);
         // TODO: check upvalue exists
-        u = frame->caller->upvals[l];
+        u = callee->upvals[l];
         if (u->closed) {
             push(u->closed_value);
         } else{
-            if (frame->prev == nullptr) {
+            if (callee == nullptr) {
                 runtime_error("op-upvalue in toplevel frame.");
             }
             auto pos = u->pos;
@@ -499,11 +522,11 @@ void vm_thread::step() {
     case OP_SET_UPVALUE:
         l = chunk->read_byte(ip+1);
         // TODO: check upvalue exists
-        u = frame->upvals[l];
+        u = callee->upvals[l];
         if (u->closed) {
             u->closed_value = stack->peek();
         } else {
-            auto pos = frame->caller->stub->upvals[l];
+            auto pos = callee->stub->upvals[l];
             stack->set(pos, stack->peek());
         }
         stack->pop();
@@ -512,7 +535,7 @@ void vm_thread::step() {
 
     case OP_CLOSURE:
         id = chunk->read_short(ip+1);
-        v1 = stack->create_function(chunk->get_function(id), frame->bp);
+        v1 = stack->create_function(chunk->get_function(id), bp);
 
         ip += 2;
         break;
@@ -690,23 +713,25 @@ void vm_thread::step() {
 
     case OP_RETURN:
         // check that we are in a call frame
-        if (frame->caller == nullptr) {
+        if (callee == nullptr) {
             runtime_error("Return instruction at top level.");
         }
 
-        // jump to return address
-        jump = true;
-        addr = frame->ret_addr;
-        chunk = frame->ret_chunk;
-
-        num_args = frame->num_args;
         // do the return manipulation on the stack
-        stack->do_return(frame->bp);
+        stack->do_return(bp);
         stack->pop_callee();
-        tmp = frame;
-        // TODO: restore stack pointer
-        frame = tmp->prev;
-        delete tmp;
+        status = vs_return;
+
+        // jump to return address
+        // jump = true;
+        // addr = frame->ret_addr;
+        // chunk = frame->ret_chunk;
+
+        // num_args = frame->num_args;
+        // // TODO: restore stack pointer
+        // tmp = frame;
+        // frame = tmp->prev;
+        // delete tmp;
 
         break;
 
