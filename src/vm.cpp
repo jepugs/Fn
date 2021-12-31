@@ -471,9 +471,6 @@ void vm_thread::step() {
     // variable for use inside the switch
     value v1, v2, v3;
 
-    bool jump = false;
-    code_address addr = 0;
-
     local_address num_args;
 
     local_address l;
@@ -672,15 +669,15 @@ void vm_thread::step() {
         break;
 
     case OP_JUMP:
-        jump = true;
-        addr = ip + 3 + static_cast<i16>(chunk->read_short(ip+1));
+        // one less than we actually want b/c the ip gets incremented at the
+        // end
+        ip += 2 + static_cast<i16>(chunk->read_short(ip+1));
         break;
 
     case OP_CJUMP:
         // jump on false
         if (!vtruth(stack->peek(0))) {
-            jump = true;
-            addr = ip + 3 + static_cast<i16>(chunk->read_short(ip+1));
+            ip += 2 + static_cast<i16>(chunk->read_short(ip+1));
         } else {
             ip += 2;
         }
@@ -689,26 +686,22 @@ void vm_thread::step() {
 
     case OP_CALL:
         num_args = chunk->read_byte(ip+1);
-        jump = true;
-        addr = call(num_args);
+        ip = call(num_args) - 1;
         break;
 
     case OP_TCALL:
         num_args = chunk->read_byte(ip+1);
-        jump = true;
-        addr = tcall(num_args);
+        ip = tcall(num_args) - 1;
         break;
 
     case OP_APPLY:
         num_args = chunk->read_byte(ip+1);
-        jump = true;
-        addr = apply(num_args, false);
+        ip = apply(num_args, false) - 1;
         break;
 
     case OP_TAPPLY:
         num_args = chunk->read_byte(ip+1);
-        jump = true;
-        addr = apply(num_args, true);
+        ip = apply(num_args, true) - 1;
         break;
 
     case OP_RETURN:
@@ -722,17 +715,6 @@ void vm_thread::step() {
         stack->pop_callee();
         status = vs_return;
 
-        // jump to return address
-        // jump = true;
-        // addr = frame->ret_addr;
-        // chunk = frame->ret_chunk;
-
-        // num_args = frame->num_args;
-        // // TODO: restore stack pointer
-        // tmp = frame;
-        // frame = tmp->prev;
-        // delete tmp;
-
         break;
 
     case OP_TABLE:
@@ -745,9 +727,6 @@ void vm_thread::step() {
     }
     ++ip;
 
-    if (jump) {
-        ip = addr;
-    }
 }
 
 void vm_thread::execute(fault* err) {
