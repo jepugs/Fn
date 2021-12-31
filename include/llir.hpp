@@ -174,6 +174,17 @@ llir_fn* mk_llir_fn(const source_loc& origin,
 void clear_llir_fn(llir_fn* obj);
 void free_llir_fn(llir_fn* obj);
 
+// struct llir_get {
+//     llir_form header;
+//     llir_form* obj;
+//     llir_form* key;
+// };
+// llir_get* mk_llir_get(const source_loc& origin,
+//         llir_form* obj,
+//         llir_form* key);
+// void clear_llir_get(llir_get* obj);
+// void free_llir_get(llir_get* obj);
+
 struct llir_import {
     llir_form header;
     symbol_id target;

@@ -125,12 +125,26 @@ void compiler::compile_call(const llir_call* llir,
     // check if this is a method call. If so, compile and insert the argument
     // first.
     auto callee = llir->callee;
-    if (llir->callee->tag == lt_dot) {
+    if (callee->tag == lt_dot) {
         dot_call = true;
         // insert the dot object
         auto l2 = (llir_dot*)callee;
         compile_llir_generic(l2->obj, lex, false);
         return_on_err;
+    } else if (callee->tag == lt_var) {
+        auto v = (llir_var*)callee;
+        // FIXME: hardcoded global ID is bad
+        if (v->name == symtab->intern("get")
+                || v->name == symtab->intern("#/fn/builtin:get")) {
+            // compile a get operation directly
+            compile_llir_generic(llir->args[0], lex, false);
+            for (u32 i = 1; i < llir->num_args; ++i) {
+                compile_llir_generic(llir->args[i], lex, false);
+                write_byte(OP_OBJ_GET);
+                --lex->sp;
+            }
+            return;
+        }
     }
 
     // compile positional arguments in ascending order
@@ -198,6 +212,7 @@ void compiler::compile_defmacro(const llir_defmacro* llir,
 
 void compiler::compile_dot(const llir_dot* llir,
         lexical_env* lex) {
+    // FIXME: expander should probably catch this
     c_fault(llir->header.origin,
             "dot expressions can only occur as operators for functions.");
     // compile_llir_generic(llir->obj, lex, false);
