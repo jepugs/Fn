@@ -3,7 +3,8 @@
 #include <algorithm>
 #include <iostream>
 
-// #define GC_DEBUG
+//#define GC_DEBUG
+//#define GC_VERBOSE
 
 namespace fn {
 
@@ -85,7 +86,7 @@ value root_stack::make_string(stack_address place, const string& str) {
 }
 
 value root_stack::push_cons(value hd, value tl) {
-    auto ptr = new cons{hd, tl};
+    auto ptr = new (alloc->alloc_new_cons()) cons{hd, tl};
     auto v = vbox_cons(ptr);
     push(v);
     alloc->add_cons(ptr);
@@ -93,7 +94,7 @@ value root_stack::push_cons(value hd, value tl) {
 }
 
 value root_stack::make_cons(stack_address place, value hd, value tl) {
-    auto ptr = new cons{hd, tl};
+    auto ptr = new (alloc->alloc_new_cons()) cons{hd, tl};
     auto v = vbox_cons(ptr);
     set(place, v);
     alloc->add_cons(ptr);
@@ -106,12 +107,12 @@ void root_stack::top_to_list(u32 n) {
         return;
     }
 
-    auto ptr = new cons{contents[pointer - 1], V_EMPTY};
+    auto ptr = new (alloc->alloc_new_cons()) cons{contents[pointer - 1], V_EMPTY};
     contents[pointer - 1] = vbox_cons(ptr);
     alloc->add_cons(ptr);
 
     for (u32 i = 1; i < n; ++i) {
-        ptr = new cons{
+        ptr = new (alloc->alloc_new_cons()) cons{
             contents[pointer - i - 1],
             contents[pointer - i]};
         contents[pointer - i - 1] = vbox_cons(ptr);
@@ -123,7 +124,7 @@ void root_stack::top_to_list(u32 n) {
 }
 
 value root_stack::push_table() {
-    auto ptr = new fn_table{};
+    auto ptr = new (alloc->alloc_new_table()) fn_table{};
     auto v = vbox_table(ptr);
     push(v);
     alloc->add_table(ptr);
@@ -131,7 +132,7 @@ value root_stack::push_table() {
 }
 
 value root_stack::make_table(stack_address place) {
-    auto ptr = new fn_table{};
+    auto ptr = new (alloc->alloc_new_table()) fn_table{};
     auto v = vbox_table(ptr);
     set(place, v);
     alloc->add_table(ptr);
@@ -139,7 +140,7 @@ value root_stack::make_table(stack_address place) {
 }
 
 value root_stack::create_function(function_stub* stub, stack_address bp) {
-    auto f = new function{stub};
+    auto f = new (alloc->alloc_new_function()) function{stub};
 
     // set up initial values
     auto len = stub->pos_params.size - stub->req_args;
@@ -289,7 +290,7 @@ working_set& working_set::operator=(working_set&& other) noexcept {
 }
 
 value working_set::add_cons(value hd, value tl) {
-    auto ptr = new cons{hd,tl};
+    auto ptr = new (alloc->alloc_new_cons()) cons{hd,tl};
     auto v = vbox_cons(ptr);
     pin(&ptr->h);
     alloc->add_cons(ptr);
@@ -320,7 +321,7 @@ value working_set::add_string(u32 len) {
 }
 
 value working_set::add_table() {
-    auto ptr = new fn_table{};
+    auto ptr = new (alloc->alloc_new_table()) fn_table{};
     auto v = vbox_table(ptr);
     pin(&ptr->h);
     alloc->add_table(ptr);
@@ -328,7 +329,7 @@ value working_set::add_table() {
 }
 
 value working_set::add_function(function_stub* stub) {
-    auto ptr = new function{stub};
+    auto ptr = new (alloc->alloc_new_function()) function{stub};
     auto v = vbox_function(ptr);
     pin(&ptr->h);
     alloc->add_function(ptr);
@@ -401,11 +402,14 @@ void allocator::dealloc(gc_header* o) {
         break;
     case GC_TYPE_CONS:
         mem_usage -= sizeof(cons);
-        delete (cons*)o;
+        ((cons*)o)->~cons();
+        cons_allocator.free_object((cons*)o);
         break;
     case GC_TYPE_TABLE:
         mem_usage -= sizeof(fn_table);
-        delete (fn_table*)o;
+        ((fn_table*)o)->~fn_table();
+        table_allocator.free_object((fn_table*)o);
+        //delete (fn_table*)o;
         break;
     case GC_TYPE_FUNCTION:
         mem_usage -= sizeof(function);
@@ -420,7 +424,8 @@ void allocator::dealloc(gc_header* o) {
                 }
             }
 
-            delete f;
+            f->~function();
+            function_allocator.free_object(f);
         }
         break;
     }
@@ -548,6 +553,19 @@ void allocator::sweep() {
 #endif
 }
 
+cons* allocator::alloc_new_cons() {
+    return cons_allocator.new_object();
+}
+
+function* allocator::alloc_new_function() {
+    return function_allocator.new_object();
+}
+
+fn_table* allocator::alloc_new_table() {
+    return table_allocator.new_object();
+}
+
+
 void allocator::add_cons(cons* ptr) {
     add_to_obj_list((gc_header*)ptr);
     collect();
@@ -609,20 +627,12 @@ void allocator::disable_gc() {
 
 void allocator::collect() {
 #ifdef GC_DEBUG
-    if (gc_enabled) {
-        force_collect();
-    } else {
-        to_collect = true;
-    }
+    force_collect();
 #else
     if (mem_usage >= collect_threshold) {
-        if (gc_enabled) {
-            force_collect();
-            if (mem_usage >= RESCALE_TH * collect_threshold) {
-                collect_threshold *= COLLECT_SCALE_FACTOR;
-            }
-        } else {
-            to_collect = true;
+        force_collect();
+        if (mem_usage >= RESCALE_TH * collect_threshold) {
+            collect_threshold *= COLLECT_SCALE_FACTOR;
         }
     }
 #endif
@@ -630,16 +640,23 @@ void allocator::collect() {
 
 void allocator::force_collect() {
     // note: assume that objects begin unmarked
-#ifdef GC_DEBUG
-    // std::cout << "garbage collection beginning (mem_usage = "
-    //           << mem_usage
-    //           << ", num_objects() = "
-    //           << count
-    //           << " ):\n";
+#ifdef GC_VERBOSE
+    std::cout << "garbage collection beginning (mem_usage = "
+              << mem_usage
+              << ", num_objects() = "
+              << count
+              << " ):\n";
 #endif
 
     mark();
     sweep();
+#ifdef GC_VERBOSE
+    std::cout << "Post collection (mem_usage ="
+              << mem_usage
+              << ", num_objects() = "
+              << count
+              << " ):\n";
+#endif
     to_collect = false;
 }
 
