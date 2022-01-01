@@ -12,7 +12,7 @@ class allocator;
 /// hash table with string keys. uses linear probing.
 template <typename K, typename T> class table {
     friend class allocator;
-private:
+public:
     // hash table entry
     struct entry {
         const K key;
@@ -20,6 +20,8 @@ private:
 
         entry(const K& k, const T& v) : key{k}, val{v} { }
     };
+
+private:
 
     u32 cap;
     u32 threshold;
@@ -200,6 +202,45 @@ public:
         return true;
     }
 
+    struct iterator {
+        // we guarantee that this i value will point to a non-null entry, or the
+        // end.
+        u32 i;
+        table<K,T>* tab;
+
+        iterator(table<K,T>* tab, u32 start)
+            : tab{tab} {
+            i = start;
+            // search for non-nil
+            while (i < tab->cap && tab->array[i] == nullptr) {
+                ++i;
+            }
+        }
+
+        entry* operator*() {
+            return tab->array[i];
+        }
+
+        iterator& operator++() {
+            ++i;
+            // search for non-nil
+            while (i < tab->cap && tab->array[i] == nullptr) {
+                ++i;
+            }
+            return *this;
+        }
+        bool operator!=(const iterator& other) {
+            return i != other.i;
+        }
+
+    };
+
+    iterator begin() {
+        return iterator{this, 0};
+    }
+    iterator end() {
+        return iterator{this, cap};
+    }
 };
 
 

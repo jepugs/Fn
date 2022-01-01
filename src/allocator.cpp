@@ -459,12 +459,9 @@ void allocator::mark_descend(gc_header* o) {
     case GC_TYPE_TABLE:
         {
             add_mark_value(((fn_table*)o)->metatable);
-            auto x = ((fn_table*)o)->contents;
-            for (u32 i = 0; i < x.cap; ++i) {
-                if (x.array[i] != nullptr) {
-                    add_mark_value(x.array[i]->key);
-                    add_mark_value(x.array[i]->val);
-                }
+            for (auto entry : ((fn_table*)o)->contents) {
+                add_mark_value(entry->key);
+                add_mark_value(entry->val);
             }
         }
         break;
