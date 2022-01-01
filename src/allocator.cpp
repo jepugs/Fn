@@ -438,30 +438,30 @@ void allocator::add_mark_value(value v) {
     }
 }
 
-
-void allocator::mark_descend(gc_header* o) {
-    if (gc_mark(*o)) {
-        // already been here or not managed
-        return;
+static void add_value_header(value v,
+        std::forward_list<gc_header*>* to_list) {
+    if (vhas_header(v)) {
+        to_list->push_front(vheader(v));
     }
-    gc_set_mark(*o);
+}
 
+void add_accessible(gc_header* o, std::forward_list<gc_header*>* to_list) {
     switch (gc_type(*o)) {
     case GC_TYPE_CHUNK:
         for (auto v : ((code_chunk*)o)->constant_arr) {
-            add_mark_value(v);
+            add_value_header(v, to_list);
         }
         break;
     case GC_TYPE_CONS:
-        add_mark_value(((cons*)o)->head);
-        add_mark_value(((cons*)o)->tail);
+        add_value_header(((cons*)o)->head, to_list);
+        add_value_header(((cons*)o)->tail, to_list);
         break;
     case GC_TYPE_TABLE:
         {
-            add_mark_value(((fn_table*)o)->metatable);
+            add_value_header(((fn_table*)o)->metatable, to_list);
             for (auto entry : ((fn_table*)o)->contents) {
-                add_mark_value(entry->key);
-                add_mark_value(entry->val);
+                add_value_header(entry->key, to_list);
+                add_value_header(entry->val, to_list);
             }
         }
         break;
@@ -473,24 +473,34 @@ void allocator::mark_descend(gc_header* o) {
             for (local_address i = 0; i < m; ++i) {
                 auto cell = f->upvals[i];
                 if (cell->closed) {
-                    add_mark_value(cell->closed_value);
+                    add_value_header(cell->closed_value, to_list);
                 }
             }
             auto num_opt = f->stub->pos_params.size - f->stub->req_args;
             for (u32 i = 0; i < num_opt; ++i) {
-                add_mark_value(f->init_vals[i]);
+                add_value_header(f->init_vals[i], to_list);
             }
-            marking_list.push_front(&f->stub->chunk->h);
+            to_list->push_front(&f->stub->chunk->h);
         }
         break;
     }
 }
 
-void allocator::mark() {
+void allocator::mark_descend(gc_header* o) {
+    if (gc_mark(*o)) {
+        // already been here or not managed
+        return;
+    }
+    gc_set_mark(*o);
+
+    add_accessible(o, &marking_list);
+}
+
+void allocator::add_roots_for_marking() {
     // roots
     for (auto it = roots.begin(); it != roots.end();) {
         if ((*it)->pin_count > 0) {
-            mark_descend(*it);
+            marking_list.push_front(*it);
             ++it;
         } else {
             it = roots.erase(it);
@@ -504,15 +514,20 @@ void allocator::mark() {
             it = root_stacks.erase(it);
         } else {
             for (u32 i = 0; i < (*it)->get_pointer(); ++i) {
-                add_mark_value((*it)->contents[i]);
+                add_value_header((*it)->contents[i], &marking_list);
             }
             for (auto x : (*it)->callee_stack) {
-                mark_descend((gc_header*)x);
+                marking_list.push_front((gc_header*)x);
             }
-            add_mark_value((*it)->last_pop);
+            add_value_header((*it)->last_pop, &marking_list);
             ++it;
         }
     }
+}
+
+void allocator::mark() {
+    // roots
+    add_roots_for_marking();
 
     while (true) {
         if (marking_list.empty()) {

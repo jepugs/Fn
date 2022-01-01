@@ -326,8 +326,10 @@ private:
     // starting from roots and pins, set the mark on all accessible objects.
     void mark();
 
+    // add all root objects to marking_list
+    void add_roots_for_marking();
+
     // sweeping iterates over the list of objects doing the following:
-    // - remove globally accessible objects from the sweep list
     // - delete unmarked objects
     // - remove the mark from marked objects
     void sweep();
