@@ -380,7 +380,7 @@ allocator::~allocator() {
     for (auto s : root_stacks) {
         delete s;
     }
-    for (auto h = first_obj; h != nullptr;) {
+    for (auto h = nursery_head; h != nullptr;) {
         auto tmp = h->next_obj;
         dealloc(h);
         h = tmp;
@@ -545,8 +545,8 @@ void allocator::sweep() {
     auto orig_sz = mem_usage;
 #endif
 
-    auto prev_ptr = &first_obj;
-    for (auto h = first_obj; h != nullptr;) {
+    auto prev_ptr = &nursery_head;
+    for (auto h = nursery_head; h != nullptr;) {
         if (gc_mark(*h)) {
             gc_unset_mark(*h);
             prev_ptr = &h->next_obj;
@@ -618,8 +618,8 @@ void allocator::add_chunk(code_chunk* ptr) {
 }
 
 void allocator::add_to_obj_list(gc_header* h) {
-    h->next_obj = first_obj;
-    first_obj = h;
+    h->next_obj = nursery_head;
+    nursery_head = h;
 }
 
 bool allocator::gc_is_enabled() const {

@@ -17,6 +17,7 @@
 // access parts of the gc_header
 #define gc_mark(h) (((h).bits & GC_MARK_BIT) == GC_MARK_BIT)
 #define gc_global(h) (((h).bits & GC_GLOBAL_BIT) == GC_GLOBAL_BIT)
+#define gc_old(h) (((h).bits & GC_OLD_BIT) == GC_OLD_BIT)
 #define gc_type(h) (((h).bits & GC_TYPE_BITMASK))
 
 #define gc_set_mark(h) \
@@ -25,6 +26,9 @@
 
 #define gc_set_global(h) ((h).bits = (h).bits | GC_GLOBAL_BIT)
 #define gc_unset_global(h) (((h).bits &= ~GC_GLOBAL_BIT))
+
+#define gc_set_old(h) ((h).bits = (h).bits | GC_OLD_BIT)
+#define gc_unset_old(h) (((h).bits &= ~GC_OLD_BIT))
 
 
 namespace fn {
@@ -285,7 +289,10 @@ class allocator {
     friend class root_stack;
     friend class code_chunk;
 private:
-    gc_header* first_obj=nullptr;
+    // nursery list for generational gc
+    gc_header* nursery_head = nullptr;
+    // old objects are swept less frequently than young ones
+    gc_header* old_objs_head = nullptr;
     // list of objects to mark next. This is populated based on root objects.
     // FIXME: this could be replaced by a local variable in mark()
     std::forward_list<gc_header*> marking_list;
@@ -340,15 +347,20 @@ private:
     function* alloc_new_function();
     fn_table* alloc_new_table();
 
-    // add (already allocated) objects to the GC list. These must be already be
-    // accessible to the GC, or they will be swept
+    // add (already allocated) objects to the GC (i.e. the nursery). The object
+    // should put somewhere accessible to the GC before these functions are
+    // called (to prevent accidental sweeping).
     void add_string(fn_string* ptr);
     void add_cons(cons* ptr);
     void add_table(fn_table* ptr);
     void add_function(function* ptr);
     void add_chunk(code_chunk* ptr);
 
+    // add an object to the nursery
     void add_to_obj_list(gc_header* h);
+
+    // add an object skipping the nursery
+    void add_old_obj(gc_header* h);
 
 public:
     allocator(global_env* use_globals);
