@@ -29,14 +29,8 @@ vm_thread::vm_thread(allocator* use_alloc, global_env* use_globals,
 }
 
 vm_thread::~vm_thread() {
-    // delete all call frames
-    // while (frame != nullptr) {
-    //     auto tmp = frame->prev;
-    //     // TODO: ensure reference count for upvalue_slot is decremented
-    //     delete frame;
-    //     frame = tmp;
-    // }
     stack->kill();
+    // allocator does the rest of the work :)
 }
 
 vm_status vm_thread::check_status() const {
@@ -210,8 +204,8 @@ void vm_thread::runtime_error(const string& msg) const {
 }
 
 void vm_thread::push(value v) {
-    if (stack->get_pointer() >= STACK_SIZE - 1) {
-        runtime_error("stack exhausted.");
+    if (stack->get_pointer()-bp >= STACK_SIZE - 1) {
+        runtime_error("stack frame exhausted.");
     }
     stack->push(v);
 }

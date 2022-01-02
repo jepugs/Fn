@@ -15,7 +15,7 @@ namespace fn {
 
 namespace fs = std::filesystem;
 
-// virtual_machine stack size limit (per call frame)
+// virtual_machine stack size limit
 constexpr stack_address STACK_SIZE = 255;
 
 // This structure includes a pointer to the previous call frame, so it is
