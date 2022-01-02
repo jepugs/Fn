@@ -68,10 +68,17 @@ void vm_thread::add_global(value name, value v) {
         runtime_error("Variable names must be symbols.");
     }
     if (vhas_header(v)) {
-        alloc->designate_global(vheader(v));
+        alloc->pin_object(vheader(v));
     }
     auto ns_id = chunk->ns_id;
     auto ns = *globals->get_ns(ns_id);
+    // handle mutation
+    auto x = ns->get(vsymbol(name));
+    if (x.has_value()) {
+        if (vhas_header(*x)) {
+            alloc->unpin_object(vheader(*x));
+        }
+    }
     ns->set(vsymbol(name), v);
 }
 
@@ -128,7 +135,7 @@ void vm_thread::add_macro(value name, value v) {
     if (!vis_function(v)) {
         runtime_error("op-macro value not a function.");
     }
-    alloc->designate_global(vheader(v));
+    alloc->pin_object(vheader(v));
     auto ns_id = chunk->ns_id;
     auto ns = *globals->get_ns(ns_id);
     ns->set_macro(vsymbol(name), v);
@@ -301,8 +308,6 @@ code_address vm_thread::make_call(function* func) {
         stack->pop_callee();
         return ip + 2;
     } else { // native function call
-        // extend the call frame
-        //frame = new call_frame{frame, ip+2, chunk, bp, func, sp};
 
         // save previous frame
         auto ret_addr = ip + 2;
@@ -465,7 +470,6 @@ void vm_thread::set_from_top(local_address i, value v) {
 }
 
 void vm_thread::step() {
-
     u8 instr = chunk->read_byte(ip);
 
     // variable for use inside the switch

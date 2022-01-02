@@ -334,10 +334,6 @@ private:
     // - remove the mark from marked objects
     void sweep();
 
-    // pinned objects act as temporary roots
-    void pin_object(gc_header* o);
-    void unpin_object(gc_header* o);
-
     // allocate objects using the GC's internal facilities. You have to run
     // placement new on these to construct them.
     cons* alloc_new_cons();
@@ -377,13 +373,12 @@ public:
     root_stack* add_root_stack();
     working_set add_working_set();
 
-    // Designate an object as global by setting the global bit and pinning it.
-    // Right now this does little other than guarantee the object's safety. In
-    // the future I'm planning to add a feature to freeze globally accessible
-    // values.
-    void designate_global(gc_header* o);
-    // Once implemented, this will allow globals to be 
-    void unset_global(gc_header* o);
+    // pinning an object increments its pin count, which starts at 0. When
+    // positive, the object is used as a root for the GC mark-and-sweep
+    // algorithm.
+    void pin_object(gc_header* o);
+    // decrement an object's pin count
+    void unpin_object(gc_header* o);
 
     void print_status();
 };

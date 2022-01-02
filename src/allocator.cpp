@@ -687,14 +687,15 @@ working_set allocator::add_working_set() {
     return working_set{this};
 }
 
-void allocator::designate_global(gc_header* o) {
-    if (!gc_global(*o)) {
-        gc_set_global(*o);
-        if (o->pin_count == 0) {
-            add_gc_root(o);
-        }
-        ++o->pin_count;
+void allocator::pin_object(gc_header* o) {
+    if (o->pin_count == 0) {
+        add_gc_root(o);
     }
+    ++o->pin_count;
+}
+
+void allocator::unpin_object(gc_header* o) {
+    --o->pin_count;
 }
 
 void allocator::print_status() {
