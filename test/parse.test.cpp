@@ -41,7 +41,7 @@ BOOST_AUTO_TEST_CASE( parse_string_test ) {
     BOOST_TEST(forms.size == 1);
     auto test = forms[0];
     BOOST_TEST(test->kind == ak_string_atom);
-    BOOST_TEST(test->datum.str->as_string() == "hello");
+    BOOST_TEST(*test->datum.str == "hello");
     BOOST_TEST(test->loc.line == 1);
     BOOST_TEST(test->loc.col == 7);
     free_ast_form(test);
@@ -50,7 +50,7 @@ BOOST_AUTO_TEST_CASE( parse_string_test ) {
     BOOST_TEST(forms.size == 1);
     test = forms[0];
     BOOST_TEST(test->kind == ak_string_atom);
-    BOOST_TEST(test->datum.str->as_string() == "world!");
+    BOOST_TEST(*test->datum.str == "world!");
     BOOST_TEST(test->loc.line == 1);
     BOOST_TEST(test->loc.col == 11);
     free_ast_form(test);
@@ -59,14 +59,14 @@ BOOST_AUTO_TEST_CASE( parse_string_test ) {
     BOOST_TEST(forms.size == 1);
     test = forms[0];
     BOOST_TEST(test->kind == ak_string_atom);
-    BOOST_TEST(test->datum.str->as_string() == "\n");
+    BOOST_TEST(*test->datum.str == "\n");
     free_ast_form(test);
 
     forms = parse_string("\"\a\r\t\v\"  ", &symtab, &err);
     BOOST_TEST(forms.size == 1);
     test = forms[0];
     BOOST_TEST(test->kind == ak_string_atom);
-    BOOST_TEST(test->datum.str->as_string() == "\a\r\t\v");
+    BOOST_TEST(*test->datum.str == "\a\r\t\v");
     free_ast_form(test);
 }
 
