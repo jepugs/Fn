@@ -7,6 +7,7 @@ add_library(fn_lib OBJECT
   ffi/builtin.cpp
   ffi/fn_handle.cpp
   llir.cpp
+  memory.cpp
   interpret.cpp
   log.cpp
   namespace.cpp

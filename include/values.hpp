@@ -5,6 +5,7 @@
 
 #include "array.hpp"
 #include "base.hpp"
+#include "memory.hpp"
 #include "table.hpp"
 
 #include <functional>
@@ -14,112 +15,11 @@ namespace fn {
 
 /// value representation
 
-// all values are 64-bits wide. The 4 least significant bits are referred to as
-// the tag, and are used to encode the type of the value. All the pointers used
-// for Fn objects are 16-byte aligned (in fact 32-). This allows us to store an
-// entire 64-bit pointer along with the tag, since we know the 4 least
-// significant digits of the pointer address will all be 0.
-
-// tags
-constexpr u64 TAG_WIDTH     = 4;
-constexpr u64 TAG_MASK      = (1 << TAG_WIDTH) - 1;
-
-
-// NOTE (Future extension): Variable length tags:
-
-// Pointers can be 32-byte aligned, so we can use up to 5 bits for type
-// information on those. Symbols and constants can use many more bits for type
-// information. Variable width tags would allow us to fit many more types in.
-// I'd eventually like to use two 2-bit tags for floats and fixnums, increasing
-// floating pointer precision and leaving us with 16 available 5-bit tags to
-// use. One of these can be used as an extension tag for symbols and all the
-// constants. This gives us up to 15 pointer types, which is perfect because
-// that's also the number of possible GC tags. Currently there are only four
-// pointer types.
-
-// The pointer types I'd add are: bignums, rational numbers, complex numbers,
-// vectors, foreign structures/bitvectors, and hash tries (which could actually
-// replace mutable tables). This would still leave us with 5 or 6 unused pointer
-// types for future extensions.
-
-constexpr u64 TAG_NUM       = 0x00;
-
-// NOTE: I want these to line up with the GC_TYPE tags in base.hpp
-constexpr u64 TAG_STRING    = 0x01;
-constexpr u64 TAG_CONS      = 0x02;
-constexpr u64 TAG_TABLE     = 0x03;
-constexpr u64 TAG_FUNC      = 0x04;
-constexpr u64 TAG_BIGNUM    = 0x05;
-
-constexpr u64 TAG_SYM       = 0x06;
-constexpr u64 TAG_NIL       = 0x07;
-constexpr u64 TAG_TRUE      = 0x08;
-constexpr u64 TAG_FALSE     = 0x09;
-constexpr u64 TAG_EMPTY     = 0x0a;
 
 struct fn_string;
-struct cons;
+struct fn_cons;
 struct fn_table;
-struct function;
-
-// Design notes for value:
-// - we opt to make value a union with methods rather than a struct
-// - union methods are used for accessing pointers and checking tags only. The
-//   sole exception to this rule are some unsafe arithmetic operations.
-// - values are created using as_value (or as_sym_value)
-// - values 
-
-// rather than providing a constructor for value, use the (lowercase 'v')
-// value() functions defined below
-union value {
-    u64 raw;
-    void* ptr;
-    f64 num;
-    
-    // implemented in values.cpp
-    bool operator==(const value& v) const;
-    bool operator!=(const value& v) const;
-};
-
-
-/// value structures
-
-// cons cells
-struct alignas(32) cons {
-    gc_header h;
-    value head;
-    value tail;
-
-    cons(value head, value tail);
-};
-
-struct alignas(32) fn_string {
-    gc_header h;
-    u32 len;
-    char* data;
-
-    // these constructors copy data
-    explicit fn_string(const string& src);
-    // src must be null terminated
-    explicit fn_string(const char* src);
-    // this create a string of specified length with uninitialized data
-    explicit fn_string(u32 len);
-    fn_string(const fn_string& src);
-    ~fn_string();
-
-    string as_string();
-
-    bool operator==(const fn_string& s) const;
-};
-
-struct alignas(32) fn_table {
-    gc_header h;
-    value metatable;
-    table<value,value> contents;
-
-    fn_table();
-};
-
+struct fn_function;
 
 // forward declarations for function_stub
 struct code_chunk;
@@ -152,57 +52,6 @@ struct function_stub {
     // the function base pointer). The upvalue is added if necessary
     local_address add_upvalue(u8 addr, bool direct);
 };
-
-// A location storing a captured variable. These are shared across functions.
-struct upvalue_cell {
-    u32 ref_count;       // number of functions using this upvalue
-    bool closed;         // if false, the value is still on the stack
-    stack_address pos;   // position on the stack while open
-    value closed_value;  // holds the upvalue for closed cells
-    // TODO: lock these :'(
-
-    inline void reference() {
-        ++ref_count;
-    }
-    inline void dereference() {
-        --ref_count;
-    }
-    inline bool dead() {
-        return ref_count == 0;
-    }
-    inline void close(value v) {
-        closed_value = v;
-        closed = true;
-    }
-
-    // create a new open cell with reference count 1
-    upvalue_cell(stack_address pos)
-        : ref_count{1}
-        , closed{false}
-        , pos{pos} {
-    }
-};
-
-struct alignas(32) function {
-    gc_header h;
-    function_stub* stub;
-    local_address num_upvals;
-    // it is important that these pointers get set to null for foreign
-    // functions. Since the function stub is not necessarily available at the
-    // time when the function is deleted, this acts as a flag as to whether
-    // these fields need to be deleted.
-    upvalue_cell** upvals;
-    value* init_vals;
-
-    // The function stub must outlive associated function objects.
-
-    // During construction, upvals is allocated according to the num_upvals
-    // field in stub. However, it is the responsibility of the function creator
-    // to allocate it.
-    function(function_stub* stub);
-    ~function();
-};
-
 
 // symbols in fn are represented by a 32-bit unsigned ids
 struct symtab_entry {
@@ -322,13 +171,13 @@ inline value vbox_ptr(void* p, u64 tag) {
 inline value vbox_string(fn_string* p) {
     return vbox_ptr(p, TAG_STRING);
 }
-inline value vbox_cons(cons* p) {
+inline value vbox_cons(fn_cons* p) {
     return vbox_ptr(p, TAG_CONS);
 }
 inline value vbox_table(fn_table* p) {
     return vbox_ptr(p, TAG_TABLE);
 }
-inline value vbox_function(function* p) {
+inline value vbox_function(fn_function* p) {
     return vbox_ptr(p, TAG_FUNC);
 }
 
@@ -341,17 +190,17 @@ inline fn_string* vstring(value v) {
     return (fn_string*)v.ptr;
     // return (fn_string*)(v.ptr & ~TAG_MASK);
 }
-inline cons* vcons(value v) {
+inline fn_cons* vcons(value v) {
     v.raw = v.raw & ~TAG_MASK;
-    return (cons*)v.ptr;
+    return (fn_cons*)v.ptr;
 }
 inline fn_table* vtable(value v) {
     v.raw = v.raw & ~TAG_MASK;
     return (fn_table*)v.ptr;
 }
-inline function* vfunction(value v) {
+inline fn_function* vfunction(value v) {
     v.raw = v.raw & ~TAG_MASK;
-    return (function*)v.ptr;
+    return (fn_function*)v.ptr;
 }
 inline symbol_id vsymbol(value v) {
     return v.raw >> TAG_WIDTH;
@@ -362,7 +211,7 @@ inline bool vtruth(value v) {
 }
 
 inline u32 vstrlen(value v) {
-    return vstring(v)->len;
+    return vstring(v)->size;
 }
 
 // cons/list

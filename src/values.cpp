@@ -2,69 +2,16 @@
 
 namespace fn {
 
-cons::cons(value head, value tail)
-    : head{head}
-    , tail{tail} {
-    mk_gc_header(GC_TYPE_CONS, &h);
-}
-
-fn_string::fn_string(const string& src)
-    : len{static_cast<u32>(src.size())} {
-    mk_gc_header(GC_TYPE_STRING, &h);
-    auto v = new char[len+1];
-    v[len] = '\0';
-    std::memcpy(v, src.c_str(), len);
-    data = v;
-}
-fn_string::fn_string(const char* src) {
-    mk_gc_header(GC_TYPE_STRING, &h);
-    string s{src};
-    len = s.size();
-    auto v = new char[len+1];
-    v[len] = '\0';
-    std::memcpy(v, s.c_str(), len);
-    data = v;
-}
-fn_string::fn_string(const fn_string& src)
-    : len{src.len} {
-    mk_gc_header(GC_TYPE_STRING, &h);
-    auto v = new char[len+1];
-    v[len] = '\0';
-    std::memcpy(v, src.data, len);
-    data = v;
-}
-
-fn_string::fn_string(u32 len)
-    : len{len} {
-    mk_gc_header(GC_TYPE_STRING, &h);
-    data = new char[len+1];
-    data[len]='\0';
-}
-
-fn_string::~fn_string() {
-    delete[] data;
-}
-
-string fn_string::as_string() {
-    return string{data, len};
-}
-
 bool fn_string::operator==(const fn_string& s) const {
-    if (len != s.len) {
+    if (size != s.size) {
         return false;
     }
-    for (u32 i=0; i < len; ++i) {
+    for (u32 i=0; i < size; ++i) {
         if (data[i] != s.data[i]) {
             return false;
         }
     }
     return true;
-}
-
-fn_table::fn_table()
-    : metatable{V_NIL}
-    , contents{} {
-    mk_gc_header(GC_TYPE_TABLE, &h);
 }
 
 symbol_table::~symbol_table() {
@@ -131,27 +78,6 @@ local_address function_stub::add_upvalue(u8 addr, bool direct) {
     return num_upvals++;
 }
 
-function::function(function_stub* stub)
-    : stub{stub}
-    , upvals{nullptr}
-    , init_vals{nullptr} {
-    mk_gc_header(GC_TYPE_FUNCTION, &h);
-
-    if (stub->foreign != nullptr) {
-        num_upvals = 0;
-    } else {
-        num_upvals = stub->num_upvals;
-        upvals = new upvalue_cell*[num_upvals];
-        init_vals = new value[stub->pos_params.size - stub->req_args];
-    }
-}
-
-// TODO: use refcount on upvalues
-function::~function() {
-    delete[] upvals;
-    delete[] init_vals;
-}
-
 bool value::operator==(const value& v) const {
     if (vsame(*this,v)) {
         return true;
@@ -196,7 +122,7 @@ template<> u64 hash<value>(const value& v) {
     case TAG_EMPTY:
         return hash(v.raw);
     case TAG_STRING:
-        return hash(vstring(v)->as_string());
+        return hash(string{(char*)vstring(v)->data});
     case TAG_TABLE:
     case TAG_CONS:
     case TAG_FUNC:
@@ -228,9 +154,9 @@ string v_to_string(value v, const symbol_table* symbols, bool code_format) {
     case TAG_STRING:
         if (code_format) {
             // TODO: handle escapes
-            return "\"" + string{vstring(v)->data} + "\"";
+            return "\"" + string{(char*)vstring(v)->data} + "\"";
         } else {
-            return string{vstring(v)->data};
+            return string{(char*)vstring(v)->data};
         }
     case TAG_TABLE:
         {   // TODO: recursively track which objects we've descended into

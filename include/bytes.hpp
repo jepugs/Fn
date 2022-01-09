@@ -4,6 +4,7 @@
 
 #include "array.hpp"
 #include "base.hpp"
+#include "parse.hpp"
 #include "values.hpp"
 
 #include <iostream>
@@ -64,6 +65,8 @@ struct code_chunk {
     // already been marked global in the allocator, newly added values have to
     // be marked global themselves.
     constant_id add_constant(value v);
+    constant_id add_string(const string& str);
+    constant_id add_quoted(fn_parse::ast_form* ast);
     // get a constant
     value get_constant(constant_id id) const;
 

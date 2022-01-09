@@ -453,7 +453,7 @@ ast_form* interpreter::value_to_ast(value v, const source_loc& loc) {
     case TAG_NUM:
         return mk_number_form(loc, vnumber(v));
     case TAG_STRING:
-        return mk_string_form(loc, *vstring(v));
+        return mk_string_form(loc, (char*)vstring(v)->data);
     case TAG_SYM:
         return mk_symbol_form(loc, vsymbol(v));
     }

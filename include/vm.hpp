@@ -18,45 +18,6 @@ namespace fs = std::filesystem;
 // virtual_machine stack size limit
 constexpr stack_address STACK_SIZE = 255;
 
-// This structure includes a pointer to the previous call frame, so it is
-// actually a linked list representing the entire call stack.
-struct call_frame {
-    // call frame above this one
-    call_frame* prev;
-    // return address
-    code_address ret_addr;
-    // chunk to return to
-    code_chunk* ret_chunk;
-    // base pointer (i.e. offset from the true bottom of the stack)
-    u32 bp;
-    // the function we're in. nullptr on the top level.
-    function* caller;
-    // the number of arguments we need to pop after exiting the current call
-    local_address num_args;
-    // since this is the main reason we use the callee, it makes sense to put it
-    // here directly.
-    // upvalue_cell** upvals;
-    bool tail;
-
-    call_frame(call_frame* prev,
-               code_address ret_addr,
-               code_chunk* ret_chunk,
-               u32 bp,
-               function* caller,
-               local_address num_args=0)
-        : prev{prev}
-        , ret_addr{ret_addr}
-        , ret_chunk{ret_chunk}
-        , bp{bp}
-        , caller{caller}
-        , num_args{num_args}
-        , tail{false} {
-        // if (caller) {
-        //     upvals = caller->upvals;
-        // }
-    }
-};
-
 // When a vm_thread finishes executing, it will leave behind some exit state,
 // which can indicate that it's done, that it requires an import, etc.
 
@@ -68,7 +29,6 @@ enum vm_status {
     vs_waiting_for_import,
     vs_fault
 };
-
 
 // WARNING: despite the name, vm_threads cannot truly be run in parallel (until
 // the allocator and global_env are made threadsafe).
@@ -99,14 +59,12 @@ private:
 
     // call frame
     u32 bp;
-    function* callee;
+    fn_function* callee;
 
 
     // stack operations
     // pop the top of the stack
     void pop();
-    // pins the value using ws before popping it
-    value pop_to_ws(working_set* ws);
     // pop multiple times
     void pop_times(stack_address n);
     // push to the top of the stack
@@ -140,14 +98,14 @@ private:
 
     // helper for call() and tcall(). moves arguments into their positions as
     // local variables in the new call frame.
-    void arrange_call_stack(function* func, local_address num_args);
+    void arrange_call_stack(fn_function* func, local_address num_args);
     // Called when a function is called, after arranging the function arguments
     // on the stack. This creates the new call frame and returns the address to
     // jump to for the call.
-    code_address make_call(function* func);
+    code_address make_call(fn_function* func);
     // Analogue to make_call() but for tail calls. This means the current call
     // frame is replaced rather than extended.
-    code_address make_tcall(function* func);
+    code_address make_tcall(fn_function* func);
     // returns the next addr to go to. num_args does not count the callee
     code_address call(local_address num_args);
     // like call, but replaces the current call frame rather than creating a new
@@ -156,10 +114,6 @@ private:
     // num_args does not count the function, the keyword table, or the argument
     // list.
     code_address apply(local_address num_args,bool tail=false);
-
-    // set up a newly created function (including taking init values off the
-    // stack)
-    void init_function(working_set* ws, function* obj);
 
     // raise an exception of type fn_exception containing the provided message
     void runtime_error(const string& msg) const;

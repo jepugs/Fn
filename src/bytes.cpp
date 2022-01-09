@@ -1,5 +1,7 @@
 #include "bytes.hpp"
+
 #include "allocator.hpp"
+#include "memory.hpp"
 
 namespace fn {
 
@@ -158,7 +160,7 @@ code_chunk* mk_code_chunk(allocator* use_alloc, symbol_id ns_id) {
             .prev=nullptr
         }
     };
-    mk_gc_header(GC_TYPE_CHUNK, &res->h);
+    init_gc_header(&res->h, GC_TYPE_CHUNK);
     res->h.pin_count = 0;
     return res;
 }

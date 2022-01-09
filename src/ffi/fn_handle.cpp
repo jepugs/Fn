@@ -29,20 +29,20 @@ void fn_handle::assert_integer(value v) {
     }
 }
 
-value fn_handle::push_string(const string& str) {
+void fn_handle::push_string(const string& str) {
     return stack->push_string(str);
 }
 
-value fn_handle::make_string(local_address offset, const string& str) {
-    return stack->make_string(stack->get_pointer() - offset - 1, str);
+void fn_handle::set_string(local_address offset, const string& str) {
+    return stack->set_string(stack->get_pointer() - offset - 1, str);
 }
 
-value fn_handle::push_cons(value hd, value tl) {
+void fn_handle::push_cons(value hd, value tl) {
     return stack->push_cons(hd, tl);
 }
 
-value fn_handle::make_cons(local_address offset, value hd, value tl) {
-    return stack->make_cons(stack->get_pointer() - offset - 1, hd, tl);
+void fn_handle::set_cons(local_address offset, value hd, value tl) {
+    return stack->set_cons(stack->get_pointer() - offset - 1, hd, tl);
 }
 
 value fn_handle::intern(const char* str) {
@@ -53,7 +53,7 @@ value fn_handle::gensym() {
     return vbox_symbol(((vm_thread*)vm)->get_symtab()->gensym());
 }
 
-value fn_handle::push_table() {
+void fn_handle::push_table() {
     return stack->push_table();
 }
 
@@ -69,30 +69,30 @@ void fn_handle::pop() {
     stack->pop();
 }
 
-value fn_handle::substr(local_address offset, value a, u32 start) {
+void fn_handle::substr(local_address offset, value a, u32 start) {
     auto str = vstring(a);
-    auto len = str->len - start;
+    auto len = str->size - start;
     if (len < 0) {
-        return stack->push_string("");
+        stack->push_string("");
     } else {
         // the null terminator is placed automatically
-        auto sub = string{str->data}.substr(start);
-        return stack->push_string(sub);
+        auto sub = string{(char*)str->data}.substr(start);
+        stack->push_string(sub);
     }
 }
 
-value fn_handle::substr(local_address offset, value a, u32 start, u32 len) {
+void fn_handle::substr(local_address offset, value a, u32 start, u32 len) {
     auto str = vstring(a);
     if (len < 0) {
-        return push_string("");
+        push_string("");
     } else {
-        if (str->len < start + len) {
-            len = str->len - start;
+        if (str->size < start + len) {
+            len = str->size - start;
         }
         // the null terminator is placed automatically
     }
-    auto sub = string{str->data}.substr(start);
-    return stack->make_string(offset, sub);
+    auto sub = string{(char*)str->data}.substr(start);
+    stack->set_string(offset, sub);
 }
 
 string fn_handle::as_string(value a) {
@@ -104,28 +104,10 @@ string fn_handle::as_string(value a) {
 //     return add_string(s);
 // }
 
-value fn_handle::symname(local_address offset, value a) {
+void fn_handle::symname(local_address offset, value a) {
     auto id = vsymbol(a);
     auto s = ((vm_thread*)vm)->get_symtab()->symbol_name(id);
-    return make_string(offset, s);
-}
-
-value fn_handle::list_concat(local_address offset, value l, value r) {
-    if (l == V_EMPTY) {
-        push(r);
-        return peek();
-    }
-
-    auto res = make_cons(offset, vhead(l), V_EMPTY);
-    // auto end = res;
-    // for (auto it = vtail(l); it != V_EMPTY; it = vtail(it)) {
-    //     auto next = push_cons(vhead(it), V_EMPTY);
-    //     vcons(end)->tail = next;
-    //     end = next;
-    //     pop();
-    // }
-    // vcons(end)->tail = r;
-    return res;
+    set_string(offset, s);
 }
 
 // value fn_handle::table_concat(value l, value r) {

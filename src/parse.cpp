@@ -20,7 +20,7 @@ ast_form* mk_number_form(source_loc loc, f64 num, ast_form* dest) {
 }
 
 ast_form* mk_string_form(source_loc loc,
-        const fn_string& str,
+        const string& str,
         ast_form* dest) {
     if (dest == nullptr) {
         dest = new ast_form;
@@ -28,12 +28,12 @@ ast_form* mk_string_form(source_loc loc,
     return new(dest) ast_form{
         .loc = loc,
         .kind = ak_string_atom,
-        .datum = {.str=new fn_string{str}}
+        .datum = {.str=new string{str} }
     };
 }
 
 ast_form* mk_string_form(source_loc loc,
-        fn_string&& str,
+        string&& str,
         ast_form* dest) {
     if (dest == nullptr) {
         dest = new ast_form;
@@ -41,7 +41,7 @@ ast_form* mk_string_form(source_loc loc,
     return new(dest) ast_form{
         .loc = loc,
         .kind = ak_string_atom,
-        .datum = {.str=new fn_string{str}}
+        .datum = {.str=new string{str} }
     };
 }
 
@@ -195,7 +195,7 @@ string ast_form::as_string(const symbol_table* symtab) const {
         break;
     case ak_string_atom:
         return "\""
-            + with_str_escapes(datum.str->as_string())
+            + with_str_escapes(*datum.str)
             + "\"";
         break;
     case ak_symbol_atom:
@@ -308,7 +308,7 @@ ast_form* parse_next_form(scanner* sc,
         res = mk_number_form(loc, t0.datum.num);
         break;
     case tk_string:
-        res = mk_string_form(loc, fn_string{*str});
+        res = mk_string_form(loc, string{*str});
         break;
     case tk_symbol:
         res = mk_symbol_form(loc, symtab->intern(*str));

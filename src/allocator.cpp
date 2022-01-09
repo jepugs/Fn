@@ -69,36 +69,32 @@ void root_stack::set(u32 offset, value v) {
     contents[offset] = v;
 }
 
-value root_stack::push_string(const string& str) {
-    auto ptr = new fn_string{str};
+void root_stack::push_string(const string& str) {
+    auto ptr = alloc->alloc_string(str);
     auto v = vbox_string(ptr);
     push(v);
     alloc->add_string(ptr);
-    return v;
 }
 
-value root_stack::make_string(stack_address place, const string& str) {
-    auto ptr = new fn_string{str};
+void root_stack::set_string(stack_address place, const string& str) {
+    auto ptr = alloc->alloc_string(str);
     auto v = vbox_string(ptr);
     set(place, v);
     alloc->add_string(ptr);
-    return v;
 }
 
-value root_stack::push_cons(value hd, value tl) {
-    auto ptr = new (alloc->alloc_new_cons()) cons{hd, tl};
+void root_stack::push_cons(value hd, value tl) {
+    auto ptr = alloc->alloc_cons(hd, tl);
     auto v = vbox_cons(ptr);
     push(v);
     alloc->add_cons(ptr);
-    return v;
 }
 
-value root_stack::make_cons(stack_address place, value hd, value tl) {
-    auto ptr = new (alloc->alloc_new_cons()) cons{hd, tl};
+void root_stack::set_cons(stack_address place, value hd, value tl) {
+    auto ptr = alloc->alloc_cons(hd, tl);
     auto v = vbox_cons(ptr);
     set(place, v);
     alloc->add_cons(ptr);
-    return v;
 }
 
 void root_stack::top_to_list(u32 n) {
@@ -107,14 +103,12 @@ void root_stack::top_to_list(u32 n) {
         return;
     }
 
-    auto ptr = new (alloc->alloc_new_cons()) cons{contents[pointer - 1], V_EMPTY};
+    auto ptr = alloc->alloc_cons(contents[pointer - 1], V_EMPTY);
     contents[pointer - 1] = vbox_cons(ptr);
     alloc->add_cons(ptr);
 
     for (u32 i = 1; i < n; ++i) {
-        ptr = new (alloc->alloc_new_cons()) cons{
-            contents[pointer - i - 1],
-            contents[pointer - i]};
+        ptr = alloc->alloc_cons(contents[pointer-i-1], contents[pointer-i]);
         contents[pointer - i - 1] = vbox_cons(ptr);
         alloc->add_cons(ptr);
     }
@@ -123,24 +117,22 @@ void root_stack::top_to_list(u32 n) {
     contents.resize(pointer);
 }
 
-value root_stack::push_table() {
-    auto ptr = new (alloc->alloc_new_table()) fn_table{};
+void root_stack::push_table() {
+    auto ptr = alloc->alloc_table();
     auto v = vbox_table(ptr);
     push(v);
     alloc->add_table(ptr);
-    return v;
 }
 
-value root_stack::make_table(stack_address place) {
-    auto ptr = new (alloc->alloc_new_table()) fn_table{};
+void root_stack::set_table(stack_address place) {
+    auto ptr = alloc->alloc_table();
     auto v = vbox_table(ptr);
     set(place, v);
     alloc->add_table(ptr);
-    return v;
 }
 
 value root_stack::create_function(function_stub* stub, stack_address bp) {
-    auto f = new (alloc->alloc_new_function()) function{stub};
+    auto f = alloc->alloc_function(stub);
 
     // set up initial values
     auto len = stub->pos_params.size - stub->req_args;
@@ -169,7 +161,7 @@ value root_stack::create_function(function_stub* stub, stack_address bp) {
     return v;
 }
 
-void root_stack::push_callee(function* callee) {
+void root_stack::push_callee(fn_function* callee) {
     callee_stack.push_back(callee);
 }
 
@@ -177,7 +169,7 @@ void root_stack::pop_callee() {
     callee_stack.resize(callee_stack.size-1);
 }
 
-function* root_stack::peek_callee() {
+fn_function* root_stack::peek_callee() {
     return callee_stack[callee_stack.size-1];
 }
 
@@ -290,7 +282,7 @@ working_set& working_set::operator=(working_set&& other) noexcept {
 }
 
 value working_set::add_cons(value hd, value tl) {
-    auto ptr = new (alloc->alloc_new_cons()) cons{hd,tl};
+    auto ptr = alloc->alloc_cons(hd, tl);
     auto v = vbox_cons(ptr);
     pin(&ptr->h);
     alloc->add_cons(ptr);
@@ -298,30 +290,14 @@ value working_set::add_cons(value hd, value tl) {
 }
 
 value working_set::add_string(const string& s) {
-    auto ptr = new fn_string{s};
+    auto ptr = alloc->alloc_string(s);
     pin(&ptr->h);
     alloc->add_string(ptr);
     return vbox_string(ptr);
 }
 
-value working_set::add_string(const fn_string& s) {
-    auto ptr = new fn_string{s};
-    auto v = vbox_string(ptr);
-    pin(&ptr->h);
-    alloc->add_string(ptr);
-    return v;
-}
-
-value working_set::add_string(u32 len) {
-    auto ptr = new fn_string{len};
-    auto v = vbox_string(ptr);
-    pin(&ptr->h);
-    alloc->add_string(ptr);
-    return v;
-}
-
 value working_set::add_table() {
-    auto ptr = new (alloc->alloc_new_table()) fn_table{};
+    auto ptr = alloc->alloc_table();
     auto v = vbox_table(ptr);
     pin(&ptr->h);
     alloc->add_table(ptr);
@@ -329,7 +305,8 @@ value working_set::add_table() {
 }
 
 value working_set::add_function(function_stub* stub) {
-    auto ptr = new (alloc->alloc_new_function()) function{stub};
+    // stub better not have any init values
+    auto ptr = alloc->alloc_function(stub);
     auto v = vbox_function(ptr);
     pin(&ptr->h);
     alloc->add_function(ptr);
@@ -381,7 +358,7 @@ allocator::~allocator() {
         delete s;
     }
     for (auto h = nursery_head; h != nullptr;) {
-        auto tmp = h->next_obj;
+        auto tmp = h->next;
         dealloc(h);
         h = tmp;
     }
@@ -396,25 +373,23 @@ void allocator::dealloc(gc_header* o) {
         free_code_chunk((code_chunk*) o);
         break;
     case GC_TYPE_STRING:
-        mem_usage -= ((fn_string*)o)->len;
+        mem_usage -= ((fn_string*)o)->size;
         mem_usage -= sizeof(fn_string);
+        free(((fn_string*)o)->data);
         delete (fn_string*)o;
         break;
     case GC_TYPE_CONS:
-        mem_usage -= sizeof(cons);
-        ((cons*)o)->~cons();
-        cons_allocator.free_object((cons*)o);
+        mem_usage -= sizeof(fn_cons);
+        free(o);
         break;
     case GC_TYPE_TABLE:
         mem_usage -= sizeof(fn_table);
-        ((fn_table*)o)->~fn_table();
-        table_allocator.free_object((fn_table*)o);
-        //delete (fn_table*)o;
+        delete (fn_table*)o;
         break;
     case GC_TYPE_FUNCTION:
-        mem_usage -= sizeof(function);
+        mem_usage -= sizeof(fn_function);
         {
-            auto f = (function*)o;
+            auto f = (fn_function*)o;
 
             for (int i = 0; i < f->num_upvals; ++i) {
                 auto cell = f->upvals[i];
@@ -424,8 +399,9 @@ void allocator::dealloc(gc_header* o) {
                 }
             }
 
-            f->~function();
-            function_allocator.free_object(f);
+            delete[] f->init_vals;
+            delete[] f->upvals;
+            delete f;
         }
         break;
     }
@@ -453,8 +429,8 @@ void add_accessible(gc_header* o, std::forward_list<gc_header*>* to_list) {
         }
         break;
     case GC_TYPE_CONS:
-        add_value_header(((cons*)o)->head, to_list);
-        add_value_header(((cons*)o)->tail, to_list);
+        add_value_header(((fn_cons*)o)->head, to_list);
+        add_value_header(((fn_cons*)o)->tail, to_list);
         break;
     case GC_TYPE_TABLE:
         {
@@ -467,10 +443,9 @@ void add_accessible(gc_header* o, std::forward_list<gc_header*>* to_list) {
         break;
     case GC_TYPE_FUNCTION:
         {
-            auto f = (function*)o;
-            auto m = f->num_upvals;
+            auto f = (fn_function*)o;
             // upvalues
-            for (local_address i = 0; i < m; ++i) {
+            for (local_address i = 0; i < f->num_upvals; ++i) {
                 auto cell = f->upvals[i];
                 if (cell->closed) {
                     add_value_header(cell->closed_value, to_list);
@@ -549,10 +524,10 @@ void allocator::sweep() {
     for (auto h = nursery_head; h != nullptr;) {
         if (gc_mark(*h)) {
             gc_unset_mark(*h);
-            prev_ptr = &h->next_obj;
-            h = h->next_obj;
+            prev_ptr = &h->next;
+            h = h->next;
         } else {
-            *prev_ptr = h->next_obj;
+            *prev_ptr = h->next;
             dealloc(h);
             h = *prev_ptr;
         }
@@ -565,23 +540,51 @@ void allocator::sweep() {
 #endif
 }
 
-cons* allocator::alloc_new_cons() {
-    return cons_allocator.new_object();
+fn_string* allocator::alloc_string(u32 n) {
+    auto res = new fn_string;
+    init_gc_header(&res->h, GC_TYPE_STRING);
+    res->size = n;
+    res->data = (u8*)malloc(n + 1);
+    return res;
 }
 
-function* allocator::alloc_new_function() {
-    return function_allocator.new_object();
+fn_string* allocator::alloc_string(const string& str) {
+    auto res = alloc_string(str.size());
+    memcpy(res->data, str.c_str(), str.size() + 1);
+    return res;
 }
 
-fn_table* allocator::alloc_new_table() {
-    return table_allocator.new_object();
+fn_cons* allocator::alloc_cons(value hd, value tl) {
+    auto res = (fn_cons*) malloc(sizeof(fn_cons));
+    init_gc_header(&res->h, GC_TYPE_CONS);
+    res->head = hd;
+    res->tail = tl;
+    return res;
+}
+
+fn_function* allocator::alloc_function(function_stub* stub) {
+    auto res = new fn_function;
+    init_gc_header(&res->h, GC_TYPE_FUNCTION);
+    res->stub = stub;
+    auto num_opt = stub->pos_params.size - stub->req_args;
+    res->init_vals = new value[num_opt];
+    res->num_upvals = stub->num_upvals;
+    res->upvals = new upvalue_cell*[stub->num_upvals];
+    return res;
+}
+
+fn_table* allocator::alloc_table() {
+    auto res = new fn_table;
+    init_gc_header(&res->h, GC_TYPE_TABLE);
+    res->metatable = V_NIL;
+    return res;
 }
 
 
-void allocator::add_cons(cons* ptr) {
+void allocator::add_cons(fn_cons* ptr) {
     add_to_obj_list((gc_header*)ptr);
     collect();
-    mem_usage += sizeof(cons);
+    mem_usage += sizeof(fn_cons);
     ++count;
 }
 
@@ -601,11 +604,11 @@ void allocator::add_table(fn_table* ptr) {
     ++count;
 }
 
-void allocator::add_function(function* ptr) {
+void allocator::add_function(fn_function* ptr) {
     add_to_obj_list((gc_header*)ptr);
     collect();
     // FIXME: count function size here
-    mem_usage += sizeof(fn_table);
+    mem_usage += sizeof(fn_function);
     ++count;
 }
 
@@ -618,7 +621,7 @@ void allocator::add_chunk(code_chunk* ptr) {
 }
 
 void allocator::add_to_obj_list(gc_header* h) {
-    h->next_obj = nursery_head;
+    h->next = nursery_head;
     nursery_head = h;
 }
 

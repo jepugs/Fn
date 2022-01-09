@@ -25,7 +25,7 @@ struct ast_form {
     u32 list_length; // only used for list nodes
     union {
         f64 num;
-        fn_string* str;
+        string* str;
         symbol_id sym;
         ast_form** list;
     } datum;
@@ -42,10 +42,10 @@ struct ast_form {
 
 ast_form* mk_number_form(source_loc loc, f64 num, ast_form* dest=nullptr);
 ast_form* mk_string_form(source_loc loc,
-        const fn_string& str,
+        const string& str,
         ast_form* dest=nullptr);
 ast_form* mk_string_form(source_loc loc,
-        fn_string&& str,
+        string&& str,
         ast_form* dest=nullptr);
 ast_form* mk_symbol_form(source_loc loc,
         symbol_id sym,

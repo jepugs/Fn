@@ -50,16 +50,16 @@ struct fn_handle {
     // stack is indexed from the top in these functions.
 
     // create a new string
-    value push_string(const string& str);
-    value make_string(local_address offset, const string& str);
+    void push_string(const string& str);
+    void set_string(local_address offset, const string& str);
 
     // create a new cons
-    value push_cons(value hd, value tl);
-    value make_cons(local_address offset, value hd, value tl);
+    void push_cons(value hd, value tl);
+    void set_cons(local_address offset, value hd, value tl);
 
     // create a new, empty table
-    value push_table();
-    value make_table(local_address offset);
+    void push_table();
+    void set_table(local_address offset);
 
     // basic stack manipulation
     value peek(local_address offset=0);
@@ -70,14 +70,13 @@ struct fn_handle {
     // additional functions which create new values on top of the stack:
 
     // additional functions that create strings:
-    value substr(local_address offset, value a, u32 start);
-    value substr(local_address offset, value a, u32 start, u32 len);
-    value symname(local_address offset, value a);
+    void substr(local_address offset, value a, u32 start);
+    void substr(local_address offset, value a, u32 start, u32 len);
+    void symname(local_address offset, value a);
 
     // concatenation. This creates a new structure and pushes it to the top of
     // the list.
     value string_concat(local_address offset, value l, value r);
-    value list_concat(local_address offset, value l, value r);
     value table_concat(local_address offset, value l, value r);
 
     // format a value as a C++ string

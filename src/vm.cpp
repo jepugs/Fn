@@ -217,15 +217,6 @@ void vm_thread::pop() {
     stack->pop();
 }
 
-value vm_thread::pop_to_ws(working_set* ws) {
-    if (bp >= stack->get_pointer()) {
-        runtime_error("pop on empty call frame");
-    }
-    auto res = ws->pin_value(stack->peek());
-    stack->pop();
-    return res;
-}
-
 void vm_thread::pop_times(stack_address n) {
     if (bp >= stack->get_pointer() - n + 1) {
         runtime_error("pop on empty call frame");
@@ -233,7 +224,7 @@ void vm_thread::pop_times(stack_address n) {
     stack->pop_times(n);
 }
 
-void vm_thread::arrange_call_stack(function* func,
+void vm_thread::arrange_call_stack(fn_function* func,
         local_address num_args) {
     auto req_args = func->stub->req_args;    
     auto num_pos_args = func->stub->pos_params.size;
@@ -274,7 +265,7 @@ void vm_thread::arrange_call_stack(function* func,
     }
 }
 
-code_address vm_thread::make_call(function* func) {
+code_address vm_thread::make_call(fn_function* func) {
     auto stub = func->stub;
     auto num_opt = stub->pos_params.size - stub->req_args;
     // stack pointer (equal to number of parameter variables)
@@ -333,7 +324,7 @@ code_address vm_thread::make_call(function* func) {
     }
 }
 
-code_address vm_thread::make_tcall(function* func) {
+code_address vm_thread::make_tcall(fn_function* func) {
     auto stub = func->stub;
     chunk = stub->chunk;
     callee = func;

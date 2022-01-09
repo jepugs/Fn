@@ -81,7 +81,7 @@ fn_fun(intern, "intern", "(str)") {
     if (h->failed()) {
         return;
     }
-    h->push(h->intern(vstring(args[0])->data));
+    h->push(h->intern((char*)vstring(args[0])->data));
 }
 
 fn_fun(symname, "symname", "(sym)") {
@@ -421,13 +421,13 @@ fn_fun (substring, "substring", "(str pos len)") {
     auto len_arg = vnumber(args[2]);
     auto len = len_arg;
     if (len_arg < 0) {
-        auto end = str->len + len_arg;
+        auto end = str->size + len_arg;
         len = end - pos + 1;
         if (len < 0) {
             len = 0;
         }
-    } else if (len + pos > str->len) {
-        len = str->len - pos;
+    } else if (len + pos > str->size) {
+        len = str->size - pos;
     }
     h->push(V_NIL);
     h->substr(0, args[0], pos, len);
@@ -529,7 +529,7 @@ fn_fun(length, "length", "(x)") {
     } else if (tag == TAG_TABLE) {
         h->push(vbox_number(vtable(args[0])->contents.get_size()));
     } else if (tag == TAG_STRING) {
-        h->push(vbox_number(vstring(args[0])->len));
+        h->push(vbox_number(vstring(args[0])->size));
     } else {
         h->error("length argument must be a string or collection.");
     }
@@ -538,35 +538,6 @@ fn_fun(length, "length", "(x)") {
 fn_fun(concat, "concat", "(& colls)") {
     if (args[0] == V_EMPTY) {
         h->push(V_EMPTY);
-        return;
-    }
-    auto hd = vhead(args[0]);
-    if (hd == V_EMPTY || vis_cons(hd)) {
-        h->push(hd);
-        fn_for_list(it, vtail(args[0])) {
-            hd = vhead(it);
-            h->assert_list(hd);
-            if (h->failed()) {
-                return;
-            }
-            h->list_concat(0, h->peek(), hd);
-        }
-    // } else if (vis_string(res)) {
-    //     fn_for_list(it, vtail(args[0])) {
-    //         auto hd = vhead(it);
-    //         h->assert_type(TAG_STRING, hd);
-    //         if (h->failed()) {
-    //             return;
-    //         }
-    //         res = h->string_concat(0, res, hd);
-    //     }
-    // } else if (vis_table(res)) {
-    //     fn_for_list(it, vtail(args[0])) {
-    //         auto hd = vhead(it);
-    //         res = h->table_concat(0, res, hd);
-    //     }
-    } else {
-        h->error("concat arguments must be collections");
         return;
     }
 }
@@ -585,7 +556,8 @@ fn_fun(println, "println", "(x)") {
 }
 
 fn_fun(Table, "Table", "(& args)") {
-    auto res = h->push_table();
+    h->push_table();
+    auto res = h->peek();
     fn_for_list(it, args[0]) {
         auto tl = vtail(it);
         if (tl == V_EMPTY) {
@@ -647,7 +619,7 @@ fn_fun(get_keys, "get-keys", "(table)") {
     h->push(V_EMPTY);
     for (auto k : keys) {
         ++len;
-        h->make_cons(0, k, h->peek());
+        h->set_cons(0, k, h->peek());
     }
 }
 
@@ -665,7 +637,8 @@ fn_fun(with_metatable, "with-metatable", "(meta table)") {
     if (h->failed()) {
         return;
     }
-    auto x = vtable(h->push_table());
+    h->push_table();
+    auto x = vtable(h->peek());
     x->contents = vtable(args[1])->contents;
     x->metatable = args[0];
     //h->push(args[1]);
@@ -677,7 +650,7 @@ fn_fun(error, "error", "(message)") {
     if (h->failed()) {
         return;
     }
-    h->error(vstring(args[0])->data);
+    h->error((char*)vstring(args[0])->data);
     h->push(V_NIL);
     return;
 }

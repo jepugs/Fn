@@ -1130,7 +1130,7 @@ llir_form* expander::expand_meta(ast_form* ast, expander_meta* meta) {
         c = chunk->add_constant(vbox_number(ast->datum.num));
         return (llir_form*)mk_llir_const(loc, c);
     case ak_string_atom:
-        c = chunk->add_constant(ws.add_string(ast->datum.str->data));
+        c = chunk->add_constant(ws.add_string(*ast->datum.str));
         return (llir_form*)mk_llir_const(loc, c);
     case ak_symbol_atom:
         update_dollar_syms(inter->get_symtab(), ast->datum.sym, meta);

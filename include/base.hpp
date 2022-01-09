@@ -65,29 +65,6 @@ typedef u16 namespace_id;
 
 constexpr u64 max_local_address = 255;
 
-// header for all objects managed by the garbage collector.
-struct alignas(16) gc_header {
-    u8 bits;         // bitfield holding gc information
-    i8 pin_count=0;  // times pinned
-    gc_header* next_obj; // next gc_header (intrusive linked list)
-};
-gc_header* mk_gc_header(u8 bits, gc_header* dest=nullptr);
-
-// Values for the gc_header bits
-constexpr u8 GC_MARK_BIT        = 0x01;
-constexpr u8 GC_GLOBAL_BIT      = 0x02;
-constexpr u8 GC_TYPE_BITMASK    = 0xf0;
-
-// GC Types
-constexpr u8 GC_TYPE_CHUNK      = 0x00;
-// NOTE: I want these five to line up with the type tags in values.hpp
-constexpr u8 GC_TYPE_STRING     = 0x10;
-constexpr u8 GC_TYPE_CONS       = 0x20;
-constexpr u8 GC_TYPE_TABLE      = 0x30;
-constexpr u8 GC_TYPE_FUNCTION   = 0x40;
-constexpr u8 GC_TYPE_BIGNUM     = 0x50;
-
-
 // Used to track debugging information. An empty string for the filename
 // indicates that the bytecode was either internally generated or came from a
 // REPL.

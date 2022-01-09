@@ -8,21 +8,20 @@
 #include "base.hpp"
 #include "bytes.hpp"
 #include "namespace.hpp"
-#include "values.hpp"
+#include "memory.hpp"
 
 
 // FIXME: these macros should probably be in a header, but not this one (so as
 // to not pollute the macro namespace)
 
 // access parts of the gc_header
-#define gc_mark(h) (((h).bits & GC_MARK_BIT) == GC_MARK_BIT)
+#define gc_mark(h) (((h).mark))
 #define gc_global(h) (((h).bits & GC_GLOBAL_BIT) == GC_GLOBAL_BIT)
 #define gc_old(h) (((h).bits & GC_OLD_BIT) == GC_OLD_BIT)
 #define gc_type(h) (((h).bits & GC_TYPE_BITMASK))
 
-#define gc_set_mark(h) \
-    ((h).bits = ((h).bits | GC_MARK_BIT))
-#define gc_unset_mark(h) (((h).bits = (h).bits & ~GC_MARK_BIT))
+#define gc_set_mark(h) (((h).mark = 1))
+#define gc_unset_mark(h) (((h).mark = 0))
 
 #define gc_set_global(h) ((h).bits = (h).bits | GC_GLOBAL_BIT)
 #define gc_unset_global(h) (((h).bits &= ~GC_GLOBAL_BIT))
@@ -49,77 +48,6 @@ struct pinned_object {
     ~pinned_object();
 };
 
-// NOTE: we require that T occupies at least as much space as void*. This is not
-// a problem for our purposes. Constructors/destructors are not invoked. You
-// gotta use placement new for construction and then manually call the
-// destructors.
-template<typename T>
-class object_pool {
-private:
-    u32 block_size = 256;
-    // the beginning of the block holds a pointer to the next block, so e.g. a
-    // block size of 256 has total size 257*sizeof(obj)
-    T* first_block;
-
-    // pointer to the next free object location. By casting between T* and void*
-    // we can actually embed the free list into the block directly. (This is why
-    // we require that sizeof(T) >= sizeof(void*)
-    T* first_free;
-
-    // Allocate another block for the pool. This works perfectly fine, but it's
-    // absolutely vile.
-    T* new_block() {
-        auto res = (T*)malloc((1 + block_size)*sizeof(T));
-        ((void**)res)[0] = nullptr;
-
-        auto objs = &res[1];
-        for (u32 i = 0; i < block_size-1; ++i) {
-            // store the pointer to objs[i+1] in objs[i]
-            *(void**)(&objs[i]) = &objs[i + 1];
-        }
-        // look at those casts. C++ is screaming at me not to do this
-        *(void**)(&objs[block_size - 1]) = nullptr;
-        return res;
-    }
-
-public:
-    object_pool()
-        : first_free{nullptr} {
-        static_assert(sizeof(T) >= sizeof(void*));
-        first_block = new_block();
-        first_free = &first_block[1];
-    }
-    ~object_pool() {
-        while (first_block != nullptr) {
-            auto next = ((T**)first_block)[0];
-            free(first_block);
-            first_block = next;
-        }
-    }
-
-    // get a new object. THIS DOES NOT INVOKE new; you must use placement new on
-    // the returned pointer.
-    T* new_object() {
-        if (first_free == nullptr) {
-            auto tmp = first_block;
-            first_block = new_block();
-            ((T**)first_block)[0] = tmp;
-            first_free = &first_block[1];
-        }
-        auto res = first_free;
-        // *first_free is actually a pointer to the next free position
-        first_free = *((T**)first_free);
-        return res;
-    }
-    // free an object within the pool. THIS DOES NOT INVOKE THE DESTRUCTOR. You
-    // must do that yourself.
-    void free_object(T* obj) {
-        auto tmp = first_free;
-        first_free = obj;
-        *(T**)obj = tmp;
-    }
-};
-
 // A root_stack is a stack of values treated as gc roots. These are used for the
 // virtual machine stack. This does not inherit from gc_root because it started
 // out this way and I'm worried about decreased performance due to virtual
@@ -132,7 +60,7 @@ private:
     allocator* alloc;
     u32 pointer;
     dyn_array<value> contents;
-    dyn_array<function*> callee_stack;
+    dyn_array<fn_function*> callee_stack;
     // open upvalues in descending order by stack position
     std::list<upvalue_cell*> upvals;
     bool dead; // if true, stack will be deleted when garbage is collected
@@ -173,20 +101,21 @@ public:
     // is the bottom.
 
     // strings
-    value push_string(const string& str);
-    value make_string(stack_address place, const string& str);
+    void push_string(const string& str);
+    void set_string(stack_address place, const string& str);
 
     // lists
-    value push_cons(value hd, value tl);
-    value make_cons(stack_address place, value hd, value tl);
+    void push_empty();
+    void set_empty(stack_address place);
+    void push_cons(value hd, value tl);
+    void set_cons(stack_address place, value hd, value tl);
     // replace the top element of the stack with a list consisting of the top n
-    // elements ordered from bottom to top. n must be greater than 0 and less
-    // than pointer.
+    // elements ordered from bottom to top. n must be >= 0 and < stack pointer.
     void top_to_list(u32 n);
 
     // tables
-    value push_table();
-    value make_table(stack_address place);
+    void push_table();
+    void set_table(stack_address place);
 
     // Create a function on top of the stack. Uses the given function stub and
     // base pointer (needed to initialize the function). If the function
@@ -201,9 +130,9 @@ public:
     // This is so that the function can safely be popped off of the main call
     // stack. The function on top of the stack is also used for setting upvalues
     // of newly created functions.
-    void push_callee(function* callee);
+    void push_callee(fn_function* callee);
     void pop_callee();
-    function* peek_callee();
+    fn_function* peek_callee();
 
     // set the upvalues of a function object with the given base pointer
     upvalue_cell* get_upvalue(stack_address loc);
@@ -316,12 +245,6 @@ private:
     // variable-size stacks of root objects. Used for vm stacks.
     std::list<root_stack*> root_stacks;
 
-    // pool allocators. These seem to be slightly faster than using malloc/new
-    // for everything, but I'm not really ok with how they work.
-    object_pool<cons> cons_allocator;
-    object_pool<function> function_allocator;
-    object_pool<fn_table> table_allocator;
-
     // deallocate an object, rendering all references to it meaningless
     void dealloc(gc_header* o);
 
@@ -341,26 +264,25 @@ private:
     // - remove the mark from marked objects
     void sweep();
 
-    // allocate objects using the GC's internal facilities. You have to run
-    // placement new on these to construct them.
-    cons* alloc_new_cons();
-    function* alloc_new_function();
-    fn_table* alloc_new_table();
+    // create objects using the GC's internal facilities. These have to be
+    // manually added to the gc list.
+    fn_string* alloc_string(u32 n);
+    fn_string* alloc_string(const string& str);
+    fn_cons* alloc_cons(value hd, value tl);
+    fn_function* alloc_function(function_stub* stub);
+    fn_table* alloc_table();
 
-    // add (already allocated) objects to the GC (i.e. the nursery). The object
-    // should put somewhere accessible to the GC before these functions are
-    // called (to prevent accidental sweeping).
+    // add (already allocated) objects to the GC. The object should put
+    // somewhere accessible to the GC before these functions are called (to
+    // prevent accidental sweeping).
     void add_string(fn_string* ptr);
-    void add_cons(cons* ptr);
+    void add_cons(fn_cons* ptr);
     void add_table(fn_table* ptr);
-    void add_function(function* ptr);
+    void add_function(fn_function* ptr);
     void add_chunk(code_chunk* ptr);
 
     // add an object to the nursery
     void add_to_obj_list(gc_header* h);
-
-    // add an object skipping the nursery
-    void add_old_obj(gc_header* h);
 
 public:
     allocator(global_env* use_globals);
