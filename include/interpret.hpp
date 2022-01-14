@@ -156,6 +156,32 @@ public:
     void runtime_error(const string& msg, const source_loc& src);
 };
 
+// initialize a vm_thread with a new global state
+vm_thread* init_vm();
+
+// interpret expressions from a file
+void interpret_main_file(vm_thread* vm, const string& filename);
+// Here's how this works: we try to parse ast_forms from src, and execute
+// them one at a time until we get an error. If it's a resumable error (i.e.
+// it might not be an error if there were more text), we roll back the
+// number of bytes consumed to right before that parse attempt. Otherwise,
+// we leave the number of bytes after the parse error. Only non-resumable
+// errors are logged. It's up to the caller to log errors if resumable =
+// true.
+void partial_interpret_string(vm_thread* vm,
+        const string& src,
+        symbol_id ns_id,
+        u32* bytes_used,
+        bool* resumable);
+// interpret expressions from a scanner until EOF
+void interpret_from_scanner(vm_thread* vm, scanner* sc);
+// import a file with the specified namespace id. Importing involves creating a
+// new global namespace, evaluating the file, and then returning.
+void load_file_in_ns(vm_thread* vm, symbol_id ns_id, const string& filename);
+// import the specified namespace, performing a search when necessary
+void load_ns(vm_thread* vm, symbol_id ns_id);
+
+
 }
 
 #endif

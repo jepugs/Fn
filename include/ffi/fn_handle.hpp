@@ -77,6 +77,7 @@ struct fn_handle {
     // concatenation. This creates a new structure and pushes it to the top of
     // the list.
     value string_concat(local_address offset, value l, value r);
+    void list_concat(local_address offset, value l, value r);
     value table_concat(local_address offset, value l, value r);
 
     // format a value as a C++ string

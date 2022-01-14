@@ -2,19 +2,19 @@ add_library(fn_lib OBJECT
   allocator.cpp
   base.cpp
   bytes.cpp
-  compile.cpp
+  #compile.cpp
   expand.cpp
-  ffi/builtin.cpp
+  #ffi/builtin.cpp
   ffi/fn_handle.cpp
   llir.cpp
   memory.cpp
-  interpret.cpp
-  log.cpp
+  #interpret.cpp
+  #log.cpp
   namespace.cpp
   parse.cpp
   scan.cpp
   values.cpp
-  vm.cpp
+  #vm.cpp
   )
 
 target_include_directories(fn_lib PUBLIC

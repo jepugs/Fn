@@ -60,10 +60,10 @@ constexpr u8 GC_TYPE_CONS       = 0x02;
 constexpr u8 GC_TYPE_TABLE      = 0x03;
 constexpr u8 GC_TYPE_FUNCTION   = 0x04;
 constexpr u8 GC_TYPE_BIGNUM     = 0x05;
-constexpr u8 GC_TYPE_CHUNK   = 0x0a;
+constexpr u8 GC_TYPE_CHUNK      = 0x0a;
 
 // function stubs (hold code, etc)
-constexpr u8 GC_TYPE_FUNC_STUB  = 0x06;
+constexpr u8 GC_TYPE_FUN_STUB   = 0x06;
 // upvalues
 constexpr u8 GC_TYPE_UPVAL      = 0x07;
 // vm_state objects

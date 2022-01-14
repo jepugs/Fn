@@ -25,34 +25,6 @@ struct fn_function;
 struct code_chunk;
 struct fn_handle;
 
-// a stub describing a function. these go in the bytecode object
-struct function_stub {
-    dyn_array<symbol_id> pos_params;  // positional params
-    local_address req_args;        // # of required arguments
-    optional<symbol_id> vl_param;  // variadic list parameter
-    optional<symbol_id> vt_param;  // variadic table parameter
-
-    // if foreign != nullptr, then all following fields are ignored, and calling
-    // this function will be deferred to this
-    void (*foreign)(fn_handle*,value*);
-
-    code_chunk* chunk;             // chunk containing the function
-    string name;                   // optional name for debugging info
-    code_address addr;             // function address in its chunk
-
-    local_address num_upvals;
-    // upvalues are identified by addresses in the surrounding call frame
-    dyn_array<u8> upvals;
-    dyn_array<bool> upvals_direct;
-    // if the corresponding entry of upvals_direct = false, then it means this
-    // upvalue corresponds to an upvalue in the surrounding frame. Otherwise
-    // it's a stack value.
-
-    // get an upvalue address based on its stack location (offset relative to
-    // the function base pointer). The upvalue is added if necessary
-    local_address add_upvalue(u8 addr, bool direct);
-};
-
 // symbols in fn are represented by a 32-bit unsigned ids
 struct symtab_entry {
     symbol_id id;
@@ -207,7 +179,7 @@ inline symbol_id vsymbol(value v) {
 }
 
 inline bool vtruth(value v) {
-    return !(v == V_NIL || v == V_FALSE);
+    return !(v.raw == V_NIL.raw || v.raw == V_FALSE.raw);
 }
 
 inline u32 vstrlen(value v) {

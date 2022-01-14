@@ -271,6 +271,8 @@ private:
     fn_cons* alloc_cons(value hd, value tl);
     fn_function* alloc_function(function_stub* stub);
     fn_table* alloc_table();
+    // allocated without any upvalues
+    function_stub* alloc_func_stub();
 
     // add (already allocated) objects to the GC. The object should put
     // somewhere accessible to the GC before these functions are called (to

@@ -16,8 +16,6 @@ namespace fn {
 // source_loc associated to an address, we search for the smallest end_addr
 // greater than the address.
 
-// IMPLNOTE: this structure could be made into a linked list itself for the C
-// version of the VM.
 struct chunk_source_info {
     u32 start_addr;
     source_loc loc;
@@ -29,25 +27,15 @@ class allocator;
 // A code_chunk is a dynamic array of bytecode instructions combined with all
 // constants and functions used by that chunk.
 struct code_chunk {
-    gc_header h;
-    // we use this to track changes to the chunk's size
-    allocator* alloc;
-
     // namespace id
     symbol_id ns_id;
     // (dynamic) arrays holding chunk data
     dyn_array<u8> code;
     dyn_array<value> constant_arr;
-    // This table is to prevent duplicate constants from being inserted. This
-    // turns out to save memory overall. When serializing chunks, this should
-    // obviously be dropped.
-    table<value,constant_id> constant_table;
-
-    dyn_array<function_stub*> function_arr;
     // debug information
     chunk_source_info* source_info;
 
-    // read a byte. Requires (where < size())
+    // read a byte. Requires where < size()
     u8 read_byte(u32 where) const;
     // read a 2-byte short. Requires (where < size())
     u16 read_short(u32 where) const;
@@ -65,33 +53,43 @@ struct code_chunk {
     // already been marked global in the allocator, newly added values have to
     // be marked global themselves.
     constant_id add_constant(value v);
-    constant_id add_string(const string& str);
-    constant_id add_quoted(fn_parse::ast_form* ast);
-    // get a constant
     value get_constant(constant_id id) const;
-
-    // add a new function and return its id. pparams is a list of parameter
-    // names. req_args is number of required args.
-    u16 add_function(local_address num_pos,
-            symbol_id* pos_params,
-            local_address req_args,
-            optional<symbol_id> vl_param,
-            optional<symbol_id> vt_param,
-            const string& name);
-    u16 add_foreign_function(local_address num_pos,
-            symbol_id* pos_params,
-            local_address req_args,
-            optional<symbol_id> vl_param,
-            optional<symbol_id> vt_param,
-            void (*foreign_func)(fn_handle*, value*),
-            const string& name);
-    function_stub* get_function(u16 id);
-    const function_stub* get_function(u16 id) const;
 
     // add a source location. new writes to the end will use this value
     void add_source_loc(const source_loc& s);
     // find the location of an instruction
     source_loc location_of(u32 addr);
+};
+
+// a stub describing a function
+struct function_stub {
+    // function stubs are managed by the garbage collector
+    gc_header h;
+
+    dyn_array<symbol_id> pos_params;  // param names
+    local_address req_args;           // # of required arguments
+    optional<symbol_id> vl_param;     // variadic list parameter
+    optional<symbol_id> vt_param;     // variadic table parameter
+
+    // if foreign != nullptr, then all following fields are ignored, and calling
+    // this function will be deferred to calling foreign
+    void (*foreign)(fn_handle*,value*);
+
+    code_chunk code;                     // code for the function
+    dyn_array<function_stub*> sub_funs;  // contained functions
+    symbol_id name;                      // optional name for debugging
+
+    local_address num_upvals;
+    // upvalues are identified by addresses in the surrounding call frame
+    dyn_array<u8> upvals;
+    dyn_array<bool> upvals_direct;
+    // if the corresponding entry of upvals_direct = false, then it means this
+    // upvalue corresponds to an upvalue in the surrounding frame. Otherwise
+    // it's a stack value.
+
+    // get an upvalue address based on its stack location (offset relative to
+    // the function base pointer). The upvalue is added if necessary
+    local_address add_upvalue(u8 addr, bool direct);
 };
 
 // Initialize a new code chunk at location dest. If dest=nullptr, then a new
@@ -103,6 +101,8 @@ code_chunk* mk_code_chunk(allocator* use_alloc, symbol_id ns_id);
 // Deallocate code chunk members. This will not handle freeing the constant
 // values, (but it will take care of the function stubs)
 void free_code_chunk(code_chunk* obj);
+
+
 
 
 /// instruction opcodes

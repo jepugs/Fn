@@ -30,6 +30,7 @@ enum vm_status {
     vs_fault
 };
 
+
 // WARNING: despite the name, vm_threads cannot truly be run in parallel (until
 // the allocator and global_env are made threadsafe).
 
@@ -38,7 +39,6 @@ enum vm_status {
 // is.
 struct vm_thread {
     friend class fn_handle;
-private:
     // These are weak references to objects maintained by the interpreter.
     symbol_table* symtab;
     global_env* globals;
@@ -52,6 +52,8 @@ private:
     string error_message;
     // set when the execution status is vs_waiting_for_import
     symbol_id pending_import_id;
+    // current namespace
+    symbol_id ns_id;
 
     // instruction pointer and stack
     code_address ip;
@@ -121,7 +123,6 @@ private:
     // step a single instruction
     void step();
 
-public:
     // initialize the virtual machine
     vm_thread(allocator* use_alloc, global_env* use_globals,
             code_chunk* use_chunk);
@@ -147,9 +148,14 @@ public:
     code_chunk* get_chunk() const;
     allocator* get_alloc() const;
     symbol_table* get_symtab() const;
-    const root_stack* get_stack() const; // the stack is for looking, not touching
+    root_stack* get_stack() const;
 
 };
+
+// functions to act on the vm_thread object
+void vm_push_empty_fun(vm_thread* vm);
+value vm_peek(vm_thread* vm);
+value vm_peek(vm_thread* vm, stack_address offset=0);
 
 
 // disassemble a single instruction, writing output to out

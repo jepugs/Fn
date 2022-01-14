@@ -37,11 +37,22 @@ struct lexical_env {
 // based on the parent and on whether or not new_func is null.
 lexical_env extend_lex_env(lexical_env* parent, function_stub* new_func=nullptr);
 
+// compile the provided form to a function
+void compile(vm_thread* vm, llir_form* llir);
+
+// compiler internal exception type.
+class compiler_exception : public std::exception {
+public:
+    const char* what() const noexcept override {
+        return "compiler_exception. Something went wrong internally :(";
+    }
+
+};
+
 struct compiler {
 private:
-    symbol_table* symtab;
-    allocator* alloc;
-    code_chunk* dest;
+    function_stub* dest;
+    table<value, constant_id> constant_table;
     fault* err;
 
     // Find a local variable. An upvalue is created in the enclosing lex
@@ -67,7 +78,6 @@ private:
     void compile_apply(const llir_apply* llir,
             lexical_env* lex,
             bool tail);
-    // FIXME: this was a terrible idea wtf. no more overloading :'(
     void compile_call(const llir_call* llir,
             lexical_env* lex,
             bool tail);
@@ -94,23 +104,17 @@ private:
             lexical_env* lex,
             bool tail);
 
-    void compile_llir_generic(const llir_form* llir,
-            lexical_env* lex,
-            bool tail=false);
 
     void c_fault(const source_loc& origin, const string& message);
 
 public:
-    compiler(symbol_table* use_symtab, allocator* use_alloc, code_chunk* dest)
-        : symtab{use_symtab}
-        , alloc{use_alloc}
-        , dest{dest} {
-    }
+    compiler() { };
     compiler(const compiler& c) = delete;
     compiler& operator=(const compiler& c) = delete;
 
-    // compile a single expression. Returns false on failure.
-    void compile(const llir_form* expr, fault* err);
+    void compile_llir_generic(const llir_form* llir,
+            lexical_env* lex,
+            bool tail=false);
 };
 
 }

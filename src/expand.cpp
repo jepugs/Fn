@@ -7,7 +7,7 @@ namespace fn {
 using namespace fn_parse;
 
 bool expander::is_macro(symbol_id sym) {
-    auto ns = inter->get_global_env()->get_ns(chunk->ns_id);
+    auto ns = dest->vm->globals->get_ns(dest->vm->ns_id);
     if (!ns.has_value()) {
         return false;
     } else {
@@ -166,20 +166,11 @@ llir_form* expander::expand_defmacro(const source_loc& loc,
         return nullptr;
     }
 
-    auto body = expand_do(loc, length-2, &lst[2], meta);
-    if(!body) {
+    auto value = expand_sub_fun(loc, lst[2], length-3, &lst[3], meta);
+    if (!value) {
         return nullptr;
     }
-
-    llir_fn_params params;
-    if(!expand_params(lst[2], &params, meta)) {
-        free_llir_form(body);
-        return nullptr;
-    }
-
-    auto value = (llir_form*)mk_llir_fn(loc, params,
-            symbol_name(lst[1]->datum.sym), body);
-    auto res = mk_llir_defmacro(loc, lst[1]->datum.sym, value);
+    auto res = mk_llir_defmacro(loc, lst[1]->datum.sym, (llir_form*)value);
     return (llir_form*)res;
 }
 
@@ -195,22 +186,11 @@ llir_form* expander::expand_defn(const source_loc& loc,
         return nullptr;
     }
 
-    // do expects the first element to an operator, so we put &lst[2] since we
-    // have the first body expression at &lst[3]
-    auto body = expand_do(loc, length-2, &lst[2], meta);
-    if(!body) {
+    auto value = expand_sub_fun(loc, lst[2], length-3, &lst[3], meta);
+    if (!value) {
         return nullptr;
     }
-
-    llir_fn_params params;
-    if(!expand_params(lst[2], &params, meta)) {
-        free_llir_form(body);
-        return nullptr;
-    }
-
-    auto value = (llir_form*)mk_llir_fn(loc, params,
-            symbol_name(lst[1]->datum.sym), body);
-    auto res = mk_llir_def(loc, lst[1]->datum.sym, value);
+    auto res = mk_llir_def(loc, lst[1]->datum.sym, (llir_form*)value);
     return (llir_form*)res;
 }
 
@@ -245,8 +225,7 @@ llir_form* expander::expand_let_in_do(u32 length,
         expander_meta* meta) {
     auto let = ast_body[0];
     if (let->list_length == 0) {
-        return (llir_form*)mk_llir_var(let->loc,
-                inter->get_symtab()->intern("nil"));
+        return (llir_form*)mk_llir_var(let->loc, intern("nil"));
     } else if ((let->list_length & 1) != 1) {
         e_fault(let->loc, "Odd number of arguments to let.");
         return nullptr;
@@ -311,32 +290,21 @@ llir_form* expander::expand_letfn_in_do(u32 length,
     }
 
     // generate llir for the new function
-    auto sym = letfn_lst[1]->datum.sym;
-    auto fn_body = expand_do(loc, letfn_len-2, &letfn_lst[2],meta);
-    if (!fn_body) {
+    auto fn_form = (llir_form*)expand_sub_fun(loc, letfn_lst[1], letfn_len-2,
+            &letfn_lst[2], meta);
+    if (!fn_form) {
         return nullptr;
     }
-
-    llir_fn_params params;
-    if (!expand_params(letfn_lst[2], &params, meta)) {
-        free_llir_form(fn_body);
-        return nullptr;
-    }
-
-    // FIXME: function names should reflect surrounding functions. Should also
-    // do this for other types of functions (even anonymous ones)
-    auto fn_llir = (llir_form*)mk_llir_fn(loc, params,
-            ":"+symbol_name(sym), fn_body);
 
     // generate llir for the with body
     dyn_array<llir_form*> bodys;
     if (!expand_do_recur(length - 1, &ast_body[1], &bodys, meta)) {
-        free_llir_form(fn_llir);
+        free_llir_form(fn_form);
         return nullptr;
     }
     auto res = mk_llir_with(loc, 1, bodys.size);
-    res->vars[0] = sym;
-    res->values[0] = fn_llir;
+    res->vars[0] = letfn_lst[1]->datum.sym;
+    res->values[0] = fn_form;
     for (u32 i = 0; i < bodys.size; ++i) {
         res->body[i] = bodys[i];
     }
@@ -438,24 +406,34 @@ llir_form* expander::expand_dollar_fn(const source_loc& loc,
         return nullptr;
     }
 
+    // expand the thing in a new subtree
+    auto sub_tree = add_sub_fun(dest);
     expander_meta meta2 = {.max_dollar_sym=-1};
-    auto body = expand_meta(lst[1], &meta2);
-    if (!body) {
+    auto tmp = dest;
+    dest = sub_tree;
+    sub_tree->body = expand_meta(lst[1], &meta2);
+    dest = tmp;
+    if (!sub_tree->body) {
         return nullptr;
     }
 
+    // add parameters to the new function
     auto m = meta2.max_dollar_sym;
-    if (m >= 0) {
-        auto body2 = mk_llir_with(body->origin, 1, 1);
-        body2->vars[0] = intern("$");
-        body2->values[0] = (llir_form*)mk_llir_var(body->origin, intern("$0"));
-        body2->body[0] = body;
-        body = (llir_form*) body2;
+    for (i32 i = 0; i < m+1; ++i) {
+        sub_tree->stub->pos_params.push_back(intern("$" + std::to_string(i)));
     }
 
-    auto res = mk_llir_fn(loc, m+1, false, m+1, "", body);
-    for (i32 i = 0; i < m+1; ++i) {
-        res->params.pos_args[i] = intern("$" + std::to_string(i));
+    // function id
+    auto fid = dest->sub_funs.size - 1;
+    auto res = mk_llir_fn(loc, fid, 0);
+    if (m >= 0) {
+        // add in the $ symbol in the function body
+        auto body2 = mk_llir_with(loc, 1, 1);
+        body2->vars[0] = intern("$");
+        body2->values[0] = (llir_form*)mk_llir_var(sub_tree->body->origin,
+                intern("$0"));
+        body2->body[0] = sub_tree->body;
+        sub_tree->body = (llir_form*)body2;
     }
 
     return (llir_form*) res;
@@ -482,18 +460,34 @@ llir_form* expander::expand_dot(const source_loc& loc,
     return (llir_form*) res;
 }
 
-bool expander::expand_params(ast_form* ast,
-        llir_fn_params* params,
+llir_fn* expander::expand_sub_fun(const source_loc& loc,
+        ast_form* params,
+        u32 body_length,
+        ast_form** body,
         expander_meta* meta) {
-    const auto& loc = ast->loc;
-    if (ast->kind != ak_list) {
-        e_fault(loc, "fn requires a parameter list.");
-        return false;
+    if (params->kind != ak_list) {
+        e_fault(params->loc, "fn requires a parameter list.");
+        return nullptr;
     }
 
-    auto len = ast->list_length;
+    // create a new function stub
+    auto sub_tree = add_sub_fun(dest);
+
+    auto tmp = dest;
+    // set dest so that constants get written to the right place
+    dest = sub_tree;
+    // expand the body using expand_do
+    sub_tree->body = expand_do(loc, body_length, body, meta);
+    dest = tmp;
+    if (!sub_tree->body) {
+        return nullptr;
+    }
+
+    // process parameter list
+    auto len = params->list_length;
     auto amp_sym = intern("&");
-    auto& lst = ast->datum.list;
+    auto& lst = params->datum.list;
+    // FIXME: check for legal names
 
     dyn_array<symbol_id> positional;
     u32 num_pos;
@@ -505,7 +499,7 @@ bool expander::expand_params(ast_form* ast,
             if (x->kind != ak_list) {                
                 e_fault(x->loc,
                         "Malformed item in parameter list.");
-                return false;
+                return nullptr;
             }
             break;
         }
@@ -527,7 +521,7 @@ bool expander::expand_params(ast_form* ast,
                     break;
                 } else {
                     e_fault(x->loc, "Malformed item in parameter list.");
-                    return false;
+                    return nullptr;
                 }
             } else if (x->kind != ak_list
                     || x->list_length != 2
@@ -538,21 +532,22 @@ bool expander::expand_params(ast_form* ast,
                 }
                 e_fault(x->loc,
                         "Malformed optional parameter in parameter list.");
-                return false;
+                return nullptr;
             }
             auto y = expand_meta(x->datum.list[1], meta);
             if (!y) {
                 for (auto x : inits) {
                     free_llir_form(x);
                 }
-                return false;
+                return nullptr;
             }
             inits.push_back(y);
             positional.push_back(x->datum.list[0]->datum.sym);
         }
     }
 
-    params->has_var_list_arg = false;
+    bool has_var_list = false;
+    symbol_id vl_param;
     if (num_pos < len) {
         // at this point, there would have been an error already if anything
         // other than the ampersand symbol was next.
@@ -563,26 +558,26 @@ bool expander::expand_params(ast_form* ast,
             }
             e_fault(lst[num_pos]->loc,
                     "Malformed variadic parameter in parameter list.");
-            return false;
+            return nullptr;
         } else {
-            params->has_var_list_arg = true;
-            params->var_list_arg = lst[num_pos+1]->datum.sym;
+            has_var_list = true;
+            vl_param = lst[num_pos+1]->datum.sym;
         }
     }
 
+    // FIXME: check if we exceed maximum numbers anywhere
+    auto sub_stub = sub_tree->stub;
+    sub_stub->pos_params = positional;
+    sub_stub->req_args = num_req;
+    sub_stub->vl_param = has_var_list ? std::nullopt : std::make_optional(vl_param);
 
-    // TODO: check if we exceed maximum arguments
-    params->num_pos_args = num_pos;
-    params->pos_args = new symbol_id[num_pos];
-    params->req_args = num_req;
-    params->inits = new llir_form*[num_pos - num_req];
-    for (u32 i = 0; i < positional.size; ++i) {
-        params->pos_args[i] = positional[i];
-    }
+    // function id is its index in the array
+    constant_id fid = dest->sub_funs.size - 1;
+    auto res = mk_llir_fn(loc, fid, positional.size - num_req);
     for (u32 i = 0; i < inits.size; ++i) {
-        params->inits[i] = inits[i];
+        res->inits[i] = inits[i];
     }
-    return true;
+    return res;
 }
 
 llir_form* expander::expand_fn(const source_loc& loc,
@@ -593,22 +588,8 @@ llir_form* expander::expand_fn(const source_loc& loc,
         e_fault(loc, "fn requires a parameter list.");
         return nullptr;
     }
-    llir_form* body;
-    if (length == 2) {
-        body = (llir_form*)mk_llir_var(loc, intern("nil"));
-    } else {
-        body = (llir_form*)expand_do(loc, length-1, &lst[1], meta);
-        if (!body) {
-            return nullptr;
-        }
-    }
 
-    llir_fn_params params;
-    if (!expand_params(lst[1], &params, meta)) {
-        return nullptr;
-    }
-
-    return (llir_form*)mk_llir_fn(loc, params, "", body);
+    return (llir_form*)expand_sub_fun(loc, lst[0], length-1, &lst[1], meta);
 }
 
 llir_form* expander::expand_if(const source_loc& loc,
@@ -750,9 +731,7 @@ bool expander::is_unquote_splicing(ast_form* ast) {
 llir_form* expander::quasiquote_expand_recur(ast_form* form,
         expander_meta* meta) {
     if (form->kind != ak_list) {
-        auto ws = inter->get_alloc()->add_working_set();
-        auto v = inter->ast_to_value(&ws, form);
-        auto id = chunk->add_constant(v);
+        auto id = add_quoted_const(dest, form);
         return (llir_form*)mk_llir_const(form->loc, id);
     } else {
         return expand_quasiquote_list(form->loc, form->list_length,
@@ -871,9 +850,7 @@ llir_form* expander::expand_quote(const source_loc& loc,
         e_fault(loc, "quote requires exactly 1 argument.");
         return nullptr;
     }
-    auto ws = inter->get_alloc()->add_working_set();
-    auto v = inter->ast_to_value(&ws, lst[1]);
-    auto id = chunk->add_constant(v);
+    auto id = add_quoted_const(dest, lst[1]);
     return (llir_form*)mk_llir_const(loc, id);
 }
 
@@ -1002,18 +979,18 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
     auto sym = lst->datum.list[0]->datum.sym;
     // first check for macros
     if (is_macro(sym)) {
-        auto ast = inter->expand_macro(sym, chunk->ns_id,
-                lst->list_length - 1, &lst->datum.list[1], loc, err);
-        if (!ast) {
-            err->message = "(During macroexpansion): " + err->message;
-            return nullptr;
-        }
-        auto res = expand_meta(ast, meta);
-        free_ast_form(ast);
-        return res;
+        // auto ast = inter->expand_macro(sym, chunk->ns_id,
+        //         lst->list_length - 1, &lst->datum.list[1], loc, err);
+        // if (!ast) {
+        //     err->message = "(During macroexpansion): " + err->message;
+        //     return nullptr;
+        // }
+        // auto res = expand_meta(ast, meta);
+        // free_ast_form(ast);
+        // return res;
     }
 
-    auto name = (*inter->get_symtab())[sym];
+    auto name = (*dest->vm->get_symtab())[sym];
     // special forms
     if (name == "and") {
         return expand_and(loc, lst->list_length, lst->datum.list, meta);
@@ -1122,19 +1099,18 @@ static void update_dollar_syms(symbol_table* st,
 }
 
 llir_form* expander::expand_meta(ast_form* ast, expander_meta* meta) {
-    constant_id c;
-    auto& loc = ast->loc;
-    auto ws = inter->get_alloc()->add_working_set();
     switch (ast->kind) {
-    case ak_number_atom:
-        c = chunk->add_constant(vbox_number(ast->datum.num));
-        return (llir_form*)mk_llir_const(loc, c);
-    case ak_string_atom:
-        c = chunk->add_constant(ws.add_string(*ast->datum.str));
-        return (llir_form*)mk_llir_const(loc, c);
+    case ak_number_atom: {
+        auto c = add_number_const(dest, ast->datum.num);
+        return (llir_form*)mk_llir_const(ast->loc, c);
+    }
+    case ak_string_atom: {
+        auto c = add_string_const(dest, *ast->datum.str);
+        return (llir_form*)mk_llir_const(ast->loc, c);
+    }
     case ak_symbol_atom:
-        update_dollar_syms(inter->get_symtab(), ast->datum.sym, meta);
-        return (llir_form*)mk_llir_var(loc, ast->datum.sym);
+        update_dollar_syms(dest->vm->get_symtab(), ast->datum.sym, meta);
+        return (llir_form*)mk_llir_var(ast->loc, ast->datum.sym);
     case ak_list:
         return expand_list(ast, meta);
     }
@@ -1143,36 +1119,30 @@ llir_form* expander::expand_meta(ast_form* ast, expander_meta* meta) {
 }
 
 symbol_id expander::intern(const string& str) {
-    return inter->get_symtab()->intern(str);
+    return dest->vm->get_symtab()->intern(str);
 }
 
 symbol_id expander::gensym() {
-    return inter->get_symtab()->gensym();
+    return dest->vm->get_symtab()->gensym();
 }
 
 string expander::symbol_name(symbol_id name) {
-    return inter->get_symtab()->symbol_name(name);
+    return dest->vm->get_symtab()->symbol_name(name);
 }
 
 bool expander::is_keyword(symbol_id sym) const {
-    auto name = inter->get_symtab()->symbol_name(sym);
+    auto name = dest->vm->get_symtab()->symbol_name(sym);
     return name[0] == ':';
 }
 
 void expander::e_fault(const source_loc& loc, const string& msg) {
-    set_fault(err, loc, "expand", msg);
+    set_fault(dest->vm->err, loc, "expand", msg);
 }
 
-expander::expander(interpreter* inter, code_chunk* const_chunk)
-    : inter{inter}
-    , chunk{const_chunk} {
-}
-
-llir_form* expander::expand(ast_form* ast, fault* err) {
-    this->err = err;
+void expander::expand(function_tree* dest, ast_form* ast) {
     expander_meta m;
     m.max_dollar_sym = -1;
-    return expand_meta(ast, &m);
+    dest->body = expand_meta(ast, &m);
 }
 
 }

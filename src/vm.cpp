@@ -742,7 +742,7 @@ void vm_thread::execute(fault* err) {
             step();
         }
     } catch (const runtime_exception& ex) {
-        // fault is already set
+        // fault object should already be set
         status = vs_fault;
     }
 

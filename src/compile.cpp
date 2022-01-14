@@ -1,6 +1,7 @@
 #include "compile.hpp"
 
 #include <climits>
+#include "allocator.hpp"
 
 namespace fn {
 
@@ -25,6 +26,19 @@ lexical_env extend_lex_env(lexical_env* parent, function_stub* new_func) {
         .sp=sp,
         .bp=bp
     };
+}
+
+static void write_byte(compiler* c, u8 byte) {
+    c->dest->code.write_byte(byte);
+}
+static void write_short(compiler* c, u16 u) {
+    c->dest->code.write_short(u);
+}
+static void patch_byte(compiler* c, u8 byte, code_address where) {
+    c->dest->code.patch_byte(byte, where);
+}
+static void patch_short(compiler* c, u16 u, code_address where) {
+    c->dest->code.patch_short(u, where);
 }
 
 optional<local_address> compiler::find_local(lexical_env* lex,
@@ -69,13 +83,13 @@ optional<local_address> compiler::find_local(lexical_env* lex,
 }
 
 void compiler::write_byte(u8 byte) {
-    dest->write_byte(byte);
+    dest->code.write_byte(byte);
 }
 void compiler::write_short(u16 u) {
-    dest->write_short(u);
+    dest->code.write_short(u);
 }
 void compiler::patch_short(u16 u, code_address where) {
-    dest->write_short(u, where);
+    dest->code.write_short(u, where);
 }
 void compiler::patch_jump(i64 offset,
         code_address where,
@@ -89,6 +103,7 @@ void compiler::patch_jump(i64 offset,
 }
 
 void compiler::compile_symbol(symbol_id sym) {
+    auto v = vbox_symbol(sym);
     auto id = dest->add_constant(vbox_symbol(sym));
     write_byte(OP_CONST);
     write_short(id);

@@ -432,32 +432,39 @@ void add_accessible(gc_header* o, std::forward_list<gc_header*>* to_list) {
         add_value_header(((fn_cons*)o)->head, to_list);
         add_value_header(((fn_cons*)o)->tail, to_list);
         break;
-    case GC_TYPE_TABLE:
-        {
-            add_value_header(((fn_table*)o)->metatable, to_list);
-            for (auto entry : ((fn_table*)o)->contents) {
-                add_value_header(entry->key, to_list);
-                add_value_header(entry->val, to_list);
+    case GC_TYPE_TABLE: {
+        add_value_header(((fn_table*)o)->metatable, to_list);
+        for (auto entry : ((fn_table*)o)->contents) {
+            add_value_header(entry->key, to_list);
+            add_value_header(entry->val, to_list);
+        }
+    }
+        break;
+    case GC_TYPE_FUNCTION: {
+        auto f = (fn_function*)o;
+        // upvalues
+        for (local_address i = 0; i < f->num_upvals; ++i) {
+            auto cell = f->upvals[i];
+            if (cell->closed) {
+                add_value_header(cell->closed_value, to_list);
             }
         }
-        break;
-    case GC_TYPE_FUNCTION:
-        {
-            auto f = (fn_function*)o;
-            // upvalues
-            for (local_address i = 0; i < f->num_upvals; ++i) {
-                auto cell = f->upvals[i];
-                if (cell->closed) {
-                    add_value_header(cell->closed_value, to_list);
-                }
-            }
-            auto num_opt = f->stub->pos_params.size - f->stub->req_args;
-            for (u32 i = 0; i < num_opt; ++i) {
-                add_value_header(f->init_vals[i], to_list);
-            }
-            to_list->push_front(&f->stub->chunk->h);
+        auto num_opt = f->stub->pos_params.size - f->stub->req_args;
+        for (u32 i = 0; i < num_opt; ++i) {
+            add_value_header(f->init_vals[i], to_list);
         }
+        to_list->push_front(&f->stub->h);
+    }
         break;
+    case GC_TYPE_FUN_STUB: {
+        auto s = (function_stub*)o;
+        for (auto x : s->sub_funs) {
+            to_list->push_front(&x->h);
+        }
+        for (auto x : s->code.constant_arr) {
+            add_value_header(x, to_list);
+        }
+    }
     }
 }
 

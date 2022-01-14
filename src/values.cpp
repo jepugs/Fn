@@ -72,12 +72,6 @@ string symbol_table::nice_name(symbol_id sym) const {
     }
 }
 
-local_address function_stub::add_upvalue(u8 addr, bool direct) {
-    upvals.push_back(addr);
-    upvals_direct.push_back(direct);
-    return num_upvals++;
-}
-
 bool value::operator==(const value& v) const {
     if (vsame(*this,v)) {
         return true;

@@ -16,9 +16,7 @@ u16 code_chunk::read_short(u32 where) const {
 }
 
 void code_chunk::write_byte(u8 data) {
-    auto start_size = code.capacity;
     code.push_back(data);
-    alloc->mem_usage += (code.capacity - start_size);
 }
 
 void code_chunk::write_byte(u8 data, u32 where) {
@@ -40,91 +38,13 @@ void code_chunk::write_short(u16 data, u32 where) {
 }
 
 constant_id code_chunk::add_constant(value v) {
-    auto x = constant_table.get(v);
-    if (x.has_value()) {
-        return *x;
-    }
-
-    auto start_size = constant_arr.capacity;
+    auto id = constant_arr.size;
     constant_arr.push_back(v);
-    alloc->mem_usage += (constant_arr.capacity - start_size)*sizeof(value);
-
-    auto id = constant_arr.size - 1;
-    constant_table.insert(v, id);
     return id;
 }
 
 value code_chunk::get_constant(constant_id id) const {
     return constant_arr[id];
-}
-
-u16 code_chunk::add_function(local_address num_pos,
-        symbol_id* pos_params,
-        local_address req_args,
-        optional<symbol_id> vl_param,
-        optional<symbol_id> vt_param,
-        const string& name) {
-    auto s = new function_stub {
-        .req_args=req_args,
-        .vl_param=vl_param,
-        .vt_param=vt_param,
-        .foreign=nullptr,
-        .chunk=this,
-        .name=name,
-        .addr=code.size,
-        .num_upvals=0
-    };
-    for (u32 i = 0; i < num_pos; ++i) {
-        s->pos_params.push_back(pos_params[i]);
-    }
-
-    auto start_size = function_arr.capacity;
-    function_arr.push_back(s);
-    alloc->mem_usage += (function_arr.capacity - start_size)*sizeof(value)
-        + sizeof(function_stub)
-        + s->pos_params.data_size()
-        + s->name.size();
-
-    return function_arr.size - 1;
-}
-
-u16 code_chunk::add_foreign_function(local_address num_pos,
-        symbol_id* pos_params,
-        local_address req_args,
-        optional<symbol_id> vl_param,
-        optional<symbol_id> vt_param,
-        void (*foreign_func)(fn_handle*, value*),
-        const string& name) {
-    auto s = new function_stub {
-        .req_args=req_args,
-        .vl_param=vl_param,
-        .vt_param=vt_param,
-        .foreign=foreign_func,
-        .chunk=this,
-        .name=name,
-        .num_upvals=0
-    };
-    for (u32 i = 0; i < num_pos; ++i) {
-        s->pos_params.push_back(pos_params[i]);
-    }
-
-    auto start_size = function_arr.capacity;
-    function_arr.push_back(s);
-    alloc->mem_usage += (function_arr.capacity - start_size)*sizeof(value)
-        + sizeof(function_stub)
-        + s->pos_params.data_size()
-        + s->name.size();
-
-    return function_arr.size - 1;
-}
-
-
-function_stub* code_chunk::get_function(u16 id) {
-    return function_arr[id];
-}
-
-const function_stub* code_chunk::get_function(u16 id) const {
-    return function_arr[id];
 }
 
 void code_chunk::add_source_loc(const source_loc& s) {
@@ -150,9 +70,8 @@ source_loc code_chunk::location_of(u32 addr) {
 
 // used to initialize the dynamic arrays
 static constexpr size_t init_array_size = 32;
-code_chunk* mk_code_chunk(allocator* use_alloc, symbol_id ns_id) {
+code_chunk* mk_code_chunk(symbol_id ns_id) {
     auto res = new code_chunk{
-        .alloc=use_alloc,
         .ns_id=ns_id,
         .source_info = new chunk_source_info{
             .start_addr=0,
@@ -160,16 +79,10 @@ code_chunk* mk_code_chunk(allocator* use_alloc, symbol_id ns_id) {
             .prev=nullptr
         }
     };
-    init_gc_header(&res->h, GC_TYPE_CHUNK);
-    res->h.pin_count = 0;
     return res;
 }
 
 void free_code_chunk(code_chunk* chunk) {
-    for (auto x : chunk->function_arr) {
-        delete x;
-    }
-
     auto i = chunk->source_info;
     while (i != nullptr) {
         auto prev = i->prev;
@@ -178,6 +91,12 @@ void free_code_chunk(code_chunk* chunk) {
     }
 
     delete chunk;
+}
+
+local_address function_stub::add_upvalue(u8 addr, bool direct) {
+    upvals.push_back(addr);
+    upvals_direct.push_back(direct);
+    return num_upvals++;
 }
 
 }

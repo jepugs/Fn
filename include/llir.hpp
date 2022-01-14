@@ -140,50 +140,20 @@ llir_if* mk_llir_if(const source_loc& origin,
 void clear_llir_if(llir_if* obj);
 void free_llir_if(llir_if* obj);
 
-struct llir_fn_params {
-    // positional arguments
-    local_address num_pos_args;
-    symbol_id* pos_args;
-    // variadic table and list args
-    bool has_var_list_arg;
-    symbol_id var_list_arg;
-    // number of required args
-    local_address req_args;
-    // init forms for optional args
-    llir_form** inits;
-};
 struct llir_fn {
     llir_form header;
-    llir_fn_params params;
-    string name;
-    llir_form* body;
+    constant_id fun_id;
+    // number of optional args
+    local_address num_opt;
+    // init forms for the optional args
+    llir_form** inits;
 };
 llir_fn* mk_llir_fn(const source_loc& origin,
-        local_address num_pos_args,
-        bool has_var_list_arg,
-        local_address req_args,
-        const string& name,
-        llir_form* body,
-        llir_fn* dest=nullptr);
-// note: this takes ownership of the pointers in params
-llir_fn* mk_llir_fn(const source_loc& origin,
-        const llir_fn_params& params,
-        const string& name,
-        llir_form* body,
+        constant_id fun_id,
+        local_address num_opt,
         llir_fn* dest=nullptr);
 void clear_llir_fn(llir_fn* obj);
 void free_llir_fn(llir_fn* obj);
-
-// struct llir_get {
-//     llir_form header;
-//     llir_form* obj;
-//     llir_form* key;
-// };
-// llir_get* mk_llir_get(const source_loc& origin,
-//         llir_form* obj,
-//         llir_form* key);
-// void clear_llir_get(llir_get* obj);
-// void free_llir_get(llir_get* obj);
 
 struct llir_import {
     llir_form header;

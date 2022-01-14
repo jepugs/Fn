@@ -149,52 +149,25 @@ void free_llir_if(llir_if* obj) {
 }
 
 llir_fn* mk_llir_fn(const source_loc& origin,
-        local_address num_pos_args,
-        bool has_var_list_arg,
-        local_address req_args,
-        const string& name,
-        llir_form* body,
+        constant_id fun_id,
+        local_address num_opt,
         llir_fn* dest) {
     if (dest == nullptr) {
         dest = new llir_fn;
     }
     return new(dest) llir_fn {
         .header={.origin=origin, .tag=lt_fn},
-        .params={
-            .num_pos_args=num_pos_args,
-            .pos_args=new symbol_id[num_pos_args],
-            .has_var_list_arg=has_var_list_arg,
-            .req_args=req_args,
-            .inits=new llir_form*[num_pos_args-req_args]
-        },
-        .name=name,
-        .body=body
-    };
-}
-llir_fn* mk_llir_fn(const source_loc& origin,
-        const llir_fn_params& params,
-        const string& name,
-        llir_form* body,
-        llir_fn* dest) {
-    if (dest == nullptr) {
-        dest = new llir_fn;
-    }
-    return new(dest) llir_fn {
-        .header={.origin=origin, .tag=lt_fn},
-        .params=params,
-        .name=name,
-        .body=body
+        .fun_id=fun_id,
+        .num_opt=num_opt,
+        .inits=new llir_form*[num_opt]
     };
 
 }
 void clear_llir_fn(llir_fn* obj) {
-    auto m = obj->params.num_pos_args - obj->params.req_args;
-    for (int i = 0; i < m; ++i) {
-        free_llir_form(obj->params.inits[i]);
+    for (int i = 0; i < obj->num_opt; ++i) {
+        free_llir_form(obj->inits[i]);
     }
-    free_llir_form(obj->body);
-    delete[] obj->params.pos_args;
-    delete[] obj->params.inits;
+    delete[] obj->inits;
 }
 void free_llir_fn(llir_fn* obj) {
     clear_llir_fn(obj);
@@ -447,26 +420,10 @@ static string print_llir_offset(llir_form* form,
         out << v_to_string(chunk->
                 get_constant(((llir_const*)form)->id), &st);
         break;
-    case lt_fn:
-        {
-            auto xfn = (llir_fn*)form;
-            out << "(FN (";
-            // params
-            auto& params = xfn->params;
-            for (u32 i = 0; i < params.req_args; ++i) {
-                out << st.nice_name(params.pos_args[i]) << ' ';
-            }
-            for (u32 i = params.req_args; i < params.num_pos_args; ++i) {
-                out << '(' << st.nice_name(params.pos_args[i]) << ") ";
-            }
-            if (params.has_var_list_arg) {
-                out << "& " << st.nice_name(params.var_list_arg) << ' ';
-            }
-            // body
-            out << ")\n"
-                << print_llir_offset(xfn->body, st, chunk, offset+2, true)
-                << ')';
-        }
+    case lt_fn: {
+        auto xfn = (llir_fn*)form;
+        out << "(FN " << xfn->fun_id << ")";
+    }
         break;
     case lt_if:
         {
