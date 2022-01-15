@@ -3,166 +3,17 @@
 #ifndef __FN_VM_HPP
 #define __FN_VM_HPP
 
-#include "allocator.hpp"
 #include "base.hpp"
-#include "parse.hpp"
-#include "table.hpp"
-#include "values.hpp"
-
-#include <filesystem>
+#include "obj.hpp"
+#include "istate.hpp"
 
 namespace fn {
 
-namespace fs = std::filesystem;
-
-// virtual_machine stack size limit
-constexpr stack_address STACK_SIZE = 255;
-
-// When a vm_thread finishes executing, it will leave behind some exit state,
-// which can indicate that it's done, that it requires an import, etc.
-
-// possible statuses for a vm_thread
-enum vm_status {
-    vs_stopped,
-    vs_return,
-    vs_running,
-    vs_waiting_for_import,
-    vs_fault
-};
-
-
-// WARNING: despite the name, vm_threads cannot truly be run in parallel (until
-// the allocator and global_env are made threadsafe).
-
-// vm_thread represents a single thread of the interpreter, so it has its own
-// instruction pointer, stack, etc. This is where the bytecode execution logic
-// is.
-struct vm_thread {
-    friend class fn_handle;
-    // These are weak references to objects maintained by the interpreter.
-    symbol_table* symtab;
-    global_env* globals;
-    allocator* alloc;
-    code_chunk* chunk;
-    fault* err;
-
-    // current execution status
-    vm_status status;
-    // set when the execution status is set to vs_error
-    string error_message;
-    // set when the execution status is vs_waiting_for_import
-    symbol_id pending_import_id;
-    // current namespace
-    symbol_id ns_id;
-
-    // instruction pointer and stack
-    code_address ip;
-    root_stack* stack;
-
-    // call frame
-    u32 bp;
-    fn_function* callee;
-
-
-    // stack operations
-    // pop the top of the stack
-    void pop();
-    // pop multiple times
-    void pop_times(stack_address n);
-    // push to the top of the stack
-    void push(value v);
-    // peek relative to the top of the stack
-    value peek(stack_address offset=0) const;
-    // get a local value from the current call frame
-    value local(local_address l) const;
-
-    // set a local_address value
-    void set_local(local_address l, value v);
-    // set a stack value from the top (cannot exceed current frame)
-    void set_from_top(local_address l, value v);
-
-    // internalize a symbol by name
-    value get_symbol(const string& name);
-
-    // manipulate global variables
-    void add_global(value name, value v);
-    value get_global(value name);
-    void add_macro(value name, value v);
-    value get_macro(value name);
-    value by_guid(value name);
-
-    // attempt an import without escaping to interpreter
-    optional<value> try_import(symbol_id ns_id);
-    // perform an import using the top of the stack as the id. If the target
-    // namespace is not already loaded, then this will cause execution to halt
-    // with the waiting_for_import status.
-    void do_import();
-
-    // helper for call() and tcall(). moves arguments into their positions as
-    // local variables in the new call frame.
-    void arrange_call_stack(fn_function* func, local_address num_args);
-    // Called when a function is called, after arranging the function arguments
-    // on the stack. This creates the new call frame and returns the address to
-    // jump to for the call.
-    code_address make_call(fn_function* func);
-    // Analogue to make_call() but for tail calls. This means the current call
-    // frame is replaced rather than extended.
-    code_address make_tcall(fn_function* func);
-    // returns the next addr to go to. num_args does not count the callee
-    code_address call(local_address num_args);
-    // like call, but replaces the current call frame rather than creating a new
-    // one. Effectively it's return + call in a single instruction
-    code_address tcall(local_address num_args);
-    // num_args does not count the function, the keyword table, or the argument
-    // list.
-    code_address apply(local_address num_args,bool tail=false);
-
-    // raise an exception of type fn_exception containing the provided message
-    void runtime_error(const string& msg) const;
-
-    // step a single instruction
-    void step();
-
-    // initialize the virtual machine
-    vm_thread(allocator* use_alloc, global_env* use_globals,
-            code_chunk* use_chunk);
-    ~vm_thread();
-
-    // checks the status of the virtual machine
-    vm_status check_status() const;
-    symbol_id get_pending_import_id() const;
-    
-
-    // execute instructions until a stopping condition occurs. Check status to
-    // see what happened.
-    void execute(fault* err);
-    // get the instruction pointer
-    code_address get_ip() const;
-    // set the instruction pointer. This is not bounds checked!
-    void set_ip(code_address ip);
-
-    // get the last popped value (null if there isn't any)
-    value last_pop(working_set* ws) const;
-
-    // accessors
-    code_chunk* get_chunk() const;
-    allocator* get_alloc() const;
-    symbol_table* get_symtab() const;
-    root_stack* get_stack() const;
-
-};
-
-// functions to act on the vm_thread object
-void vm_push_empty_fun(vm_thread* vm);
-value vm_peek(vm_thread* vm);
-value vm_peek(vm_thread* vm, stack_address offset=0);
-
-
-// disassemble a single instruction, writing output to out
-void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& out);
-
-void disassemble(const symbol_table& symtab, const code_chunk& code, std::ostream& out);
-
+// return value of false indicates no such variable
+bool push_from_guid(istate* S, symbol_id guid);
+bool push_global(istate* S, symbol_id name);
+void mutate_global(istate* S, symbol_id name, value v);
+void execute_fun(istate* S, fn_function* fun);
 
 }
 

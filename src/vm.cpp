@@ -15,742 +15,504 @@
 
 namespace fn {
 
-vm_thread::vm_thread(allocator* use_alloc, global_env* use_globals,
-        code_chunk* use_chunk)
-    : symtab{use_globals->get_symtab()}
-    , globals{use_globals}
-    , alloc{use_alloc}
-    , chunk{use_chunk}
-    , status{vs_stopped}
-    , ip{0}
-    , bp{0}
-    , callee{nullptr} {
-    stack = alloc->add_root_stack();
-}
-
-vm_thread::~vm_thread() {
-    stack->kill();
-    // allocator does the rest of the work :)
-}
-
-vm_status vm_thread::check_status() const {
-    return status;
-}
-
-symbol_id vm_thread::get_pending_import_id() const {
-    return pending_import_id;
-}
-
-value vm_thread::get_symbol(const string& name) {
-    return vbox_symbol(get_symtab()->intern(name));
-}
-
-u32 vm_thread::get_ip() const {
-    return ip;
-}
-
-void vm_thread::set_ip(code_address new_ip)  {
-    ip = new_ip;
-}
-
-value vm_thread::last_pop(working_set* ws) const {
-    return ws->pin_value(stack->get_last_pop());
-}
-
-void vm_thread::add_global(value name, value v) {
-    if (!vis_symbol(name)) {
-        runtime_error("Variable names must be symbols.");
+bool push_from_guid(istate* S, symbol_id guid) {
+    auto x = S->by_guid->get(guid);
+    if (x->has_value()) {
+        push(S, *x);
+        return true;
     }
-    if (vhas_header(v)) {
-        alloc->pin_object(vheader(v));
-    }
-    auto ns_id = chunk->ns_id;
-    auto ns = *globals->get_ns(ns_id);
-    // handle mutation
-    auto x = ns->get(vsymbol(name));
-    if (x.has_value()) {
-        if (vhas_header(*x)) {
-            alloc->unpin_object(vheader(*x));
-        }
-    }
-    ns->set(vsymbol(name), v);
+    return false;
 }
 
-value vm_thread::get_global(value name) {
-    auto ns_id = chunk->ns_id;
-    auto ns = *globals->get_ns(ns_id);
-    if (!vis_symbol(name)) {
-        runtime_error("Variable names must be symbols.");
+bool push_global(istate* S, symbol_id name) {
+    auto x = S->ns->get(name);
+    if (x->has_value()) {
+        push(S, *x);
+        return true;
     }
-    auto res = ns->get(vsymbol(name));
-
-    if (!res.has_value()) {
-        runtime_error("Attempt to access unbound global variable "
-                + v_to_string(name, get_symtab()));
-    }
-    return *res;
+    return false;
 }
 
-value vm_thread::by_guid(value name) {
-    if (!vis_symbol(name)) {
-        runtime_error("Variable GUIDs must be symbols.");
-    }
-    auto str = symtab->symbol_name(vsymbol(name)).substr(2);
-    u32 i;
-    for (i = 0; i < str.size(); ++i) {
-        if (str[i] == ':') {
+void mutate_global(istate* S, symbol_id name, value v) {
+    auto ns_str = (*S->symtab)[S->ns_id];
+    auto var_str = (*S->symtab)[name];
+    auto guid_str = "#/" + ns_str + ":" + var_str;
+
+    S->ns->set(name, v);
+    S->by_guid->set(intern(S, guid_str), v);
+}
+
+static u16 read_short(u8* code, u32 ip) {
+    return *((u16*)&code[ip]);
+}
+
+void execute_fun(istate* S, fn_function* fun) {
+    auto stub = fun->stub;
+    auto& code = fun->stub->code;
+
+    // main interpreter loop
+    while (true) {
+        switch (code[S->pc++]) {
+        case OP_NOP:
             break;
-        }
-    }
-    if (i == str.size()) {
-        runtime_error("Missing colon in GUID.");
-    }
-
-    auto ns_str = str.substr(0, i);
-    auto var_str = str.substr(i+1);
-    if (ns_str == "") {
-        runtime_error("Empty namespace name in GUID.");
-    }
-    if (var_str == "") {
-        runtime_error("Empty variable name in GUID.");
-    }
-    auto ns = globals->get_ns(symtab->intern(ns_str));
-    if (!ns.has_value()) {
-        runtime_error("GUID corresponds to nonexistent namespace.");
-    }
-    auto x = (**ns).get(symtab->intern(var_str));
-    if (!x.has_value()) {
-        runtime_error("GUID corresponds to nonexistent definition.");
-    }
-    return *x;
-}
-
-void vm_thread::add_macro(value name, value v) {
-    if (!vis_function(v)) {
-        runtime_error("op-macro value not a function.");
-    }
-    alloc->pin_object(vheader(v));
-    auto ns_id = chunk->ns_id;
-    auto ns = *globals->get_ns(ns_id);
-    ns->set_macro(vsymbol(name), v);
-}
-
-value vm_thread::get_macro(value name) {
-    auto ns_id = chunk->ns_id;
-    auto ns = *globals->get_ns(ns_id);
-    auto res = ns->get_macro(vsymbol(name));
-
-    if (!res.has_value()) {
-        runtime_error("Attempt to access unbound global variable "
-                + v_to_string(name, get_symtab()));
-    }
-    return *res;
-}
-
-
-
-optional<value> vm_thread::try_import(symbol_id ns_id) {
-    // TODO: write this
-    return std::nullopt;
-}
-
-void vm_thread::do_import() {
-    auto ns_id = peek(0);
-    if (!vis_symbol(ns_id)) {
-        runtime_error("OP_IMPORT name must be a symbol.");
-    }
-    // since it's a symbol we don't need to worry about leaving it where the gc
-    // can see it.
-    pop();
-    auto x = globals->get_ns(vsymbol(ns_id));
-    if (!x.has_value()) {
-        // this will be saved as the last pop before deferring control to the
-        // interpreter
-        pending_import_id = vsymbol(ns_id);
-        status = vs_waiting_for_import;
-    } else {
-        string prefix, stem;
-        ns_id_destruct((*symtab)[vsymbol(ns_id)], &prefix, &stem);
-        // FIXME: maybe check for overwrites?
-        copy_defs(*symtab, **globals->get_ns(chunk->ns_id), **x, stem + ":");
-    }
-}
-
-
-code_chunk* vm_thread::get_chunk() const {
-    return chunk;
-}
-allocator* vm_thread::get_alloc() const {
-    return alloc;
-}
-symbol_table* vm_thread::get_symtab() const {
-    return symtab;
-}
-const root_stack* vm_thread::get_stack() const {
-    return stack;
-}
-
-
-void vm_thread::runtime_error(const string& msg) const {
-    // FIXME: this sort of information should probably not go to the user. We
-    // could log it instead if we had a logger.
-    string s = "{ip:" + std::to_string(ip) + "} ";
-    if (callee && callee->stub->name.size() > 0) {
-        s = s + "(In function: " + callee->stub->name + ") ";
-    }
-    s = s + msg;
-    set_fault(err, chunk->location_of(ip), "vm", s);
-    throw runtime_exception{};
-}
-
-void vm_thread::push(value v) {
-    if (stack->get_pointer()-bp >= STACK_SIZE - 1) {
-        runtime_error("stack frame exhausted.");
-    }
-    stack->push(v);
-}
-
-void vm_thread::pop() {
-    if (bp >= stack->get_pointer()) {
-        runtime_error("pop on empty call frame");
-    }
-    stack->pop();
-}
-
-void vm_thread::pop_times(stack_address n) {
-    if (bp >= stack->get_pointer() - n + 1) {
-        runtime_error("pop on empty call frame");
-    }
-    stack->pop_times(n);
-}
-
-void vm_thread::arrange_call_stack(fn_function* func,
-        local_address num_args) {
-    auto req_args = func->stub->req_args;    
-    auto num_pos_args = func->stub->pos_params.size;
-    auto has_vl = func->stub->vl_param.has_value();
-
-    // For the most part, positional arguments can get left where they are.
-    // Extra positional arguments go to the variadic parameter
-
-    if (num_args < req_args) {
-        runtime_error("Missing required argument in function call or apply.");
-    } else if (num_args < num_pos_args) {
-        // push init vals
-        for (u32 i = num_args; i < num_pos_args; ++i) {
-            push(func->init_vals[i - req_args]);
-        }
-    } else if (num_args > num_pos_args) {
-        if (!has_vl) {
-            runtime_error("Too many positional arguments to function.");
-        }
-        i32 m = num_args - num_pos_args;
-        stack->top_to_list(m);
-    } else if (has_vl) {
-        // in the case where num_pos_args == num_args and there's a variadic
-        // list parameter, we need to do this
-        push(V_EMPTY);
-    }
-
-    // push indicator args
-    u32 i;
-    // m clamps num_args to the number of positional parameters so we don't push
-    // more indicator args than necessary.
-    auto m = num_args < num_pos_args ? num_args : num_pos_args;
-    for (i = req_args; i < m; ++i) {
-        push(V_TRUE);
-    }
-    for (; i < num_pos_args; ++i) {
-        push(V_FALSE);
-    }
-}
-
-code_address vm_thread::make_call(fn_function* func) {
-    auto stub = func->stub;
-    auto num_opt = stub->pos_params.size - stub->req_args;
-    // stack pointer (equal to number of parameter variables)
-    u8 sp = static_cast<u8>(stub->pos_params.size
-            + num_opt // for indicators
-            + stub->vl_param.has_value());
-    if (stub->foreign != nullptr) { // foreign function call
-        fn_handle handle{
-            .vm=this,
-            .stack=stack,
-            .func_name=stub->name,
-            .origin=chunk->location_of(ip),
-            .err=err
-        };
-
-        auto ret_place = stack->get_pointer() - sp;
-        auto start_args = &(*stack)[stack->get_pointer() - sp];
-        stub->foreign(&handle, start_args);
-        // can take args off the stack
-        stack->do_return(ret_place);
-
-        if(err->happened) {
-            status = vs_fault;
-        }
-        stack->pop_callee();
-        return ip + 2;
-    } else { // native function call
-
-        // save previous frame
-        auto ret_addr = ip + 2;
-        auto ret_chunk = chunk;
-        auto ret_bp = bp;
-        auto ret_fun = callee;
-
-        ip = stub->addr;
-        chunk = stub->chunk;
-        // base pointer
-        bp = stack->get_pointer() - sp;
-        callee = func;
-
-        // perform the call
-        execute(this->err);
-
-        if (status == vs_return) {
-            // resume running
-            status = vs_running;
-            // put back the call frame
-            ip = ret_addr;
-            chunk = ret_chunk;
-            bp = ret_bp;
-            callee = ret_fun;
-        } else {
-            // FIXME: generate stack trace
-        }
-        return ret_addr;
-    }
-}
-
-code_address vm_thread::make_tcall(fn_function* func) {
-    auto stub = func->stub;
-    chunk = stub->chunk;
-    callee = func;
-
-    auto num_opt = stub->pos_params.size - stub->req_args;
-    // stack pointer (equal to number of parameter variables)
-    u8 sp = static_cast<u8>(stub->pos_params.size
-            + num_opt // for indicators
-            + stub->vl_param.has_value());
-    bp = stack->get_pointer() - sp;
-
-    return stub->addr;
-}
-
-// Calling convention: a call uses num_args + 1 elements on the stack. At the
-// very top is the callee, followed by num_args positional arguments, ordered so
-// the first argument is on the bottom.
-code_address vm_thread::call(local_address num_args) {
-    // the function to call should be on top
-    auto callee = peek();
-    if (v_tag(callee) != TAG_FUNC) {
-        runtime_error("Error on call: callee is not a function");
-        return ip + 2;
-    }
-    auto func = vfunction(callee);
-    stack->push_callee(func);
-    pop();
-
-    // put function arguments in place
-    arrange_call_stack(func, num_args);
-
-    // make_call() will create the new stack frame
-    return make_call(func);
-}
-
-
-code_address vm_thread::tcall(local_address num_args) {
-    // the function to call should be on top
-    auto new_callee = peek();
-    if (v_tag(new_callee) != TAG_FUNC) {
-        runtime_error("Error on call: callee is not a function");
-        return ip + 2;
-    }
-    auto func = vfunction(new_callee);
-    auto stub = func->stub;
-    // foreign calls are just normal calls
-    if (stub->foreign != nullptr || callee == nullptr) {
-        return call(num_args);
-    }
-
-    // we're officially done with the previous function now
-    stack->pop_callee();
-    stack->push_callee(func);
-    pop();
-
-    // set up the call stack
-    stack->close_for_tc(num_args, bp);
-    arrange_call_stack(func, num_args);
-
-    return make_tcall(func);
-}
-
-
-code_address vm_thread::apply(local_address num_args, bool tail) {
-    // all we need to do is expand the varargs. The rest will be taken care of
-    // by call().
-    auto callee = peek(0);
-    auto args = peek(1);
-
-    if (!vis_function(callee)) {
-        runtime_error("OP_APPLY first argument not a function.");
-    } else if (!vis_cons(args) && args != V_EMPTY) {
-        runtime_error("OP_APPLY last argument not a list.");
-    }
-
-    auto func = vfunction(callee);
-    if (tail) {
-        stack->pop_callee();
-        stack->push_callee(func);
-        stack->close_for_tc(num_args + 1, bp);
-    } else {
-        stack->push_callee(func);
-    }
-    pop();
-
-    u32 list_len = 0;
-    for (auto it = args; it != V_EMPTY; it = vtail(it)) {
-        push(vtail(it));
-        set_from_top(1, vhead(it));
-        ++list_len;
-    }
-
-    pop();
-    arrange_call_stack(func, num_args + list_len);
-    return tail ? make_tcall(func) : make_call(func);
-}
-
-
-value vm_thread::peek(stack_address i) const {
-    if (i >= stack->get_pointer()) {
-        runtime_error("peek out of stack bounds");
-    }
-    return stack->peek(i);
-}
-
-value vm_thread::local(local_address i) const {
-    stack_address pos = i + bp;
-    if (pos >= stack->get_pointer()) {
-        runtime_error("out of stack bounds on local");
-    }
-    return stack->peek_bottom(pos);
-}
-
-void vm_thread::set_local(local_address i, value v) {
-    stack_address pos = i + bp;
-    if (pos >= stack->get_pointer()) {
-        runtime_error("out of stack bounds on set-local.");
-    }
-    stack->set(pos, v);
-}
-
-void vm_thread::set_from_top(local_address i, value v) {
-    stack_address pos = stack->get_pointer() - i - 1;
-    if (pos < bp) {
-        runtime_error("out of stack bounds on set-local.");
-    }
-    stack->set(pos, v);
-}
-
-void vm_thread::step() {
-    u8 instr = chunk->read_byte(ip);
-
-    // variable for use inside the switch
-    value v1, v2, v3;
-
-    local_address num_args;
-
-    local_address l;
-    u16 id;
-
-    upvalue_cell* u;
-
-    // note: when an instruction uses an argument that occurs in the bytecode, it is responsible for
-    // updating the instruction pointer at the end of its exection (which should be after any
-    // exceptions that might be raised).
-    switch (instr) {
-    case OP_NOP:
-        break;
-    case OP_POP:
-        pop();
-        break;
-    case OP_COPY:
-        push(stack->peek(chunk->read_byte(ip+1)));
-        ++ip;
-        break;
-    case OP_LOCAL:
-        push(local(chunk->read_byte(ip+1)));
-        ++ip;
-        break;
-    case OP_SET_LOCAL:
-        set_local(chunk->read_byte(ip+1), peek(0));
-        pop();
-        ++ip;
-        break;
-
-    case OP_UPVALUE:
-        l = chunk->read_byte(ip+1);
-        // TODO: check upvalue exists
-        u = callee->upvals[l];
-        if (u->closed) {
-            push(u->closed_value);
-        } else{
-            if (callee == nullptr) {
-                runtime_error("op-upvalue in toplevel frame.");
-            }
-            auto pos = u->pos;
-            push(stack->peek_bottom(pos));
-        }
-        ++ip;
-        break;
-    case OP_SET_UPVALUE:
-        l = chunk->read_byte(ip+1);
-        // TODO: check upvalue exists
-        u = callee->upvals[l];
-        if (u->closed) {
-            u->closed_value = stack->peek();
-        } else {
-            auto pos = callee->stub->upvals[l];
-            stack->set(pos, stack->peek());
-        }
-        stack->pop();
-        ++ip;
-        break;
-
-    case OP_CLOSURE:
-        id = chunk->read_short(ip+1);
-        v1 = stack->create_function(chunk->get_function(id), bp);
-
-        ip += 2;
-        break;
-
-    case OP_CLOSE:
-        num_args = chunk->read_byte(ip+1);
-        stack->close(stack->get_pointer() - num_args);
-        // TODO: check stack size >= num_args
-        ++ip;
-        break;
-
-    case OP_GLOBAL:
-        v1 = stack->peek();
-        if (v_tag(v1) != TAG_SYM) {
-            runtime_error("OP_GLOBAL name operand is not a symbol.");
-        }
-        v2 = get_global(v1);
-        pop();
-        push(v2);
-        break;
-    case OP_SET_GLOBAL:
-        v1 = stack->peek(); // value
-        v2 = stack->peek(1); // name
-        if (v_tag(v2) != TAG_SYM) {
-            runtime_error("op-set-global name operand is not a symbol.");
-        }
-        add_global(v2, v1);
-        pop_times(2);
-        break;
-    case OP_BY_GUID:
-        v1 = by_guid(stack->peek());
-        pop();
-        push(v1);
-        break;
-    case OP_MACRO:
-        v1 = stack->peek();
-        if (v_tag(v1) != TAG_SYM) {
-            runtime_error("OP_MACRO name operand is not a symbol.");
-        }
-        v2 = get_macro(v1);
-        stack->pop();
-        stack->push(v2);
-        break;
-    case OP_SET_MACRO:
-        v1 = stack->peek();
-        v2 = stack->peek(1);
-        if (v_tag(v2) != TAG_SYM) {
-            runtime_error("op-set-macro name operand is not a symbol.");
-        } else if (v_tag(v1) != TAG_FUNC) {
-            runtime_error("op-set-macro value is not a function.");
-        }
-        add_macro(v2, v1);
-        stack->pop_times(2);
-        break;
-
-    case OP_METHOD:
-        v1 = stack->peek();  // symbol
-        if (v_tag(v1) != TAG_SYM) {
-            runtime_error("Method lookup failed. Method name must be a symbol.");
-        }
-        v2 = stack->peek(1);
-        if (v_tag(v2) != TAG_TABLE) {
-            runtime_error("Method lookup failed. Target object is not a table.");
-        }
-        {
-            auto mt = vtable(v2)->metatable;
-            if (v_tag(mt) != TAG_TABLE) {
-                runtime_error("Method lookup failed. Target object has no metatable.");
-            }
-            auto x = vtable(mt)->contents.get(v1);
-            if (!x.has_value()) {
-                runtime_error("Method lookup failed. No such method found.");
-            }
+        case OP_POP:
+            pop(S);
+            break;
+        case OP_LOCAL:
+            push(get(S, code[S->pc++]));
+            break;
+        case OP_SET_LOCAL:
+            set(S, code[S->pc++], peek(S));
             pop();
-            set_from_top(0, *x);
-        }
-        break;
-
-    case OP_CONST:
-        id = chunk->read_short(ip+1);
-        if (id >= chunk->constant_arr.size) {
-            runtime_error("Attempt to access nonexistent constant.");
-        }
-        push(chunk->get_constant(id));
-        ip += 2;
-        break;
-
-    case OP_NIL:
-        push(V_NIL);
-        break;
-    case OP_FALSE:
-        push(V_FALSE);
-        break;
-    case OP_TRUE:
-        push(V_TRUE);
-        break;
-
-    case OP_OBJ_GET:
-        // key
-        v1 = peek(0);
-        // object
-        v2 = peek(1);
-        if (v_tag(v2) == TAG_TABLE) {
-            auto x = vtable(v2)->contents.get(v1);
-            if (x.has_value()) {
-                pop();
-                set_from_top(0, *x);
-            } else {
-                pop();
-                pop();
-                push(V_NIL);
-            }
             break;
-        } 
-        runtime_error("OP_OBJ_GET operand not a table.");
-        break;
-
-    case OP_OBJ_SET:
-        // new-value
-        v3 = stack->peek(0);
-        // key
-        v1 = stack->peek(1);
-        // object
-        v2 = stack->peek(2);
-        if (v_tag(v2) != TAG_TABLE) {
-            runtime_error("OP_OBJ_SET operand not a table.");
-        }
-        vtable(v2)->contents.insert(v1,v3);
-        stack->pop_times(3);
-        break;
-
-    case OP_IMPORT:
-        do_import();
-        break;
-
-    case OP_JUMP:
-        // one less than we actually want b/c the ip gets incremented at the
-        // end
-        ip += 2 + static_cast<i16>(chunk->read_short(ip+1));
-        break;
-
-    case OP_CJUMP:
-        // jump on false
-        if (!vtruth(stack->peek(0))) {
-            ip += 2 + static_cast<i16>(chunk->read_short(ip+1));
-        } else {
-            ip += 2;
-        }
-        stack->pop();
-        break;
-
-    case OP_CALL:
-        num_args = chunk->read_byte(ip+1);
-        ip = call(num_args) - 1;
-        break;
-
-    case OP_TCALL:
-        num_args = chunk->read_byte(ip+1);
-        ip = tcall(num_args) - 1;
-        break;
-
-    case OP_APPLY:
-        num_args = chunk->read_byte(ip+1);
-        ip = apply(num_args, false) - 1;
-        break;
-
-    case OP_TAPPLY:
-        num_args = chunk->read_byte(ip+1);
-        ip = apply(num_args, true) - 1;
-        break;
-
-    case OP_RETURN:
-        // check that we are in a call frame
-        if (callee == nullptr) {
-            runtime_error("Return instruction at top level.");
-        }
-
-        // do the return manipulation on the stack
-        stack->do_return(bp);
-        stack->pop_callee();
-        status = vs_return;
-
-        break;
-
-    case OP_TABLE:
-        stack->push_table();
-        break;
-
-    default:
-        runtime_error("Unrecognized opcode.");
-        break;
-    }
-    ++ip;
-
-}
-
-void vm_thread::execute(fault* err) {
-    this->err = err;
-    if (status == vs_waiting_for_import) {
-        auto x = globals->get_ns(pending_import_id);
-        if (!x.has_value()) {
-            set_fault(err, chunk->location_of(ip), "vm",
-                    "Import failed (no namespace created).");
-            return;
-        }
-        string prefix, stem;
-        ns_id_destruct((*symtab)[pending_import_id], &prefix, &stem);
-        // FIXME: maybe check for overwrites?
-        copy_defs(*symtab, **globals->get_ns(chunk->ns_id), **x, stem + ":");
-    }
-    status = vs_running;
-    try {
-        while (status == vs_running) {
-            if (ip >= chunk->code.size) {
-                status = vs_stopped;
-                break;
+        case OP_COPY:
+            push(S, peek(S, code[S->pc++]));
+            break;
+        case OP_UPVALUE: {
+            auto u = fun->upvals[code[S->pc++]];
+            if (u->closed) {
+                push(u->datum.val);
+            } else {
+                push(S->stack[u->datum.pos]);
             }
-            step();
         }
-    } catch (const runtime_exception& ex) {
-        // fault object should already be set
-        status = vs_fault;
-    }
+            break;
+        case OP_SET_UPVALUE: {
+            auto u = fun->upvals[code[S->pc++]];
+            if (u->closed) {
+                u->datum.val = peek(S);
+            } else {
+                S->stack[u->datum.pos] = peek(S);
+            }
+            pop(S);
+        }
+            break;
+        case OP_CLOSURE: {
+            auto fid = read_short(code, S->pc);
+            S->pc += 2;
+            init_closure(S, fid);
+        }
+            break;
+        case OP_CLOSE: {
+            auto num = [code[S->pc++]];
+            // computes highest stack address to close
+            auto new_top = S->stack_top - num;
+            u64 to = ((u64)(new_base - S->stack)) / sizeof(value);
+            close_upvals(S, to);
+            S->stack_top = new_top;
+        }
+            break;
+        case OP_GLOBAL: {
+            auto sym = vsymbol(peek(S));
+            // this is ok since symbols aren't GC'd
+            pop(S);
+            push_global(S, sym);
+        }
+            break;
+        case OP_SET_GLOBAL:
+            mutate_global(S, vsymbol(peek(S, 1)), peek(S));
+            // leave the ID in place by only popping once
+            pop(S);
+            break;
 
+        case OP_CONST:
+            push(stub->const_arr[read_short(code, S->pc)]);
+            S->pc += 2;
+            break;
+
+        case OP_RETURN:
+            set(S, 0, peek(S));
+            // TODO: write the rest of these
+    }
 }
+
+// void vm_thread::runtime_error(const string& msg) const {
+//     // FIXME: this sort of information should probably not go to the user. We
+//     // could log it instead if we had a logger.
+//     string s = "{ip:" + std::to_string(ip) + "} ";
+//     if (callee && callee->stub->name.size() > 0) {
+//         s = s + "(In function: " + callee->stub->name + ") ";
+//     }
+//     s = s + msg;
+//     set_fault(err, chunk->location_of(ip), "vm", s);
+//     throw runtime_exception{};
+// }
+
+
+// code_address vm_thread::make_tcall(fn_function* func) {
+//     auto stub = func->stub;
+//     chunk = stub->chunk;
+//     callee = func;
+
+//     auto num_opt = stub->pos_params.size - stub->req_args;
+//     // stack pointer (equal to number of parameter variables)
+//     u8 sp = static_cast<u8>(stub->pos_params.size
+//             + num_opt // for indicators
+//             + stub->vl_param.has_value());
+//     bp = stack->get_pointer() - sp;
+
+//     return stub->addr;
+// }
+
+// code_address vm_thread::tcall(local_address num_args) {
+//     // the function to call should be on top
+//     auto new_callee = peek();
+//     if (v_tag(new_callee) != TAG_FUNC) {
+//         runtime_error("Error on call: callee is not a function");
+//         return ip + 2;
+//     }
+//     auto func = vfunction(new_callee);
+//     auto stub = func->stub;
+//     // foreign calls are just normal calls
+//     if (stub->foreign != nullptr || callee == nullptr) {
+//         return call(num_args);
+//     }
+
+//     // we're officially done with the previous function now
+//     stack->pop_callee();
+//     stack->push_callee(func);
+//     pop();
+
+//     // set up the call stack
+//     stack->close_for_tc(num_args, bp);
+//     arrange_call_stack(func, num_args);
+
+//     return make_tcall(func);
+// }
+
+
+// code_address vm_thread::apply(local_address num_args, bool tail) {
+//     // all we need to do is expand the varargs. The rest will be taken care of
+//     // by call().
+//     auto callee = peek(0);
+//     auto args = peek(1);
+
+//     if (!vis_function(callee)) {
+//         runtime_error("OP_APPLY first argument not a function.");
+//     } else if (!vis_cons(args) && args != V_EMPTY) {
+//         runtime_error("OP_APPLY last argument not a list.");
+//     }
+
+//     auto func = vfunction(callee);
+//     if (tail) {
+//         stack->pop_callee();
+//         stack->push_callee(func);
+//         stack->close_for_tc(num_args + 1, bp);
+//     } else {
+//         stack->push_callee(func);
+//     }
+//     pop();
+
+//     u32 list_len = 0;
+//     for (auto it = args; it != V_EMPTY; it = vtail(it)) {
+//         push(vtail(it));
+//         set_from_top(1, vhead(it));
+//         ++list_len;
+//     }
+
+//     pop();
+//     arrange_call_stack(func, num_args + list_len);
+//     return tail ? make_tcall(func) : make_call(func);
+// }
+
+
+// void vm_thread::step() {
+//     u8 instr = chunk->read_byte(ip);
+
+//     // variable for use inside the switch
+//     value v1, v2, v3;
+
+//     local_address num_args;
+
+//     local_address l;
+//     u16 id;
+
+//     upvalue_cell* u;
+
+//     // note: when an instruction uses an argument that occurs in the bytecode, it is responsible for
+//     // updating the instruction pointer at the end of its exection (which should be after any
+//     // exceptions that might be raised).
+//     switch (instr) {
+//     case OP_NOP:
+//         break;
+//     case OP_POP:
+//         pop();
+//         break;
+//     case OP_COPY:
+//         push(stack->peek(chunk->read_byte(ip+1)));
+//         ++ip;
+//         break;
+//     case OP_LOCAL:
+//         push(local(chunk->read_byte(ip+1)));
+//         ++ip;
+//         break;
+//     case OP_SET_LOCAL:
+//         set_local(chunk->read_byte(ip+1), peek(0));
+//         pop();
+//         ++ip;
+//         break;
+
+//     case OP_UPVALUE:
+//         l = chunk->read_byte(ip+1);
+//         // TODO: check upvalue exists
+//         u = callee->upvals[l];
+//         if (u->closed) {
+//             push(u->closed_value);
+//         } else{
+//             if (callee == nullptr) {
+//                 runtime_error("op-upvalue in toplevel frame.");
+//             }
+//             auto pos = u->pos;
+//             push(stack->peek_bottom(pos));
+//         }
+//         ++ip;
+//         break;
+//     case OP_SET_UPVALUE:
+//         l = chunk->read_byte(ip+1);
+//         // TODO: check upvalue exists
+//         u = callee->upvals[l];
+//         if (u->closed) {
+//             u->closed_value = stack->peek();
+//         } else {
+//             auto pos = callee->stub->upvals[l];
+//             stack->set(pos, stack->peek());
+//         }
+//         stack->pop();
+//         ++ip;
+//         break;
+
+//     case OP_CLOSURE:
+//         id = chunk->read_short(ip+1);
+//         v1 = stack->create_function(chunk->get_function(id), bp);
+
+//         ip += 2;
+//         break;
+
+//     case OP_CLOSE:
+//         num_args = chunk->read_byte(ip+1);
+//         stack->close(stack->get_pointer() - num_args);
+//         // TODO: check stack size >= num_args
+//         ++ip;
+//         break;
+
+//     case OP_GLOBAL:
+//         v1 = stack->peek();
+//         if (v_tag(v1) != TAG_SYM) {
+//             runtime_error("OP_GLOBAL name operand is not a symbol.");
+//         }
+//         v2 = get_global(v1);
+//         pop();
+//         push(v2);
+//         break;
+//     case OP_SET_GLOBAL:
+//         v1 = stack->peek(); // value
+//         v2 = stack->peek(1); // name
+//         if (v_tag(v2) != TAG_SYM) {
+//             runtime_error("op-set-global name operand is not a symbol.");
+//         }
+//         add_global(v2, v1);
+//         pop_times(2);
+//         break;
+//     case OP_BY_GUID:
+//         v1 = by_guid(stack->peek());
+//         pop();
+//         push(v1);
+//         break;
+//     case OP_MACRO:
+//         v1 = stack->peek();
+//         if (v_tag(v1) != TAG_SYM) {
+//             runtime_error("OP_MACRO name operand is not a symbol.");
+//         }
+//         v2 = get_macro(v1);
+//         stack->pop();
+//         stack->push(v2);
+//         break;
+//     case OP_SET_MACRO:
+//         v1 = stack->peek();
+//         v2 = stack->peek(1);
+//         if (v_tag(v2) != TAG_SYM) {
+//             runtime_error("op-set-macro name operand is not a symbol.");
+//         } else if (v_tag(v1) != TAG_FUNC) {
+//             runtime_error("op-set-macro value is not a function.");
+//         }
+//         add_macro(v2, v1);
+//         stack->pop_times(2);
+//         break;
+
+//     case OP_METHOD:
+//         v1 = stack->peek();  // symbol
+//         if (v_tag(v1) != TAG_SYM) {
+//             runtime_error("Method lookup failed. Method name must be a symbol.");
+//         }
+//         v2 = stack->peek(1);
+//         if (v_tag(v2) != TAG_TABLE) {
+//             runtime_error("Method lookup failed. Target object is not a table.");
+//         }
+//         {
+//             auto mt = vtable(v2)->metatable;
+//             if (v_tag(mt) != TAG_TABLE) {
+//                 runtime_error("Method lookup failed. Target object has no metatable.");
+//             }
+//             auto x = vtable(mt)->contents.get(v1);
+//             if (!x.has_value()) {
+//                 runtime_error("Method lookup failed. No such method found.");
+//             }
+//             pop();
+//             set_from_top(0, *x);
+//         }
+//         break;
+
+//     case OP_CONST:
+//         id = chunk->read_short(ip+1);
+//         if (id >= chunk->constant_arr.size) {
+//             runtime_error("Attempt to access nonexistent constant.");
+//         }
+//         push(chunk->get_constant(id));
+//         ip += 2;
+//         break;
+
+//     case OP_NIL:
+//         push(V_NIL);
+//         break;
+//     case OP_FALSE:
+//         push(V_FALSE);
+//         break;
+//     case OP_TRUE:
+//         push(V_TRUE);
+//         break;
+
+//     case OP_OBJ_GET:
+//         // key
+//         v1 = peek(0);
+//         // object
+//         v2 = peek(1);
+//         if (v_tag(v2) == TAG_TABLE) {
+//             auto x = vtable(v2)->contents.get(v1);
+//             if (x.has_value()) {
+//                 pop();
+//                 set_from_top(0, *x);
+//             } else {
+//                 pop();
+//                 pop();
+//                 push(V_NIL);
+//             }
+//             break;
+//         } 
+//         runtime_error("OP_OBJ_GET operand not a table.");
+//         break;
+
+//     case OP_OBJ_SET:
+//         // new-value
+//         v3 = stack->peek(0);
+//         // key
+//         v1 = stack->peek(1);
+//         // object
+//         v2 = stack->peek(2);
+//         if (v_tag(v2) != TAG_TABLE) {
+//             runtime_error("OP_OBJ_SET operand not a table.");
+//         }
+//         vtable(v2)->contents.insert(v1,v3);
+//         stack->pop_times(3);
+//         break;
+
+//     case OP_IMPORT:
+//         do_import();
+//         break;
+
+//     case OP_JUMP:
+//         // one less than we actually want b/c the ip gets incremented at the
+//         // end
+//         ip += 2 + static_cast<i16>(chunk->read_short(ip+1));
+//         break;
+
+//     case OP_CJUMP:
+//         // jump on false
+//         if (!vtruth(stack->peek(0))) {
+//             ip += 2 + static_cast<i16>(chunk->read_short(ip+1));
+//         } else {
+//             ip += 2;
+//         }
+//         stack->pop();
+//         break;
+
+//     case OP_CALL:
+//         num_args = chunk->read_byte(ip+1);
+//         ip = call(num_args) - 1;
+//         break;
+
+//     case OP_TCALL:
+//         num_args = chunk->read_byte(ip+1);
+//         ip = tcall(num_args) - 1;
+//         break;
+
+//     case OP_APPLY:
+//         num_args = chunk->read_byte(ip+1);
+//         ip = apply(num_args, false) - 1;
+//         break;
+
+//     case OP_TAPPLY:
+//         num_args = chunk->read_byte(ip+1);
+//         ip = apply(num_args, true) - 1;
+//         break;
+
+//     case OP_RETURN:
+//         // check that we are in a call frame
+//         if (callee == nullptr) {
+//             runtime_error("Return instruction at top level.");
+//         }
+
+//         // do the return manipulation on the stack
+//         stack->do_return(bp);
+//         stack->pop_callee();
+//         status = vs_return;
+
+//         break;
+
+//     case OP_TABLE:
+//         stack->push_table();
+//         break;
+
+//     default:
+//         runtime_error("Unrecognized opcode.");
+//         break;
+//     }
+//     ++ip;
+
+// }
+
+// void vm_thread::execute(fault* err) {
+//     this->err = err;
+//     if (status == vs_waiting_for_import) {
+//         auto x = globals->get_ns(pending_import_id);
+//         if (!x.has_value()) {
+//             set_fault(err, chunk->location_of(ip), "vm",
+//                     "Import failed (no namespace created).");
+//             return;
+//         }
+//         string prefix, stem;
+//         ns_id_destruct((*symtab)[pending_import_id], &prefix, &stem);
+//         // FIXME: maybe check for overwrites?
+//         copy_defs(*symtab, **globals->get_ns(chunk->ns_id), **x, stem + ":");
+//     }
+//     status = vs_running;
+//     try {
+//         while (status == vs_running) {
+//             if (ip >= chunk->code.size) {
+//                 status = vs_stopped;
+//                 break;
+//             }
+//             step();
+//         }
+//     } catch (const runtime_exception& ex) {
+//         // fault object should already be set
+//         status = vs_fault;
+//     }
+
+// }
 
 // disassemble a single instruction, writing output to out
-void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& out) {
-    u8 instr = code.read_byte(ip);
+void disassemble_instr(function_stub* stub, code_address ip, std::ostream& out) {
+    u8 instr = stub->code[ip];
     switch (instr) {
     case OP_NOP:
         out << "nop";
@@ -759,25 +521,25 @@ void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& ou
         out << "pop";
         break;
     case OP_LOCAL:
-        out << "local " << (i32)code.read_byte(ip+1);
+        out << "local " << (i32)stub->code[ip+1];
         break;
     case OP_SET_LOCAL:
-        out << "set-local " << (i32)code.read_byte(ip+1);
+        out << "set-local " << (i32)stub->code[ip+1];
         break;
     case OP_COPY:
-        out << "copy " << (i32)code.read_byte(ip+1);
+        out << "copy " << (i32)stub->code[ip+1];
         break;
     case OP_UPVALUE:
-        out << "upvalue " << (i32)code.read_byte(ip+1);
+        out << "upvalue " << (i32)stub->code[ip+1];
         break;
     case OP_SET_UPVALUE:
-        out << "set-upvalue " << (i32)code.read_byte(ip+1);
+        out << "set-upvalue " << (i32)stub->code[ip+1];
         break;
     case OP_CLOSURE:
         out << "closure " << code.read_short(ip+1);
         break;
     case OP_CLOSE:
-        out << "close " << (i32)((code.read_byte(ip+1)));;
+        out << "close " << (i32)((stub->code[ip+1]));;
         break;
     case OP_GLOBAL:
         out << "global";
@@ -789,7 +551,7 @@ void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& ou
         out << "by-guid";
         break;
     case OP_CONST:
-        out << "const " << code.read_short(ip+1);
+        out << "const " << read_short(code,ip+1);
         break;
     case OP_NIL:
         out << "nil";
@@ -819,22 +581,22 @@ void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& ou
         out << "import";
         break;
     case OP_JUMP:
-        out << "jump " << (i32)(static_cast<i16>(code.read_short(ip+1)));
+        out << "jump " << (i32)(static_cast<i16>(read_short(code,ip+1)));
         break;
     case OP_CJUMP:
-        out << "cjump " << (i32)(static_cast<i16>(code.read_short(ip+1)));
+        out << "cjump " << (i32)(static_cast<i16>(read_short(code,ip+1)));
         break;
     case OP_CALL:
-        out << "call " << (i32)((code.read_byte(ip+1)));;
+        out << "call " << (i32)((stub->code[ip+1]));;
         break;
     case OP_TCALL:
-        out << "tcall " << (i32)((code.read_byte(ip+1)));;
+        out << "tcall " << (i32)((stub->code[ip+1]));;
         break;
     case OP_APPLY:
-        out << "apply " << (i32)((code.read_byte(ip+1)));;
+        out << "apply " << (i32)((stub->code[ip+1]));;
         break;
     case OP_TAPPLY:
-        out << "tapply " << (i32)((code.read_byte(ip+1)));;
+        out << "tapply " << (i32)((stub->code[ip+1]));;
         break;
     case OP_RETURN:
         out << "return";
@@ -849,29 +611,29 @@ void disassemble_instr(const code_chunk& code, code_address ip, std::ostream& ou
     }
 }
 
-void disassemble(const symbol_table& symtab, const code_chunk& code, std::ostream& out) {
-    u32 ip = 0;
-    // TODO: annotate with line number
-    while (ip < code.code.size) {
-        u8 instr = code.read_byte(ip);
-        // write line
-        out << std::setw(6) << ip << "  ";
-        disassemble_instr(code, ip, out);
+// void disassemble(const symbol_table& symtab, const code_chunk& code, std::ostream& out) {
+//     u32 ip = 0;
+//     // TODO: annotate with line number
+//     while (ip < code.code.size) {
+//         u8 instr = code.read_byte(ip);
+//         // write line
+//         out << std::setw(6) << ip << "  ";
+//         disassemble_instr(code, ip, out);
 
-        // additional information
-        if (instr == OP_CONST) {
-            // write constant value
-            out << " ; "
-                << v_to_string(code.get_constant(code.read_short(ip+1)),
-                        &symtab);
-        } else if (instr == OP_CLOSURE) {
-            out << " ; addr = " << code.get_function(code.read_short(ip+1))->addr;
-        }
+//         // additional information
+//         if (instr == OP_CONST) {
+//             // write constant value
+//             out << " ; "
+//                 << v_to_string(code.get_constant(code.read_short(ip+1)),
+//                         &symtab);
+//         } else if (instr == OP_CLOSURE) {
+//             out << " ; addr = " << code.get_function(code.read_short(ip+1))->addr;
+//         }
 
-        out << "\n";
-        ip += instr_width(instr);
-    }
-}
+//         out << "\n";
+//         ip += instr_width(instr);
+//     }
+// }
 
 }
 

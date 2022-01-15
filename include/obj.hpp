@@ -1,6 +1,6 @@
-// memory.hpp -- in-memory representations of Fn objects
-#ifndef __FN_MEMORY_HPP
-#define __FN_MEMORY_HPP
+// obj.hpp -- representations of Fn objects
+#ifndef __FN_OBJ_HPP
+#define __FN_OBJ_HPP
 
 #include "base.hpp"
 #include "table.hpp"
@@ -29,7 +29,6 @@ constexpr u64 TAG_STRING    = 0x01;
 constexpr u64 TAG_CONS      = 0x02;
 constexpr u64 TAG_TABLE     = 0x03;
 constexpr u64 TAG_FUNC      = 0x04;
-constexpr u64 TAG_BIGNUM    = 0x05;
 
 constexpr u64 TAG_SYM       = 0x06;
 constexpr u64 TAG_NIL       = 0x07;
@@ -60,7 +59,7 @@ constexpr u8 GC_TYPE_CONS       = 0x02;
 constexpr u8 GC_TYPE_TABLE      = 0x03;
 constexpr u8 GC_TYPE_FUNCTION   = 0x04;
 constexpr u8 GC_TYPE_BIGNUM     = 0x05;
-constexpr u8 GC_TYPE_CHUNK      = 0x0a;
+constexpr u8 GC_TYPE_UPVALUE    = 0x0a;
 
 // function stubs (hold code, etc)
 constexpr u8 GC_TYPE_FUN_STUB   = 0x06;
@@ -115,36 +114,59 @@ struct alignas (OBJ_ALIGN) fn_table {
 
 // A location storing a captured variable. These are shared across functions.
 struct upvalue_cell {
-    gc_header* hd;
-    u32 ref_count;       // number of functions using this upvalue
-    bool closed;         // if false, the value is still on the stack
-    stack_address pos;   // position on the stack while open
-    value closed_value;  // holds the upvalue for closed cells
-    // TODO: lock these :'(
-
-    inline void reference() {
-        ++ref_count;
-    }
-    inline void dereference() {
-        --ref_count;
-    }
-    inline bool dead() {
-        return ref_count == 0;
-    }
-    inline void close(value v) {
-        closed_value = v;
-        closed = true;
-    }
-
-    // create a new open cell with reference count 1
-    upvalue_cell(stack_address pos)
-        : ref_count{1}
-        , closed{false}
-        , pos{pos} {
-    }
+    gc_header h;
+    bool closed;
+    union {
+        stack_address pos;
+        value val;
+    } datum;
 };
 
-struct function_stub;
+struct istate;
+struct fn_namespace;
+
+// used to track the providence of the bytecode instructions within a function
+struct source_info {
+    // lowest program counter value associated to this location
+    u32 start_pc;
+    u32 line;
+    u32 col;
+    source_info* prev;
+};
+
+// a stub describing a function
+struct function_stub {
+    // function stubs are managed by the garbage collector
+    gc_header h;
+
+    u8 num_params;      // # of parameters
+    u8 num_opt;         // # of optional params (i.e. of initforms)
+    bool vari;          // variadic parameter
+
+    // if foreign != nullptr, then all following fields are ignored, and calling
+    // this function will be deferred to calling foreign
+    void (*foreign)(istate*);
+
+    dyn_array<u8> code;                  // code for the function
+    dyn_array<value> const_arr;          // constants
+    dyn_array<function_stub*> sub_funs;  // contained functions
+    symbol_id ns_id;                     // namespace ID
+    fn_namespace* ns;                    // function namespace
+
+    local_address num_upvals;
+    // Array of upvalue addresses. These are either stack addresses (for local
+    // upvalues)
+    dyn_array<u8> upvals;
+    // Corresponding array telling whether each upvalue is direct or not
+    dyn_array<bool> upvals_direct;
+    // An upval is considered direct if it is from the immediately surrounding
+    // call frame. Otherwise, it is indirect.
+
+    // metadata
+    string* name;
+    string* filename;
+};
+
 // represents a function value
 struct alignas (OBJ_ALIGN) fn_function {
     gc_header h;

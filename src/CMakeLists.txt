@@ -1,15 +1,14 @@
 add_library(fn_lib OBJECT
   allocator.cpp
   base.cpp
-  bytes.cpp
   #compile.cpp
   expand.cpp
   #ffi/builtin.cpp
   ffi/fn_handle.cpp
-  llir.cpp
-  memory.cpp
   #interpret.cpp
+  llir.cpp
   #log.cpp
+  obj.cpp
   namespace.cpp
   parse.cpp
   scan.cpp

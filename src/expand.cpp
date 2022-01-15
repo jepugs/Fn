@@ -1,18 +1,14 @@
 #include "expand.hpp"
 
 #include "interpret.hpp"
+#include "vm.hpp"
 
 namespace fn {
 
 using namespace fn_parse;
 
 bool expander::is_macro(symbol_id sym) {
-    auto ns = dest->vm->globals->get_ns(dest->vm->ns_id);
-    if (!ns.has_value()) {
-        return false;
-    } else {
-        return (*ns)->get_macro(sym).has_value();
-    }
+    return dest->S->ns->get_macro(sym).has_value();
 }
 
 bool expander::is_operator_list(const string& op_name, ast_form* ast) {
@@ -419,9 +415,8 @@ llir_form* expander::expand_dollar_fn(const source_loc& loc,
 
     // add parameters to the new function
     auto m = meta2.max_dollar_sym;
-    for (i32 i = 0; i < m+1; ++i) {
-        sub_tree->stub->pos_params.push_back(intern("$" + std::to_string(i)));
-    }
+    sub_tree->stub->num_params = m+1;
+    sub_tree->stub->num_opt = 0;
 
     // function id
     auto fid = dest->sub_funs.size - 1;
@@ -567,9 +562,9 @@ llir_fn* expander::expand_sub_fun(const source_loc& loc,
 
     // FIXME: check if we exceed maximum numbers anywhere
     auto sub_stub = sub_tree->stub;
-    sub_stub->pos_params = positional;
-    sub_stub->req_args = num_req;
-    sub_stub->vl_param = has_var_list ? std::nullopt : std::make_optional(vl_param);
+    sub_stub->num_params = positional.size;
+    sub_stub->num_opt = positional.size - num_req;
+    sub_stub->vl_param = has_var_list;
 
     // function id is its index in the array
     constant_id fid = dest->sub_funs.size - 1;
@@ -733,6 +728,11 @@ llir_form* expander::quasiquote_expand_recur(ast_form* form,
     if (form->kind != ak_list) {
         auto id = add_quoted_const(dest, form);
         return (llir_form*)mk_llir_const(form->loc, id);
+    } else if (is_operator_list("unquote", form)) {
+        if (form->list_length != 2) {
+            e_fault(loc, "unquote requires exactly 1 argument.");
+        }
+        return expand_meta(form->datum.list[1], meta);
     } else {
         return expand_quasiquote_list(form->loc, form->list_length,
                 form->datum.list, meta);
@@ -1109,7 +1109,7 @@ llir_form* expander::expand_meta(ast_form* ast, expander_meta* meta) {
         return (llir_form*)mk_llir_const(ast->loc, c);
     }
     case ak_symbol_atom:
-        update_dollar_syms(dest->vm->get_symtab(), ast->datum.sym, meta);
+        update_dollar_syms(dest->S->symtab, ast->datum.sym, meta);
         return (llir_form*)mk_llir_var(ast->loc, ast->datum.sym);
     case ak_list:
         return expand_list(ast, meta);
@@ -1119,19 +1119,19 @@ llir_form* expander::expand_meta(ast_form* ast, expander_meta* meta) {
 }
 
 symbol_id expander::intern(const string& str) {
-    return dest->vm->get_symtab()->intern(str);
+    return intern(dest->S, str);
 }
 
 symbol_id expander::gensym() {
-    return dest->vm->get_symtab()->gensym();
+    return dest->S->symtab->gensym();
 }
 
 string expander::symbol_name(symbol_id name) {
-    return dest->vm->get_symtab()->symbol_name(name);
+    return dest->S->symtab->symbol_name(name);
 }
 
 bool expander::is_keyword(symbol_id sym) const {
-    auto name = dest->vm->get_symtab()->symbol_name(sym);
+    auto name = dest->S->symtab->symbol_name(sym);
     return name[0] == ':';
 }
 

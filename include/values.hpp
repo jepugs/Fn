@@ -5,7 +5,7 @@
 
 #include "array.hpp"
 #include "base.hpp"
-#include "memory.hpp"
+#include "obj.hpp"
 #include "table.hpp"
 
 #include <functional>

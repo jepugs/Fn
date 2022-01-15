@@ -24,27 +24,6 @@ struct alignas(32) fn_namespace {
 };
 
 
-// global_env keeps track of currently-loaded chunks and namespaces
-struct global_env {
-    symbol_table* symtab;
-    table<symbol_id, fn_namespace*> ns_table;
-    symbol_id builtin_id;
-    bool import_builtin;
-
-    // this creates the root namespace hierarchy including the fn.builtin
-    // namespace.
-    global_env(symbol_table* use_symtab);
-    ~global_env();
-
-    symbol_table* get_symtab();
-
-    optional<fn_namespace*> get_ns(const string& name);
-    optional<fn_namespace*> get_ns(symbol_id name);
-    fn_namespace* create_ns(symbol_id name);
-    fn_namespace* create_ns(const string& name);
-
-};
-
 // namespace id destructuring
 void ns_id_destruct(const string& global_name, string* prefix, string* stem);
 // tell if sub is a subns of pkg

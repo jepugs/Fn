@@ -1,12 +1,12 @@
 #ifndef __FN_EXPAND_HPP
 #define __FN_EXPAND_HPP
 
+#include "array.hpp"
 #include "base.hpp"
-#include "llir.hpp"
+#include "istate.hpp"
 #include "llir.hpp"
 #include "namespace.hpp"
 #include "parse.hpp"
-#include "vm.hpp"
 
 namespace fn {
 
@@ -25,7 +25,7 @@ struct expander_meta {
 struct function_tree {
     // the vm_thread holding our unfinished function. This is also used for
     // macroexpansion, building values, and signaling errors.
-    vm_thread* vm;
+    istate* S;
     // the function stub we're building
     function_stub* stub;
     // used to cache constants to prevent duplicate entries in the table
@@ -231,7 +231,7 @@ public:
 
 // create a function tree for a function whose body is the given form. The
 // returned object contains all information necessary to compile the function.
-function_tree expand_toplevel(vm_thread* vm, ast_form* form);
+function_tree expand_toplevel(istate* S, ast_form* form);
 
 // class expander {
 // private:
