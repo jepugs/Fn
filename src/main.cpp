@@ -77,7 +77,6 @@ struct interpreter_options {
 // create an interpreter_options object based on CLI options. Returns false on
 // malformed command line arguments.
 void process_args(int argc, char** argv, interpreter_options* opt) {
-    static_assert(std::is_standard_layout<code_chunk>::value);
     // process options first
     int i;
     for (i = 1; i < argc; ++i) {
@@ -162,7 +161,20 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    
+    auto S = init_istate();
+    scanner sc{&std::cin};
+    fault err;
+    bool resumable;
+    auto form = parse_next_form(&sc, S->symtab, &resumable, &err);
+
+    push_empty_fun(S);
+    auto ft = init_function_tree(S, vfunction(peek(S))->stub);
+    expander ex;
+    ex.expand(ft, form);
+    std::cout << print_llir(ft->body, *S->symtab, &ft->stub->const_arr);
+    free_ast_form(form);
+    free_function_tree(ft);
+    free_istate(S);
 
     // logger log{&std::cerr, &std::cout};
     // vm_thread* vm = init_vm();

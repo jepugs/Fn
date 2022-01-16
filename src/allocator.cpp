@@ -22,7 +22,8 @@ allocator::allocator(istate* S)
     : mem_usage{0}
     , count{0}
     , collect_threshold{FIRST_COLLECT}
-    , S{S} {
+    , S{S}
+    , objs_head{nullptr} {
 }
 
 allocator::~allocator() {
@@ -58,6 +59,9 @@ void allocator::dealloc(gc_header* o) {
         delete f;
     }
         break;
+    case GC_TYPE_FUN_STUB:
+        delete (function_stub*) o;
+        break;
     case GC_TYPE_UPVALUE: {
         delete (upvalue_cell*)o;
     }
@@ -90,7 +94,7 @@ void add_accessible(gc_header* o, std::forward_list<gc_header*>* to_list) {
     case GC_TYPE_FUNCTION: {
         auto f = (fn_function*)o;
         // upvalues
-        for (local_address i = 0; i < f->num_upvals; ++i) {
+        for (local_address i = 0; i < f->stub->num_upvals; ++i) {
             auto cell = f->upvals[i];
             to_list->push_front(&cell->h);
         }
@@ -247,8 +251,8 @@ void allocator::force_collect() {
               << " ):\n";
 #endif
 
-    mark();
-    sweep();
+    // mark();
+    // sweep();
 #ifdef GC_VERBOSE
     std::cout << "Post collection (mem_usage ="
               << mem_usage
@@ -264,6 +268,87 @@ void allocator::print_status() {
     std::cout << "memory used (bytes): " << mem_usage << '\n';
     std::cout << "number of objects: " << count << '\n';
     // descend into values
+}
+
+static void add_obj(allocator* alloc, gc_header* obj) {
+    obj->next = alloc->objs_head;
+    alloc->objs_head = obj;
+}
+
+void alloc_string(allocator* alloc, value* where, u32 len) {
+    alloc->collect();
+    auto sz = sizeof(fn_string) + len + 1;
+    auto res = (fn_string*)malloc(sz);
+    init_gc_header(&res->h, GC_TYPE_STRING);
+    res->data = (u8*) (((u8*)res) + sizeof(fn_string));
+    res->data[len] = 0;
+    *where = vbox_string(res);
+    alloc->mem_usage += sz;
+    ++alloc->count;
+    add_obj(alloc, &res->h);
+}
+void alloc_string(allocator* alloc, value* where, const string& str) {
+    alloc->collect();
+    auto len = str.size();
+    auto sz = sizeof(fn_string) + len + 1;
+    auto res = (fn_string*)malloc(sz);
+    init_gc_header(&res->h, GC_TYPE_STRING);
+    res->data = (u8*) (((u8*)res) + sizeof(fn_string));
+    memcpy(res->data, str.c_str(), len);
+    res->data[len] = 0;
+    *where = vbox_string(res);
+    alloc->mem_usage += sz;
+    ++alloc->count;
+    add_obj(alloc, &res->h);
+}
+
+void alloc_cons(allocator* alloc, value* where, value hd, value tl) {
+    alloc->collect();
+    auto res = (fn_cons*)malloc(sizeof(fn_cons));
+    init_gc_header(&res->h, GC_TYPE_CONS);
+    res->head = hd;
+    res->tail = tl;
+    *where = vbox_cons(res);
+    alloc->mem_usage += sizeof(fn_cons);
+    ++alloc->count;
+    add_obj(alloc, &res->h);
+}
+
+static function_stub* mk_func_stub() {
+    auto res = new function_stub;
+    init_gc_header(&res->h, GC_TYPE_FUN_STUB);
+    res->num_params = 0;
+    res->num_opt = 0;
+    res->vari = false;
+    res->foreign = nullptr;
+    // we can't actually set up the ns info here, so we leave it uninitialized
+    res->name = nullptr;
+    res->filename = nullptr;
+    res->ci_head = nullptr;
+    return res;
+}
+
+void alloc_sub_stub(allocator* alloc, function_stub* where) {
+    alloc->collect();
+    auto res = mk_func_stub();
+    where->sub_funs.push_back(res);
+    alloc->mem_usage += sizeof(function_stub);
+    ++alloc->count;
+    add_obj(alloc, &res->h);
+}
+
+void alloc_empty_fun(allocator* alloc, value* where) {
+    alloc->collect();
+    auto res = new fn_function;
+    init_gc_header(&res->h, GC_TYPE_FUNCTION);
+    res->init_vals = nullptr;
+    res->upvals = nullptr;
+    res->stub = mk_func_stub();
+    *where = vbox_function(res);
+    alloc->mem_usage += sizeof(function_stub) + sizeof(fn_function);
+    alloc->count += 2;
+    add_obj(alloc, &res->h);
+    add_obj(alloc, &res->stub->h);
 }
 
 }

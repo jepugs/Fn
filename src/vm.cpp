@@ -16,8 +16,8 @@
 namespace fn {
 
 bool push_from_guid(istate* S, symbol_id guid) {
-    auto x = S->by_guid->get(guid);
-    if (x->has_value()) {
+    auto x = S->by_guid.get(guid);
+    if (x.has_value()) {
         push(S, *x);
         return true;
     }
@@ -26,7 +26,7 @@ bool push_from_guid(istate* S, symbol_id guid) {
 
 bool push_global(istate* S, symbol_id name) {
     auto x = S->ns->get(name);
-    if (x->has_value()) {
+    if (x.has_value()) {
         push(S, *x);
         return true;
     }
@@ -39,10 +39,10 @@ void mutate_global(istate* S, symbol_id name, value v) {
     auto guid_str = "#/" + ns_str + ":" + var_str;
 
     S->ns->set(name, v);
-    S->by_guid->set(intern(S, guid_str), v);
+    S->by_guid.insert(intern(S, guid_str), v);
 }
 
-static u16 read_short(u8* code, u32 ip) {
+static u16 read_short(dyn_array<u8>& code, u32 ip) {
     return *((u16*)&code[ip]);
 }
 
@@ -59,11 +59,11 @@ void execute_fun(istate* S, fn_function* fun) {
             pop(S);
             break;
         case OP_LOCAL:
-            push(get(S, code[S->pc++]));
+            push(S, get(S, code[S->pc++]));
             break;
         case OP_SET_LOCAL:
             set(S, code[S->pc++], peek(S));
-            pop();
+            pop(S);
             break;
         case OP_COPY:
             push(S, peek(S, code[S->pc++]));
@@ -71,9 +71,9 @@ void execute_fun(istate* S, fn_function* fun) {
         case OP_UPVALUE: {
             auto u = fun->upvals[code[S->pc++]];
             if (u->closed) {
-                push(u->datum.val);
+                push(S, u->datum.val);
             } else {
-                push(S->stack[u->datum.pos]);
+                push(S, S->stack[u->datum.pos]);
             }
         }
             break;
@@ -90,16 +90,18 @@ void execute_fun(istate* S, fn_function* fun) {
         case OP_CLOSURE: {
             auto fid = read_short(code, S->pc);
             S->pc += 2;
-            init_closure(S, fid);
+            // FIXME: implement
+            push_nil(S);
+            //init_closure(S, fid);
         }
             break;
         case OP_CLOSE: {
-            auto num = [code[S->pc++]];
+            auto num = code[S->pc++];
             // computes highest stack address to close
-            auto new_top = S->stack_top - num;
-            u64 to = ((u64)(new_base - S->stack)) / sizeof(value);
-            close_upvals(S, to);
-            S->stack_top = new_top;
+            auto new_sp = S->sp - num;
+            // FIXME: implement
+            //close_upvals(S, new_sp);
+            S->sp = new_sp;
         }
             break;
         case OP_GLOBAL: {
@@ -116,13 +118,15 @@ void execute_fun(istate* S, fn_function* fun) {
             break;
 
         case OP_CONST:
-            push(stub->const_arr[read_short(code, S->pc)]);
+            push(S, stub->const_arr[read_short(code, S->pc)]);
             S->pc += 2;
             break;
 
         case OP_RETURN:
             set(S, 0, peek(S));
             // TODO: write the rest of these
+            break;
+        }
     }
 }
 
@@ -536,7 +540,7 @@ void disassemble_instr(function_stub* stub, code_address ip, std::ostream& out) 
         out << "set-upvalue " << (i32)stub->code[ip+1];
         break;
     case OP_CLOSURE:
-        out << "closure " << code.read_short(ip+1);
+        out << "closure " << read_short(stub->code, ip+1);
         break;
     case OP_CLOSE:
         out << "close " << (i32)((stub->code[ip+1]));;
@@ -551,7 +555,7 @@ void disassemble_instr(function_stub* stub, code_address ip, std::ostream& out) 
         out << "by-guid";
         break;
     case OP_CONST:
-        out << "const " << read_short(code,ip+1);
+        out << "const " << read_short(stub->code,ip+1);
         break;
     case OP_NIL:
         out << "nil";
@@ -581,10 +585,10 @@ void disassemble_instr(function_stub* stub, code_address ip, std::ostream& out) 
         out << "import";
         break;
     case OP_JUMP:
-        out << "jump " << (i32)(static_cast<i16>(read_short(code,ip+1)));
+        out << "jump " << (i32)(static_cast<i16>(read_short(stub->code,ip+1)));
         break;
     case OP_CJUMP:
-        out << "cjump " << (i32)(static_cast<i16>(read_short(code,ip+1)));
+        out << "cjump " << (i32)(static_cast<i16>(read_short(stub->code,ip+1)));
         break;
     case OP_CALL:
         out << "call " << (i32)((stub->code[ip+1]));;

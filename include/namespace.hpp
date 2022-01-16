@@ -12,7 +12,9 @@ struct alignas(32) fn_namespace {
     table<symbol_id,value> defs;
     table<symbol_id,value> macros;
 
-    fn_namespace(symbol_id name);
+    fn_namespace(symbol_id name)
+        : name{name} {
+    }
 
     optional<value> get(symbol_id name) const;
     void set(symbol_id name, const value& v);

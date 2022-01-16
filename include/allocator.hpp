@@ -33,7 +33,7 @@
 namespace fn {
 
 class allocator {
-private:
+public:
     u64 mem_usage;
     u64 count;
     // gc is invoked when mem_usage > collect_threshold. collect_threshold is
@@ -62,12 +62,8 @@ private:
     // - remove the mark from marked objects
     void sweep();
 
-public:
     allocator(istate* I);
     ~allocator();
-    // TODO: implement in allocator.cpp
-    u64 memory_used() const;
-    u32 num_objects() const;
 
     // invoke the gc if enough memory is used
     void collect();
@@ -80,6 +76,8 @@ public:
 void alloc_string(allocator* alloc, value* where, u32 size);
 void alloc_string(allocator* alloc, value* where, const string& str);
 void alloc_cons(allocator* alloc, value* where, value hd, value tl);
+void alloc_sub_stub(allocator* alloc, function_stub* where);
+void alloc_empty_fun(allocator* alloc, value* where);
 
 }
 

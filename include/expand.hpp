@@ -54,6 +54,7 @@ constant_id writeu8(function_tree* dest, u8 u);
 constant_id writeu16(function_tree* dest, u16 u);
 void compile_const(function_tree* dest, constant_id cid);
 
+function_tree* init_function_tree(istate* S, function_stub* stub);
 void free_function_tree(function_tree* ft);
 
 struct expander {

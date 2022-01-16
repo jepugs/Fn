@@ -12,15 +12,6 @@
 
 namespace fn {
 
-// each chunk stores a linked list of chunk_source_info objects. To find the
-// source_loc associated to an address, we search for the smallest end_addr
-// greater than the address.
-
-struct chunk_source_info {
-    u32 start_addr;
-    source_loc loc;
-    chunk_source_info* prev;
-};
 
 /// instruction opcodes
 

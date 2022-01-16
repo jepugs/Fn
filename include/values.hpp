@@ -21,10 +21,6 @@ struct fn_cons;
 struct fn_table;
 struct fn_function;
 
-// forward declarations for function_stub
-struct code_chunk;
-struct fn_handle;
-
 // symbols in fn are represented by a 32-bit unsigned ids
 struct symtab_entry {
     symbol_id id;

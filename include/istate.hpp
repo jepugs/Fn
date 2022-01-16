@@ -23,14 +23,14 @@ struct global_env;
 struct istate {
     allocator* alloc;
     symbol_table* symtab;
-    table<symbol_id,fn_namespace> globals;   // all loaded namespaces
+    table<symbol_id,fn_namespace*> globals;  // all loaded namespaces
     table<symbol_id,value> by_guid;          // all globals, indexed by GUID
     symbol_id ns_id;                         // current namespace ID
     fn_namespace* ns;                        // current namespace
     u32 pc;                                  // program counter
     value stack[STACK_SIZE];
-    value* stack_base;                       // points inside stack
-    value* stack_top;
+    u32 bp;                                  // base ptr
+    u32 sp;                                  // stack ptr (rel to stack bottom)
     open_upvalue* uv_head;                   // open upvalues on the stack
     // error handling
     bool err_happened;
@@ -42,7 +42,8 @@ struct istate {
 istate* init_istate();
 void free_istate(istate*);
 
-void ierror(istate* S, const char* message);
+//void ierror(istate* S, const char* message);
+void ierror(istate* S, const string& message);
 
 void push(istate* S, value v);
 void pop(istate* S);
@@ -79,9 +80,12 @@ void call(istate* S, u32 n);
 // push a function with an newly-created, empty function stub. This is used
 // during function compilation to ensure the function stub is visible to the
 // compiler while the function is being created.
-void push_empty_fun();
+void push_empty_fun(istate* S);
 // push a foreign function by that wraps the provided function pointer
-void push_foreign_fun(void (*foreign)(istate*));
+void push_foreign_fun(istate* S, void (*foreign)(istate*));
+
+// print out the top of the stack to stdout
+void print_top(istate* S);
 
 }
 

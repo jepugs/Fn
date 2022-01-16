@@ -6,12 +6,8 @@
 
 namespace fn {
 
-struct vm_thread;
-struct root_stack;
-
 struct fn_handle {
-    vm_thread* vm;
-    root_stack* stack;
+    istate* S;
 
     // used in error generation
     string func_name;

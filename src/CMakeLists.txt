@@ -4,8 +4,8 @@ add_library(fn_lib OBJECT
   #compile.cpp
   expand.cpp
   #ffi/builtin.cpp
-  ffi/fn_handle.cpp
   #interpret.cpp
+  istate.cpp
   llir.cpp
   #log.cpp
   obj.cpp
@@ -13,7 +13,7 @@ add_library(fn_lib OBJECT
   parse.cpp
   scan.cpp
   values.cpp
-  #vm.cpp
+  vm.cpp
   )
 
 target_include_directories(fn_lib PUBLIC

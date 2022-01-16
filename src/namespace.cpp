@@ -2,10 +2,6 @@
 
 namespace fn {
 
-fn_namespace::fn_namespace(symbol_id name)
-    : name{name} {
-}
-
 optional<value> fn_namespace::get(symbol_id sym) const {
     return defs.get(sym);
 }
@@ -30,41 +26,6 @@ forward_list<symbol_id> fn_namespace::macro_names() const {
     return macros.keys();
 }
 
-
-global_env::global_env(symbol_table* use_symtab)
-    : symtab{use_symtab}
-    , builtin_id{symtab->intern("fn/builtin")}
-    , import_builtin{false} {
-    create_ns(builtin_id);
-    import_builtin=true;
-}
-
-global_env::~global_env() {
-    for (auto k : ns_table.keys()) {
-        delete *ns_table.get(k);
-    }
-}
-
-symbol_table* global_env::get_symtab() {
-    return symtab;
-}
-
-optional<fn_namespace*> global_env::get_ns(symbol_id name) {
-    return ns_table.get(name);
-}
-
-fn_namespace* global_env::create_ns(symbol_id name) {
-    auto x = ns_table.get(name);
-    if (x.has_value()) {
-        delete *x;
-    }
-    auto res = new fn_namespace(name);
-    ns_table.insert(name, res);
-    if (import_builtin) {
-        copy_defs(*symtab, *res, **ns_table.get(builtin_id), "");
-    }
-    return res;
-}
 
 void ns_id_destruct(const string& ns_id, string* prefix, string* stem) {
     if (ns_id.size() == 0) {

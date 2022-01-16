@@ -2,6 +2,7 @@
 #ifndef __FN_OBJ_HPP
 #define __FN_OBJ_HPP
 
+#include "array.hpp"
 #include "base.hpp"
 #include "table.hpp"
 
@@ -134,6 +135,15 @@ struct source_info {
     source_info* prev;
 };
 
+
+// linked list used to associate instructions to source code locations
+struct code_info {
+    u32 start_addr;
+    source_loc loc;
+    code_info* prev;
+};
+
+
 // a stub describing a function
 struct function_stub {
     // function stubs are managed by the garbage collector
@@ -165,6 +175,7 @@ struct function_stub {
     // metadata
     string* name;
     string* filename;
+    code_info* ci_head;
 };
 
 // represents a function value
@@ -173,7 +184,6 @@ struct alignas (OBJ_ALIGN) fn_function {
     // when an upvalue is mutated, the function is added to this GC list
     gc_header* updated_list;
     function_stub* stub;
-    local_address num_upvals;
     upvalue_cell** upvals;
     value* init_vals;
 };

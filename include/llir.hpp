@@ -1,6 +1,7 @@
 #ifndef __FN_LLIR_HPP
 #define __FN_LLIR_HPP
 
+#include "array.hpp"
 #include "base.hpp"
 #include "bytes.hpp"
 #include "values.hpp"
@@ -209,7 +210,7 @@ void free_llir_form(llir_form* obj);
 llir_form* copy_llir_form(llir_form* src, llir_form* dest=nullptr);
 
 // for debugging/testing
-string print_llir(llir_form* f, symbol_table& st, code_chunk* chunk);
+string print_llir(llir_form* f, symbol_table& st, dyn_array<value>* const_arr);
 
 }
 
