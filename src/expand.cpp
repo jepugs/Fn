@@ -8,7 +8,9 @@ namespace fn {
 
 using namespace fn_parse;
 
-constant_id add_const(function_tree* ft, value v) {
+// Note: the istate* is currently unused, but when we eventually move array
+// management into the allocator, this will change.
+constant_id add_const(istate* S, function_tree* ft, value v) {
     auto x = ft->const_lookup.get(v);
     if (x.has_value()) {
         return *x;
@@ -17,14 +19,14 @@ constant_id add_const(function_tree* ft, value v) {
     return ft->stub->const_arr.size - 1;
 }
 
-constant_id add_number_const(function_tree* ft, f64 num) {
-    return add_const(ft, vbox_number(num));
+constant_id add_number_const(istate* S, function_tree* ft, f64 num) {
+    return add_const(S, ft, vbox_number(num));
 }
 
-constant_id add_string_const(function_tree* ft, const string& str) {
-    push_string(ft->S, str);
-    auto res = add_const(ft, peek(ft->S));
-    pop(ft->S);
+constant_id add_string_const(istate* S, function_tree* ft, const string& str) {
+    push_string(S, str);
+    auto res = add_const(S, ft, peek(S));
+    pop(S);
     return res;
 }
 
@@ -49,41 +51,40 @@ static void push_quoted(istate* S, ast_form* form) {
     }
 }
 
-constant_id add_quoted_const(function_tree* ft, ast_form* form) {
-    push_quoted(ft->S, form);
-    auto res = add_const(ft, peek(ft->S));
-    pop(ft->S);
+constant_id add_quoted_const(istate* S, function_tree* ft, ast_form* form) {
+    push_quoted(S, form);
+    auto res = add_const(S, ft, peek(S));
+    pop(S);
     return res;
 }
 
-function_tree* add_sub_fun(function_tree* ft) {
+function_tree* add_sub_fun(istate* S, function_tree* ft) {
     auto fid = ft->stub->sub_funs.size;
-    alloc_sub_stub(ft->S->alloc, ft->stub);
-    auto sub_tree = init_function_tree(ft->S, ft->stub->sub_funs[fid]);
+    alloc_sub_stub(S->alloc, ft->stub);
+    auto sub_tree = init_function_tree(S, ft->stub->sub_funs[fid]);
     ft->sub_funs.push_back(sub_tree);
     return sub_tree;
 }
 
 function_tree* init_function_tree(istate* S, function_stub* stub) {
     auto res = new function_tree;
-    res->S = S;
     res->stub = stub;
     res->body = nullptr;
     return res;
 }
 
-void free_function_tree(function_tree* ft) {
+void free_function_tree(istate* S, function_tree* ft) {
     if (ft->body != nullptr) {
         free_llir_form(ft->body);
     }
     for (auto s : ft->sub_funs) {
-        free_function_tree(s);
+        free_function_tree(S, s);
     }
     delete ft;
 }
 
 bool expander::is_macro(symbol_id sym) {
-    return dest->S->ns->get_macro(sym).has_value();
+    return S->ns->get_macro(sym).has_value();
 }
 
 bool expander::is_operator_list(const string& op_name, ast_form* ast) {
@@ -478,12 +479,12 @@ llir_form* expander::expand_dollar_fn(const source_loc& loc,
     }
 
     // expand the thing in a new subtree
-    auto sub_tree = add_sub_fun(dest);
+    auto sub_tree = add_sub_fun(S, ft);
     expander_meta meta2 = {.max_dollar_sym=-1};
-    auto tmp = dest;
-    dest = sub_tree;
+    auto tmp = ft;
+    ft = sub_tree;
     sub_tree->body = expand_meta(lst[1], &meta2);
-    dest = tmp;
+    ft = tmp;
     if (!sub_tree->body) {
         return nullptr;
     }
@@ -494,7 +495,7 @@ llir_form* expander::expand_dollar_fn(const source_loc& loc,
     sub_tree->stub->num_opt = 0;
 
     // function id
-    auto fid = dest->sub_funs.size - 1;
+    auto fid = ft->sub_funs.size - 1;
     auto res = mk_llir_fn(loc, fid, 0);
     if (m >= 0) {
         // add in the $ symbol in the function body
@@ -541,14 +542,14 @@ llir_fn* expander::expand_sub_fun(const source_loc& loc,
     }
 
     // create a new function stub
-    auto sub_tree = add_sub_fun(dest);
+    auto sub_tree = add_sub_fun(S, ft);
 
-    auto tmp = dest;
-    // set dest so that constants get written to the right place
-    dest = sub_tree;
+    auto tmp = ft;
+    // set ft so that constants get written to the right place
+    ft = sub_tree;
     // expand the body using expand_do
     sub_tree->body = expand_do(loc, body_length, body, meta);
-    dest = tmp;
+    ft = tmp;
     if (!sub_tree->body) {
         return nullptr;
     }
@@ -640,7 +641,7 @@ llir_fn* expander::expand_sub_fun(const source_loc& loc,
     sub_stub->vari = has_var_list;
 
     // function id is its index in the array
-    constant_id fid = dest->sub_funs.size - 1;
+    constant_id fid = ft->sub_funs.size - 1;
     auto res = mk_llir_fn(loc, fid, positional.size - num_req);
     for (u32 i = 0; i < inits.size; ++i) {
         res->inits[i] = inits[i];
@@ -799,7 +800,7 @@ bool expander::is_unquote_splicing(ast_form* ast) {
 llir_form* expander::quasiquote_expand_recur(ast_form* form,
         expander_meta* meta) {
     if (form->kind != ak_list) {
-        auto id = add_quoted_const(dest, form);
+        auto id = add_quoted_const(S, ft, form);
         return (llir_form*)mk_llir_const(form->loc, id);
     } else if (is_operator_list("unquote", form)) {
         if (form->list_length != 2) {
@@ -923,7 +924,7 @@ llir_form* expander::expand_quote(const source_loc& loc,
         e_fault(loc, "quote requires exactly 1 argument.");
         return nullptr;
     }
-    auto id = add_quoted_const(dest, lst[1]);
+    auto id = add_quoted_const(S, ft, lst[1]);
     return (llir_form*)mk_llir_const(loc, id);
 }
 
@@ -1063,7 +1064,7 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
         // return res;
     }
 
-    auto name = (*dest->S->symtab)[sym];
+    auto name = (*S->symtab)[sym];
     // special forms
     if (name == "and") {
         return expand_and(loc, lst->list_length, lst->datum.list, meta);
@@ -1174,15 +1175,15 @@ static void update_dollar_syms(symbol_table* st,
 llir_form* expander::expand_meta(ast_form* ast, expander_meta* meta) {
     switch (ast->kind) {
     case ak_number_atom: {
-        auto c = add_number_const(dest, ast->datum.num);
+        auto c = add_number_const(S, ft, ast->datum.num);
         return (llir_form*)mk_llir_const(ast->loc, c);
     }
     case ak_string_atom: {
-        auto c = add_string_const(dest, *ast->datum.str);
+        auto c = add_string_const(S, ft, *ast->datum.str);
         return (llir_form*)mk_llir_const(ast->loc, c);
     }
     case ak_symbol_atom:
-        update_dollar_syms(dest->S->symtab, ast->datum.sym, meta);
+        update_dollar_syms(S->symtab, ast->datum.sym, meta);
         return (llir_form*)mk_llir_var(ast->loc, ast->datum.sym);
     case ak_list:
         return expand_list(ast, meta);
@@ -1192,32 +1193,33 @@ llir_form* expander::expand_meta(ast_form* ast, expander_meta* meta) {
 }
 
 symbol_id expander::intern(const string& str) {
-    return fn::intern(dest->S, str);
+    return fn::intern(S, str);
 }
 
 symbol_id expander::gensym() {
-    return dest->S->symtab->gensym();
+    return S->symtab->gensym();
 }
 
 string expander::symbol_name(symbol_id name) {
-    return dest->S->symtab->symbol_name(name);
+    return S->symtab->symbol_name(name);
 }
 
 bool expander::is_keyword(symbol_id sym) const {
-    auto name = dest->S->symtab->symbol_name(sym);
+    auto name = S->symtab->symbol_name(sym);
     return name[0] == ':';
 }
 
 void expander::e_fault(const source_loc& loc, const string& msg) {
     // FIXME: incorporate source location here
-    ierror(dest->S, msg);
+    ierror(S, msg);
 }
 
-void expander::expand(function_tree* ft, ast_form* ast) {
-    dest = ft;
+void expand(istate* S, function_tree* ft, ast_form* ast) {
+    expander ex{S, ft};
+    ft = ft;
     expander_meta m;
     m.max_dollar_sym = -1;
-    ft->body = expand_meta(ast, &m);
+    ft->body = ex.expand_meta(ast, &m);
 }
 
 }

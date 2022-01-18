@@ -46,6 +46,20 @@ static u16 read_short(dyn_array<u8>& code, u32 ip) {
     return *((u16*)&code[ip]);
 }
 
+static void close_upvals(istate* S, u32 num_slots) {
+    auto stop = S->sp - num_slots;
+    // FIXME: assert num_slots <= sp
+    auto u = S->uv_head;
+    while (u != nullptr) {
+        if (u->cell->datum.pos < stop) {
+            break;
+        } else {
+            u->cell->closed = true;
+            u->cell->datum.val = S->stack[u->cell->datum.pos];
+        }
+    }
+}
+
 void execute_fun(istate* S, fn_function* fun) {
     auto stub = fun->stub;
     auto& code = fun->stub->code;
@@ -123,8 +137,11 @@ void execute_fun(istate* S, fn_function* fun) {
             break;
 
         case OP_RETURN:
-            set(S, 0, peek(S));
+            close_upvals(S, S->bp);
+            set(S, -1, peek(S));
+            S->sp = S->bp;
             // TODO: write the rest of these
+            return;
             break;
         }
     }
@@ -512,131 +529,6 @@ void execute_fun(istate* S, fn_function* fun) {
 //         status = vs_fault;
 //     }
 
-// }
-
-// disassemble a single instruction, writing output to out
-void disassemble_instr(function_stub* stub, code_address ip, std::ostream& out) {
-    u8 instr = stub->code[ip];
-    switch (instr) {
-    case OP_NOP:
-        out << "nop";
-        break;
-    case OP_POP:
-        out << "pop";
-        break;
-    case OP_LOCAL:
-        out << "local " << (i32)stub->code[ip+1];
-        break;
-    case OP_SET_LOCAL:
-        out << "set-local " << (i32)stub->code[ip+1];
-        break;
-    case OP_COPY:
-        out << "copy " << (i32)stub->code[ip+1];
-        break;
-    case OP_UPVALUE:
-        out << "upvalue " << (i32)stub->code[ip+1];
-        break;
-    case OP_SET_UPVALUE:
-        out << "set-upvalue " << (i32)stub->code[ip+1];
-        break;
-    case OP_CLOSURE:
-        out << "closure " << read_short(stub->code, ip+1);
-        break;
-    case OP_CLOSE:
-        out << "close " << (i32)((stub->code[ip+1]));;
-        break;
-    case OP_GLOBAL:
-        out << "global";
-        break;
-    case OP_SET_GLOBAL:
-        out << "set-global";
-        break;
-    case OP_BY_GUID:
-        out << "by-guid";
-        break;
-    case OP_CONST:
-        out << "const " << read_short(stub->code,ip+1);
-        break;
-    case OP_NIL:
-        out << "nil";
-        break;
-    case OP_FALSE:
-        out << "false";
-        break;
-    case OP_TRUE:
-        out << "true";
-        break;
-    case OP_OBJ_GET:
-        out << "obj-get";
-        break;
-    case OP_OBJ_SET:
-        out << "obj-set";
-        break;
-    case OP_MACRO:
-        out << "macro";
-        break;
-    case OP_SET_MACRO:
-        out << "set-macro";
-        break;
-    case OP_METHOD:
-        out << "method";
-        break;
-    case OP_IMPORT:
-        out << "import";
-        break;
-    case OP_JUMP:
-        out << "jump " << (i32)(static_cast<i16>(read_short(stub->code,ip+1)));
-        break;
-    case OP_CJUMP:
-        out << "cjump " << (i32)(static_cast<i16>(read_short(stub->code,ip+1)));
-        break;
-    case OP_CALL:
-        out << "call " << (i32)((stub->code[ip+1]));;
-        break;
-    case OP_TCALL:
-        out << "tcall " << (i32)((stub->code[ip+1]));;
-        break;
-    case OP_APPLY:
-        out << "apply " << (i32)((stub->code[ip+1]));;
-        break;
-    case OP_TAPPLY:
-        out << "tapply " << (i32)((stub->code[ip+1]));;
-        break;
-    case OP_RETURN:
-        out << "return";
-        break;
-    case OP_TABLE:
-        out << "table";
-        break;
-
-    default:
-        out << "<unrecognized opcode: " << (i32)instr << ">";
-        break;
-    }
-}
-
-// void disassemble(const symbol_table& symtab, const code_chunk& code, std::ostream& out) {
-//     u32 ip = 0;
-//     // TODO: annotate with line number
-//     while (ip < code.code.size) {
-//         u8 instr = code.read_byte(ip);
-//         // write line
-//         out << std::setw(6) << ip << "  ";
-//         disassemble_instr(code, ip, out);
-
-//         // additional information
-//         if (instr == OP_CONST) {
-//             // write constant value
-//             out << " ; "
-//                 << v_to_string(code.get_constant(code.read_short(ip+1)),
-//                         &symtab);
-//         } else if (instr == OP_CLOSURE) {
-//             out << " ; addr = " << code.get_function(code.read_short(ip+1))->addr;
-//         }
-
-//         out << "\n";
-//         ip += instr_width(instr);
-//     }
 // }
 
 }

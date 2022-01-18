@@ -1,7 +1,7 @@
 add_library(fn_lib OBJECT
   allocator.cpp
   base.cpp
-  #compile.cpp
+  compile2.cpp
   expand.cpp
   #ffi/builtin.cpp
   #interpret.cpp

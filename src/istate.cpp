@@ -102,8 +102,9 @@ void push_false(istate* S) {
 void pop_to_list(istate* S, u32 n) {
     push(S, V_EMPTY);
     for (u32 i = 0; i < n; ++i) {
-        alloc_cons(S->alloc, &S->stack[S->sp - 1], S->stack[S->sp - 2],
+        alloc_cons(S->alloc, &S->stack[S->sp - 2], S->stack[S->sp - 2],
                 S->stack[S->sp - 1]);
+        pop(S);
     }
 }
 

@@ -1,5 +1,6 @@
 #include "base.hpp"
 #include "bytes.hpp"
+#include "compile2.hpp"
 //#include "ffi/builtin.hpp"
 #include "table.hpp"
 #include "values.hpp"
@@ -169,11 +170,14 @@ int main(int argc, char** argv) {
 
     push_empty_fun(S);
     auto ft = init_function_tree(S, vfunction(peek(S))->stub);
-    expander ex;
-    ex.expand(ft, form);
-    std::cout << print_llir(ft->body, *S->symtab, &ft->stub->const_arr);
+    compile_form(S, form);
+    disassemble_top(S);
+    print_top(S);
+    pop(S);
+    call(S, 0);
+    print_top(S);
     free_ast_form(form);
-    free_function_tree(ft);
+    free_function_tree(S, ft);
     free_istate(S);
 
     // logger log{&std::cerr, &std::cout};

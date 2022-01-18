@@ -12,8 +12,7 @@ constexpr u32 STACK_SIZE = 256;
 
 // list of stack values that correspond to upvalues
 struct open_upvalue {
-    u32 index;
-    upvalue_cell* uv;
+    upvalue_cell* cell;
     open_upvalue* next;
 };
 

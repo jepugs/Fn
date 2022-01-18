@@ -39,8 +39,7 @@ void allocator::dealloc(gc_header* o) {
     case GC_TYPE_STRING:
         mem_usage -= ((fn_string*)o)->size;
         mem_usage -= sizeof(fn_string);
-        free(((fn_string*)o)->data);
-        delete (fn_string*)o;
+        free(o);
         break;
     case GC_TYPE_CONS:
         mem_usage -= sizeof(fn_cons);
