@@ -384,7 +384,7 @@ static void alloc_upval(allocator* alloc, upvalue_cell** where, u32 pos) {
     alloc->collect();
     auto res = new upvalue_cell;
     init_gc_header(&res->h, GC_TYPE_UPVALUE);
-    res->closed = true;
+    res->closed = false;
     res->datum.pos = pos;
     *where = res;
     alloc->mem_usage+= sizeof(upvalue_cell);

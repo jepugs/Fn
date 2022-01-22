@@ -96,7 +96,7 @@ private:
     bool is_do_inline(ast_form* ast);
     bool is_let(ast_form* ast);
     bool is_letfn(ast_form* ast);
-    // lst includes the do symbol at 0
+    // lst doesn't include the do symbol at 0
     void flatten_do_body(u32 length,
             ast_form** lst,
             dyn_array<ast_form*>* buf,
@@ -113,6 +113,10 @@ private:
     bool expand_do_recur(u32 length,
             ast_form** ast_body,
             dyn_array<llir_form*>* buf,
+            expander_meta* meta);
+    llir_form* expand_body(const source_loc& loc,
+            u32 length,
+            ast_form** lst,
             expander_meta* meta);
     llir_form* expand_do(const source_loc& loc,
             u32 length,

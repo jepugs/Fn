@@ -282,10 +282,10 @@ void expander::flatten_do_body(u32 length,
         ast_form** lst,
         dyn_array<ast_form*>* buf,
         expander_meta* meta) {
-    for (u32 i = 1; i < length; ++i) {
+    for (u32 i = 0; i < length; ++i) {
         if (is_do_inline(lst[i])) {
             // this will just splice in the other forms
-            flatten_do_body(lst[i]->list_length, lst[i]->datum.list, buf, meta);
+            flatten_do_body(lst[i]->list_length-1, &lst[i]->datum.list[1], buf, meta);
         } else {
             buf->push_back(lst[i]);
         }
@@ -433,23 +433,29 @@ llir_form* expander::expand_do(const source_loc& loc,
         u32 length,
         ast_form** lst,
         expander_meta* meta) {
-    if (length == 1) {
+    return expand_body(loc, length - 1, &lst[1], meta);
+}
+
+llir_form* expander::expand_body(const source_loc& loc,
+        u32 length,
+        ast_form** lst,
+        expander_meta* meta) {
+    if (length == 0) {
         return (llir_form*)mk_llir_var(loc, intern("nil"));
-    } else if (length == 2) {
-        return expand_meta(lst[1], meta);
+    } else if (length == 1) {
+        return expand_meta(lst[0], meta);
     }
 
     dyn_array<ast_form*> ast_buf;
     flatten_do_body(length, lst, &ast_buf, meta);
 
     // check if first form is let or letfn to avoid wrapping with an empty with
-    if (length == 0) {
-        return (llir_form*)mk_llir_var(loc, intern("nil"));
-    } else if (is_let(ast_buf[0])) {
+    if (is_let(ast_buf[0])) {
         return expand_let_in_do(ast_buf.size, ast_buf.data, meta);
     } else if (is_letfn(ast_buf[0])) {
         return expand_letfn_in_do(ast_buf.size, ast_buf.data, meta);
     }
+
     dyn_array<llir_form*> llir_buf;
     if (!expand_do_recur(ast_buf.size, ast_buf.data, &llir_buf, meta)) {
         return nullptr;
@@ -548,7 +554,7 @@ llir_fn* expander::expand_sub_fun(const source_loc& loc,
     // set ft so that constants get written to the right place
     ft = sub_tree;
     // expand the body using expand_do
-    sub_tree->body = expand_do(loc, body_length, body, meta);
+    sub_tree->body = expand_body(loc, body_length, body, meta);
     ft = tmp;
     if (!sub_tree->body) {
         return nullptr;
@@ -664,7 +670,7 @@ llir_form* expander::expand_fn(const source_loc& loc,
         return nullptr;
     }
 
-    return (llir_form*)expand_sub_fun(loc, lst[1], length-1, &lst[1], meta);
+    return (llir_form*)expand_sub_fun(loc, lst[1], length-2, &lst[2], meta);
 }
 
 llir_form* expander::expand_if(const source_loc& loc,
