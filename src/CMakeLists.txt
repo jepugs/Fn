@@ -14,7 +14,7 @@ add_library(fn_lib OBJECT
   )
 
 target_include_directories(fn_lib PUBLIC
-  "${PROJECT_SOURCE_DIR}/include"
+  "${CMAKE_CURRENT_SOURCE_DIR}"
   )
 
 add_executable(fn main.cpp)
