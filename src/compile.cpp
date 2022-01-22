@@ -1,4 +1,4 @@
-#include "compile2.hpp"
+#include "compile.hpp"
 
 #include "vm.hpp"
 

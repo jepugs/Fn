@@ -1,6 +1,6 @@
 #include "base.hpp"
 #include "bytes.hpp"
-#include "compile2.hpp"
+#include "compile.hpp"
 //#include "ffi/builtin.hpp"
 #include "table.hpp"
 #include "values.hpp"

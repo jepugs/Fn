@@ -1,3 +1,6 @@
+#ifndef __FN_COMPILE_HPP
+#define __FN_COMPILE_HPP
+
 #include "array.hpp"
 #include "base.hpp"
 #include "bytes.hpp"
@@ -89,3 +92,5 @@ void disassemble_top(istate* S, bool recur=false);
 
 
 }
+
+#endif
