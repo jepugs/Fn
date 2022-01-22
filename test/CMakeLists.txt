@@ -14,7 +14,6 @@ endfunction()
 
 if (BOOST_FOUND)
   # build tests
-  add_fn_test("interpret.test.cpp")
   add_fn_test("parse.test.cpp")
   add_fn_test("scan.test.cpp")
 else()
