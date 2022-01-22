@@ -10,12 +10,6 @@ namespace fn {
 // size used for the istate stack
 constexpr u32 STACK_SIZE = 256;
 
-// list of stack values that correspond to upvalues
-struct open_upvalue {
-    upvalue_cell* cell;
-    open_upvalue* next;
-};
-
 struct allocator;
 struct global_env;
 
@@ -30,7 +24,7 @@ struct istate {
     value stack[STACK_SIZE];
     u32 bp;                                  // base ptr
     u32 sp;                                  // stack ptr (rel to stack bottom)
-    open_upvalue* uv_head;                   // open upvalues on the stack
+    dyn_array<upvalue_cell*> open_upvals;    // open upvalues on the stack
     // error handling
     bool err_happened;
     // this is nullptr unless err_happened == true, in which case it must be
@@ -81,7 +75,10 @@ void call(istate* S, u32 n);
 // compiler while the function is being created.
 void push_empty_fun(istate* S);
 // push a foreign function by that wraps the provided function pointer
-void push_foreign_fun(istate* S, void (*foreign)(istate*));
+void push_foreign_fun(istate* S,
+        void (*foreign)(istate*),
+        u32 num_args,
+        bool vari);
 
 // print out the top of the stack to stdout
 void print_top(istate* S);

@@ -118,8 +118,8 @@ struct upvalue_cell {
     gc_header h;
     bool closed;
     union {
-        stack_address pos;
-        value val;
+        u32 pos;    // position on the stack when open
+        value val;  // value when closed
     } datum;
 };
 

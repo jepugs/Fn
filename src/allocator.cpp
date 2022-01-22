@@ -1,6 +1,6 @@
 #include "allocator.hpp"
 
-#include <algorithm>
+#include "istate.hpp"
 #include <iostream>
 
 //#define GC_DEBUG
@@ -313,13 +313,16 @@ void alloc_cons(allocator* alloc, value* where, value hd, value tl) {
     add_obj(alloc, &res->h);
 }
 
-static function_stub* mk_func_stub() {
+static function_stub* mk_func_stub(symbol_id ns_id, fn_namespace* ns) {
     auto res = new function_stub;
     init_gc_header(&res->h, GC_TYPE_FUN_STUB);
     res->num_params = 0;
     res->num_opt = 0;
+    res->num_upvals = 0;
     res->vari = false;
     res->foreign = nullptr;
+    res->ns_id = ns_id;
+    res->ns = ns;
     // we can't actually set up the ns info here, so we leave it uninitialized
     res->name = nullptr;
     res->filename = nullptr;
@@ -329,25 +332,110 @@ static function_stub* mk_func_stub() {
 
 void alloc_sub_stub(allocator* alloc, function_stub* where) {
     alloc->collect();
-    auto res = mk_func_stub();
+    auto res = mk_func_stub(where->ns_id, where->ns);
     where->sub_funs.push_back(res);
     alloc->mem_usage += sizeof(function_stub);
     ++alloc->count;
     add_obj(alloc, &res->h);
 }
 
-void alloc_empty_fun(allocator* alloc, value* where) {
+void alloc_empty_fun(allocator* alloc,
+        value* where,
+        symbol_id ns_id,
+        fn_namespace* ns) {
     alloc->collect();
     auto res = new fn_function;
     init_gc_header(&res->h, GC_TYPE_FUNCTION);
     res->init_vals = nullptr;
     res->upvals = nullptr;
-    res->stub = mk_func_stub();
+    res->stub = mk_func_stub(ns_id, ns);
     *where = vbox_function(res);
     alloc->mem_usage += sizeof(function_stub) + sizeof(fn_function);
     alloc->count += 2;
     add_obj(alloc, &res->h);
     add_obj(alloc, &res->stub->h);
+}
+
+void alloc_foreign_fun(allocator* alloc,
+        value* where,
+        void (*foreign)(istate*),
+        u32 num_params,
+        bool vari,
+        symbol_id ns_id,
+        fn_namespace* ns) {
+    alloc->collect();
+    auto res = new fn_function;
+    init_gc_header(&res->h, GC_TYPE_FUNCTION);
+    res->init_vals = nullptr;
+    res->upvals = nullptr;
+    res->stub = mk_func_stub(ns_id, ns);
+    res->stub->foreign = foreign;
+    res->stub->num_params = num_params;
+    res->stub->num_opt = 0;
+    res->stub->vari = vari;
+    *where = vbox_function(res);
+    alloc->mem_usage += sizeof(function_stub) + sizeof(fn_function);
+    alloc->count += 2;
+    add_obj(alloc, &res->h);
+    add_obj(alloc, &res->stub->h);
+}
+
+static void alloc_upval(allocator* alloc, upvalue_cell** where, u32 pos) {
+    alloc->collect();
+    auto res = new upvalue_cell;
+    init_gc_header(&res->h, GC_TYPE_UPVALUE);
+    res->closed = true;
+    res->datum.pos = pos;
+    *where = res;
+    alloc->mem_usage+= sizeof(upvalue_cell);
+    alloc->count += 1;
+    add_obj(alloc, &res->h);
+}
+
+static upvalue_cell* open_upval(istate* S, u32 pos) {
+    for (u32 i = 0; i < S->open_upvals.size; ++i) {
+        if (S->open_upvals[i]->datum.pos == pos) {
+            return S->open_upvals[i];
+        } else if (S->open_upvals[i]->datum.pos > pos) {
+            // insert a new upvalue cell
+            // FIXME: maybe not safe to have nullptr here
+            S->open_upvals.push_back(nullptr);
+            for (u32 j = S->open_upvals.size - 1; j > i; --j) {
+                S->open_upvals[j] = S->open_upvals[j - 1];
+            }
+            alloc_upval(S->alloc, &S->open_upvals[i], pos);
+            return S->open_upvals[i];
+        }
+    }
+    // FIXME: maybe not safe to have nullptr here
+    // add to the end of the list
+    S->open_upvals.push_back(nullptr);
+    alloc_upval(S->alloc, &S->open_upvals[S->open_upvals.size - 1], pos);
+    return S->open_upvals[S->open_upvals.size - 1];
+}
+
+void alloc_fun(istate* S, value* where, fn_function* enclosing,
+        function_stub* stub) {
+    S->alloc->collect();
+    auto res = new fn_function;
+    init_gc_header(&res->h, GC_TYPE_FUNCTION);
+    res->init_vals = new value[stub->num_opt];
+    res->upvals = new upvalue_cell*[stub->num_upvals];
+    res->stub = stub;
+
+    // set up upvalues
+    for (u32 i = 0; i < stub->num_upvals; ++i) {
+        if (stub->upvals_direct[i]) {
+            res->upvals[i] = open_upval(S, S->bp - stub->upvals[i]);
+        } else {
+            res->upvals[i] = enclosing->upvals[stub->upvals[i]];
+        }
+    }
+
+    *where = vbox_function(res);
+    S->alloc->mem_usage += sizeof(fn_function);
+    S->alloc->count += 1;
+    add_obj(S->alloc, &res->h);
 }
 
 }

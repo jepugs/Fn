@@ -618,6 +618,7 @@ llir_fn* expander::expand_sub_fun(const source_loc& loc,
     }
 
     bool has_var_list = false;
+    symbol_id vl_param;
     if (num_pos < len) {
         // at this point, there would have been an error already if anything
         // other than the ampersand symbol was next.
@@ -631,6 +632,7 @@ llir_fn* expander::expand_sub_fun(const source_loc& loc,
             return nullptr;
         } else {
             has_var_list = true;
+            vl_param = lst[num_pos+1]->datum.sym;
         }
     }
 
@@ -639,6 +641,10 @@ llir_fn* expander::expand_sub_fun(const source_loc& loc,
     sub_stub->num_params = positional.size;
     sub_stub->num_opt = positional.size - num_req;
     sub_stub->vari = has_var_list;
+    sub_tree->params = positional;
+    if (has_var_list) {
+        sub_tree->params.push_back(vl_param);
+    }
 
     // function id is its index in the array
     constant_id fid = ft->sub_funs.size - 1;
@@ -658,7 +664,7 @@ llir_form* expander::expand_fn(const source_loc& loc,
         return nullptr;
     }
 
-    return (llir_form*)expand_sub_fun(loc, lst[0], length-1, &lst[1], meta);
+    return (llir_form*)expand_sub_fun(loc, lst[1], length-1, &lst[1], meta);
 }
 
 llir_form* expander::expand_if(const source_loc& loc,
@@ -1216,7 +1222,6 @@ void expander::e_fault(const source_loc& loc, const string& msg) {
 
 void expand(istate* S, function_tree* ft, ast_form* ast) {
     expander ex{S, ft};
-    ft = ft;
     expander_meta m;
     m.max_dollar_sym = -1;
     ft->body = ex.expand_meta(ast, &m);

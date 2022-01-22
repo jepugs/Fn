@@ -4,6 +4,7 @@
 //#include "ffi/builtin.hpp"
 #include "table.hpp"
 #include "values.hpp"
+#include "vm.hpp"
 
 #include "expand.hpp"
 
@@ -150,6 +151,22 @@ void process_args(int argc, char** argv, interpreter_options* opt) {
     opt->args_start = i+1;
 }
 
+static void fn_add(istate* S) {
+    auto lst = peek(S);
+    auto res = 0;
+    while (lst != V_EMPTY) {
+        // FIXME: check type
+        if (!vis_number(vcons(lst)->head)) {
+            ierror(S, "+ arguments must be numbers");
+            return;
+        }
+        res += vnumber(vcons(lst)->head);
+        lst = vcons(lst)->tail;
+    }
+    pop(S);
+    push_number(S, res);
+}
+
 int main(int argc, char** argv) {
     interpreter_options opt;
     process_args(argc, argv, &opt);
@@ -163,21 +180,36 @@ int main(int argc, char** argv) {
     }
 
     auto S = init_istate();
+    push_foreign_fun(S, fn_add, 0, true);
+    mutate_global(S, intern(S, "+"), peek(S));
+    pop(S);
+
     scanner sc{&std::cin};
     fault err;
     bool resumable;
-    auto form = parse_next_form(&sc, S->symtab, &resumable, &err);
 
-    push_empty_fun(S);
-    auto ft = init_function_tree(S, vfunction(peek(S))->stub);
-    compile_form(S, form);
-    disassemble_top(S);
-    print_top(S);
-    pop(S);
-    call(S, 0);
-    print_top(S);
-    free_ast_form(form);
-    free_function_tree(S, ft);
+    auto form = parse_next_form(&sc, S->symtab, &resumable, &err);
+    while (form != nullptr) {
+        compile_form(S, form);
+        free_ast_form(form);
+        if (S->err_happened) {
+            std::cout << "Error: " << S->err_msg << '\n';
+            free_istate(S);
+            return -1;
+        }
+        disassemble_top(S);
+        print_top(S);
+        pop(S);
+        call(S, 0);
+        if (S->err_happened) {
+            std::cout << "Error: " << S->err_msg << '\n';
+            free_istate(S);
+            return -1;
+        }
+        print_top(S);
+        pop(S);
+        form = parse_next_form(&sc, S->symtab, &resumable, &err);
+    }
     free_istate(S);
 
     // logger log{&std::cerr, &std::cout};

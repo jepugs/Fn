@@ -2,6 +2,7 @@
 
 #include "config.h"
 
+#include "allocator.hpp"
 #include "bytes.hpp"
 #include "namespace.hpp"
 #include "ffi/fn_handle.hpp"
@@ -46,18 +47,39 @@ static u16 read_short(dyn_array<u8>& code, u32 ip) {
     return *((u16*)&code[ip]);
 }
 
-static void close_upvals(istate* S, u32 num_slots) {
-    auto stop = S->sp - num_slots;
-    // FIXME: assert num_slots <= sp
-    auto u = S->uv_head;
-    while (u != nullptr) {
-        if (u->cell->datum.pos < stop) {
+
+static void close_upvals(istate* S, u32 min_addr) {
+    u32 i = S->open_upvals.size;
+    while (i > 0) {
+        auto u = S->open_upvals[i-1];
+        if (u->datum.pos < min_addr) {
             break;
-        } else {
-            u->cell->closed = true;
-            u->cell->datum.val = S->stack[u->cell->datum.pos];
         }
+        auto val = S->stack[u->datum.pos];
+        u->datum.val = val;
+        u->closed = true;
+        --i;
     }
+    S->open_upvals.resize(i);
+}
+
+
+// function creation requires initvals to be present on the stack. After popping
+// initvals, the new function is pushed to the top of the stack. Upvalues are
+// opened or copied from the enclosing function as needed.
+static void create_fun(istate* S, fn_function* enclosing, constant_id fid) {
+    auto stub = enclosing->stub->sub_funs[fid];
+    push(S, V_NIL);
+    // this sets up upvalues, and initializes initvals to nil
+    alloc_fun(S, &S->stack[S->sp - 1], enclosing, stub);
+    auto fun = vfunction(S->stack[S->sp - 1]);
+    // set up initvals
+    for (u32 i = 0; i < stub->num_opt; ++i) {
+        fun->init_vals[i] = S->stack[S->sp - 1 - stub->num_opt + i];
+    }
+    // move the function to the appropriate place on the stack
+    S->stack[S->sp - 1 - stub->num_opt] = peek(S);
+    S->sp = S->sp - stub->num_opt;
 }
 
 void execute_fun(istate* S, fn_function* fun) {
@@ -70,14 +92,14 @@ void execute_fun(istate* S, fn_function* fun) {
         case OP_NOP:
             break;
         case OP_POP:
-            pop(S);
+            --S->sp;
             break;
         case OP_LOCAL:
             push(S, get(S, code[S->pc++]));
             break;
         case OP_SET_LOCAL:
             set(S, code[S->pc++], peek(S));
-            pop(S);
+            --S->sp;
             break;
         case OP_COPY:
             push(S, peek(S, code[S->pc++]));
@@ -98,49 +120,78 @@ void execute_fun(istate* S, fn_function* fun) {
             } else {
                 S->stack[u->datum.pos] = peek(S);
             }
-            pop(S);
+            --S->sp;
         }
             break;
         case OP_CLOSURE: {
             auto fid = read_short(code, S->pc);
             S->pc += 2;
-            // FIXME: implement
-            push_nil(S);
-            //init_closure(S, fid);
+            create_fun(S, fun, fid);
         }
             break;
         case OP_CLOSE: {
             auto num = code[S->pc++];
             // computes highest stack address to close
             auto new_sp = S->sp - num;
-            // FIXME: implement
-            //close_upvals(S, new_sp);
+            close_upvals(S, new_sp);
             S->sp = new_sp;
         }
             break;
         case OP_GLOBAL: {
             auto sym = vsymbol(peek(S));
             // this is ok since symbols aren't GC'd
-            pop(S);
-            push_global(S, sym);
+            --S->sp;
+            if (!push_global(S, sym)) {
+                ierror(S, "Failed to find global variable.");
+                return;
+            }
         }
             break;
         case OP_SET_GLOBAL:
             mutate_global(S, vsymbol(peek(S, 1)), peek(S));
             // leave the ID in place by only popping once
-            pop(S);
+            --S->sp;
             break;
 
         case OP_CONST:
             push(S, stub->const_arr[read_short(code, S->pc)]);
             S->pc += 2;
             break;
+        case OP_NIL:
+            push(S, V_NIL);
+            break;
+        case OP_FALSE:
+            push(S, V_FALSE);
+            break;
+        case OP_TRUE:
+            push(S, V_TRUE);
+            break;
+
+        case OP_JUMP: {
+            auto u = read_short(code, S->pc);
+            S->pc += 2 + *((i16*)&u);
+        }
+            break;
+        case OP_CJUMP:
+            if (!vtruth(peek(S))) {
+                auto u = read_short(code, S->pc);
+                S->pc += 2 + *((i16*)&u);
+            } else {
+                S->pc += 2;
+            }
+            --S->sp;
+            break;
+        case OP_CALL:
+            call(S, code[S->pc++]);
+            if (S->err_happened) {
+                return;
+            }
+            break;
 
         case OP_RETURN:
+            // close upvalues and exit the loop. The call() function will handle
+            // moving the return value.
             close_upvals(S, S->bp);
-            set(S, -1, peek(S));
-            S->sp = S->bp;
-            // TODO: write the rest of these
             return;
             break;
         }

@@ -14,7 +14,6 @@ istate* init_istate() {
     res->pc = 0;
     res->bp = 0;
     res->sp = 0;
-    res->uv_head = nullptr;
     res->err_happened = false;
     res->err_msg = nullptr;
     // set up namespace
@@ -29,6 +28,9 @@ void free_istate(istate* S) {
     }
     delete S->alloc;
     delete S->symtab;
+    if (S->err_happened) {
+        free(S->err_msg);
+    }
     delete S;
 }
 
@@ -144,20 +146,28 @@ void call(istate* S, u32 n) {
     auto save_bp = S->bp;
     auto save_ns_id = S->ns_id;
     auto save_ns = S->ns;
-    S->pc = 0;
-    S->bp = S->sp - n;
-
     auto callee = peek(S, n);
     if (!vis_function(callee)) {
         ierror(S, "Attempt to call non-function value.");
         return;
     }
-    S->ns_id = vfunction(callee)->stub->ns_id;
-    S->ns = vfunction(callee)->stub->ns;
+    auto fun = vfunction(callee);
+
+    S->pc = 0;
+    S->bp = S->sp - n;
+    S->ns_id = fun->stub->ns_id;
+    S->ns = fun->stub->ns;
     arrange_call_stack(S, vfunction(callee), n);
 
-    execute_fun(S, vfunction(callee));
+    // FIXME: ensure minimum stack space available
+    if (fun->stub->foreign) {
+        fun->stub->foreign(S);
+    } else {
+        execute_fun(S, vfunction(callee));
+    }
 
+    // return value
+    S->stack[S->bp-1] = peek(S);
     S->pc = save_pc;
     S->sp = S->bp;  // with the return value, this is the new stack pointer
     S->bp = save_bp;
@@ -167,7 +177,16 @@ void call(istate* S, u32 n) {
 
 void push_empty_fun(istate* S) {
     push_nil(S);
-    alloc_empty_fun(S->alloc, &S->stack[S->sp - 1]);
+    alloc_empty_fun(S->alloc, &S->stack[S->sp - 1], S->ns_id, S->ns);
+}
+
+void push_foreign_fun(istate* S,
+        void (*foreign)(istate*),
+        u32 num_args,
+        bool vari) {
+    push_nil(S);
+    alloc_foreign_fun(S->alloc, &S->stack[S->sp - 1], foreign, num_args, vari,
+            S->ns_id, S->ns);
 }
 
 void print_top(istate* S) {

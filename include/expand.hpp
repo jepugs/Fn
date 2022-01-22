@@ -35,6 +35,8 @@ struct function_tree {
     // are three entries there, and the corresponding function stub pointers
     // are equal.
     dyn_array<function_tree*> sub_funs;
+    // parameters to the function in the order they appear on the stack
+    dyn_array<symbol_id> params;
     // the form to be compiled. If set to nullptr, indicates an expansion error
     // occurred.
     llir_form* body;

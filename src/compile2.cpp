@@ -22,11 +22,11 @@ void compiler::write_short(u16 u) {
 void compiler::patch_short(u16 u, u32 where) {
     u8* data = (u8*)&u;
     ft->stub->code[where] = data[0];
-    ft->stub->code[where] = data[1];
+    ft->stub->code[where+1] = data[1];
 }
 
 void compiler::patch_jump(u32 jmp_addr, u32 dest) {
-    i64 offset = dest - jmp_addr;
+    i64 offset = dest - jmp_addr - 3;
     // FIXME: check distance fits in 16 bits
     patch_short((i16)offset, jmp_addr+1);
 }
@@ -58,10 +58,13 @@ local_upvalue* compiler::lookup_upval(symbol_id sid) {
             u = new local_upvalue{
                 .name = sid,
                 .direct = true,
-                .index = l->index,
+                .index = (uv_head ? 1 + uv_head->index : 0),
                 .next = uv_head
             };
             uv_head = u;
+            // add to the function stub
+            ft->stub->upvals_direct.push_back(true);
+            ft->stub->upvals.push_back(bp - parent->bp - l->index);
         }
         u = parent->lookup_upval(sid);
     }
@@ -72,6 +75,12 @@ void compile_form(istate* S, ast_form* ast) {
     push_empty_fun(S);
     auto ft = init_function_tree(S, vfunction(peek(S))->stub);
     expand(S, ft, ast);
+    if (S->err_happened) {
+        free_function_tree(S, ft);
+        pop(S);
+        // don't attempt to compile
+        return;
+    }
     compiler c{S, ft};
     c.compile();
     // no longer need the tree
@@ -105,6 +114,16 @@ compiler::~compiler() {
 }
 
 void compiler::compile() {
+    // push parameters as lexical vars
+    for (auto sid : ft->params) {
+        auto l = new lexical_var{
+            .name=sid,
+            .index=(u8)sp++,
+            .is_upvalue=false,
+            .next=var_head
+        };
+        var_head = l;
+    }
     compile_llir(ft->body);
     write_byte(OP_RETURN);
     for (auto sub : ft->sub_funs) {
@@ -119,8 +138,14 @@ void compiler::update_hwm(u32 local_hwm) {
     }
 }
 
-void compiler::compile_llir(llir_form* form) {
+void compiler::compile_llir(llir_form* form, bool tail) {
     switch (form->tag) {
+    case lt_def:
+        compile_def((llir_def*)form);
+        break;
+    case lt_call:
+        compile_call((llir_call*)form, tail);
+        break;
     case lt_const:
         update_hwm(sp + 1);
         write_byte(OP_CONST);
@@ -135,7 +160,7 @@ void compiler::compile_llir(llir_form* form) {
         write_byte(OP_CJUMP);
         write_short(0);
         --sp;
-        compile_llir(x->then);
+        compile_llir(x->then, tail);
         --sp;
 
         auto end_then = ft->stub->code.size;
@@ -143,16 +168,96 @@ void compiler::compile_llir(llir_form* form) {
         write_short(0);
 
         patch_jump(start, ft->stub->code.size);
-        compile_llir(x->elce);
+        compile_llir(x->elce, tail);
         patch_jump(end_then, ft->stub->code.size);
     }
+        break;
+    case lt_fn:
+        compile_fn((llir_fn*)form);
+        break;
+    case lt_var:
+        compile_var((llir_var*)form);
         break;
     default:
         break;
     }
 }
 
-void compiler::compile_var(istate* S, llir_var* form) {
+void compiler::compile_sym(symbol_id sid) {
+    write_byte(OP_CONST);
+    write_short(add_const(S, ft, vbox_symbol(sid)));
+    ++sp;
+}
+
+void compiler::compile_def(llir_def* form) {
+    compile_sym(form->name);
+    compile_llir(form->value);
+    write_byte(OP_SET_GLOBAL);
+    --sp;
+}
+
+void compiler::compile_call(llir_call* form, bool tail) {
+    // TODO: first should check for functions like get, which we can optimize
+    auto start_sp = sp;
+    if (form->callee->tag == lt_dot) {
+        // method call
+        auto dot = (llir_dot*)form->callee;
+        compile_sym(dot->key);
+        compile_llir(dot->obj);
+        for(u32 i = 0; i < form->num_args; ++i) {
+            compile_llir(form->args[i]);
+        }
+        write_byte(tail ? OP_TCALLM : OP_CALLM);
+        write_byte(form->num_args);
+    } else {
+        compile_llir(form->callee);
+        for(u32 i = 0; i < form->num_args; ++i) {
+            compile_llir(form->args[i]);
+        }
+        write_byte(tail ? OP_TCALL : OP_CALL);
+        write_byte(form->num_args);
+    }
+    sp = start_sp + 1;
+}
+
+void compiler::compile_var(llir_var* form) {
+    // first, identify special constants
+    if (form->name == intern(S, "nil")) {
+        write_byte(OP_NIL);
+        ++sp;
+    } else if (form->name == intern(S, "true")) {
+        write_byte(OP_TRUE);
+        ++sp;
+    } else if (form->name == intern(S, "false")) {
+        write_byte(OP_FALSE);
+        ++sp;
+    } else {
+        auto l = lookup_var(form->name);
+        if (l != nullptr) {
+            write_byte(OP_LOCAL);
+            write_byte(l->index);
+            ++sp;
+            return;
+        }
+        auto u = lookup_upval(form->name);
+        if (u != nullptr) {
+            write_byte(OP_UPVALUE);
+            write_byte(u->index);
+            ++sp;
+            return;
+        }
+        compile_sym(form->name);
+        write_byte(OP_GLOBAL);
+    }
+}
+
+void compiler::compile_fn(llir_fn* form) {
+    // compile init args
+    for (u32 i = 0; i < form->num_opt; ++i) {
+        compile_llir(form->inits[i]);
+    }
+    write_byte(OP_CLOSURE);
+    write_short(form->fun_id);
 }
 
 static u16 read_short(u8* p) {
@@ -222,8 +327,11 @@ static void disassemble_instr(u8* code_start, std::ostream& out) {
     case OP_SET_MACRO:
         out << "set-macro";
         break;
-    case OP_METHOD:
-        out << "method";
+    case OP_CALLM:
+        out << "callm";
+        break;
+    case OP_TCALLM:
+        out << "tcallm";
         break;
     case OP_IMPORT:
         out << "import";
@@ -260,8 +368,12 @@ static void disassemble_instr(u8* code_start, std::ostream& out) {
 }
 
 void disassemble_top(istate* S, bool recur) {
-    std::ostringstream os;
     auto stub = vfunction(peek(S))->stub;
+    if (stub->foreign) {
+        push_string(S, "<foreign_fun>");
+        return;
+    }
+    std::ostringstream os;
     for (u32 i = 0; i < stub->code.size; i += instr_width(stub->code[i])) {
         disassemble_instr(&stub->code[i], os);
         if (stub->code[i] == OP_CONST) {

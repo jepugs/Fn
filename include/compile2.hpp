@@ -23,8 +23,7 @@ struct local_upvalue {
     // direct upvalues are plucked right off the stack; indirect upvalues are
     // copied from the enclosing function
     bool direct;
-    // this is either the index on the stack of the upvalue, or its
-    u8 index;
+    u32 index;
     local_upvalue* next;
 };
 
@@ -58,7 +57,12 @@ private:
     ~compiler();
     // compile the whole function tree
     void compile();
-    void compile_llir(llir_form* form);
+    void compile_sym(symbol_id sid);
+    void compile_call(llir_call* form, bool tail);
+    void compile_def(llir_def* form);
+    void compile_fn(llir_fn* form);
+    void compile_var(llir_var* form);
+    void compile_llir(llir_form* form, bool tail=false);
     // set sp_hwm = max(local_hwm, sp_hwm)
     void update_hwm(u32 local_hwm);
     // functions to write to code

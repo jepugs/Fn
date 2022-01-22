@@ -63,9 +63,9 @@ enum OPCODES : u8 {
     // get global by its full name, e.g. /fn/builtin:map
     OP_BY_GUID,
 
-    // look up a method (in an object's metatable). Stack arugments ->[sym] obj
-    OP_METHOD,
-
+    // perform method calls. Stack: ->[arg-n] ... arg-0 object symbol
+    OP_CALLM,
+    OP_TCALLM,
 
     // const SHORT, push a constant, identified by its 16-bit id
     OP_CONST,
