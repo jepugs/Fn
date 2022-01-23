@@ -76,6 +76,7 @@ public:
 void alloc_string(allocator* alloc, value* where, u32 size);
 void alloc_string(allocator* alloc, value* where, const string& str);
 void alloc_cons(allocator* alloc, value* where, value hd, value tl);
+void alloc_table(allocator* alloc, value* where);
 void alloc_sub_stub(allocator* alloc, function_stub* where);
 void alloc_empty_fun(allocator* alloc,
         value* where,

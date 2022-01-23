@@ -58,21 +58,21 @@ local_upvalue* compiler::lookup_upval(symbol_id sid) {
             u = new local_upvalue{
                 .name = sid,
                 .direct = true,
-                .index = (uv_head ? 1 + uv_head->index : 0),
+                .index = (u8)(uv_head ? 1 + uv_head->index : 0),
                 .next = uv_head
             };
             uv_head = u;
             // add to the function stub
             ++ft->stub->num_upvals;
             ft->stub->upvals_direct.push_back(true);
-            ft->stub->upvals.push_back(bp - parent->bp - l->index);
+            ft->stub->upvals.push_back(l->index);
         }
         auto v = parent->lookup_upval(sid);
         if (v) {
             u = new local_upvalue{
                 .name = sid,
                 .direct = false,
-                .index = (uv_head ? 1 + uv_head->index : 0),
+                .index = (u8)(uv_head ? 1 + uv_head->index : 0),
                 .next = uv_head
             };
             uv_head = u;
@@ -184,8 +184,14 @@ void compiler::compile_llir(llir_form* form, bool tail) {
     case lt_fn:
         compile_fn((llir_fn*)form);
         break;
+    case lt_set:
+        compile_set((llir_set*)form);
+        break;
     case lt_var:
         compile_var((llir_var*)form);
+        break;
+    case lt_with:
+        compile_with((llir_with*)form, tail);
         break;
     default:
         break;
@@ -196,13 +202,6 @@ void compiler::compile_sym(symbol_id sid) {
     write_byte(OP_CONST);
     write_short(add_const(S, ft, vbox_symbol(sid)));
     ++sp;
-}
-
-void compiler::compile_def(llir_def* form) {
-    compile_sym(form->name);
-    compile_llir(form->value);
-    write_byte(OP_SET_GLOBAL);
-    --sp;
 }
 
 void compiler::compile_call(llir_call* form, bool tail) {
@@ -227,6 +226,79 @@ void compiler::compile_call(llir_call* form, bool tail) {
         write_byte(form->num_args);
     }
     sp = start_sp + 1;
+}
+
+void compiler::compile_def(llir_def* form) {
+    compile_sym(form->name);
+    compile_llir(form->value);
+    write_byte(OP_SET_GLOBAL);
+    --sp;
+}
+
+void compiler::compile_fn(llir_fn* form) {
+    // compile init args
+    auto start_sp = sp;
+    for (u32 i = 0; i < form->num_opt; ++i) {
+        compile_llir(form->inits[i]);
+    }
+    write_byte(OP_CLOSURE);
+    write_short(form->fun_id);
+    sp = start_sp+1;
+    // compile the sub function stub
+    auto sub = ft->sub_funs[form->fun_id];
+    if (sub->stub->code.size == 0) {
+        compiler c{S, sub, this, start_sp + bp};
+        c.compile();
+    }
+}
+
+void compiler::compile_set(llir_set* form) {
+    if (form->target->tag == lt_var) {
+        auto sid = ((llir_var*)(form->target))->name;
+        // look for local variable
+        auto l = lookup_var(sid);
+        if (l) {
+            compile_llir(form->value);
+            write_byte(OP_COPY);
+            write_byte(0);
+            write_byte(OP_SET_LOCAL);
+            write_byte(l->index);
+            return;
+        }
+        auto u = lookup_upval(sid);
+        if (u) {
+            compile_llir(form->value);
+            write_byte(OP_COPY);
+            write_byte(0);
+            write_byte(OP_SET_UPVALUE);
+            write_byte(u->index);
+            return;
+        }
+        compile_error("set! target symbol does not name a local variable.");
+    } else if (form->target->tag == lt_call) {
+        // make sure it's a get call
+        auto target = (llir_call*)form->target;
+        if (target->callee->tag != lt_var
+                || ((llir_var*)target->callee)->name != intern(S, "get")
+                || target->num_args < 2) {
+            compile_error("Malformed set! target.");
+        }
+        // compile the target object
+        compile_llir(target->args[0]);
+        // access keys, stopping before the last one
+        u32 i;
+        for (i = 1; i < target->num_args - 1; ++i) {
+            compile_llir(target->args[i]);
+            write_byte(OP_OBJ_GET);
+            --sp;
+        }
+        // use the final key and do the set operation
+        compile_llir(target->args[i]);
+        compile_llir(form->value);
+        write_byte(OP_OBJ_SET);
+    } else {
+        compile_error("Malformed set! target.");
+    }
 }
 
 void compiler::compile_var(llir_var* form) {
@@ -260,20 +332,52 @@ void compiler::compile_var(llir_var* form) {
     }
 }
 
-void compiler::compile_fn(llir_fn* form) {
-    // compile init args
-    auto start_sp = sp;
-    for (u32 i = 0; i < form->num_opt; ++i) {
-        compile_llir(form->inits[i]);
+void compiler::compile_with(llir_with* form, bool tail) {
+    auto old_head = var_head;
+    auto old_sp = sp;
+    // return place
+    write_byte(OP_NIL);
+    ++sp;
+    // prepend new vars
+    for (u32 i = 0; i < form->num_vars; ++i) {
+        // place for var
+        write_byte(OP_NIL);
+        auto l = new lexical_var {
+            .name = form->vars[i],
+            .index = (u8)sp++,
+            .next = var_head
+        };
+        var_head = l;
     }
-    write_byte(OP_CLOSURE);
-    write_short(form->fun_id);
-    sp = start_sp+1;
-    // compile the sub function stub
-    auto sub = ft->sub_funs[form->fun_id];
-    if (sub->stub->code.size == 0) {
-        compiler c{S, sub, this, start_sp};
-        c.compile();
+    for (u32 i = 0; i < form->num_vars; ++i) {
+        compile_llir(form->values[i]);
+        write_byte(OP_SET_LOCAL);
+        write_byte(old_sp + i + 1);
+        --sp;
+    }
+    if (form->body_length == 0) {
+        write_byte(OP_NIL);
+    } else {
+        u32 i;
+        for (i = 0; i < form->body_length-1; ++i) {
+            compile_llir(form->body[i]);
+            write_byte(OP_POP);
+            --sp;
+        }
+        compile_llir(form->body[i], tail);
+    }
+    write_byte(OP_SET_LOCAL);
+    write_byte(old_sp);
+    --sp;
+
+    write_byte(OP_CLOSE);
+    write_byte(sp - old_sp - 1);
+    sp = old_sp + 1;
+    // clean up the lexical environment
+    while (var_head != old_head) {
+        auto tmp = var_head;
+        var_head = var_head->next;
+        delete tmp;
     }
 }
 

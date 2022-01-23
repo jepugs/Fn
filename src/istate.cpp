@@ -1,5 +1,6 @@
 #include "allocator.hpp"
 #include "istate.hpp"
+#include "parse.hpp"
 #include "vm.hpp"
 #include <cstring>
 
@@ -101,6 +102,11 @@ void push_false(istate* S) {
     push(S, V_FALSE);
 }
 
+void push_table(istate* S) {
+    push_nil(S);
+    alloc_table(S->alloc, &S->stack[S->sp - 1]);
+}
+
 void pop_to_list(istate* S, u32 n) {
     push(S, V_EMPTY);
     for (u32 i = 0; i < n; ++i) {
@@ -182,8 +188,36 @@ void push_empty_fun(istate* S) {
 
 void push_foreign_fun(istate* S,
         void (*foreign)(istate*),
-        u32 num_args,
-        bool vari) {
+        const string& params) {
+    fault err;
+    auto forms = fn_parse::parse_string(params, S->symtab, &err);
+    if (err.happened) {
+        for (auto f : forms) {
+            free_ast_form(f);
+        }
+        ierror(S, err.message);
+        return;
+    }
+    auto& p = forms[0];
+    if (p->kind != fn_parse::ak_list) {
+
+        ierror(S, "Malformed parameter list for foreign function.");
+        return;
+    }
+    u8 num_args = p->list_length;
+    bool vari = false;
+    // check for var arg
+    if (num_args >= 2) {
+        auto x = p->datum.list[num_args - 2];
+        if (x->kind == fn_parse::ak_symbol_atom
+                && x->datum.sym == intern(S, "&")) {
+            vari = true;
+            num_args -= 2;
+        }
+    }
+    for (auto f : forms) {
+        free_ast_form(f);
+    }
     push_nil(S);
     alloc_foreign_fun(S->alloc, &S->stack[S->sp - 1], foreign, num_args, vari,
             S->ns_id, S->ns);

@@ -195,7 +195,7 @@ struct llir_with {
     symbol_id* vars;
     llir_form** values;
     u32 body_length;
-llir_form** body;
+    llir_form** body;
 };
 llir_with* mk_llir_with(const source_loc& origin,
         local_address num_vars,

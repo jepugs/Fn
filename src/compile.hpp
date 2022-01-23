@@ -26,7 +26,10 @@ struct local_upvalue {
     // direct upvalues are plucked right off the stack; indirect upvalues are
     // copied from the enclosing function
     bool direct;
-    u32 index;
+    // index for a direct upvalue is its stack address relative to the bp of the
+    // surrounding frame. For an indirect upvalue is its upvalue index in the
+    // enclosing frame.
+    u8 index;
     local_upvalue* next;
 };
 
@@ -64,7 +67,9 @@ private:
     void compile_call(llir_call* form, bool tail);
     void compile_def(llir_def* form);
     void compile_fn(llir_fn* form);
+    void compile_set(llir_set* form);
     void compile_var(llir_var* form);
+    void compile_with(llir_with* form, bool tail);
     void compile_llir(llir_form* form, bool tail=false);
     // set sp_hwm = max(local_hwm, sp_hwm)
     void update_hwm(u32 local_hwm);

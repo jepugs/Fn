@@ -61,6 +61,8 @@ void push_nil(istate* S);
 void push_true(istate* S);
 void push_false(istate* S);
 
+void push_table(istate* S);
+
 // create a list from the top n elements of the stack
 void pop_to_list(istate* S, u32 n);
 
@@ -77,8 +79,11 @@ void push_empty_fun(istate* S);
 // push a foreign function by that wraps the provided function pointer
 void push_foreign_fun(istate* S,
         void (*foreign)(istate*),
-        u32 num_args,
-        bool vari);
+        const string& params);
+void push_foreign_fun(istate* S,
+        void (*foreign)(istate*),
+        const string& params,
+        u8 num_upvals);
 
 // print out the top of the stack to stdout
 void print_top(istate* S);

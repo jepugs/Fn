@@ -152,6 +152,30 @@ void execute_fun(istate* S, fn_function* fun) {
             // leave the ID in place by only popping once
             --S->sp;
             break;
+        case OP_OBJ_GET: {
+            if (!vis_table(peek(S, 1))) {
+                ierror(S, "obj-get target is not a table.");
+                return;
+            }
+            auto x = vtable(peek(S, 1))->contents.get(peek(S));
+            S->sp -= 2;
+            if (x.has_value()) {
+                push(S, *x);
+            } else {
+                push(S, V_NIL);
+            }
+        }
+            break;
+        case OP_OBJ_SET: {
+            if (!vis_table(peek(S, 2))) {
+                ierror(S, "obj-set target is not a table.");
+                return;
+            }
+            vtable(peek(S, 2))->contents.insert(peek(S, 1), peek(S));
+            S->stack[S->sp - 3] = peek(S);
+            S->sp -= 2;
+        }
+            break;
 
         case OP_CONST:
             push(S, stub->const_arr[read_short(code, S->pc)]);

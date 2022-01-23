@@ -291,6 +291,7 @@ void alloc_string(allocator* alloc, value* where, const string& str) {
     auto len = str.size();
     auto sz = sizeof(fn_string) + len + 1;
     auto res = (fn_string*)malloc(sz);
+    res->size = len;
     init_gc_header(&res->h, GC_TYPE_STRING);
     res->data = (u8*) (((u8*)res) + sizeof(fn_string));
     memcpy(res->data, str.c_str(), len);
@@ -309,6 +310,16 @@ void alloc_cons(allocator* alloc, value* where, value hd, value tl) {
     res->tail = tl;
     *where = vbox_cons(res);
     alloc->mem_usage += sizeof(fn_cons);
+    ++alloc->count;
+    add_obj(alloc, &res->h);
+}
+
+void alloc_table(allocator* alloc, value* where) {
+    alloc->collect();
+    auto res = new fn_table;
+    init_gc_header(&res->h, GC_TYPE_TABLE);
+    *where = vbox_table(res);
+    alloc->mem_usage += sizeof(fn_table);
     ++alloc->count;
     add_obj(alloc, &res->h);
 }
@@ -426,7 +437,8 @@ void alloc_fun(istate* S, value* where, fn_function* enclosing,
     // set up upvalues
     for (u32 i = 0; i < stub->num_upvals; ++i) {
         if (stub->upvals_direct[i]) {
-            res->upvals[i] = open_upval(S, S->bp - stub->upvals[i]);
+            std::cout << (i32)stub->upvals[i] << '\n';
+            res->upvals[i] = open_upval(S, S->bp + stub->upvals[i]);
         } else {
             res->upvals[i] = enclosing->upvals[stub->upvals[i]];
         }

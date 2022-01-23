@@ -1,7 +1,7 @@
 #include "base.hpp"
+#include "builtin.hpp"
 #include "bytes.hpp"
 #include "compile.hpp"
-//#include "ffi/builtin.hpp"
 #include "table.hpp"
 #include "values.hpp"
 #include "vm.hpp"
@@ -151,22 +151,6 @@ void process_args(int argc, char** argv, interpreter_options* opt) {
     opt->args_start = i+1;
 }
 
-static void fn_add(istate* S) {
-    auto lst = peek(S);
-    auto res = 0;
-    while (lst != V_EMPTY) {
-        // FIXME: check type
-        if (!vis_number(vcons(lst)->head)) {
-            ierror(S, "+ arguments must be numbers");
-            return;
-        }
-        res += vnumber(vcons(lst)->head);
-        lst = vcons(lst)->tail;
-    }
-    pop(S);
-    push_number(S, res);
-}
-
 int main(int argc, char** argv) {
     interpreter_options opt;
     process_args(argc, argv, &opt);
@@ -180,9 +164,7 @@ int main(int argc, char** argv) {
     }
 
     auto S = init_istate();
-    push_foreign_fun(S, fn_add, 0, true);
-    mutate_global(S, intern(S, "+"), peek(S));
-    pop(S);
+    install_builtin(S);
 
     scanner sc{&std::cin};
     fault err;

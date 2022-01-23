@@ -1,6 +1,7 @@
 add_library(fn_lib OBJECT
   allocator.cpp
   base.cpp
+  builtin.cpp
   compile.cpp
   expand.cpp
   istate.cpp
