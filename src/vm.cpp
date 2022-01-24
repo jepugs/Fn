@@ -78,7 +78,7 @@ static void create_fun(istate* S, fn_function* enclosing, constant_id fid) {
         fun->init_vals[i] = S->stack[S->sp - 1 - stub->num_opt + i];
     }
     // move the function to the appropriate place on the stack
-    S->stack[S->sp - 1 - stub->num_opt] = peek(S);
+    S->stack[S->sp - 1 - stub->num_opt] = S->stack[S->sp - 1];
     S->sp = S->sp - stub->num_opt;
 }
 

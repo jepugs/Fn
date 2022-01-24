@@ -137,6 +137,18 @@ void compiler::compile() {
         };
         var_head = l;
     }
+    // push indicator params
+    u32 i = ft->params.size - ft->stub->num_opt;
+    for (; i < ft->params.size; ++i) {
+        auto str = "?" + (*S->symtab)[ft->params[i]];
+        auto l = new lexical_var {
+            .name=intern(S, str),
+            .index=(u8)sp++,
+            .is_upvalue=false,
+            .next=var_head
+        };
+        var_head = l;
+    }
     compile_llir(ft->body);
     write_byte(OP_RETURN);
 }
@@ -243,11 +255,11 @@ void compiler::compile_fn(llir_fn* form) {
     }
     write_byte(OP_CLOSURE);
     write_short(form->fun_id);
-    sp = start_sp+1;
+    sp = start_sp + 1;
     // compile the sub function stub
     auto sub = ft->sub_funs[form->fun_id];
     if (sub->stub->code.size == 0) {
-        compiler c{S, sub, this, start_sp + bp};
+        compiler c{S, sub, this};
         c.compile();
     }
 }
@@ -287,7 +299,7 @@ void compiler::compile_set(llir_set* form) {
         compile_llir(target->args[0]);
         // access keys, stopping before the last one
         u32 i;
-        for (i = 1; i < target->num_args - 1; ++i) {
+        for (i = 1; i + 1 < target->num_args; ++i) {
             compile_llir(target->args[i]);
             write_byte(OP_OBJ_GET);
             --sp;
@@ -338,6 +350,9 @@ void compiler::compile_with(llir_with* form, bool tail) {
     // return place
     write_byte(OP_NIL);
     ++sp;
+
+    // FIXME: check that there's enough stack space for the variables
+
     // prepend new vars
     for (u32 i = 0; i < form->num_vars; ++i) {
         // place for var
@@ -357,6 +372,7 @@ void compiler::compile_with(llir_with* form, bool tail) {
     }
     if (form->body_length == 0) {
         write_byte(OP_NIL);
+        update_hwm(sp);
     } else {
         u32 i;
         for (i = 0; i < form->body_length-1; ++i) {
@@ -370,8 +386,10 @@ void compiler::compile_with(llir_with* form, bool tail) {
     write_byte(old_sp);
     --sp;
 
-    write_byte(OP_CLOSE);
-    write_byte(sp - old_sp - 1);
+    if (!tail) {
+        write_byte(OP_CLOSE);
+        write_byte(sp - old_sp - 1);
+    }
     sp = old_sp + 1;
     // clean up the lexical environment
     while (var_head != old_head) {

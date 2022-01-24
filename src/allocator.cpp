@@ -431,13 +431,15 @@ void alloc_fun(istate* S, value* where, fn_function* enclosing,
     auto res = new fn_function;
     init_gc_header(&res->h, GC_TYPE_FUNCTION);
     res->init_vals = new value[stub->num_opt];
+    for (u32 i = 0; i < stub->num_opt; ++i) {
+        res->init_vals[i] = V_NIL;
+    }
     res->upvals = new upvalue_cell*[stub->num_upvals];
     res->stub = stub;
 
     // set up upvalues
     for (u32 i = 0; i < stub->num_upvals; ++i) {
         if (stub->upvals_direct[i]) {
-            std::cout << (i32)stub->upvals[i] << '\n';
             res->upvals[i] = open_upval(S, S->bp + stub->upvals[i]);
         } else {
             res->upvals[i] = enclosing->upvals[stub->upvals[i]];
