@@ -8,7 +8,7 @@
 namespace fn {
 
 // size used for the istate stack
-constexpr u32 STACK_SIZE = 256;
+constexpr u32 STACK_SIZE = 512;
 
 struct allocator;
 struct global_env;
@@ -61,6 +61,7 @@ void push_nil(istate* S);
 void push_true(istate* S);
 void push_false(istate* S);
 
+void push_cons(istate* S, value hd, value tl);
 void push_table(istate* S);
 
 // create a list from the top n elements of the stack

@@ -37,6 +37,9 @@ void free_istate(istate* S) {
 
 void ierror(istate* S, const string& message) {
     auto len = message.length();
+    if (S->err_msg != nullptr) {
+        free(S->err_msg);
+    }
     S->err_msg = (char*)malloc(len+1);
     memcpy(S->err_msg, message.c_str(), len+1);
     S->err_happened = true;
@@ -102,6 +105,11 @@ void push_false(istate* S) {
     push(S, V_FALSE);
 }
 
+void push_cons(istate* S, value hd, value tl) {
+    push_nil(S);
+    alloc_cons(S->alloc, &S->stack[S->sp - 1], hd, tl);
+}
+
 void push_table(istate* S) {
     push_nil(S);
     alloc_table(S->alloc, &S->stack[S->sp - 1]);
@@ -114,71 +122,6 @@ void pop_to_list(istate* S, u32 n) {
                 S->stack[S->sp - 1]);
         pop(S);
     }
-}
-
-static bool arrange_call_stack(istate* S, fn_function* callee, u32 n) {
-    auto stub = callee->stub;
-    u32 min_args = stub->num_params - stub->num_opt;
-    if (n < min_args) {
-        ierror(S, "Too few arguments in function call.");
-        return false;
-    } else if (!stub->vari && n > stub->num_params) {
-        ierror(S, "Too many arguments in function call.");
-        return false;
-    }
-
-    u32 i;
-    for (i = n; i < stub->num_params; ++i) {
-        push(S, callee->init_vals[i]);
-    }
-    // handle variadic parameter
-    if (stub->vari) {
-        pop_to_list(S, n - stub->num_params);
-    }
-    // push indicator args
-    u32 m = stub->num_params < n ? stub->num_params : n;
-    for (i = min_args; i < m; ++i) {
-        push(S, V_TRUE);
-    }
-    for (i = n; i < stub->num_params; ++i) {
-        push(S, V_FALSE);
-    }
-    return true;
-}
-
-void call(istate* S, u32 n) {
-    // update the call frame
-    auto save_pc = S->pc;
-    auto save_bp = S->bp;
-    auto save_ns_id = S->ns_id;
-    auto save_ns = S->ns;
-    auto callee = peek(S, n);
-    if (!vis_function(callee)) {
-        ierror(S, "Attempt to call non-function value.");
-        return;
-    }
-    auto fun = vfunction(callee);
-
-    S->pc = 0;
-    S->bp = S->sp - n;
-    S->ns_id = fun->stub->ns_id;
-    S->ns = fun->stub->ns;
-    arrange_call_stack(S, vfunction(callee), n);
-
-    // FIXME: ensure minimum stack space available
-    if (fun->stub->foreign) {
-        fun->stub->foreign(S);
-    } else {
-        execute_fun(S, vfunction(callee));
-    }
-
-    // return value
-    S->stack[S->bp-1] = peek(S);
-    S->pc = save_pc;
-    S->sp = S->bp;  // with the return value, this is the new stack pointer
-    S->bp = save_bp;
-    S->ns_id = save_ns_id;
-    S->ns = save_ns;
 }
 
 void push_empty_fun(istate* S) {

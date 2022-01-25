@@ -362,8 +362,8 @@ llir_form* expander::expand_letfn_in_do(u32 length,
     }
 
     // generate llir for the new function
-    auto fn_form = (llir_form*)expand_sub_fun(loc, letfn_lst[1], letfn_len-2,
-            &letfn_lst[2], meta);
+    auto fn_form = (llir_form*)expand_sub_fun(loc, letfn_lst[2], letfn_len-3,
+            &letfn_lst[3], meta);
     if (!fn_form) {
         return nullptr;
     }
@@ -499,6 +499,9 @@ llir_form* expander::expand_dollar_fn(const source_loc& loc,
     auto m = meta2.max_dollar_sym;
     sub_tree->stub->num_params = m+1;
     sub_tree->stub->num_opt = 0;
+    for (u32 i = 0; i < sub_tree->stub->num_params; ++i) {
+        sub_tree->params.push_back(intern("$" + std::to_string(i)));
+    }
 
     // function id
     auto fid = ft->sub_funs.size - 1;

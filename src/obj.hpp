@@ -178,6 +178,9 @@ struct function_stub {
     code_info* ci_head;
 };
 
+void update_code_info(function_stub* to, const source_loc& loc);
+code_info* instr_loc(function_stub* stub, u32 pc);
+
 // represents a function value
 struct alignas (OBJ_ALIGN) fn_function {
     gc_header h;

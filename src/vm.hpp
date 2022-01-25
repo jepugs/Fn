@@ -13,7 +13,7 @@ namespace fn {
 bool push_from_guid(istate* S, symbol_id guid);
 bool push_global(istate* S, symbol_id name);
 void mutate_global(istate* S, symbol_id name, value v);
-void execute_fun(istate* S, fn_function* fun);
+void execute_fun(istate* S);
 
 }
 

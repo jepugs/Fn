@@ -149,7 +149,7 @@ void compiler::compile() {
         };
         var_head = l;
     }
-    compile_llir(ft->body);
+    compile_llir(ft->body, true);
     write_byte(OP_RETURN);
 }
 
@@ -160,6 +160,7 @@ void compiler::update_hwm(u32 local_hwm) {
 }
 
 void compiler::compile_llir(llir_form* form, bool tail) {
+    update_code_info(ft->stub, form->origin);
     switch (form->tag) {
     case lt_def:
         compile_def((llir_def*)form);
@@ -227,6 +228,7 @@ void compiler::compile_call(llir_call* form, bool tail) {
         for(u32 i = 0; i < form->num_args; ++i) {
             compile_llir(form->args[i]);
         }
+        update_code_info(ft->stub, form->header.origin);
         write_byte(tail ? OP_TCALLM : OP_CALLM);
         write_byte(form->num_args);
     } else {
@@ -234,6 +236,8 @@ void compiler::compile_call(llir_call* form, bool tail) {
         for(u32 i = 0; i < form->num_args; ++i) {
             compile_llir(form->args[i]);
         }
+        // put code info back after processing arguments
+        update_code_info(ft->stub, form->header.origin);
         write_byte(tail ? OP_TCALL : OP_CALL);
         write_byte(form->num_args);
     }
@@ -253,6 +257,7 @@ void compiler::compile_fn(llir_fn* form) {
     for (u32 i = 0; i < form->num_opt; ++i) {
         compile_llir(form->inits[i]);
     }
+    update_code_info(ft->stub, form->header.origin);
     write_byte(OP_CLOSURE);
     write_short(form->fun_id);
     sp = start_sp + 1;
@@ -271,6 +276,7 @@ void compiler::compile_set(llir_set* form) {
         auto l = lookup_var(sid);
         if (l) {
             compile_llir(form->value);
+            update_code_info(ft->stub, form->header.origin);
             write_byte(OP_COPY);
             write_byte(0);
             write_byte(OP_SET_LOCAL);
@@ -280,6 +286,7 @@ void compiler::compile_set(llir_set* form) {
         auto u = lookup_upval(sid);
         if (u) {
             compile_llir(form->value);
+            update_code_info(ft->stub, form->header.origin);
             write_byte(OP_COPY);
             write_byte(0);
             write_byte(OP_SET_UPVALUE);
@@ -308,6 +315,7 @@ void compiler::compile_set(llir_set* form) {
         compile_llir(target->args[i]);
         compile_llir(form->value);
         write_byte(OP_OBJ_SET);
+        sp -= 2;
     } else {
         compile_error("Malformed set! target.");
     }
@@ -366,6 +374,7 @@ void compiler::compile_with(llir_with* form, bool tail) {
     }
     for (u32 i = 0; i < form->num_vars; ++i) {
         compile_llir(form->values[i]);
+        update_code_info(ft->stub, form->header.origin);
         write_byte(OP_SET_LOCAL);
         write_byte(old_sp + i + 1);
         --sp;
@@ -382,11 +391,13 @@ void compiler::compile_with(llir_with* form, bool tail) {
         }
         compile_llir(form->body[i], tail);
     }
-    write_byte(OP_SET_LOCAL);
-    write_byte(old_sp);
-    --sp;
+    update_code_info(ft->stub, form->header.origin);
 
+    // in the tail position, this is handled by the subsequent return
     if (!tail) {
+        write_byte(OP_SET_LOCAL);
+        write_byte(old_sp);
+        --sp;
         write_byte(OP_CLOSE);
         write_byte(sp - old_sp - 1);
     }
