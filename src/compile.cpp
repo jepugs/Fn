@@ -395,11 +395,8 @@ void compiler::compile_with(llir_with* form, bool tail) {
 
     // in the tail position, this is handled by the subsequent return
     if (!tail) {
-        write_byte(OP_SET_LOCAL);
-        write_byte(old_sp);
-        --sp;
         write_byte(OP_CLOSE);
-        write_byte(sp - old_sp - 1);
+        write_byte(sp - old_sp);
     }
     sp = old_sp + 1;
     // clean up the lexical environment

@@ -247,7 +247,8 @@ void execute_fun(istate* S) {
             // computes highest stack address to close
             auto new_sp = S->sp - num;
             close_upvals(S, new_sp);
-            S->sp = new_sp;
+            S->stack[new_sp] = S->stack[S->sp-1];
+            S->sp = new_sp + 1;
         }
             break;
         case OP_GLOBAL: {
