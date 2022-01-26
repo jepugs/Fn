@@ -46,6 +46,7 @@ private:
         for (u32 i=0; i<old_cap; ++i) {
             if (prev[i].live) {
                 insert(prev[i].key, prev[i].val);
+                prev[i].~entry();
             }
         }
         free(prev);
@@ -86,6 +87,11 @@ public:
 
     table<K,T>& operator=(const table<K,T>& src) {
         // clean up the old data and just replace this using new
+        for (u32 i = 0; i < cap; ++i) {
+            if (array[i].live) {
+                array[i].~entry();
+            }
+        }
         free(array);
 
         cap = src.cap;

@@ -74,16 +74,16 @@ public:
 };
 
 void* alloc_bytes(allocator* alloc, u64 size);
-void alloc_string(allocator* alloc, value* where, u32 size);
-void alloc_string(allocator* alloc, value* where, const string& str);
-void alloc_cons(allocator* alloc, value* where, value hd, value tl);
-void alloc_table(allocator* alloc, value* where);
-void alloc_sub_stub(allocator* alloc, function_stub* where);
-void alloc_empty_fun(allocator* alloc,
+void alloc_string(istate* S, value* where, u32 size);
+void alloc_string(istate* S, value* where, const string& str);
+void alloc_cons(istate* S, value* where, value hd, value tl);
+void alloc_table(istate* S, value* where);
+void alloc_sub_stub(istate* S, function_stub* where);
+void alloc_empty_fun(istate* S,
         value* where,
         symbol_id ns_id,
         fn_namespace* ns);
-void alloc_foreign_fun(allocator* alloc,
+void alloc_foreign_fun(istate* S,
         value* where,
         void (*foreign)(istate*),
         u32 num_args,
@@ -92,6 +92,9 @@ void alloc_foreign_fun(allocator* alloc,
         fn_namespace* ns);
 void alloc_fun(istate* S, value* where, fn_function* enclosing,
         function_stub* stub);
+
+void collect(istate* S);
+void collect_now(istate* S);
 
 }
 

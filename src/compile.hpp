@@ -64,6 +64,7 @@ private:
     // compile the whole function tree
     void compile();
     void compile_sym(symbol_id sid);
+    void compile_get(llir_call* form);
     void compile_call(llir_call* form, bool tail);
     void compile_def(llir_def* form);
     void compile_fn(llir_fn* form);

@@ -60,7 +60,7 @@ constant_id add_quoted_const(istate* S, function_tree* ft, ast_form* form) {
 
 function_tree* add_sub_fun(istate* S, function_tree* ft) {
     auto fid = ft->stub->sub_funs.size;
-    alloc_sub_stub(S->alloc, ft->stub);
+    alloc_sub_stub(S, ft->stub);
     auto sub_tree = init_function_tree(S, ft->stub->sub_funs[fid]);
     ft->sub_funs.push_back(sub_tree);
     return sub_tree;

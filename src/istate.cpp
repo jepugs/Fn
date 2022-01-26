@@ -87,11 +87,11 @@ void push_number(istate* S, f64 num) {
 }
 void push_string(istate* S, u32 size) {
     push_nil(S);
-    alloc_string(S->alloc, &S->stack[S->sp - 1], size);
+    alloc_string(S, &S->stack[S->sp - 1], size);
 }
 void push_string(istate* S, const string& str)  {
     push_nil(S);
-    alloc_string(S->alloc, &S->stack[S->sp - 1], str);
+    alloc_string(S, &S->stack[S->sp - 1], str);
 }
 void push_sym(istate* S, symbol_id sym) {
     push(S, vbox_symbol(sym));
@@ -108,18 +108,18 @@ void push_false(istate* S) {
 
 void push_cons(istate* S, value hd, value tl) {
     push_nil(S);
-    alloc_cons(S->alloc, &S->stack[S->sp - 1], hd, tl);
+    alloc_cons(S, &S->stack[S->sp - 1], hd, tl);
 }
 
 void push_table(istate* S) {
     push_nil(S);
-    alloc_table(S->alloc, &S->stack[S->sp - 1]);
+    alloc_table(S, &S->stack[S->sp - 1]);
 }
 
 void pop_to_list(istate* S, u32 n) {
     push(S, V_EMPTY);
     for (u32 i = 0; i < n; ++i) {
-        alloc_cons(S->alloc, &S->stack[S->sp - 2], S->stack[S->sp - 2],
+        alloc_cons(S, &S->stack[S->sp - 2], S->stack[S->sp - 2],
                 S->stack[S->sp - 1]);
         pop(S);
     }
@@ -127,7 +127,7 @@ void pop_to_list(istate* S, u32 n) {
 
 void push_empty_fun(istate* S) {
     push_nil(S);
-    alloc_empty_fun(S->alloc, &S->stack[S->sp - 1], S->ns_id, S->ns);
+    alloc_empty_fun(S, &S->stack[S->sp - 1], S->ns_id, S->ns);
 }
 
 void push_foreign_fun(istate* S,
@@ -163,7 +163,7 @@ void push_foreign_fun(istate* S,
         free_ast_form(f);
     }
     push_nil(S);
-    alloc_foreign_fun(S->alloc, &S->stack[S->sp - 1], foreign, num_args, vari,
+    alloc_foreign_fun(S, &S->stack[S->sp - 1], foreign, num_args, vari,
             S->ns_id, S->ns);
 }
 

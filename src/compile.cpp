@@ -217,6 +217,18 @@ void compiler::compile_sym(symbol_id sid) {
     ++sp;
 }
 
+void compiler::compile_get(llir_call* form) {
+    if (form->num_args < 1) {
+        compile_error("get requires at least one argument.");
+    }
+    compile_llir(form->args[0]);
+    for (u32 i = 1; i < form->num_args; ++i) {
+        compile_llir(form->args[i]);
+        write_byte(OP_OBJ_GET);
+        --sp;
+    }
+}
+
 void compiler::compile_call(llir_call* form, bool tail) {
     // TODO: first should check for functions like get, which we can optimize
     auto start_sp = sp;
@@ -231,16 +243,24 @@ void compiler::compile_call(llir_call* form, bool tail) {
         update_code_info(ft->stub, form->header.origin);
         write_byte(tail ? OP_TCALLM : OP_CALLM);
         write_byte(form->num_args);
-    } else {
-        compile_llir(form->callee);
-        for(u32 i = 0; i < form->num_args; ++i) {
-            compile_llir(form->args[i]);
+        sp = start_sp + 1;
+        return;
+    } else if (form->callee->tag == lt_var) {
+        auto x = (llir_var*)form;
+        if (x->name == intern(S, "get")) {
+            compile_get(form);
+            return;
         }
-        // put code info back after processing arguments
-        update_code_info(ft->stub, form->header.origin);
-        write_byte(tail ? OP_TCALL : OP_CALL);
-        write_byte(form->num_args);
     }
+
+    compile_llir(form->callee);
+    for(u32 i = 0; i < form->num_args; ++i) {
+        compile_llir(form->args[i]);
+    }
+    // put code info back after processing arguments
+    update_code_info(ft->stub, form->header.origin);
+    write_byte(tail ? OP_TCALL : OP_CALL);
+    write_byte(form->num_args);
     sp = start_sp + 1;
 }
 
