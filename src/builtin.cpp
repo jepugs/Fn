@@ -227,20 +227,6 @@ fn_fun(empty_q, "empty?", "(x)") {
     push(S, peek(S) == V_EMPTY ? V_TRUE : V_FALSE);
 }
 
-fn_fun(Table, "Table", "(& args)") {
-    push_table(S);
-    auto res = vtable(peek(S));
-    fn_for_list(it, peek(S, 1)) {
-        auto tl = vtail(it);
-        if (tl == V_EMPTY) {
-            ierror(S, "Table requires an even number of arguments.");
-            return;
-        }
-        res->contents.insert(vhead(it), vhead(tl));
-        it = tl;
-    }
-}
-
 fn_fun(mod, "mod", "(x modulus)") {
     auto x = get(S,0);
     auto modulus = get(S,1);
@@ -256,6 +242,20 @@ fn_fun(mod, "mod", "(x modulus)") {
         return;
     }
     push_number(S, (i % (i64)m) + f);
+}
+
+fn_fun(Table, "Table", "(& args)") {
+    push_table(S);
+    auto res = vtable(peek(S));
+    fn_for_list(it, peek(S, 1)) {
+        auto tl = vtail(it);
+        if (tl == V_EMPTY) {
+            ierror(S, "Table requires an even number of arguments.");
+            return;
+        }
+        res->contents.insert(vhead(it), vhead(tl));
+        it = tl;
+    }
 }
 
 fn_fun(get, "get", "(obj & keys)") {

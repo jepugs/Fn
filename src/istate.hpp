@@ -21,10 +21,12 @@ struct istate {
     symbol_id ns_id;                         // current namespace ID
     fn_namespace* ns;                        // current namespace
     u32 pc;                                  // program counter
-    value stack[STACK_SIZE];
     u32 bp;                                  // base ptr
     u32 sp;                                  // stack ptr (rel to stack bottom)
+    fn_function* fun;                        // current function
+    u8* code;                                // reference to function code
     dyn_array<upvalue_cell*> open_upvals;    // open upvalues on the stack
+    value stack[STACK_SIZE];
     // error handling
     bool err_happened;
     // this is nullptr unless err_happened == true, in which case it must be
