@@ -47,19 +47,29 @@ void allocator::dealloc(gc_header* o) {
         break;
     case GC_TYPE_TABLE:
         mem_usage -= sizeof(fn_table);
-        delete (fn_table*)o;
+        ((fn_table*)o)->contents.~table();
+        free(o);
         break;
     case GC_TYPE_FUNCTION: {
+        // FIXME: count the size of the upvals array
         mem_usage -= sizeof(fn_function);
-        auto f = (fn_function*)o;
-
-        delete[] f->init_vals;
-        delete[] f->upvals;
-        delete f;
+        free(o);
     }
         break;
-    case GC_TYPE_FUN_STUB:
-        delete (function_stub*) o;
+    case GC_TYPE_FUN_STUB: {
+        auto x = (function_stub*)o;
+        x->code.~dyn_array();
+        x->const_arr.~dyn_array();
+        x->sub_funs.~dyn_array();
+        x->upvals.~dyn_array();
+        x->upvals_direct.~dyn_array();
+        for (auto c = x->ci_head; c != nullptr;) {
+            auto tmp = c;
+            c = c->prev;
+            delete tmp;
+        }
+        free(o);
+    }
         break;
     case GC_TYPE_UPVALUE: {
         delete (upvalue_cell*)o;
@@ -150,83 +160,6 @@ void allocator::sweep() {
 #endif
 }
 
-// fn_string* allocator::alloc_string(u32 n) {
-//     auto res = new fn_string;
-//     init_gc_header(&res->h, GC_TYPE_STRING);
-//     res->size = n;
-//     res->data = (u8*)malloc(n + 1);
-//     return res;
-// }
-
-// fn_string* allocator::alloc_string(const string& str) {
-//     auto res = alloc_string(str.size());
-//     memcpy(res->data, str.c_str(), str.size() + 1);
-//     return res;
-// }
-
-// fn_cons* allocator::alloc_cons(value hd, value tl) {
-//     auto res = (fn_cons*) malloc(sizeof(fn_cons));
-//     init_gc_header(&res->h, GC_TYPE_CONS);
-//     res->head = hd;
-//     res->tail = tl;
-//     return res;
-// }
-
-// fn_function* allocator::alloc_function(function_stub* stub) {
-//     auto res = new fn_function;
-//     init_gc_header(&res->h, GC_TYPE_FUNCTION);
-//     res->stub = stub;
-//     auto num_opt = stub->pos_params.size - stub->req_args;
-//     res->init_vals = new value[num_opt];
-//     res->num_upvals = stub->num_upvals;
-//     res->upvals = new upvalue_cell*[stub->num_upvals];
-//     return res;
-// }
-
-// fn_table* allocator::alloc_table() {
-//     auto res = new fn_table;
-//     init_gc_header(&res->h, GC_TYPE_TABLE);
-//     res->metatable = V_NIL;
-//     return res;
-// }
-
-
-// void allocator::add_cons(fn_cons* ptr) {
-//     add_to_obj_list((gc_header*)ptr);
-//     collect();
-//     mem_usage += sizeof(fn_cons);
-//     ++count;
-// }
-
-// void allocator::add_string(fn_string* ptr) {
-//     add_to_obj_list((gc_header*)ptr);
-//     collect();
-//     // FIXME: count string size here
-//     mem_usage += sizeof(fn_string);
-//     ++count;
-// }
-
-// void allocator::add_table(fn_table* ptr) {
-//     add_to_obj_list((gc_header*)ptr);
-//     collect();
-//     // FIXME: count table size here
-//     mem_usage += sizeof(fn_table);
-//     ++count;
-// }
-
-// void allocator::add_function(fn_function* ptr) {
-//     add_to_obj_list((gc_header*)ptr);
-//     collect();
-//     // FIXME: count function size here
-//     mem_usage += sizeof(fn_function);
-//     ++count;
-// }
-
-// void allocator::add_to_obj_list(gc_header* h) {
-//     h->next = objs_head;
-//     objs_head = h;
-// }
-
 void allocator::collect() {
 #ifdef GC_DEBUG
     force_collect();
@@ -274,10 +207,14 @@ static void add_obj(allocator* alloc, gc_header* obj) {
     alloc->objs_head = obj;
 }
 
+void* alloc_bytes(allocator* alloc, u64 size) {
+    return malloc(size);
+}
+
 void alloc_string(allocator* alloc, value* where, u32 len) {
     alloc->collect();
     auto sz = sizeof(fn_string) + len + 1;
-    auto res = (fn_string*)malloc(sz);
+    auto res = (fn_string*)alloc_bytes(alloc, sz);
     init_gc_header(&res->h, GC_TYPE_STRING);
     res->data = (u8*) (((u8*)res) + sizeof(fn_string));
     res->data[len] = 0;
@@ -290,7 +227,7 @@ void alloc_string(allocator* alloc, value* where, const string& str) {
     alloc->collect();
     auto len = str.size();
     auto sz = sizeof(fn_string) + len + 1;
-    auto res = (fn_string*)malloc(sz);
+    auto res = (fn_string*)alloc_bytes(alloc, sz);
     res->size = len;
     init_gc_header(&res->h, GC_TYPE_STRING);
     res->data = (u8*) (((u8*)res) + sizeof(fn_string));
@@ -304,7 +241,7 @@ void alloc_string(allocator* alloc, value* where, const string& str) {
 
 void alloc_cons(allocator* alloc, value* where, value hd, value tl) {
     alloc->collect();
-    auto res = (fn_cons*)malloc(sizeof(fn_cons));
+    auto res = (fn_cons*)alloc_bytes(alloc, sizeof(fn_cons));
     init_gc_header(&res->h, GC_TYPE_CONS);
     res->head = hd;
     res->tail = tl;
@@ -316,17 +253,25 @@ void alloc_cons(allocator* alloc, value* where, value hd, value tl) {
 
 void alloc_table(allocator* alloc, value* where) {
     alloc->collect();
-    auto res = new fn_table;
+    auto res = (fn_table*)alloc_bytes(alloc, sizeof(fn_table));
     init_gc_header(&res->h, GC_TYPE_TABLE);
+    new (&res->contents) table<value, value>;
+    res->metatable = V_NIL;
     *where = vbox_table(res);
     alloc->mem_usage += sizeof(fn_table);
     ++alloc->count;
     add_obj(alloc, &res->h);
 }
 
-static function_stub* mk_func_stub(symbol_id ns_id, fn_namespace* ns) {
-    auto res = new function_stub;
+static function_stub* mk_func_stub(allocator* alloc, symbol_id ns_id,
+        fn_namespace* ns) {
+    auto res = (function_stub*)alloc_bytes(alloc, (sizeof(function_stub)));
     init_gc_header(&res->h, GC_TYPE_FUN_STUB);
+    new (&res->code) dyn_array<u8>;
+    new (&res->const_arr) dyn_array<value>;
+    new (&res->sub_funs) dyn_array<function_stub*>; 
+    new (&res->upvals) dyn_array<u8>;
+    new (&res->upvals_direct) dyn_array<bool>;
     res->num_params = 0;
     res->num_opt = 0;
     res->num_upvals = 0;
@@ -343,7 +288,7 @@ static function_stub* mk_func_stub(symbol_id ns_id, fn_namespace* ns) {
 
 void alloc_sub_stub(allocator* alloc, function_stub* where) {
     alloc->collect();
-    auto res = mk_func_stub(where->ns_id, where->ns);
+    auto res = mk_func_stub(alloc, where->ns_id, where->ns);
     where->sub_funs.push_back(res);
     alloc->mem_usage += sizeof(function_stub);
     ++alloc->count;
@@ -355,11 +300,11 @@ void alloc_empty_fun(allocator* alloc,
         symbol_id ns_id,
         fn_namespace* ns) {
     alloc->collect();
-    auto res = new fn_function;
+    auto res = (fn_function*)alloc_bytes(alloc, sizeof(fn_function));
     init_gc_header(&res->h, GC_TYPE_FUNCTION);
     res->init_vals = nullptr;
     res->upvals = nullptr;
-    res->stub = mk_func_stub(ns_id, ns);
+    res->stub = mk_func_stub(alloc, ns_id, ns);
     *where = vbox_function(res);
     alloc->mem_usage += sizeof(function_stub) + sizeof(fn_function);
     alloc->count += 2;
@@ -375,11 +320,11 @@ void alloc_foreign_fun(allocator* alloc,
         symbol_id ns_id,
         fn_namespace* ns) {
     alloc->collect();
-    auto res = new fn_function;
+    auto res = (fn_function*)alloc_bytes(alloc, sizeof(fn_function));
     init_gc_header(&res->h, GC_TYPE_FUNCTION);
     res->init_vals = nullptr;
     res->upvals = nullptr;
-    res->stub = mk_func_stub(ns_id, ns);
+    res->stub = mk_func_stub(alloc, ns_id, ns);
     res->stub->foreign = foreign;
     res->stub->num_params = num_params;
     res->stub->num_opt = 0;
@@ -428,13 +373,16 @@ static upvalue_cell* open_upval(istate* S, u32 pos) {
 void alloc_fun(istate* S, value* where, fn_function* enclosing,
         function_stub* stub) {
     S->alloc->collect();
-    auto res = new fn_function;
+    auto sz = sizeof(fn_function) + stub->num_opt*sizeof(value)
+        + stub->num_upvals*sizeof(upvalue_cell);
+    auto res = (fn_function*)alloc_bytes(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_FUNCTION);
-    res->init_vals = new value[stub->num_opt];
+    res->init_vals = (value*)(sizeof(fn_function) + (u8*)res);
     for (u32 i = 0; i < stub->num_opt; ++i) {
         res->init_vals[i] = V_NIL;
     }
-    res->upvals = new upvalue_cell*[stub->num_upvals];
+    res->upvals = (upvalue_cell**)(sizeof(fn_function)
+            + stub->num_opt*sizeof(value) + (u8*)res);
     res->stub = stub;
 
     // set up upvalues

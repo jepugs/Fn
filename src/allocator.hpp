@@ -73,6 +73,7 @@ public:
     void print_status();
 };
 
+void* alloc_bytes(allocator* alloc, u64 size);
 void alloc_string(allocator* alloc, value* where, u32 size);
 void alloc_string(allocator* alloc, value* where, const string& str);
 void alloc_cons(allocator* alloc, value* where, value hd, value tl);
