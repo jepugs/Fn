@@ -5,7 +5,7 @@
 
 namespace fn {
 
-static const float REHASH_THRESHOLD = 0.3;
+static const float REHASH_THRESHOLD = 0.75;
 
 class allocator;
 
@@ -15,10 +15,11 @@ template <typename K, typename T> class table {
 public:
     // hash table entry
     struct entry {
-        const K key;
+        bool live;
+        K key;
         T val;
 
-        entry(const K& k, const T& v) : key{k}, val{v} { }
+        entry(const K& k, const T& v) : live{true}, key{k}, val{v} { }
     };
 
 private:
@@ -26,81 +27,77 @@ private:
     u32 cap;
     u32 threshold;
     u32 size;
-    entry **array;
+    entry* array;
 
     // increase the capacity by a factor of 2. this involves recomputing all hashes
     void increase_cap() {
-        auto *prev = array;
+        auto prev = array;
         auto old_cap = cap;
 
         // initialize a new array
         cap *= 2;
         threshold = (u32)(REHASH_THRESHOLD * cap);
-        array = new entry*[cap];
+        array = (entry*)malloc(sizeof(entry)*cap);
         for (u32 i =0; i < cap; ++i) {
-            array[i] = nullptr;
+            array[i].live = false;
         }
 
         // insert the old data, deleting old entries as we go
         for (u32 i=0; i<old_cap; ++i) {
-            if (prev[i] != nullptr) {
-                insert(prev[i]->key, prev[i]->val);
-                delete prev[i];
+            if (prev[i].live) {
+                insert(prev[i].key, prev[i].val);
             }
         }
-        delete[] prev;
+        free(prev);
     }
 
 public:
-    table(u32 init_cap=32)
+    table(u32 init_cap=8)
         : cap{init_cap} {
         float th = REHASH_THRESHOLD * (float) init_cap;
         threshold = (u32)th;
         size = 0;
-        array = new entry*[init_cap];
+        array = (entry*)malloc(sizeof(entry)*cap);
         for (u32 i =0; i < init_cap; ++i) {
-            array[i] = nullptr;
+            array[i].live = false;
         }
     }
     table(const table<K,T>& src)
-        : cap(src.cap)
-        , threshold(src.threshold)
-        , size(src.size)
-        , array(new entry*[cap]) {
+        : cap{src.cap}
+        , threshold{src.threshold}
+        , size{src.size}
+        , array{(entry*)malloc(sizeof(entry)*cap)} {
         for (u32 i = 0; i < cap; ++i) {
-            if (src.array[i] != nullptr) {
-                array[i] = new entry{src.array[i]->key, src.array[i]->val};
+            if (src.array[i].live) {
+                new (&array[i]) entry {src.array[i].key, src.array[i].val};
             } else {
-                array[i] = nullptr;
+                array[i].live = false;
             }
         }
     }
     ~table() {
-        for (u32 i=0; i < cap; ++i) {
-            if (array[i] != nullptr)
-                delete array[i];
+        for (u32 i = 0; i < cap; ++i) {
+            if (array[i].live) {
+                array[i].~entry();
+            }
         }
-        delete[] array;
+        free(array);
     }
 
     table<K,T>& operator=(const table<K,T>& src) {
         // clean up the old data and just replace this using new
-        for (u32 i=0; i < cap; ++i) {
-            if (array[i] != nullptr)
-                delete array[i];
-        }
-        delete[] array;
+        free(array);
 
         cap = src.cap;
         threshold = src.threshold;
         size = src.size;
-        array = new entry*[cap];
+        array = (entry*)malloc(sizeof(entry)*cap);;
 
         for (u32 i = 0; i < cap; ++i) {
-            if (src.array[i] != nullptr) {
-                array[i] = new entry{src.array[i]->key, src.array[i]->val};
+            if (src.array[i].live) {
+                new (&array[i]) entry{src.array[i].key, src.array[i].val};
             } else {
-                array[i] = nullptr;
+                array[i].live = false;
             }
         }
 
@@ -120,20 +117,20 @@ public:
         u32 h = hash<K>(k);
         u32 i = h % cap;
         while(true) {
-            if (array[i] == nullptr) {
+            if (!array[i].live) {
                 // no collision; make a new entry
                 ++size;
-                array[i] = new entry{k, v};
+                new (&array[i]) entry{k, v};
                 break;
-            } else if (array[i]->key == k) {
+            } else if (array[i].key == k) {
                 // no collision; overwrite previous entry
-                array[i]->val = v;
+                array[i].val = v;
                 break;
             }
             // collision; increment index and try again
             i = (i+1) % cap;
         }
-        return array[i]->val;
+        return array[i].val;
     }
 
     // returns nullptr when no object is associated to the key
@@ -144,13 +141,14 @@ public:
         u64 ct = 0;
         // do linear probing
         while(ct < cap) {
-            auto x = array[i] == nullptr ? 0 : array[i]->key == k;
-            if (array[i] == nullptr) {
+            if (array[i].live) {
+                if (array[i].key == k) {
+                    // found the key
+                    return array[i].val;
+                }
+            } else {
                 // no entry for this key
                 return std::nullopt;
-            } else if (array[i]->key == k && x) {
-                // found the key
-                return array[i]->val;
             }
             i = (i+1) % cap;
             ++ct;
@@ -163,12 +161,14 @@ public:
         u32 i = h % this->cap;
         // do linear probing
         while(true) {
-            if (array[i] == nullptr) {
+            if (array[i].live) {
+                if (array[i].key == k) {
+                    // found the key
+                    return true;
+                }
+            } else {
                 // no entry for this key
                 return false;
-            } else if (array[i]->key == k) {
-                // found the key
-                return true;
             }
             i = (i+1) % cap;
         }
@@ -177,8 +177,8 @@ public:
     const forward_list<K> keys() const {
         forward_list<K> res;
         for (u32 i = 0; i < cap; ++i) {
-            if(array[i] != nullptr) {
-                res.push_front(array[i]->key);
+            if(array[i].live) {
+                res.push_front(array[i].key);
             }
         }
         return res;
@@ -189,9 +189,9 @@ public:
             return false;
         }
         for (u32 i = 0; i < cap; ++i) {
-            if (array[i] == nullptr) continue;
+            if (!array[i].live) continue;
 
-            auto k = array[i]->key;
+            auto k = array[i].key;
             auto v1 = x.get(k);
             if (!v1.has_value()) {
                 return false;
@@ -212,19 +212,19 @@ public:
             : tab{tab} {
             i = start;
             // search for non-nil
-            while (i < tab->cap && tab->array[i] == nullptr) {
+            while (i < tab->cap && !tab->array[i].live) {
                 ++i;
             }
         }
 
         entry* operator*() {
-            return tab->array[i];
+            return &tab->array[i];
         }
 
         iterator& operator++() {
             ++i;
             // search for non-nil
-            while (i < tab->cap && tab->array[i] == nullptr) {
+            while (i < tab->cap && !tab->array[i].live) {
                 ++i;
             }
             return *this;
