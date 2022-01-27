@@ -21,49 +21,6 @@ struct fn_cons;
 struct fn_table;
 struct fn_function;
 
-// symbols in fn are represented by a 32-bit unsigned ids
-struct symtab_entry {
-    symbol_id id;
-    // pointer here b/c string itself is not trivially copyable, hence not
-    // appropriate for a dynamic array.
-    string* name;
-};
-
-// the point of the symbol table is to have fast two-way lookup going from a symbol's name to its id
-// and vice versa.
-class symbol_table {
-private:
-    table<string,symtab_entry> by_name;
-    dyn_array<symtab_entry> by_id;
-    symbol_id next_gensym = -1;
-
-public:
-    symbol_table() = default;
-    ~symbol_table();
-
-    symbol_id intern(const string& str);
-    bool is_internal(const string& str) const;
-    // if symbol_id does not name a valid symbol, returns the empty string
-    string symbol_name(symbol_id sym) const;
-
-    symbol_id gensym();
-    bool is_gensym(symbol_id id) const;
-    // not a true symbol name, but a useful symbolic name for a gensym
-    string gensym_name(symbol_id sym) const;
-
-    // acts like gensym_name for gensyms, symbol_name otherwise
-    string nice_name(symbol_id sym) const;
-
-    string operator[](symbol_id id) const {
-        return symbol_name(id);
-    }
-};
-
-// constant values
-constexpr value V_NIL  = { .raw = TAG_NIL };
-constexpr value V_FALSE = { .raw = TAG_FALSE };
-constexpr value V_TRUE  = { .raw = TAG_TRUE };
-constexpr value V_EMPTY = { .raw = TAG_EMPTY };
 
 // convert a value to a string
 string v_to_string(value v,

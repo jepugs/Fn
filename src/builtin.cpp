@@ -1,6 +1,7 @@
 #include "builtin.hpp"
 
 #include "vm.hpp"
+#include "obj.hpp"
 #include <cmath>
 
 namespace fn {
