@@ -43,7 +43,7 @@ void mutate_global(istate* S, symbol_id name, value v) {
     S->by_guid.insert(intern(S, guid_str), v);
 }
 
-static void close_upvals(istate* S, u32 min_addr) {
+static inline void close_upvals(istate* S, u32 min_addr) {
     u32 i = S->open_upvals.size;
     while (i > 0) {
         auto u = S->open_upvals[i-1];
@@ -62,7 +62,7 @@ static void close_upvals(istate* S, u32 min_addr) {
 // function creation requires initvals to be present on the stack. After popping
 // initvals, the new function is pushed to the top of the stack. Upvalues are
 // opened or copied from the enclosing function as needed.
-static void create_fun(istate* S, fn_function* enclosing, constant_id fid) {
+static inline void create_fun(istate* S, fn_function* enclosing, constant_id fid) {
     auto stub = enclosing->stub->sub_funs[fid];
     push(S, V_NIL);
     // this sets up upvalues, and initializes initvals to nil
@@ -79,7 +79,7 @@ static void create_fun(istate* S, fn_function* enclosing, constant_id fid) {
 
 // on success returns true and sets place on stack to the method. On failure
 // returns false.
-static bool get_method(istate* S, fn_table* tab, value key, u32 place) {
+static inline bool get_method(istate* S, fn_table* tab, value key, u32 place) {
     auto m = tab->metatable;
     if (!vis_table(m)) {
         return false;
@@ -92,7 +92,7 @@ static bool get_method(istate* S, fn_table* tab, value key, u32 place) {
     return true;
 }
 
-static bool arrange_call_stack(istate* S, fn_function* callee, u32 n) {
+static inline bool arrange_call_stack(istate* S, fn_function* callee, u32 n) {
     auto stub = callee->stub;
     u32 min_args = stub->num_params - stub->num_opt;
     if (n < min_args) {
@@ -172,7 +172,7 @@ void call(istate* S, u32 n) {
     S->fun = save_fun;
 }
 
-static bool tail_call(istate* S, u8 n) {
+static inline bool tail_call(istate* S, u8 n) {
     auto callee = peek(S, n);
     if (!vis_function(callee)) {
         ierror(S, "Attempt to call non-function value.");
@@ -203,6 +203,8 @@ static bool tail_call(istate* S, u8 n) {
 #define cur_fun() (vfunction(S->stack[S->bp-1]))
 #define code_byte(S, where) (S->code[where])
 #define code_short(S, where) (*((u16*)&S->code[where]))
+#define push(S, v) S->stack[S->sp] = v;++S->sp;
+#define peek(S, i) (S->stack[S->sp-((i))-1])
 
 void execute_fun(istate* S) {
     // main interpreter loop
@@ -217,11 +219,11 @@ void execute_fun(istate* S) {
             push(S, get(S, code_byte(S, S->pc++)));
             break;
         case OP_SET_LOCAL:
-            set(S, code_byte(S, S->pc++), peek(S));
+            S->stack[S->bp+code_byte(S, S->pc++)] = peek(S, 0);
             --S->sp;
             break;
         case OP_COPY:
-            push(S, peek(S, code_byte(S, S->pc++)));
+            push(S, S->stack[S->sp - code_byte(S, S->pc++) - 1]);
             break;
         case OP_UPVALUE: {
             auto u = cur_fun()->upvals[code_byte(S, S->pc++)];
@@ -235,9 +237,9 @@ void execute_fun(istate* S) {
         case OP_SET_UPVALUE: {
             auto u = cur_fun()->upvals[code_byte(S, S->pc++)];
             if (u->closed) {
-                u->datum.val = peek(S);
+                u->datum.val = peek(S, 0);
             } else {
-                S->stack[u->datum.pos] = peek(S);
+                S->stack[u->datum.pos] = peek(S, 0);
             }
             --S->sp;
         }
@@ -258,7 +260,7 @@ void execute_fun(istate* S) {
         }
             break;
         case OP_GLOBAL: {
-            auto sym = vsymbol(peek(S));
+            auto sym = vsymbol(peek(S, 0));
             // this is ok since symbols aren't GC'd
             --S->sp;
             if (!push_global(S, sym)) {
@@ -268,7 +270,7 @@ void execute_fun(istate* S) {
         }
             break;
         case OP_SET_GLOBAL:
-            mutate_global(S, vsymbol(peek(S, 1)), peek(S));
+            mutate_global(S, vsymbol(peek(S, 1)), peek(S, 0));
             // leave the ID in place by only popping once
             --S->sp;
             break;
@@ -277,7 +279,7 @@ void execute_fun(istate* S) {
                 ierror(S, "obj-get target is not a table.");
                 return;
             }
-            auto x = vtable(peek(S, 1))->contents.get(peek(S));
+            auto x = vtable(peek(S, 1))->contents.get(peek(S, 0));
             S->sp -= 2;
             if (x.has_value()) {
                 push(S, *x);
@@ -291,8 +293,8 @@ void execute_fun(istate* S) {
                 ierror(S, "obj-set target is not a table.");
                 return;
             }
-            vtable(peek(S, 2))->contents.insert(peek(S, 1), peek(S));
-            S->stack[S->sp - 3] = peek(S);
+            vtable(peek(S, 2))->contents.insert(peek(S, 1), peek(S, 0));
+            S->stack[S->sp - 3] = peek(S, 0);
             S->sp -= 2;
         }
             break;
@@ -317,7 +319,7 @@ void execute_fun(istate* S) {
         }
             break;
         case OP_CJUMP:
-            if (!vtruth(peek(S))) {
+            if (!vtruth(peek(S, 0))) {
                 auto u = code_short(S, S->pc);
                 S->pc += 2 + *((i16*)&u);
             } else {
