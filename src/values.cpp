@@ -44,6 +44,7 @@ template<> u64 hash<value>(const value& v) {
     case TAG_TRUE:
     case TAG_FALSE:
     case TAG_EMPTY:
+    case TAG_UNIN:
         return hash(v.raw);
     case TAG_STRING:
         return hash(string{(char*)vstring(v)->data});
@@ -110,6 +111,8 @@ string v_to_string(value v, const symbol_table* symbols, bool code_format) {
         return "false";
     case TAG_EMPTY:
         return "[]";
+    case TAG_UNIN:
+        return "<uninitialized>";
     case TAG_SYM:
         if (code_format) {
             return "'" + symbols->nice_name(vsymbol(v));

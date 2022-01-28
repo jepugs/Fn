@@ -191,12 +191,14 @@ static inline bool tail_call(istate* S, u8 n) {
         S->stack[S->bp + i] = S->stack[S->sp - n + i];
     }
     S->sp = S->bp + n;
+    if (!arrange_call_stack(S, vfunction(callee), n)) {
+        return false;
+    }
     S->pc = 0;
     S->ns_id = fun->stub->ns_id;
     S->ns = fun->stub->ns;
     S->code = fun->stub->code.data;
     S->fun = fun;
-    arrange_call_stack(S, vfunction(callee), n);
     return true;
 }
 

@@ -9,8 +9,7 @@ void init_gc_header(gc_header* dest, u8 bits) {
     }
     new(dest) gc_header {
         .mark = 0,
-        .bits=bits,
-        .pin_count=0
+        .bits=bits
     };
 }
 

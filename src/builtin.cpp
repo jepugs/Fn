@@ -37,6 +37,10 @@ fn_fun(eq, "=", "(x0 & args)") {
     push(S, V_TRUE);
 }
 
+fn_fun(list_q, "list?", "(x)") {
+    push(S, vis_cons(peek(S)) || peek(S) == V_EMPTY ? V_TRUE : V_FALSE);
+}
+
 fn_fun(le, "<=", "(x0 & args)") {
     auto x0 = get(S, 0);
     if (!vis_number(x0)) {
@@ -299,7 +303,7 @@ void install_builtin(istate* S) {
 
     // fn_add_builtin(S, number_q);
     // fn_add_builtin(S, string_q);
-    // fn_add_builtin(S, list_q);
+    fn_add_builtin(S, list_q);
     // fn_add_builtin(S, table_q);
     // fn_add_builtin(S, function_q);
     // fn_add_builtin(S, symbol_q);

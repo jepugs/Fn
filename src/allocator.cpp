@@ -15,7 +15,7 @@ static constexpr u32 FIRST_COLLECT = 64 * 1024;
 static constexpr f64 COLLECT_SCALE_FACTOR = 2;
 // This essentially says no more than this proportion of available memory may be
 // devoted to persistent objects
-static constexpr f64 RESCALE_TH = 0.7;
+static constexpr f64 RESCALE_TH = 0.8;
 
 
 allocator::allocator(istate* S)

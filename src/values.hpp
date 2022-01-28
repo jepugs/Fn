@@ -59,6 +59,9 @@ inline u64 vis_bool(value v) {
 inline u64 vis_emptyl(value v) {
     return v == V_EMPTY;
 }
+inline u64 vis_unin(value v) {
+    return v == V_UNIN;
+}
 
 inline bool vhas_header(value v) {
     auto t = vtag(v);

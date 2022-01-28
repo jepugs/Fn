@@ -6,6 +6,22 @@
 
 namespace fn {
 
+struct global_env {
+    // array allows constant-time lookup of globals
+    dyn_array<value> by_guid;
+    // allows access of variables by name
+    table<symbol_id,u32> by_fqn;
+    // allows going from guid to fqn
+    dyn_array<symbol_id> fqn_by_guid;
+};
+
+// get a GUID for a variable, creating a new uninitialized variable if
+// necessary.
+u32 get_guid(global_env* G, symbol_id fqn);
+// set a variable by its GUID, creating a new variable if necessary
+u32 set_by_guid(global_env* G, symbol_id fqn, value new_val);
+
+
 // namespaces are key-value stores used to hold global variables and imports
 struct alignas(32) fn_namespace {
     symbol_id name;

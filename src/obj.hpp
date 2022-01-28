@@ -36,6 +36,7 @@ constexpr u64 TAG_NIL       = 0x07;
 constexpr u64 TAG_TRUE      = 0x08;
 constexpr u64 TAG_FALSE     = 0x09;
 constexpr u64 TAG_EMPTY     = 0x0a;
+constexpr u64 TAG_UNIN      = 0x0b;
 
 
 // this is the main structure to represent a value
@@ -76,7 +77,6 @@ constexpr u8 GC_TYPE_FORWARD    = 0x0f;
 struct alignas (OBJ_ALIGN) gc_header {
     u8 mark;
     u8 bits;
-    i8 pin_count;
     // used to include objects in a list
     gc_header* next;
 };
@@ -234,6 +234,7 @@ constexpr value V_NIL  = { .raw = TAG_NIL };
 constexpr value V_FALSE = { .raw = TAG_FALSE };
 constexpr value V_TRUE  = { .raw = TAG_TRUE };
 constexpr value V_EMPTY = { .raw = TAG_EMPTY };
+constexpr value V_UNIN = { .raw = TAG_UNIN };
 
 
 // these are used to compute how much space should be allocated for an object
