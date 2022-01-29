@@ -97,11 +97,8 @@ static inline bool arrange_call_stack(istate* S, fn_function* callee, u32 n) {
 
 void call(istate* S, u32 n) {
     // update the call frame
-    auto save_pc = S->pc;
     auto save_bp = S->bp;
-    auto save_ns_id = S->ns_id;
-    auto save_fun = S->fun;
-
+    auto save_code = S->code;
     auto callee = peek(S, n);
     if (!vis_function(callee)) {
         ierror(S, "Attempt to call non-function value.");
@@ -109,11 +106,8 @@ void call(istate* S, u32 n) {
     }
     auto fun = vfunction(callee);
 
-    S->pc = 0;
     S->bp = S->sp - n;
-    S->ns_id = fun->stub->ns_id;
     S->code = fun->stub->code.data;
-    S->fun = fun;
     arrange_call_stack(S, fun, n);
 
     // FIXME: ensure minimum stack space available
@@ -132,17 +126,12 @@ void call(istate* S, u32 n) {
     }
     // return value
     S->stack[S->bp-1] = peek(S);
-    S->pc = save_pc;
     S->sp = S->bp;  // with the return value, this is the new stack pointer
     S->bp = save_bp;
-    S->ns_id = save_ns_id;
-    if (save_fun != nullptr) {
-        S->code = save_fun->stub->code.data;
-    }
-    S->fun = save_fun;
+    S->code = save_code;
 }
 
-static inline bool tail_call(istate* S, u8 n) {
+static inline bool tail_call(istate* S, u8 n, u32* pc) {
     auto callee = peek(S, n);
     if (!vis_function(callee)) {
         ierror(S, "Attempt to call non-function value.");
@@ -164,10 +153,8 @@ static inline bool tail_call(istate* S, u8 n) {
     if (!arrange_call_stack(S, vfunction(callee), n)) {
         return false;
     }
-    S->pc = 0;
-    S->ns_id = fun->stub->ns_id;
     S->code = fun->stub->code.data;
-    S->fun = fun;
+    *pc = 0;
     return true;
 }
 
@@ -178,26 +165,27 @@ static inline bool tail_call(istate* S, u8 n) {
 #define peek(S, i) (S->stack[S->sp-((i))-1])
 
 void execute_fun(istate* S) {
+    u32 pc = 0;
     // main interpreter loop
     while (true) {
-        switch (code_byte(S, S->pc++)) {
+        switch (code_byte(S, pc++)) {
         case OP_NOP:
             break;
         case OP_POP:
             --S->sp;
             break;
         case OP_LOCAL:
-            push(S, get(S, code_byte(S, S->pc++)));
+            push(S, get(S, code_byte(S, pc++)));
             break;
         case OP_SET_LOCAL:
-            S->stack[S->bp+code_byte(S, S->pc++)] = peek(S, 0);
+            S->stack[S->bp+code_byte(S, pc++)] = peek(S, 0);
             --S->sp;
             break;
         case OP_COPY:
-            push(S, S->stack[S->sp - code_byte(S, S->pc++) - 1]);
+            push(S, S->stack[S->sp - code_byte(S, pc++) - 1]);
             break;
         case OP_UPVALUE: {
-            auto u = cur_fun()->upvals[code_byte(S, S->pc++)];
+            auto u = cur_fun()->upvals[code_byte(S, pc++)];
             if (u->closed) {
                 push(S, u->datum.val);
             } else {
@@ -206,7 +194,7 @@ void execute_fun(istate* S) {
         }
             break;
         case OP_SET_UPVALUE: {
-            auto u = cur_fun()->upvals[code_byte(S, S->pc++)];
+            auto u = cur_fun()->upvals[code_byte(S, pc++)];
             if (u->closed) {
                 u->datum.val = peek(S, 0);
             } else {
@@ -216,13 +204,13 @@ void execute_fun(istate* S) {
         }
             break;
         case OP_CLOSURE: {
-            auto fid = code_short(S, S->pc);
-            S->pc += 2;
+            auto fid = code_short(S, pc);
+            pc += 2;
             create_fun(S, cur_fun(), fid);
         }
             break;
         case OP_CLOSE: {
-            auto num = code_byte(S, S->pc++);
+            auto num = code_byte(S, pc++);
             // computes highest stack address to close
             auto new_sp = S->sp - num;
             close_upvals(S, new_sp);
@@ -231,18 +219,19 @@ void execute_fun(istate* S) {
         }
             break;
         case OP_GLOBAL: {
-            auto id = code_short(S, S->pc);
-            S->pc += 2;
+            auto id = code_short(S, pc);
+            pc += 2;
             auto fqn = vsymbol(cur_fun()->stub->const_arr[id]);
             if (!push_global(S, fqn)) {
                 ierror(S, "Failed to find global variable " + (*S->symtab)[fqn]);
+                S->pc = pc;
                 return;
             }
         }
             break;
         case OP_SET_GLOBAL: {
-            auto id = code_short(S, S->pc);
-            S->pc += 2;
+            auto id = code_short(S, pc);
+            pc += 2;
             auto fqn = cur_fun()->stub->const_arr[id];
             set_global(S, vsymbol(fqn), peek(S, 0));
             S->stack[S->sp-1] = fqn;
@@ -251,6 +240,7 @@ void execute_fun(istate* S) {
         case OP_OBJ_GET: {
             if (!vis_table(peek(S, 1))) {
                 ierror(S, "obj-get target is not a table.");
+                S->pc = pc;
                 return;
             }
             auto x = vtable(peek(S, 1))->contents.get(peek(S, 0));
@@ -265,6 +255,7 @@ void execute_fun(istate* S) {
         case OP_OBJ_SET: {
             if (!vis_table(peek(S, 2))) {
                 ierror(S, "obj-set target is not a table.");
+                S->pc = pc;
                 return;
             }
             vtable(peek(S, 2))->contents.insert(peek(S, 1), peek(S, 0));
@@ -274,8 +265,8 @@ void execute_fun(istate* S) {
             break;
 
         case OP_CONST:
-            push(S, cur_fun()->stub->const_arr[code_short(S, S->pc)]);
-            S->pc += 2;
+            push(S, cur_fun()->stub->const_arr[code_short(S, pc)]);
+            pc += 2;
             break;
         case OP_NIL:
             push(S, V_NIL);
@@ -288,50 +279,55 @@ void execute_fun(istate* S) {
             break;
 
         case OP_JUMP: {
-            auto u = code_short(S, S->pc);
-            S->pc += 2 + *((i16*)&u);
+            auto u = code_short(S, pc);
+            pc += 2 + *((i16*)&u);
         }
             break;
         case OP_CJUMP:
             if (!vtruth(peek(S, 0))) {
-                auto u = code_short(S, S->pc);
-                S->pc += 2 + *((i16*)&u);
+                auto u = code_short(S, pc);
+                pc += 2 + *((i16*)&u);
             } else {
-                S->pc += 2;
+                pc += 2;
             }
             --S->sp;
             break;
         case OP_CALL:
-            call(S, code_byte(S, S->pc++));
+            call(S, code_byte(S, pc++));
             if (S->err_happened) {
+                S->pc = pc;
                 return;
             }
             break;
         case OP_TCALL:
-            if (!tail_call(S, code_byte(S, S->pc++))) {
+            if (!tail_call(S, code_byte(S, pc++), &pc)) {
+                S->pc = pc;
                 return;
             }
             break;
         case OP_CALLM: {
-            auto num_args = code_byte(S, S->pc++);
+            auto num_args = code_byte(S, pc++);
             auto sym = peek(S, num_args+1);
             auto tab = peek(S, num_args);
             if (!vis_table(tab)) {
                 ierror(S, "Method call operand not a table.");
+                S->pc = pc;
                 return;
             }
             if (!get_method(S, vtable(tab), sym, S->sp - num_args - 2)) {
                 ierror(S, "Method lookup failed.");
+                S->pc = pc;
                 return;
             }
             call(S, num_args+1);
             if (S->err_happened) {
+                S->pc = pc;
                 return;
             }
         }
             break;
         case OP_TCALLM: {
-            auto num_args = code_byte(S, S->pc++);
+            auto num_args = code_byte(S, pc++);
             auto sym = peek(S, num_args+1);
             auto tab = peek(S, num_args);
             if (!vis_table(tab)) {
@@ -342,7 +338,7 @@ void execute_fun(istate* S) {
                 ierror(S, "Method lookup failed.");
                 return;
             }
-            if (!tail_call(S, num_args+1)) {
+            if (!tail_call(S, num_args+1, &pc)) {
                 return;
             }
         }

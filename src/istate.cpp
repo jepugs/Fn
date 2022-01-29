@@ -123,10 +123,10 @@ void push_table(istate* S) {
 void pop_to_list(istate* S, u32 n) {
     push(S, V_EMPTY);
     for (u32 i = 0; i < n; ++i) {
-        alloc_cons(S, &S->stack[S->sp - 2], S->stack[S->sp - 2],
-                S->stack[S->sp - 1]);
-        pop(S);
+        alloc_cons(S, &S->stack[S->sp - 2 - i], S->stack[S->sp - 2 - i],
+                S->stack[S->sp - 1 - i]);
     }
+    S->sp -= n;
 }
 
 void push_empty_fun(istate* S) {
