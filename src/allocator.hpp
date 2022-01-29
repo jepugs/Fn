@@ -9,6 +9,7 @@
 #include "bytes.hpp"
 #include "namespace.hpp"
 #include "obj.hpp"
+#include "object_pool.hpp"
 
 
 // FIXME: these macros should probably be in a header, but not this one (so as
@@ -39,6 +40,8 @@ public:
     // gc is invoked when mem_usage > collect_threshold. collect_threshold is
     // increased if mem_usage > 0.5*collect_threshold after a collection.
     u64 collect_threshold;
+
+    object_pool<fn_cons> cons_pool;
 
     istate* S;
     gc_header* objs_head;

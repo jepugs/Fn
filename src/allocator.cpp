@@ -43,7 +43,7 @@ void allocator::dealloc(gc_header* o) {
         break;
     case GC_TYPE_CONS:
         mem_usage -= sizeof(fn_cons);
-        free(o);
+        cons_pool.free_object((fn_cons*)o);
         break;
     case GC_TYPE_TABLE:
         mem_usage -= sizeof(fn_table);
@@ -125,7 +125,9 @@ void alloc_string(istate* S, value* where, const string& str) {
 
 void alloc_cons(istate* S, value* where, value hd, value tl) {
     collect(S);
-    auto res = (fn_cons*)alloc_bytes(S->alloc, sizeof(fn_cons));
+    //auto res = (fn_cons*)alloc_bytes(S->alloc, sizeof(fn_cons));
+    auto res = S->alloc->cons_pool.new_object();
+    S->alloc->mem_usage += sizeof(fn_cons);
     init_gc_header(&res->h, GC_TYPE_CONS);
     res->head = hd;
     res->tail = tl;
