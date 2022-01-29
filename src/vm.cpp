@@ -107,7 +107,7 @@ static inline bool arrange_call_stack(istate* S, fn_function* callee, u32 n) {
 static inline void foreign_call(istate* S, fn_function* fun, u32 n) {
     auto save_bp = S->bp;
     S->bp = S->sp - n;
-    arrange_call_stack(S, fun, n);
+    //arrange_call_stack(S, fun, n);
     fun->stub->foreign(S);
     S->stack[S->bp-1] = peek(S, 0);
     S->sp = S->bp;  // with the return value, this is the new stack pointer

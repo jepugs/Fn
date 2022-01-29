@@ -26,14 +26,12 @@ static void def_foreign_fun(istate* S, const string& name, const string& params,
 
 fn_fun(eq, "=", "(x0 & args)") {
     auto x0 = get(S, 0);
-    auto lst = get(S, 1);
-    while (lst != V_EMPTY) {
+    for (u32 i = S->bp; i < S->sp; ++i) {
         // FIXME: check type
-        if (vcons(lst)->head != x0) {
+        if (S->stack[i] != x0) {
             push(S, V_FALSE);
             return;
         }
-        lst = vcons(lst)->tail;
     }
     push(S, V_TRUE);
 }
@@ -45,22 +43,19 @@ fn_fun(list_q, "list?", "(x)") {
 fn_fun(le, "<=", "(x0 & args)") {
     auto x0 = get(S, 0);
     if (!vis_number(x0)) {
-        ierror(S, "Arguments to <= must be numbers.");
+        ierror(S, "Arguments to <= not a number.");
         return;
     }
-    auto lst = get(S, 1);
-    while (lst != V_EMPTY) {
-        // FIXME: check type
-        auto x1 = vcons(lst)->head;
+    for (u32 i = S->bp; i < S->sp; ++i) {
+        auto x1 = S->stack[i];
         if (!vis_number(x1)) {
-            ierror(S, "Arguments to <= must be numbers.");
+            ierror(S, "Arguments to <= not a number.");
             return;
         }
         if (vnumber(x0) > vnumber(x1)) {
             push(S, V_FALSE);
             return;
         }
-        lst = vcons(lst)->tail;
     }
     push(S, V_TRUE);
 }
@@ -71,19 +66,16 @@ fn_fun(ge, ">=", "(x0 & args)") {
         ierror(S, "Arguments to >= must be numbers.");
         return;
     }
-    auto lst = get(S, 1);
-    while (lst != V_EMPTY) {
-        // FIXME: check type
-        auto x1 = vcons(lst)->head;
+    for (u32 i = S->bp; i < S->sp; ++i) {
+        auto x1 = S->stack[i];
         if (!vis_number(x1)) {
-            ierror(S, "Arguments to >= must be numbers.");
+            ierror(S, "Argument to >= not a number.");
             return;
         }
         if (vnumber(x0) < vnumber(x1)) {
             push(S, V_FALSE);
             return;
         }
-        lst = vcons(lst)->tail;
     }
     push(S, V_TRUE);
 }
@@ -91,105 +83,96 @@ fn_fun(ge, ">=", "(x0 & args)") {
 fn_fun(ceil, "ceil", "(x)") {
     auto x0 = get(S,0);
     if (!vis_number(x0)) {
-        ierror(S, "Argument to ceil must be a number.");
+        ierror(S, "Argument to ceil not a number.");
         return;
     }
     push_number(S, ceil(vnumber(x0)));
 }
 
 fn_fun(add, "+", "(& args)") {
-    auto lst = peek(S);
-    auto res = 0;
-    while (lst != V_EMPTY) {
-        // FIXME: check type
-        if (!vis_number(vcons(lst)->head)) {
-            std::ostringstream os;
-            os << "Sp " << S->sp;
-            os <<  v_to_string(vcons(lst)->head, S->symtab, true);
-            ierror(S,os.str());
+    f64 res = 0;
+    for (u32 i = S->bp; i < S->sp; ++i) {
+        auto v = S->stack[i];
+        if (!vis_number(v)) {
+            ierror(S, "Argument to + not a number.");
             return;
         }
-        res += vnumber(vcons(lst)->head);
-        lst = vcons(lst)->tail;
+        res += vnumber(v);
     }
-    pop(S);
     push_number(S, res);
 }
 
 fn_fun(sub, "-", "(& args)") {
-    auto lst = peek(S);
-    if (lst == V_EMPTY) {
+    f64 res = 0;
+    if (S->sp - S->bp == 0) {
         push_number(S, 0);
         return;
-    }
+    } else {
+        auto v = S->stack[S->bp];
+        if (!vis_number(v)) {
+            ierror(S, "Argument to - not a number.");
+            return;
+        }
+        res = vnumber(v);
 
-    if (!vis_number(vcons(lst)->head)) {
-        ierror(S, "- arguments must be numbers");
+    }
+    // arity 1 => perform negation
+    if (S->sp - S->bp == 1) {
+        push_number(S, -res);
         return;
     }
-    auto res = vnumber(vcons(lst)->head);
-    if (vcons(lst)->tail == V_EMPTY) {
-        push_number(S, -vnumber(vcons(lst)->head));
-    } else {
-        lst = vcons(lst)->tail;
-        while (lst != V_EMPTY) {
-            // FIXME: check type
-            if (!vis_number(vcons(lst)->head)) {
-                ierror(S, "- arguments must be numbers");
-                return;
-            }
-            res -= vnumber(vcons(lst)->head);
-            lst = vcons(lst)->tail;
+    for (u32 i = S->bp + 1; i < S->sp; ++i) {
+        auto v = S->stack[i];
+        if (!vis_number(v)) {
+            ierror(S, "Argument to - not a number.");
+            return;
         }
-        pop(S);
-        push_number(S, res);
+        res -= vnumber(v);
     }
+    push_number(S, res);
 }
 
 fn_fun(mul, "*", "(& args)") {
-    auto lst = peek(S);
-    auto res = 1;
-    while (lst != V_EMPTY) {
-        // FIXME: check type
-        if (!vis_number(vcons(lst)->head)) {
-            ierror(S, "* arguments must be numbers");
+    f64 res = 1;
+    for (u32 i = S->bp; i < S->sp; ++i) {
+        auto v = S->stack[i];
+        if (!vis_number(v)) {
+            ierror(S, "Argument to * not a number.");
             return;
         }
-        res *= vnumber(vcons(lst)->head);
-        lst = vcons(lst)->tail;
+        res *= vnumber(v);
     }
-    pop(S);
     push_number(S, res);
 }
 
 fn_fun(div, "/", "(& args)") {
-    auto lst = peek(S);
-    if (lst == V_EMPTY) {
+    f64 res = 1;
+    if (S->sp - S->bp == 0) {
         push_number(S, 1);
         return;
-    }
+    } else {
+        auto v = S->stack[S->bp];
+        if (!vis_number(v)) {
+            ierror(S, "Argument to / not a number.");
+            return;
+        }
+        res = vnumber(v);
 
-    if (!vis_number(vcons(lst)->head)) {
-        ierror(S, "/ arguments must be numbers");
+    }
+    // arity 1 => take inverse
+    if (S->sp - S->bp == 1) {
+        push_number(S, 1/res);
         return;
     }
-    auto res = vnumber(vcons(lst)->head);
-    if (vcons(lst)->tail == V_EMPTY) {
-        push_number(S, 1 / vnumber(vcons(lst)->head));
-    } else {
-        lst = vcons(lst)->tail;
-        while (lst != V_EMPTY) {
-            // FIXME: check type
-            if (!vis_number(vcons(lst)->head)) {
-                ierror(S, "/ arguments must be numbers");
-                return;
-            }
-            res /= vnumber(vcons(lst)->head);
-            lst = vcons(lst)->tail;
+    for (u32 i = S->bp + 1; i < S->sp; ++i) {
+        auto v = S->stack[i];
+        if (!vis_number(v)) {
+            ierror(S, "Argument to / not a number.");
+            return;
         }
-        pop(S);
-        push_number(S, res);
+        res /= vnumber(v);
     }
+    push_number(S, res);
 }
 
 fn_fun(pow, "**", "(base expt)") {
@@ -205,8 +188,7 @@ fn_fun(pow, "**", "(base expt)") {
 
 
 fn_fun(List, "List", "(& args)") {
-    // the variadic argument takes care of this for us.
-    return;
+    pop_to_list(S, S->sp - S->bp);
 }
 
 fn_fun(cons, "cons", "(hd tl)") {
@@ -256,32 +238,28 @@ fn_fun(mod, "mod", "(x modulus)") {
 fn_fun(Table, "Table", "(& args)") {
     push_table(S);
     auto res = vtable(peek(S));
-    fn_for_list(it, peek(S, 1)) {
-        auto tl = vtail(it);
-        if (tl == V_EMPTY) {
+    for (u32 i = S->bp; i+1 < S->sp; i += 2) {
+        if (i + 2 == S->sp) {
             ierror(S, "Table requires an even number of arguments.");
             return;
         }
-        res->contents.insert(vhead(it), vhead(tl));
-        it = tl;
+        res->contents.insert(S->stack[i], S->stack[i+1]);
     }
 }
 
 fn_fun(get, "get", "(obj & keys)") {
     push(S, get(S, 0));
-    auto lst = get(S, 1);
-    while (lst != V_EMPTY) {
+    for (u32 i = S->bp+1; i+1 < S->sp; ++i) {
         if (!vis_table(peek(S))) {
             ierror(S, "get can only descend on tables.");
             return;
         }
-        auto x = vtable(peek(S))->contents.get(vcons(lst)->head);
+        auto x = vtable(peek(S))->contents.get(S->stack[i]);
         if (!x.has_value()) {
             ierror(S, "get failed: no such key.");
             return;
         }
         S->stack[S->sp-1] = *x;
-        lst = vcons(lst)->tail;
     }
 }
 
