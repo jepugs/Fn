@@ -37,7 +37,7 @@ private:
     }
 
 public:
-    object_pool(u32 block_size=32)
+    object_pool(u32 block_size=128)
         : block_size{block_size}
         , first_free{nullptr} {
         static_assert(sizeof(T) >= sizeof(void*));

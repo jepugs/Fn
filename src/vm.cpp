@@ -16,6 +16,15 @@
 
 namespace fn {
 
+// macros to inline common operations. Note that the ones with an S argument
+// must have the istate variable passed in directly or it could be computed
+// multiple times.
+#define cur_fun() (vfunction(S->stack[S->bp-1]))
+#define code_byte(S, where) (S->code[where])
+#define code_short(S, where) (*((u16*)&S->code[where]))
+#define push(S, v) S->stack[S->sp] = v;++S->sp;
+#define peek(S, i) (S->stack[S->sp-((i))-1])
+
 static inline void close_upvals(istate* S, u32 min_addr) {
     u32 i = S->open_upvals.size;
     while (i > 0) {
@@ -95,10 +104,18 @@ static inline bool arrange_call_stack(istate* S, fn_function* callee, u32 n) {
     return true;
 }
 
+static inline void foreign_call(istate* S, fn_function* fun, u32 n) {
+    auto save_bp = S->bp;
+    S->bp = S->sp - n;
+    arrange_call_stack(S, fun, n);
+    fun->stub->foreign(S);
+    S->stack[S->bp-1] = peek(S, 0);
+    S->sp = S->bp;  // with the return value, this is the new stack pointer
+    S->bp = save_bp;
+}
+
 void call(istate* S, u32 n) {
     // update the call frame
-    auto save_bp = S->bp;
-    auto save_code = S->code;
     auto callee = peek(S, n);
     if (!vis_function(callee)) {
         ierror(S, "Attempt to call non-function value.");
@@ -106,14 +123,15 @@ void call(istate* S, u32 n) {
     }
     auto fun = vfunction(callee);
 
-    S->bp = S->sp - n;
-    S->code = fun->stub->code.data;
-    arrange_call_stack(S, fun, n);
-
     // FIXME: ensure minimum stack space available
     if (fun->stub->foreign) {
-        fun->stub->foreign(S);
+        foreign_call(S, fun, n);
     } else {
+        auto save_bp = S->bp;
+        auto save_code = S->code;
+        S->bp = S->sp - n;
+        arrange_call_stack(S, fun, n);
+        S->code = fun->stub->code.data;
         execute_fun(S);
         if (S->err_happened) {
             std::ostringstream os;
@@ -123,12 +141,12 @@ void call(istate* S, u32 n) {
             ierror(S, os.str());
             return;
         }
+        // return value
+        S->stack[S->bp-1] = peek(S, 0);
+        S->sp = S->bp;  // with the return value, this is the new stack pointer
+        S->bp = save_bp;
+        S->code = save_code;
     }
-    // return value
-    S->stack[S->bp-1] = peek(S);
-    S->sp = S->bp;  // with the return value, this is the new stack pointer
-    S->bp = save_bp;
-    S->code = save_code;
 }
 
 static inline bool tail_call(istate* S, u8 n, u32* pc) {
@@ -139,8 +157,7 @@ static inline bool tail_call(istate* S, u8 n, u32* pc) {
     }
     auto fun = vfunction(callee);
     if (fun->stub->foreign) {
-        // foreign call
-        call(S, n);
+        foreign_call(S, fun, n);
         return true;
     }
     close_upvals(S, S->bp);
@@ -157,12 +174,6 @@ static inline bool tail_call(istate* S, u8 n, u32* pc) {
     *pc = 0;
     return true;
 }
-
-#define cur_fun() (vfunction(S->stack[S->bp-1]))
-#define code_byte(S, where) (S->code[where])
-#define code_short(S, where) (*((u16*)&S->code[where]))
-#define push(S, v) S->stack[S->sp] = v;++S->sp;
-#define peek(S, i) (S->stack[S->sp-((i))-1])
 
 void execute_fun(istate* S) {
     u32 pc = 0;
