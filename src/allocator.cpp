@@ -276,14 +276,13 @@ void alloc_fun(istate* S, value* where, fn_function* enclosing,
     add_obj(S->alloc, &res->h);
 }
 
-static void add_value_header(value v,
-        std::forward_list<gc_header*>* to_list) {
+static void add_value_header(value v, dyn_array<gc_header*>* to_list) {
     if (vhas_header(v)) {
-        to_list->push_front(vheader(v));
+        to_list->push_back(vheader(v));
     }
 }
 
-static void add_accessible(gc_header* o, std::forward_list<gc_header*>* to_list) {
+static void add_accessible(gc_header* o, dyn_array<gc_header*>* to_list) {
     switch (gc_type(*o)) {
     case GC_TYPE_CONS:
         add_value_header(((fn_cons*)o)->head, to_list);
@@ -302,18 +301,18 @@ static void add_accessible(gc_header* o, std::forward_list<gc_header*>* to_list)
         // upvalues
         for (local_address i = 0; i < f->stub->num_upvals; ++i) {
             auto cell = f->upvals[i];
-            to_list->push_front(&cell->h);
+            to_list->push_back(&cell->h);
         }
         for (u32 i = 0; i < f->stub->num_opt; ++i) {
             add_value_header(f->init_vals[i], to_list);
         }
-        to_list->push_front(&f->stub->h);
+        to_list->push_back(&f->stub->h);
     }
         break;
     case GC_TYPE_FUN_STUB: {
         auto s = (function_stub*)o;
         for (auto x : s->sub_funs) {
-            to_list->push_front(&x->h);
+            to_list->push_back(&x->h);
         }
         for (auto x : s->const_arr) {
             add_value_header(x, to_list);
@@ -331,7 +330,7 @@ static void add_accessible(gc_header* o, std::forward_list<gc_header*>* to_list)
     }
 }
 
-static void mark_descend(gc_header* h, std::forward_list<gc_header*>* to_list) {
+static void mark_descend(gc_header* h, dyn_array<gc_header*>* to_list) {
     if (!gc_mark(*h)) {
         gc_set_mark(*h);
         add_accessible(h, to_list);
@@ -339,26 +338,25 @@ static void mark_descend(gc_header* h, std::forward_list<gc_header*>* to_list) {
 }
 
 static void mark(istate* S) {
-    std::forward_list<gc_header*> marking;
+    dyn_array<gc_header*> marking;
     // stack
     for (u32 i = 0; i < S->sp; ++i) {
         add_value_header(S->stack[i], &marking);
     }
     // open upvalues
     for (auto u : S->open_upvals) {
-        marking.push_front(&u->h);
+        marking.push_back(&u->h);
     }
     // globals
     for (auto e : S->G->def_tab) {
         add_value_header(e->val, &marking);
     }
     for (auto e : S->G->macro_tab) {
-        marking.push_front(&e->val->h);
+        marking.push_back(&e->val->h);
     }
 
-    while(!marking.empty()) {
-        auto h = marking.front();
-        marking.pop_front();
+    while(marking.size > 0) {
+        auto h = marking[--marking.size];
         mark_descend(h, &marking);
     }
 }
