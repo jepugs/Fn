@@ -80,26 +80,33 @@ static inline bool arrange_call_stack(istate* S, fn_function* callee, u32 n) {
     if (n < min_args) {
         ierror(S, "Too few arguments in function call.");
         return false;
-    } else if (!stub->vari && n > stub->num_params) {
-        ierror(S, "Too many arguments in function call.");
-        return false;
-    }
-
-    u32 i;
-    for (i = n; i < stub->num_params; ++i) {
-        push(S, callee->init_vals[i]);
-    }
-    // handle variadic parameter
-    if (stub->vari) {
-        pop_to_list(S, n - stub->num_params);
-    }
-    // push indicator args
-    u32 m = stub->num_params < n ? stub->num_params : n;
-    for (i = min_args; i < m; ++i) {
-        push(S, V_TRUE);
-    }
-    for (i = n; i < stub->num_params; ++i) {
-        push(S, V_FALSE);
+    } else if (n > stub->num_params) {
+        // handle variadic parameter
+        if (stub->vari) {
+            pop_to_list(S, n - stub->num_params);
+        } else {
+            ierror(S, "Too many arguments in function call.");
+            return false;
+        }
+        // indicator args are all true in this case
+        for (u32 i = min_args; i < stub->num_params; ++i) {
+            push(S, V_TRUE);
+        }
+    } else {
+        for (u32 i = n; i < stub->num_params; ++i) {
+            push(S, callee->init_vals[i]);
+        }
+        if (stub->vari) {
+            push(S, V_EMPTY);
+        }
+        // push indicator args
+        u32 m = stub->num_params < n ? stub->num_params : n;
+        for (u32 i = min_args; i < m; ++i) {
+            push(S, V_TRUE);
+        }
+        for (u32 i = n; i < stub->num_params; ++i) {
+            push(S, V_FALSE);
+        }
     }
     return true;
 }
@@ -107,7 +114,6 @@ static inline bool arrange_call_stack(istate* S, fn_function* callee, u32 n) {
 static inline void foreign_call(istate* S, fn_function* fun, u32 n) {
     auto save_bp = S->bp;
     S->bp = S->sp - n;
-    //arrange_call_stack(S, fun, n);
     fun->stub->foreign(S);
     S->stack[S->bp-1] = peek(S, 0);
     S->sp = S->bp;  // with the return value, this is the new stack pointer
@@ -130,7 +136,9 @@ void call(istate* S, u32 n) {
         auto save_bp = S->bp;
         auto save_code = S->code;
         S->bp = S->sp - n;
-        arrange_call_stack(S, fun, n);
+        if (!arrange_call_stack(S, fun, n)) {
+            return;
+        }
         S->code = fun->stub->code.data;
         execute_fun(S);
         if (S->err_happened) {
