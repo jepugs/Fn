@@ -3,7 +3,9 @@
 namespace fn {
 
 global_env::~global_env() {
-    // FIXME: free namespaces here
+    for (auto e : ns_tab) {
+        delete e->val;
+    }
 }
 
 symbol_id resolve_sym(istate* S, symbol_id ns_id, symbol_id name) {

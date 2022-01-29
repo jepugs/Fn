@@ -25,7 +25,8 @@ struct global_env {
 
 // resolve a symbol to an FQN in the given namespace. The given namespace must
 // exist when the call is made, or an error is generated. If the given symbol is
-// not already present in the namespace, a new 
+// not already present in the namespace, a new entry in the resolution table is
+// made.
 symbol_id resolve_sym(istate* S, symbol_id ns_id, symbol_id name);
 // get a global variable by its FQN. Returns false on failed lookup
 bool push_global(istate* S, symbol_id fqn);
