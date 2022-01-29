@@ -265,10 +265,10 @@ void compiler::compile_call(llir_call* form, bool tail) {
 }
 
 void compiler::compile_def(llir_def* form) {
-    compile_sym(form->name);
     compile_llir(form->value);
     write_byte(OP_SET_GLOBAL);
-    --sp;
+    auto fqn = resolve_sym(S, S->ns_id, form->name);
+    write_short(add_const(S, ft, vbox_symbol(fqn)));
 }
 
 void compiler::compile_fn(llir_fn* form) {
@@ -342,33 +342,30 @@ void compiler::compile_set(llir_set* form) {
 }
 
 void compiler::compile_var(llir_var* form) {
+    ++sp;
     // first, identify special constants
     if (form->name == intern(S, "nil")) {
         write_byte(OP_NIL);
-        ++sp;
     } else if (form->name == intern(S, "true")) {
         write_byte(OP_TRUE);
-        ++sp;
     } else if (form->name == intern(S, "false")) {
         write_byte(OP_FALSE);
-        ++sp;
     } else {
         auto l = lookup_var(form->name);
         if (l != nullptr) {
             write_byte(OP_LOCAL);
             write_byte(l->index);
-            ++sp;
             return;
         }
         auto u = lookup_upval(form->name);
         if (u != nullptr) {
             write_byte(OP_UPVALUE);
             write_byte(u->index);
-            ++sp;
             return;
         }
-        compile_sym(form->name);
+        auto fqn = resolve_sym(S, S->ns_id, form->name);
         write_byte(OP_GLOBAL);
+        write_short(add_const(S, ft, vbox_symbol(fqn)));
     }
 }
 
@@ -462,7 +459,7 @@ static void disassemble_instr(u8* code_start, std::ostream& out) {
         out << "close " << (i32)code_start[1];
         break;
     case OP_GLOBAL:
-        out << "global";
+        out << "global " << read_short(&code_start[1]);;
         break;
     case OP_SET_GLOBAL:
         out << "set-global";
@@ -495,10 +492,10 @@ static void disassemble_instr(u8* code_start, std::ostream& out) {
         out << "set-macro";
         break;
     case OP_CALLM:
-        out << "callm";
+        out << "callm " << (i32)code_start[1];
         break;
     case OP_TCALLM:
-        out << "tcallm";
+        out << "tcallm " << (i32)code_start[1];
         break;
     case OP_IMPORT:
         out << "import";

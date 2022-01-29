@@ -1,5 +1,6 @@
 #include "allocator.hpp"
 #include "istate.hpp"
+#include "namespace.hpp"
 #include "parse.hpp"
 #include "vm.hpp"
 #include <cstring>
@@ -11,6 +12,7 @@ istate* init_istate() {
     res->alloc = new allocator{res};
     // TODO: allocate this through the allocator instead
     res->symtab = new symbol_table;
+    res->G = new global_env;
     res->ns_id = intern(res, "fn/user");
     res->pc = 0;
     res->bp = 0;
@@ -19,15 +21,12 @@ istate* init_istate() {
     res->err_happened = false;
     res->err_msg = nullptr;
     // set up namespace
-    res->ns = new fn_namespace{res->ns_id};
-    res->globals.insert(res->ns_id, res->ns);
+    add_ns(res, res->ns_id);
     return res;
 }
 
 void free_istate(istate* S) {
-    for (auto e : S->globals) {
-        delete e->val;
-    }
+    delete S->G;
     delete S->alloc;
     delete S->symtab;
     if (S->err_happened) {
@@ -82,6 +81,11 @@ symbol_id gensym(istate* S) {
     return S->symtab->gensym();
 }
 
+string symname(istate* S, symbol_id sym) {
+    return S->symtab->symbol_name(sym);
+}
+
+
 void push_number(istate* S, f64 num) {
     push(S, vbox_number(num));
 }
@@ -127,7 +131,7 @@ void pop_to_list(istate* S, u32 n) {
 
 void push_empty_fun(istate* S) {
     push_nil(S);
-    alloc_empty_fun(S, &S->stack[S->sp - 1], S->ns_id, S->ns);
+    alloc_empty_fun(S, &S->stack[S->sp - 1], S->ns_id);
 }
 
 void push_foreign_fun(istate* S,
@@ -164,7 +168,7 @@ void push_foreign_fun(istate* S,
     }
     push_nil(S);
     alloc_foreign_fun(S, &S->stack[S->sp - 1], foreign, num_args, vari,
-            S->ns_id, S->ns);
+            S->ns_id);
 }
 
 void print_top(istate* S) {

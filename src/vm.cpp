@@ -16,33 +16,6 @@
 
 namespace fn {
 
-bool push_from_guid(istate* S, symbol_id guid) {
-    auto x = S->by_guid.get(guid);
-    if (x.has_value()) {
-        push(S, *x);
-        return true;
-    }
-    return false;
-}
-
-bool push_global(istate* S, symbol_id name) {
-    auto x = S->ns->get(name);
-    if (x.has_value()) {
-        push(S, *x);
-        return true;
-    }
-    return false;
-}
-
-void mutate_global(istate* S, symbol_id name, value v) {
-    auto ns_str = (*S->symtab)[S->ns_id];
-    auto var_str = (*S->symtab)[name];
-    auto guid_str = "#/" + ns_str + ":" + var_str;
-
-    S->ns->set(name, v);
-    S->by_guid.insert(intern(S, guid_str), v);
-}
-
 static inline void close_upvals(istate* S, u32 min_addr) {
     u32 i = S->open_upvals.size;
     while (i > 0) {
@@ -127,7 +100,6 @@ void call(istate* S, u32 n) {
     auto save_pc = S->pc;
     auto save_bp = S->bp;
     auto save_ns_id = S->ns_id;
-    auto save_ns = S->ns;
     auto save_fun = S->fun;
 
     auto callee = peek(S, n);
@@ -140,7 +112,6 @@ void call(istate* S, u32 n) {
     S->pc = 0;
     S->bp = S->sp - n;
     S->ns_id = fun->stub->ns_id;
-    S->ns = fun->stub->ns;
     S->code = fun->stub->code.data;
     S->fun = fun;
     arrange_call_stack(S, fun, n);
@@ -165,7 +136,6 @@ void call(istate* S, u32 n) {
     S->sp = S->bp;  // with the return value, this is the new stack pointer
     S->bp = save_bp;
     S->ns_id = save_ns_id;
-    S->ns = save_ns;
     if (save_fun != nullptr) {
         S->code = save_fun->stub->code.data;
     }
@@ -196,7 +166,6 @@ static inline bool tail_call(istate* S, u8 n) {
     }
     S->pc = 0;
     S->ns_id = fun->stub->ns_id;
-    S->ns = fun->stub->ns;
     S->code = fun->stub->code.data;
     S->fun = fun;
     return true;
@@ -262,19 +231,22 @@ void execute_fun(istate* S) {
         }
             break;
         case OP_GLOBAL: {
-            auto sym = vsymbol(peek(S, 0));
-            // this is ok since symbols aren't GC'd
-            --S->sp;
-            if (!push_global(S, sym)) {
-                ierror(S, "Failed to find global variable " + (*S->symtab)[sym]);
+            auto id = code_short(S, S->pc);
+            S->pc += 2;
+            auto fqn = vsymbol(cur_fun()->stub->const_arr[id]);
+            if (!push_global(S, fqn)) {
+                ierror(S, "Failed to find global variable " + (*S->symtab)[fqn]);
                 return;
             }
         }
             break;
-        case OP_SET_GLOBAL:
-            mutate_global(S, vsymbol(peek(S, 1)), peek(S, 0));
-            // leave the ID in place by only popping once
-            --S->sp;
+        case OP_SET_GLOBAL: {
+            auto id = code_short(S, S->pc);
+            S->pc += 2;
+            auto fqn = cur_fun()->stub->const_arr[id];
+            set_global(S, vsymbol(fqn), peek(S, 0));
+            S->stack[S->sp-1] = fqn;
+        }
             break;
         case OP_OBJ_GET: {
             if (!vis_table(peek(S, 1))) {

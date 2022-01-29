@@ -113,8 +113,6 @@ inline u8 instr_width(u8 instr) {
     case OP_NOP:
     case OP_POP:
     case OP_BY_GUID:
-    case OP_GLOBAL:
-    case OP_SET_GLOBAL:
     case OP_NIL:
     case OP_FALSE:
     case OP_TRUE:
@@ -134,9 +132,13 @@ inline u8 instr_width(u8 instr) {
     case OP_CLOSE:
     case OP_CALL:
     case OP_TCALL:
+    case OP_CALLM:
+    case OP_TCALLM:
     case OP_APPLY:
     case OP_TAPPLY:
         return 2;
+    case OP_GLOBAL:
+    case OP_SET_GLOBAL:
     case OP_CONST:
     case OP_JUMP:
     case OP_CJUMP:

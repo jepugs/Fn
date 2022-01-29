@@ -145,8 +145,7 @@ void alloc_table(istate* S, value* where) {
     add_obj(S->alloc, &res->h);
 }
 
-static function_stub* mk_func_stub(allocator* alloc, symbol_id ns_id,
-        fn_namespace* ns) {
+static function_stub* mk_func_stub(allocator* alloc, symbol_id ns_id) {
     auto res = (function_stub*)alloc_bytes(alloc, (sizeof(function_stub)));
     init_gc_header(&res->h, GC_TYPE_FUN_STUB);
     new (&res->code) dyn_array<u8>;
@@ -160,7 +159,6 @@ static function_stub* mk_func_stub(allocator* alloc, symbol_id ns_id,
     res->vari = false;
     res->foreign = nullptr;
     res->ns_id = ns_id;
-    res->ns = ns;
     // we can't actually set up the ns info here, so we leave it uninitialized
     res->name = nullptr;
     res->filename = nullptr;
@@ -170,7 +168,7 @@ static function_stub* mk_func_stub(allocator* alloc, symbol_id ns_id,
 
 void alloc_sub_stub(istate* S, function_stub* where) {
     collect(S);
-    auto res = mk_func_stub(S->alloc, where->ns_id, where->ns);
+    auto res = mk_func_stub(S->alloc, where->ns_id);
     where->sub_funs.push_back(res);
     ++S->alloc->count;
     add_obj(S->alloc, &res->h);
@@ -178,14 +176,13 @@ void alloc_sub_stub(istate* S, function_stub* where) {
 
 void alloc_empty_fun(istate* S,
         value* where,
-        symbol_id ns_id,
-        fn_namespace* ns) {
+        symbol_id ns_id) {
     collect(S);
     auto res = (fn_function*)alloc_bytes(S->alloc, sizeof(fn_function));
     init_gc_header(&res->h, GC_TYPE_FUNCTION);
     res->init_vals = nullptr;
     res->upvals = nullptr;
-    res->stub = mk_func_stub(S->alloc, ns_id, ns);
+    res->stub = mk_func_stub(S->alloc, ns_id);
     *where = vbox_function(res);
     S->alloc->count += 2;
     add_obj(S->alloc, &res->h);
@@ -197,14 +194,13 @@ void alloc_foreign_fun(istate* S,
         void (*foreign)(istate*),
         u32 num_params,
         bool vari,
-        symbol_id ns_id,
-        fn_namespace* ns) {
+        symbol_id ns_id) {
     collect(S);
     auto res = (fn_function*)alloc_bytes(S->alloc, sizeof(fn_function));
     init_gc_header(&res->h, GC_TYPE_FUNCTION);
     res->init_vals = nullptr;
     res->upvals = nullptr;
-    res->stub = mk_func_stub(S->alloc, ns_id, ns);
+    res->stub = mk_func_stub(S->alloc, ns_id);
     res->stub->foreign = foreign;
     res->stub->num_params = num_params;
     res->stub->num_opt = 0;
@@ -351,8 +347,11 @@ static void mark(istate* S) {
         marking.push_front(&u->h);
     }
     // globals
-    for (auto e : S->by_guid) {
+    for (auto e : S->G->def_tab) {
         add_value_header(e->val, &marking);
+    }
+    for (auto e : S->G->macro_tab) {
+        marking.push_front(&e->val->h);
     }
 
     while(!marking.empty()) {

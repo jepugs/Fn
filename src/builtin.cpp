@@ -1,7 +1,8 @@
 #include "builtin.hpp"
 
-#include "vm.hpp"
+#include "namespace.hpp"
 #include "obj.hpp"
+#include "vm.hpp"
 #include <cmath>
 
 namespace fn {
@@ -19,7 +20,7 @@ namespace fn {
 static void def_foreign_fun(istate* S, const string& name, const string& params,
         void (*foreign)(istate*)) {
     push_foreign_fun(S, foreign, params);
-    mutate_global(S, intern(S, name), peek(S));
+    set_global(S, resolve_sym(S, S->ns_id, intern(S, name)), peek(S));
     pop(S);
 }
 
@@ -102,7 +103,10 @@ fn_fun(add, "+", "(& args)") {
     while (lst != V_EMPTY) {
         // FIXME: check type
         if (!vis_number(vcons(lst)->head)) {
-            ierror(S, "+ arguments must be numbers");
+            std::ostringstream os;
+            os << "Sp " << S->sp;
+            os <<  v_to_string(vcons(lst)->head, S->symtab, true);
+            ierror(S,os.str());
             return;
         }
         res += vnumber(vcons(lst)->head);

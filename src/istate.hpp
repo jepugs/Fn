@@ -16,10 +16,8 @@ struct global_env;
 struct istate {
     allocator* alloc;
     symbol_table* symtab;
-    table<symbol_id,fn_namespace*> globals;  // all loaded namespaces
-    table<symbol_id,value> by_guid;          // all globals, indexed by GUID
-    symbol_id ns_id;                         // current namespace ID
-    fn_namespace* ns;                        // current namespace
+    global_env* G;                           // global definitions
+    symbol_id ns_id;                         // current namespace
     u32 pc;                                  // program counter
     u32 bp;                                  // base ptr
     u32 sp;                                  // stack ptr (rel to stack bottom)
@@ -53,6 +51,7 @@ void set(istate* S, u32 index, value v);
 // get symbols
 symbol_id intern(istate* S, const string& str);
 symbol_id gensym(istate* S);
+string symname(istate* S, symbol_id sid);
 
 // create values on top of the stack
 void push_number(istate* S, f64 num);

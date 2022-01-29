@@ -2,44 +2,45 @@
 #define __FN_NAMESPACE_HPP
 
 #include "base.hpp"
+#include "istate.hpp"
 #include "values.hpp"
 
 namespace fn {
 
+struct fn_namespace {
+    symbol_id id;
+    // resolution tables map namespace-local names to FQNs
+    table<symbol_id,symbol_id> resolve;
+};
+
 struct global_env {
-    // array allows constant-time lookup of globals
-    dyn_array<value> by_guid;
-    // allows access of variables by name
-    table<symbol_id,u32> by_fqn;
-    // allows going from guid to fqn
-    dyn_array<symbol_id> fqn_by_guid;
+    // definitions/macros indexed by their fully qualified name (FQN)
+    table<symbol_id,value> def_tab;
+    table<symbol_id,fn_function*> macro_tab;
+    // table of namespaces by name
+    table<symbol_id,fn_namespace*> ns_tab;
+
+    ~global_env();
 };
 
-// get a GUID for a variable, creating a new uninitialized variable if
-// necessary.
-u32 get_guid(global_env* G, symbol_id fqn);
-// set a variable by its GUID, creating a new variable if necessary
-u32 set_by_guid(global_env* G, symbol_id fqn, value new_val);
-
-
-// namespaces are key-value stores used to hold global variables and imports
-struct alignas(32) fn_namespace {
-    symbol_id name;
-    table<symbol_id,value> defs;
-    table<symbol_id,value> macros;
-
-    fn_namespace(symbol_id name)
-        : name{name} {
-    }
-
-    optional<value> get(symbol_id name) const;
-    void set(symbol_id name, const value& v);
-    forward_list<symbol_id> names() const;
-
-    optional<value> get_macro(symbol_id name) const;
-    void set_macro(symbol_id name, const value& v);
-    forward_list<symbol_id> macro_names() const;
-};
+// resolve a symbol to an FQN in the given namespace. The given namespace must
+// exist when the call is made, or an error is generated. If the given symbol is
+// not already present in the namespace, a new 
+symbol_id resolve_sym(istate* S, symbol_id ns_id, symbol_id name);
+// get a global variable by its FQN. Returns false on failed lookup
+bool push_global(istate* S, symbol_id fqn);
+// set by FQN, creating a new definition if necessary
+void set_global(istate* S, symbol_id fqn, value new_val);
+// add a new namespace. If the namespace already exists, this returns the
+// existing namespace.
+fn_namespace* add_ns(istate* S, symbol_id ns_id);
+// get a namespace, returning nullptr if it doesn't exist
+fn_namespace* get_ns(istate* S, symbol_id ns_id);
+// copy definitions from one namespace to another (this is logically half of an
+// import, the other half being the file search/compilation step). Prefix is
+// prepended to the imported variables.
+bool copy_defs(istate* S, symbol_id dest_id, symbol_id src_id,
+        const string& prefix, bool overwrite=true);
 
 
 // namespace id destructuring
@@ -50,14 +51,6 @@ bool is_subns(const string& sub, const string& ns);
 // this would be the empty string, returns ".". This will not work properly if
 // sub is not a subpackage of pkg.
 string subns_rel_path(const string& sub, const string& ns);
-
-
-// import bindings src into dest. The new bindings' names consist
-// of the names in src with prefix prepended.
-void copy_defs(symbol_table& symtab,
-        fn_namespace& dest,
-        fn_namespace& src,
-        const string& prefix);
 
 }
 

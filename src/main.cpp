@@ -179,9 +179,9 @@ int main(int argc, char** argv) {
             free_istate(S);
             return -1;
         }
-        // disassemble_top(S, true);
-        // print_top(S);
-        // pop(S);
+        disassemble_top(S, true);
+        print_top(S);
+        pop(S);
         call(S, 0);
         if (S->err_happened) {
             std::cout << "Error: " << S->err_msg << '\n';

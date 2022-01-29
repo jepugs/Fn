@@ -12,6 +12,17 @@
    'filter (fn (self fun)
              (lfilter fun self))})
 
+(with (old-head head
+       old-tail tail)
+  (defn head (x)
+    (if (list? x)
+        (old-head x)
+        (x.head)))
+  (defn tail (x)
+    (if (list? x)
+        (old-tail x)
+        (x.tail))))
+
 (defn Lazy-List (fun)
   (with-metatable Lazy-List-Meta
     {'force (fn (self)

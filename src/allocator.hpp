@@ -81,15 +81,13 @@ void alloc_table(istate* S, value* where);
 void alloc_sub_stub(istate* S, function_stub* where);
 void alloc_empty_fun(istate* S,
         value* where,
-        symbol_id ns_id,
-        fn_namespace* ns);
+        symbol_id ns_id);
 void alloc_foreign_fun(istate* S,
         value* where,
         void (*foreign)(istate*),
         u32 num_args,
         bool var_arg,
-        symbol_id ns_id,
-        fn_namespace* ns);
+        symbol_id ns_id);
 void alloc_fun(istate* S, value* where, fn_function* enclosing,
         function_stub* stub);
 
