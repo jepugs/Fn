@@ -7,7 +7,7 @@ bool value::operator==(const value& v) const {
         return true;
     }
 
-    auto tag = v_tag(*this);
+    auto tag = vtag(*this);
     if (vtag(v) != tag) {
         return false;
     }
@@ -36,7 +36,7 @@ bool value::operator!=(const value& v) const {
 
 
 template<> u64 hash<value>(const value& v) {
-    auto tag = v_tag(v);
+    auto tag = vtag(v);
     switch (tag) {
     case TAG_NUM:
     case TAG_SYM:
@@ -58,7 +58,7 @@ template<> u64 hash<value>(const value& v) {
 }
 
 string v_to_string(value v, const symbol_table* symbols, bool code_format) {
-    auto tag = v_tag(v);
+    auto tag = vtag(v);
     string res;
     fn_table* t;
     // TODO: add escaping to strings/characters

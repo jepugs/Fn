@@ -45,7 +45,7 @@ inline u64 vis_table(value v) {
     return vtag(v) == TAG_TABLE;
 }
 inline u64 vis_function(value v) {
-    return vtag(v) == TAG_FUNC;
+    return (v.raw & TAG_FUNC) == TAG_FUNC;
 }
 inline u64 vis_symbol(value v) {
     return vtag(v) == TAG_SYM;
@@ -204,11 +204,6 @@ inline void* get_pointer(value v) {
     return (void*)(v.raw & (~TAG_MASK));
 };
 
-// value type/tag checking
-
-inline u64 v_tag(value v) {
-    return v.raw & TAG_MASK;
-}
 
 // equality
 inline bool vsame(value a, value b) {
