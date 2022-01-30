@@ -1,0 +1,172 @@
+* Prelude
+
+This file documents rationale for various design decisions made in the
+specification and implementation of Fn, as well as information about idioms and
+conventions for Fn. Only the rationale is given here, so you may need to refer
+back to the source code or spec to see what I'm talking about.
+
+At some point, this informal pile of information will have to be reorganized
+into a more digestible form.
+
+
+* Language Design Decisions
+
+** ~let~ as an inline operation
+
+LISP needed a way to introduce new local bindings partway through a computation
+without increasing the level of indentation.
+
+The old style of ~let~ is still useful, so I added  a similar construct called
+~with~.
+
+** Parameter/Argument Dichotomy
+
+I decided to draw a distinction between parameters and arguments. Parameters are
+the local variables that get bound when a function is called, whereas arguments
+are the values which get passed into the function.
+
+Here are a few facts that give a better idea of the relationship between
+arguments and parameters:
+
+- Arguments provide values for parameters.
+- Parameters are specified at function creation. Arguments are specified during
+  function calls.
+- Parameters have names, arguments do not.
+- Variadic functions assign (lists or tables of) multiple arguments to single
+  variadic parameters.
+
+This distinction is convenient because it allows us to talk unambiguously about
+
+** Argument Lists/Keyword Syntax
+
+Fn function calls are similar to those in Python. Each parameter has a name, and
+keyword syntax may be used to assign parameters by name. Trailing positional
+parameters may be collected and bound to a variadic list parameter, and
+unrecognized keyword parameters may be bound to a variadic table parameter.
+
+I considered many, many approaches to this problem. Because function calling is
+the most common operation in Fn, it is really important to get it right, and has
+many consequences in how the rest of the language is designed and implemented.
+
+Key decisions:
+- Require that keyword parameters come after all positional parameters. :: This
+  allows functions to simultaneously accept variadic keyword and variadic table
+  arguments without creating confusing behavior.
+- Do not provide pattern destructuring in parameter lists. :: It is tempting to
+  incorporate pattern matching/destructuring in parameter lists. It can shorten
+  function bodies dramatically by allowing the pattern matching logic to do much
+  of the heavy lifting while actually making code easier to read. The main
+  problem is pattern matching parameters don't get along well with variadic
+  parameters, and seem to be fundamentally incompatible with optional parameters
+  (without introducing overcomplicated/ugly syntax). In the balance, optional
+  and variadic parameters seem more important, especially in the LISP family.
+  Moreover, Fn doesn't even have builtin pattern matching yet, which makes the
+  decision even easier.
+- Make keyword and positional parameters the same thing. :: As opposed to the
+  calling style of Common Lisp. Really, I think that this Python-esque approach
+  is just a straight-up improvement for everything except macros (that's only a
+  maybe since I haven't written many yet).
+
+** Legal variables names and immutability of globals
+
+Since keywords have a special meaning as function arguments, I decided it was
+important that a keyword by itself would never be a legal expression (since this
+would create ambiguity). This is also why keywords aren't self-quoting.
+
+Avoiding ambiguity is also the reason why special operators and constants are
+banned as variable names.
+
+At this point, you may wonder why we don't just categorically ban all stupid
+variable names. The problem is that macros may generate local variables e.g. to
+implement a DSL, and the current solution might necessitate some form of name
+mangling. It is for this reason that I am even considering relaxing some of the
+name restrictions on local variables.
+
+** Parameters have default values instead of initforms
+
+For most cases this is what you really want anyway, and you get the added
+benefit of not having to evaluate a form to compute the value every time.
+
+It's also easier to implement. If you really want initform functionality, then a
+default value of ~null~ and an if statement should work for most cases.
+
+** Arguments to ~apply~
+
+Since Fn has a different calling convention than most dialects of Lisp, we need
+a different ~apply~. In particular, to allow passing of keyword arguments, the
+last argument of now must be a table. The second to last is the usual list. This
+order reflects the fact that keyword arguments come after positional ones.
+
+I thought about making the list/table arguments come at the beginning, but this
+approach feels more like classic lisp. (I also like having the regular
+positional arguments directly follow the function).
+
+** Namespace Search Paths
+
+Namespace organization & imports will likely have more design changes in the
+future. The current approach should be suitable for 95% of use cases.
+
+Our approach is to provide 3 default locations which are searched in this order:
+- interpreter working directory
+- user home namespace directory ~$HOME/.local/lib/fn/ns~
+- system namespace directory ~$PREFIX/lib/fn/ns~
+
+The working directory and home namespace directory can be excluded from the
+search path by using the respective command line options. Fn is intended to be
+used as a system scripting language, and this allows us to safely make
+executable one-file scripts using a shebang.
+
+** Table Calls
+
+Because they can represent partial computations, functions generally provide a
+more flexible way to encapsulate information than tables or lists. Modern
+functional programming styles exploit this flexibility, allowing complicated
+logic and control flow operations to be expressed succinctly (see for instance
+the Clojure idiom of transducers).
+
+However, there are some major downsides to using functions. The most obvious is
+their opacity. From looking at a function object, it is hard to tell how it will
+behave, and there is no general way to modify the function other than by
+wrapping it. As a result, code that relies heavily on function composition can
+be very difficult to debug, and the many layers of wrapped functions can
+
+Tables are the primary means of creating complex data structures in Fn. Hence
+given the previous observation, it makes sense to imbue them with some sort of
+functional behavior.
+
+* Implementation Decisions
+
+** Foreign function garbage collection
+
+Foreign functions can access VM functionality using the vm_handle functions.
+These expose a carefully-selected set of operations which cannot do too much
+damage. A challenge here is that foreign functions SHOULD NOT be able to
+manipulate the stack, which means that any temporary values they create will not
+be seen by the garbage collector and therefore will not be collected. However,
+foreign functions definitely need to be able to construct fn objects as return
+values, so we cannot avoid allocation operations.
+
+For now, our solution is to simply disable the garbage collector during foreign
+function calls. Unfortunately, this means that there is no good way to evaluate
+Fn code within foreign functions. A good alternative might to provide foreign
+functions a way to maintain a list of active objects so that the garbage
+collector can see them. This could be fairly painlessly, e.g. by passing in
+a value buffer for the foreign function to use. (We might want to provide
+additional convenience functions for this behavior).
+
+An example of how we could implement this is by making a ~working_set~ typedef
+and passing a ~working_set*~ argument to foreign functions. This object would be
+used to hold a set of values being used by the foreign function, and would
+ensure that they are seen by the garbage collector. The ~vm_handle~ allocation
+operations would be changed to require a ~working_set*~ argument and to add
+their new objects to the working set.
+
+
+** Foreign Function Library & C interface
+
+C++ is not good for portability. Sucks. So, our approach is to provide C
+bindings which will actually be portable. In order to write foreign functions,
+all you really need are the vm_handle and value functions.
+
+
+** Why value is a union and only some things are methods

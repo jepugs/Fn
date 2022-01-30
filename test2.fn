@@ -1,0 +1,102 @@
+(def Lazy-List-Meta
+  {'force (fn (self)
+            ((get self 'force) self))
+   'empty? (fn (self)
+             (= ((get self 'force) self) nil))
+   'head (fn (self)
+           (head ((get self 'force) self)))
+   'tail (fn (self)
+           (head (tail ((get self 'force) self))))
+   'map (fn (self fun)
+          (lmap fun self))
+   'filter (fn (self fun)
+             (lfilter fun self))})
+
+(with (old-head head
+       old-tail tail)
+  (defn head (x)
+    (if (list? x)
+        (old-head x)
+        (x.head)))
+  (defn tail (x)
+    (if (list? x)
+        (old-tail x)
+        (x.tail))))
+
+(defn Lazy-List (fun)
+  (with-metatable Lazy-List-Meta
+    {'force (fn (self)
+              (let val (fun))
+              (set! (get self 'force)
+                    (fn (self) val))
+              val)}))
+
+; (defn list->lazy (list)
+;   (if (empty? list)
+;       (Lazy-List (fn () nil))
+;       (Lazy-List $[(head list)
+;                    (list->lazy (tail list))])))
+
+; (defn reverse (list)
+;   (letfn iter (acc l)
+;     (if (empty? l)
+;         acc
+;         (iter (cons (head l) acc) (tail l))))
+;   (iter [] list))
+
+; (defn lazy->list (lazy)
+;   (letfn iter (acc rem)
+;     (if (rem.empty?)
+;         (reverse acc)
+;         (iter (cons (rem.head) acc)
+;               (rem.tail))))
+;   (iter [] lazy))
+
+; (defn lcons (hd lazy)
+;   (Lazy-List (fn ()
+;                [hd lazy])))
+
+; (defn lconcat (l1 l2)
+;   (if (l1.empty?)
+;       l2
+;       (Lazy-List
+;        $[(l1.head)
+;          (lconcat (l1.tail) l2)])))
+
+; (defn ltake (n lazy)
+;   (letfn iter (acc m rem)
+;     (if (or (rem.empty?) (<= m 0))
+;         (reverse acc)
+;         (iter (cons (rem.head) acc)
+;               (- m 1)
+;               (rem.tail))))
+;   (iter [] n lazy))
+
+
+; (defn lmap (fun lazy)
+;   (if (lazy.empty?)
+;       (list->lazy [])
+;     (Lazy-List
+;      $[(fun (lazy.head))
+;        (lmap fun (lazy.tail))])))
+
+; (defn unbox-lazy (lazy)
+;   [(lazy.head) (lazy.tail)])
+
+(defn lfilter (pred lazy)
+  (letfn next (rem)
+    (cond
+      (rem.empty?) rem
+      (pred (rem.head))
+      (lcons (rem.head)
+             (Lazy-List (fn () (unbox-lazy (next (rem.tail))))))
+      true (next (rem.tail))))
+  (next lazy))
+
+; (list->lazy [1 2 3])
+
+(def N>=0
+  (with (next-int
+         (fn (x) (Lazy-List (fn ()
+                              [x (next-int (+ x 1))]))))
+    (next-int 0)))

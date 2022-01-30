@@ -1,0 +1,1772 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+<!-- 2021-12-14 Tue 03:38 -->
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fn Programming Language Manual (pre-0.1)</title>
+<meta name="generator" content="Org mode" />
+<meta name="author" content="Jack Pugmire" />
+<style type="text/css">
+ <!--/*--><![CDATA[/*><!--*/
+  .title  { text-align: center;
+             margin-bottom: .2em; }
+  .subtitle { text-align: center;
+              font-size: medium;
+              font-weight: bold;
+              margin-top:0; }
+  .todo   { font-family: monospace; color: red; }
+  .done   { font-family: monospace; color: green; }
+  .priority { font-family: monospace; color: orange; }
+  .tag    { background-color: #eee; font-family: monospace;
+            padding: 2px; font-size: 80%; font-weight: normal; }
+  .timestamp { color: #bebebe; }
+  .timestamp-kwd { color: #5f9ea0; }
+  .org-right  { margin-left: auto; margin-right: 0px;  text-align: right; }
+  .org-left   { margin-left: 0px;  margin-right: auto; text-align: left; }
+  .org-center { margin-left: auto; margin-right: auto; text-align: center; }
+  .underline { text-decoration: underline; }
+  #postamble p, #preamble p { font-size: 90%; margin: .2em; }
+  p.verse { margin-left: 3%; }
+  pre {
+    border: 1px solid #ccc;
+    box-shadow: 3px 3px 3px #eee;
+    padding: 8pt;
+    font-family: monospace;
+    overflow: auto;
+    margin: 1.2em;
+  }
+  pre.src {
+    position: relative;
+    overflow: auto;
+    padding-top: 1.2em;
+  }
+  pre.src:before {
+    display: none;
+    position: absolute;
+    background-color: white;
+    top: -10px;
+    right: 10px;
+    padding: 3px;
+    border: 1px solid black;
+  }
+  pre.src:hover:before { display: inline; margin-top: 14px;}
+  /* Languages per Org manual */
+  pre.src-asymptote:before { content: 'Asymptote'; }
+  pre.src-awk:before { content: 'Awk'; }
+  pre.src-C:before { content: 'C'; }
+  /* pre.src-C++ doesn't work in CSS */
+  pre.src-clojure:before { content: 'Clojure'; }
+  pre.src-css:before { content: 'CSS'; }
+  pre.src-D:before { content: 'D'; }
+  pre.src-ditaa:before { content: 'ditaa'; }
+  pre.src-dot:before { content: 'Graphviz'; }
+  pre.src-calc:before { content: 'Emacs Calc'; }
+  pre.src-emacs-lisp:before { content: 'Emacs Lisp'; }
+  pre.src-fortran:before { content: 'Fortran'; }
+  pre.src-gnuplot:before { content: 'gnuplot'; }
+  pre.src-haskell:before { content: 'Haskell'; }
+  pre.src-hledger:before { content: 'hledger'; }
+  pre.src-java:before { content: 'Java'; }
+  pre.src-js:before { content: 'Javascript'; }
+  pre.src-latex:before { content: 'LaTeX'; }
+  pre.src-ledger:before { content: 'Ledger'; }
+  pre.src-lisp:before { content: 'Lisp'; }
+  pre.src-lilypond:before { content: 'Lilypond'; }
+  pre.src-lua:before { content: 'Lua'; }
+  pre.src-matlab:before { content: 'MATLAB'; }
+  pre.src-mscgen:before { content: 'Mscgen'; }
+  pre.src-ocaml:before { content: 'Objective Caml'; }
+  pre.src-octave:before { content: 'Octave'; }
+  pre.src-org:before { content: 'Org mode'; }
+  pre.src-oz:before { content: 'OZ'; }
+  pre.src-plantuml:before { content: 'Plantuml'; }
+  pre.src-processing:before { content: 'Processing.js'; }
+  pre.src-python:before { content: 'Python'; }
+  pre.src-R:before { content: 'R'; }
+  pre.src-ruby:before { content: 'Ruby'; }
+  pre.src-sass:before { content: 'Sass'; }
+  pre.src-scheme:before { content: 'Scheme'; }
+  pre.src-screen:before { content: 'Gnu Screen'; }
+  pre.src-sed:before { content: 'Sed'; }
+  pre.src-sh:before { content: 'shell'; }
+  pre.src-sql:before { content: 'SQL'; }
+  pre.src-sqlite:before { content: 'SQLite'; }
+  /* additional languages in org.el's org-babel-load-languages alist */
+  pre.src-forth:before { content: 'Forth'; }
+  pre.src-io:before { content: 'IO'; }
+  pre.src-J:before { content: 'J'; }
+  pre.src-makefile:before { content: 'Makefile'; }
+  pre.src-maxima:before { content: 'Maxima'; }
+  pre.src-perl:before { content: 'Perl'; }
+  pre.src-picolisp:before { content: 'Pico Lisp'; }
+  pre.src-scala:before { content: 'Scala'; }
+  pre.src-shell:before { content: 'Shell Script'; }
+  pre.src-ebnf2ps:before { content: 'ebfn2ps'; }
+  /* additional language identifiers per "defun org-babel-execute"
+       in ob-*.el */
+  pre.src-cpp:before  { content: 'C++'; }
+  pre.src-abc:before  { content: 'ABC'; }
+  pre.src-coq:before  { content: 'Coq'; }
+  pre.src-groovy:before  { content: 'Groovy'; }
+  /* additional language identifiers from org-babel-shell-names in
+     ob-shell.el: ob-shell is the only babel language using a lambda to put
+     the execution function name together. */
+  pre.src-bash:before  { content: 'bash'; }
+  pre.src-csh:before  { content: 'csh'; }
+  pre.src-ash:before  { content: 'ash'; }
+  pre.src-dash:before  { content: 'dash'; }
+  pre.src-ksh:before  { content: 'ksh'; }
+  pre.src-mksh:before  { content: 'mksh'; }
+  pre.src-posh:before  { content: 'posh'; }
+  /* Additional Emacs modes also supported by the LaTeX listings package */
+  pre.src-ada:before { content: 'Ada'; }
+  pre.src-asm:before { content: 'Assembler'; }
+  pre.src-caml:before { content: 'Caml'; }
+  pre.src-delphi:before { content: 'Delphi'; }
+  pre.src-html:before { content: 'HTML'; }
+  pre.src-idl:before { content: 'IDL'; }
+  pre.src-mercury:before { content: 'Mercury'; }
+  pre.src-metapost:before { content: 'MetaPost'; }
+  pre.src-modula-2:before { content: 'Modula-2'; }
+  pre.src-pascal:before { content: 'Pascal'; }
+  pre.src-ps:before { content: 'PostScript'; }
+  pre.src-prolog:before { content: 'Prolog'; }
+  pre.src-simula:before { content: 'Simula'; }
+  pre.src-tcl:before { content: 'tcl'; }
+  pre.src-tex:before { content: 'TeX'; }
+  pre.src-plain-tex:before { content: 'Plain TeX'; }
+  pre.src-verilog:before { content: 'Verilog'; }
+  pre.src-vhdl:before { content: 'VHDL'; }
+  pre.src-xml:before { content: 'XML'; }
+  pre.src-nxml:before { content: 'XML'; }
+  /* add a generic configuration mode; LaTeX export needs an additional
+     (add-to-list 'org-latex-listings-langs '(conf " ")) in .emacs */
+  pre.src-conf:before { content: 'Configuration File'; }
+
+  table { border-collapse:collapse; }
+  caption.t-above { caption-side: top; }
+  caption.t-bottom { caption-side: bottom; }
+  td, th { vertical-align:top;  }
+  th.org-right  { text-align: center;  }
+  th.org-left   { text-align: center;   }
+  th.org-center { text-align: center; }
+  td.org-right  { text-align: right;  }
+  td.org-left   { text-align: left;   }
+  td.org-center { text-align: center; }
+  dt { font-weight: bold; }
+  .footpara { display: inline; }
+  .footdef  { margin-bottom: 1em; }
+  .figure { padding: 1em; }
+  .figure p { text-align: center; }
+  .equation-container {
+    display: table;
+    text-align: center;
+    width: 100%;
+  }
+  .equation {
+    vertical-align: middle;
+  }
+  .equation-label {
+    display: table-cell;
+    text-align: right;
+    vertical-align: middle;
+  }
+  .inlinetask {
+    padding: 10px;
+    border: 2px solid gray;
+    margin: 10px;
+    background: #ffffcc;
+  }
+  #org-div-home-and-up
+   { text-align: right; font-size: 70%; white-space: nowrap; }
+  textarea { overflow-x: auto; }
+  .linenr { font-size: smaller }
+  .code-highlighted { background-color: #ffff00; }
+  .org-info-js_info-navigation { border-style: none; }
+  #org-info-js_console-label
+    { font-size: 10px; font-weight: bold; white-space: nowrap; }
+  .org-info-js_search-highlight
+    { background-color: #ffff00; color: #000000; font-weight: bold; }
+  .org-svg { width: 90%; }
+  /*]]>*/-->
+</style>
+<script type="text/javascript">
+// @license magnet:?xt=urn:btih:e95b018ef3580986a04669f1b5879592219e2a7a&dn=public-domain.txt Public Domain
+<!--/*--><![CDATA[/*><!--*/
+     function CodeHighlightOn(elem, id)
+     {
+       var target = document.getElementById(id);
+       if(null != target) {
+         elem.classList.add("code-highlighted");
+         target.classList.add("code-highlighted");
+       }
+     }
+     function CodeHighlightOff(elem, id)
+     {
+       var target = document.getElementById(id);
+       if(null != target) {
+         elem.classList.remove("code-highlighted");
+         target.classList.remove("code-highlighted");
+       }
+     }
+    /*]]>*///-->
+// @license-end
+</script>
+</head>
+<body>
+<div id="content">
+<h1 class="title">Fn Programming Language Manual (pre-0.1)</h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#org0a52cbd">1. Introduction</a></li>
+<li><a href="#orgc73ccad">2. Language Reference</a>
+<ul>
+<li><a href="#org29f8b9e">2.1. Variables and Mutation</a>
+<ul>
+<li><a href="#orgf2c853c">2.1.1. Local Variables</a></li>
+<li><a href="#orgdf63fbd">2.1.2. Global Variables</a></li>
+</ul>
+</li>
+<li><a href="#orgdf1255b">2.2. Data Types</a>
+<ul>
+<li><a href="#org943233a">2.2.1. Simple Data Types</a></li>
+<li><a href="#org61ef213">2.2.2. Lists</a></li>
+<li><a href="#org2cca2ab">2.2.3. Tables</a></li>
+<li><a href="#orgf7b37f7">2.2.4. Quoting</a></li>
+</ul>
+</li>
+<li><a href="#orgf0f7143">2.3. <span class="todo TODO">TODO</span> Control Flow and Functions</a>
+<ul>
+<li><a href="#org0ed65bc">2.3.1. <span class="todo TODO">TODO</span> Conditional Execution</a></li>
+<li><a href="#org86219ad">2.3.2. Functions and Calls</a></li>
+<li><a href="#org9f8e36f">2.3.3. Variable Capture</a></li>
+<li><a href="#orgabb132d">2.3.4. <span class="todo TODO">TODO</span> <code>apply</code></a></li>
+<li><a href="#org2969df2">2.3.5. <span class="todo TODO">TODO</span> dollar-fn</a></li>
+</ul>
+</li>
+<li><a href="#orge744e73">2.4. Namespaces and Import</a>
+<ul>
+<li><a href="#org9236925">2.4.1. Import</a></li>
+<li><a href="#org0dda6be">2.4.2. Package Declarations</a></li>
+<li><a href="#org3775542">2.4.3. Global Identifiers for Definitions</a></li>
+<li><a href="#org916f1a3">2.4.4. Locating Namespace Sources</a></li>
+</ul>
+</li>
+<li><a href="#org2f80de1">2.5. <span class="todo TODO">TODO</span> Macros</a>
+<ul>
+<li><a href="#org90c1ccb">2.5.1. Macro Basics</a></li>
+<li><a href="#org761cf21">2.5.2. Quasiquotation</a></li>
+<li><a href="#org9b6b88c">2.5.3. Variable Capture and <code>gensym</code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#org344888c">3. Command Line Interface</a>
+<ul>
+<li><a href="#org886d80d">3.1. Invocation and Namespace Determination</a></li>
+<li><a href="#org6af3803">3.2. Import Search</a></li>
+<li><a href="#orgafae78b">3.3. REPL</a></li>
+</ul>
+</li>
+<li><a href="#org990e8be">4. Builtin Functions</a>
+<ul>
+<li><a href="#org6e9445e">4.1. <code>fn/builtin</code></a></li>
+</ul>
+</li>
+<li><a href="#org53313c3">5. FFI</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-org0a52cbd" class="outline-2">
+<h2 id="org0a52cbd"><span class="section-number-2">1</span> Introduction</h2>
+<div class="outline-text-2" id="text-1">
+<p>
+This is the official manual for Fn. It is not a <i>guide</i> in the sense that it does
+not attempt to teach Fn in a linear fashion. However, there should be enough
+here for any experienced programmer to get started.
+</p>
+
+<p>
+Section <a href="#orgc73ccad">2</a> contains a description of all the major features of
+the Fn language.
+</p>
+
+<p>
+Section <a href="#org344888c">3</a> gives instructions on using the <code>fn</code> command line
+tool to evaluate code.
+</p>
+
+<p>
+Section <a href="#org990e8be">4</a> contains a list of builtin functions. This section is
+mostly unwritten.
+</p>
+
+<p>
+Upcoming section <a href="#org53313c3">5</a> details how to interface with C code from Fn.
+</p>
+</div>
+</div>
+
+
+<div id="outline-container-orgc73ccad" class="outline-2">
+<h2 id="orgc73ccad"><span class="section-number-2">2</span> Language Reference</h2>
+<div class="outline-text-2" id="text-2">
+<p>
+Fn is a dynamically typed, garbage-collected, general-purpose programming
+language with Lisp-like syntax. A couple of its defining characteristics are:
+</p>
+<ul class="org-ul">
+<li>The core language has relatively few operators, with special care taken to
+ensure they have consistent and concise syntax.</li>
+<li>Fn is designed for a "mostly functional" programming style, where immutability
+and referential transparency are favored, but not required.</li>
+<li>The native macro system allows definition of new syntax (and even entire
+domain-specific languages) using regular Fn code and data structures.</li>
+</ul>
+
+<p>
+The syntax looks like this:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">def</span> sqrt-precision 0.001<span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">def</span> approx-sqrt <span style="color: #7388d6;">(</span>x<span style="color: #7388d6;">)</span>
+  <span style="color: #7388d6;">(</span><span style="color: #859900; font-weight: bold;">letfn</span> <span style="color: #cd9b1d;">iterate</span> <span style="color: #909183;">(</span>guess<span style="color: #909183;">)</span>
+    <span style="color: #909183;">(</span><span style="color: #859900; font-weight: bold;">if</span> <span style="color: #709870;">(</span>&lt; <span style="color: #907373;">(</span>abs <span style="color: #6276ba;">(</span>- x <span style="color: #858580;">(</span>* guess guess<span style="color: #858580;">)</span><span style="color: #6276ba;">)</span> sqrt-precision<span style="color: #907373;">)</span><span style="color: #709870;">)</span>
+        guess
+        <span style="color: #709870;">(</span>iterate <span style="color: #907373;">(</span>/ <span style="color: #6276ba;">(</span>+ guess <span style="color: #858580;">(</span>/ x guess<span style="color: #858580;">)</span> 2<span style="color: #6276ba;">)</span><span style="color: #907373;">)</span><span style="color: #709870;">)</span><span style="color: #909183;">)</span><span style="color: #7388d6;">)</span>
+  <span style="color: #7388d6;">(</span><span style="color: #859900; font-weight: bold;">if</span> <span style="color: #909183;">(</span>&gt;= x 0<span style="color: #909183;">)</span>
+      <span style="color: #909183;">(</span>iterate <span style="color: #709870;">(</span>/ x 2<span style="color: #709870;">)</span><span style="color: #909183;">)</span>
+      <span style="color: #909183;">(</span>error <span style="color: #8b7355;">"Cannot approximate square root of a negative number."</span><span style="color: #909183;">)</span><span style="color: #7388d6;">)</span><span style="color: #707183;">)</span>
+</pre>
+</div>
+</div>
+
+
+<div id="outline-container-org29f8b9e" class="outline-3">
+<h3 id="org29f8b9e"><span class="section-number-3">2.1</span> Variables and Mutation</h3>
+<div class="outline-text-3" id="text-2-1">
+</div>
+<div id="outline-container-orgf2c853c" class="outline-4">
+<h4 id="orgf2c853c"><span class="section-number-4">2.1.1</span> Local Variables</h4>
+<div class="outline-text-4" id="text-2-1-1">
+<p>
+Local variables can be created using one of the special operators <code>let</code>, <code>letfn</code>, or
+<code>with</code>.<sup><a id="fnr.1" class="footref" href="#fn.1">1</a></sup> They all bind variables in the same way, but with
+different syntax for programmer convenience. Function parameters are also
+treated as local variables within the function body.
+</p>
+
+<p>
+Before proceeding, we note that the full story about local variables involves
+variable capture semantics, which are covered in a later section. Variable
+capture doesn't affect any of the concepts discussed in the rest of this section.
+</p>
+
+<p>
+<code>let</code> is the most elementary way to create a local variable. It defines one or
+more new variables in the current lexical environment.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #586e75; font-style: italic;">;; let binds variables to the given values</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">let</span> x <span style="color: #2aa198; font-weight: bold;">'symbol</span><span style="color: #707183;">)</span>
+<span style="color: #586e75; font-style: italic;">;; multiple definitions can be made in a single let</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">let</span> a 16
+     b <span style="color: #7388d6;">(</span>reverse <span style="color: #8b7355;">"string"</span><span style="color: #7388d6;">)</span>
+     <span style="color: #586e75; font-style: italic;">;; value expressions can refer to variables from earlier in the same let</span>
+     c <span style="color: #7388d6;">(</span>+ a <span style="color: #909183;">(</span>length b<span style="color: #909183;">)</span><span style="color: #7388d6;">)</span>
+</pre>
+</div>
+
+<p>
+<code>with</code> is similar to <code>let</code>, but rather than creating definitions in the containing
+environment, it creates a new lexical environment.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #586e75; font-style: italic;">;; this creates two variables</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">with</span> <span style="color: #7388d6;">(</span>a 3
+       b 4<span style="color: #7388d6;">)</span>
+  <span style="color: #586e75; font-style: italic;">;; the body can contain multiple expressions</span>
+  <span style="color: #7388d6;">(</span>println <span style="color: #8b7355;">"hello"</span><span style="color: #7388d6;">)</span>
+  <span style="color: #7388d6;">(</span>+ a b<span style="color: #7388d6;">)</span><span style="color: #707183;">)</span>
+<span style="color: #586e75; font-style: italic;">;; returns 7</span>
+<span style="color: #586e75; font-style: italic;">;; the variables a, b do not exist outside of the with body</span>
+</pre>
+</div>
+
+<p>
+<code>letfn</code> has a streamlined syntax for creating functions, but otherwise behaves
+like <code>let</code>. See the documentation below for details.
+</p>
+
+<p>
+All local variables can have their value changed with <code>set!</code>. The exclamation
+point is because mutation is not to be taken lightly. The syntax for <code>set!</code> is
+like this:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">set!</span> var-name new-value<span style="color: #707183;">)</span>
+<span style="color: #586e75; font-style: italic;">;; for example</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">let</span> var <span style="color: #2aa198; font-weight: bold;">'hi</span><span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span>println var<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;; prints 'hi</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">set!</span> var <span style="color: #2aa198; font-weight: bold;">'lo</span><span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span>println var<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;; prints 'lo</span>
+</pre>
+</div>
+
+<p>
+Note that attempting to <code>set!</code> a global variable will result in an error.
+</p>
+</div>
+</div>
+
+
+<div id="outline-container-orgdf63fbd" class="outline-4">
+<h4 id="orgdf63fbd"><span class="section-number-4">2.1.2</span> Global Variables</h4>
+<div class="outline-text-4" id="text-2-1-2">
+<p>
+Global variables in Fn are created using <code>def</code> or <code>defn</code>. E.g.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">def</span> my-global <span style="color: #2aa198; font-weight: bold;">'special-constant</span><span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">def</span> my-other-global <span style="color: #7388d6;">(</span>+ 21 69<span style="color: #7388d6;">)</span><span style="color: #707183;">)</span>
+</pre>
+</div>
+
+<p>
+<code>defn</code> behaves exactly like <code>def</code>, but has special syntax streamlined for defining
+functions.
+</p>
+
+<p>
+Global variables are immutable, i.e. they cannot be changed by using <code>set!</code>.
+However, by assigning global variables to mutable datatypes or by exploiting
+variable capture (discussed in a later section), mutable state can still be
+associated to a global variable. This is intended behavior, however, it is not
+recommended that you abuse it.
+</p>
+</div>
+</div>
+</div>
+
+
+<div id="outline-container-orgdf1255b" class="outline-3">
+<h3 id="orgdf1255b"><span class="section-number-3">2.2</span> Data Types</h3>
+<div class="outline-text-3" id="text-2-2">
+<p>
+Fn provides the following builtin data types (type names in Fn are
+<code>Capitalized-Like-This</code>):
+</p>
+
+<dl class="org-dl">
+<dt><code>Nil</code></dt><dd>The special constant <code>nil</code>, used to indicate no value.</dd>
+<dt><code>Bool</code></dt><dd>The special boolean constants <code>true</code> and <code>false</code>.</dd>
+<dt><code>Num</code></dt><dd>Floating-point numbers. (These are almost IEEE 64-bit floats, but we
+truncate the significand by four bits to fit type information).</dd>
+<dt><code>Symbol</code></dt><dd>Internalized strings. These are essentially strings with a faster
+equality test, at the expensive of slower access to the characters of the
+string. They are used extensively by the macro system.</dd>
+<dt><code>String</code></dt><dd>(Immutable) sequences of bytes. Usually these are UTF-8 encoded
+character streams.</dd>
+<dt><code>List</code></dt><dd>(Immutable) singley-linked lists.</dd>
+<dt><code>Table</code></dt><dd>Mutable key-value stores.</dd>
+</dl>
+
+<p>
+Of these, only lists and tables logically contain other values. (Substrings can
+be extracted from strings, but this actually creates a new string object and
+just copies in data from the other string). So, we call <code>List</code> and <code>Table</code> the two
+<b>compound data types</b>, and call the rest of them <b>simple data types</b>.
+</p>
+</div>
+
+<div id="outline-container-org943233a" class="outline-4">
+<h4 id="org943233a"><span class="section-number-4">2.2.1</span> Simple Data Types</h4>
+<div class="outline-text-4" id="text-2-2-1">
+<p>
+Here is what the syntax looks like for the simple data types:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #586e75; font-style: italic;">;; numbers are pretty much what you'd expect</span>
+2
+-6
+3.14159
+2.0e-6 <span style="color: #586e75; font-style: italic;">;; we have scientific notation</span>
+0xFf <span style="color: #586e75; font-style: italic;">;; hexadecimal, even!</span>
+
+<span style="color: #586e75; font-style: italic;">;; strings are enclosed within matched double quotes</span>
+<span style="color: #8b7355;">"string"</span>
+<span style="color: #8b7355;">"Fn uses escape codes from C, e.g. \\ \"\n"</span>
+<span style="color: #8b7355;">""</span>
+
+<span style="color: #586e75; font-style: italic;">;; symbols are prefixed by a single quote.</span>
+<span style="color: #2aa198; font-weight: bold;">'sym1</span>
+<span style="color: #2aa198; font-weight: bold;">'sym2</span>
+<span style="color: #586e75; font-style: italic;">;; symbols can contain whitespace and syntax characters, provided they are </span>
+<span style="color: #586e75; font-style: italic;">;; escaped with a backslash</span>
+<span style="color: #2aa198; font-weight: bold;">'sym\ with\ \"escapes</span>\"
+<span style="color: #586e75; font-style: italic;">;; be careful about the quote operator. If the quoted expression is a number,</span>
+<span style="color: #586e75; font-style: italic;">;; it will result in a number instead of a symbol. You can get around this </span>
+<span style="color: #586e75; font-style: italic;">;; with escapes:</span>
+<span style="color: #2aa198; font-weight: bold;">'0xb8</span>  <span style="color: #586e75; font-style: italic;">;; this is a number</span>
+<span style="color: #2aa198; font-weight: bold;">'\0xb8</span> <span style="color: #586e75; font-style: italic;">;; this is a symbol</span>
+
+<span style="color: #586e75; font-style: italic;">;; booleans and nil are called by name</span>
+<span style="color: #2aa198; font-weight: bold;">true</span>
+<span style="color: #2aa198; font-weight: bold;">false</span>
+<span style="color: #2aa198; font-weight: bold;">nil</span>
+</pre>
+</div>
+
+<p>
+See also subsection <a href="#orgf7b37f7">2.2.4</a> for more on symbols and the quote operator.
+</p>
+</div>
+</div>
+
+
+<div id="outline-container-org61ef213" class="outline-4">
+<h4 id="org61ef213"><span class="section-number-4">2.2.2</span> Lists</h4>
+<div class="outline-text-4" id="text-2-2-2">
+<p>
+Lists in Fn are what you'd expect for a functional programming language. They're
+created using square brackets or by using the <code>List</code> function.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #707183;">[]</span> <span style="color: #586e75; font-style: italic;">; empty list</span>
+<span style="color: #707183;">[</span><span style="color: #2aa198; font-weight: bold;">'a</span> <span style="color: #2aa198; font-weight: bold;">'b</span><span style="color: #707183;">]</span> <span style="color: #586e75; font-style: italic;">; list of two symbols</span>
+<span style="color: #707183;">[</span>1 <span style="color: #2aa198; font-weight: bold;">'a</span> <span style="color: #8b7355;">"str"</span><span style="color: #707183;">]</span> <span style="color: #586e75; font-style: italic;">; lists may contain objects of arbitrary type</span>
+
+<span style="color: #586e75; font-style: italic;">;; List is identical to square bracket syntax</span>
+<span style="color: #707183;">[</span>1 2 3<span style="color: #707183;">]</span>
+<span style="color: #707183;">(</span><span style="color: #00688b;">List</span> 1 2 3<span style="color: #707183;">)</span>
+</pre>
+</div>
+
+<p>
+Lists can be manipulated with builtin functions:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">def</span> list1 <span style="color: #7388d6;">[</span><span style="color: #909183;">[</span><span style="color: #8b7355;">"str"</span> 2<span style="color: #909183;">]</span> <span style="color: #2aa198; font-weight: bold;">'a</span> <span style="color: #2aa198; font-weight: bold;">'b</span><span style="color: #7388d6;">]</span><span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">def</span> list2 <span style="color: #7388d6;">[</span>0 2 4 6 8 10<span style="color: #7388d6;">]</span><span style="color: #707183;">)</span>
+
+<span style="color: #586e75; font-style: italic;">;; head and tail access the head and tail of the list</span>
+<span style="color: #707183;">(</span>head list1<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; ["str" 2]</span>
+<span style="color: #707183;">(</span>head list2<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; 0</span>
+<span style="color: #707183;">(</span>tail list1<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; ['a 'b]</span>
+
+<span style="color: #707183;">(</span>tail <span style="color: #7388d6;">[]</span><span style="color: #707183;">)</span>    <span style="color: #586e75; font-style: italic;">;=&gt; []</span>
+<span style="color: #707183;">(</span>head <span style="color: #7388d6;">[]</span><span style="color: #707183;">)</span>    <span style="color: #586e75; font-style: italic;">;=&gt; error (empty list has no head)</span>
+
+<span style="color: #586e75; font-style: italic;">;; nth allows random access:</span>
+<span style="color: #707183;">(</span>nth list1 2<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; 'b</span>
+<span style="color: #707183;">(</span>nth list2 1<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; 2</span>
+
+<span style="color: #586e75; font-style: italic;">;; length gives the length of a list</span>
+<span style="color: #707183;">(</span>length <span style="color: #7388d6;">[]</span><span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; 0</span>
+<span style="color: #707183;">(</span>length list1<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; 3</span>
+<span style="color: #707183;">(</span>length list2<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; 6</span>
+
+<span style="color: #586e75; font-style: italic;">;; cons prepends elements</span>
+<span style="color: #707183;">(</span>cons 2 <span style="color: #7388d6;">[]</span><span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; [2]</span>
+<span style="color: #707183;">(</span>cons <span style="color: #2aa198; font-weight: bold;">nil</span> list1<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; [nil ["str" 2] 'a 'b]</span>
+
+<span style="color: #586e75; font-style: italic;">;; concat concatenates two or more lists</span>
+<span style="color: #707183;">(</span>concat <span style="color: #7388d6;">[</span>1 2 3<span style="color: #7388d6;">]</span> <span style="color: #7388d6;">[</span>4 5 6<span style="color: #7388d6;">]</span><span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; [1 2 3 4 5 6]</span>
+<span style="color: #707183;">(</span>concat <span style="color: #7388d6;">[</span>37<span style="color: #7388d6;">]</span> <span style="color: #7388d6;">[</span><span style="color: #2aa198; font-weight: bold;">'foo</span><span style="color: #7388d6;">]</span> <span style="color: #7388d6;">[</span><span style="color: #8b7355;">"bar"</span><span style="color: #7388d6;">]</span><span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; [37 'foo "bar"]</span>
+<span style="color: #707183;">(</span>concat list2 list1<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; [0 2 4 6 8 10 ["str" 2] 'a 'b]</span>
+
+<span style="color: #586e75; font-style: italic;">;; reverse reverse the direction of a list</span>
+<span style="color: #707183;">(</span>reverse list2<span style="color: #707183;">)</span> =&gt; <span style="color: #707183;">[</span>10 8 6 4 2 0<span style="color: #707183;">]</span>
+</pre>
+</div>
+</div>
+</div>
+
+
+<div id="outline-container-org2cca2ab" class="outline-4">
+<h4 id="org2cca2ab"><span class="section-number-4">2.2.3</span> Tables</h4>
+<div class="outline-text-4" id="text-2-2-3">
+<p>
+Tables are key-value stores. Any type of object may be used as a key or a value,
+(note, however, that it takes longer to hash more complicated data structures
+since we have to descend on their fields)<sup><a id="fnr.2" class="footref" href="#fn.2">2</a></sup>.
+</p>
+
+<p>
+Tables are built using braces <code>{}</code> or the equivalent <code>Table</code> function. This must be
+passed an even number of arguments.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #707183;">{}</span> <span style="color: #586e75; font-style: italic;">;=&gt; empty table</span>
+<span style="color: #707183;">{</span><span style="color: #2aa198; font-weight: bold;">'key1</span> 4 <span style="color: #2aa198; font-weight: bold;">'key</span> 6<span style="color: #707183;">}</span> <span style="color: #586e75; font-style: italic;">;=&gt; table with two kv-pairs</span>
+<span style="color: #707183;">(</span><span style="color: #00688b;">Table</span> <span style="color: #2aa198; font-weight: bold;">'key1</span> 4 <span style="color: #2aa198; font-weight: bold;">'key</span> 6<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; table with two kv-pairs</span>
+</pre>
+</div>
+
+<p>
+Table elements may be accessed using the builtin function <code>get</code>. When the key is a
+constant symbol, dot syntax (or the equivalent <code>dot</code> special operator) can be
+used instead. This is how this looks:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">def</span> tab1 <span style="color: #7388d6;">{</span><span style="color: #2aa198; font-weight: bold;">'name</span> <span style="color: #8b7355;">"Mr. Table"</span>
+          <span style="color: #2aa198; font-weight: bold;">'occupation</span> <span style="color: #8b7355;">"Holds data"</span>
+          <span style="color: #2aa198; font-weight: bold;">'child</span> <span style="color: #909183;">{</span><span style="color: #2aa198; font-weight: bold;">'name</span> <span style="color: #8b7355;">"Table Jr."</span> 
+                  <span style="color: #2aa198; font-weight: bold;">'occupation</span> <span style="color: #8b7355;">"Holds less data"</span><span style="color: #909183;">}</span><span style="color: #7388d6;">}</span><span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">def</span> tab2 <span style="color: #7388d6;">{</span>0 <span style="color: #2aa198; font-weight: bold;">'zero</span> 1 <span style="color: #2aa198; font-weight: bold;">'one</span> 2 <span style="color: #2aa198; font-weight: bold;">'two</span> 3 <span style="color: #2aa198; font-weight: bold;">'three</span> 4 <span style="color: #2aa198; font-weight: bold;">'four</span><span style="color: #7388d6;">}</span><span style="color: #707183;">)</span>
+
+<span style="color: #586e75; font-style: italic;">;; these all return "Mr. Table"</span>
+<span style="color: #707183;">(</span>get tab1 <span style="color: #2aa198; font-weight: bold;">'name</span><span style="color: #707183;">)</span>
+tab1.name
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">dot</span> tab1 name<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">; equivalent syntax to the dot expression</span>
+<span style="color: #586e75; font-style: italic;">;; Note that the symbols in the dot expressions are unquoted. Arguments to dot </span>
+<span style="color: #586e75; font-style: italic;">;; must be unquoted symbols or a compilation error occurs.</span>
+
+<span style="color: #586e75; font-style: italic;">;; get is more flexible than dot and allows arbitrary key and value expressions</span>
+<span style="color: #707183;">(</span>get tab2 <span style="color: #7388d6;">(</span>+ 1 2<span style="color: #7388d6;">)</span><span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; 'three</span>
+<span style="color: #707183;">(</span>get <span style="color: #7388d6;">{</span><span style="color: #2aa198; font-weight: bold;">'k</span> <span style="color: #2aa198; font-weight: bold;">'v</span><span style="color: #7388d6;">}</span> <span style="color: #2aa198; font-weight: bold;">'k</span><span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;=&gt; 'v</span>
+
+<span style="color: #586e75; font-style: italic;">;; dot makes it convenient to descend on tables with symbolic key names</span>
+tab1.child.name <span style="color: #586e75; font-style: italic;">;=&gt; "Table Jr."</span>
+<span style="color: #586e75; font-style: italic;">;; equivalent expression:</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">dot</span> tab1 child name<span style="color: #707183;">)</span>
+</pre>
+</div>
+
+<p>
+Since tables are mutable, the main way to populate them is to use the <code>set!</code>
+operator (the same one as for local variables). In this case, the first argument
+may be any legal <code>get</code> or <code>dot</code> expression on a table.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn">
+</pre>
+</div>
+
+<p>
+Lastly, tables size can be checked with <code>length</code>, a list of keys can be retrieved
+with <code>table-keys</code>, and two or more tables can be combined with <code>concat</code> (if any of
+the tables have keys in common, the last table in the argument list takes
+priority).
+</p>
+</div>
+</div>
+
+
+<div id="outline-container-orgf7b37f7" class="outline-4">
+<h4 id="orgf7b37f7"><span class="section-number-4">2.2.4</span> Quoting</h4>
+<div class="outline-text-4" id="text-2-2-4">
+<p>
+"Quoting" refers to the process of converting Fn source code into native Fn
+data. This allows us to easily process and manipulate Fn source code using the
+same facilities as for normal data.
+</p>
+
+<p>
+Quoting is the secret sauce that makes Fn's macro system work. It's the main
+reason why Fn has the syntax it has.
+</p>
+
+<p>
+The <code>quote</code> special operator has syntax:
+</p>
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">quote</span> &lt;expr&gt;<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;; or, equivalently</span>
+<span style="color: #2aa198; font-weight: bold;">'&lt;expr&gt;</span>
+</pre>
+</div>
+<p>
+where <code>&lt;expr&gt;</code> can be any expression (in fact, it need not be a legal expression
+by itself). These two notations are exactly the same. The interpreter expands
+the second into the first before evaluation.
+</p>
+
+<p>
+The value returned by quote is guaranteed to only consist of lists, symbols,
+numbers, and strings. We refer to the latter three as <b>atoms</b>. Here are some
+examples:
+</p>
+<div class="org-src-container">
+<pre class="src src-fn">'<span style="color: #707183;">(</span>a b c<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;; returns ['a 'b 'c]</span>
+'<span style="color: #8b7355;">"string"</span> <span style="color: #586e75; font-style: italic;">;; returns "string"</span>
+'<span style="color: #707183;">(</span>+ a <span style="color: #7388d6;">(</span>/ x 2<span style="color: #7388d6;">)</span><span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;; returns ['+ 'a ['/ 'x 2]]</span>
+
+'<span style="color: #2aa198; font-weight: bold;">'quot</span> <span style="color: #586e75; font-style: italic;">;; is equivalent to</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">quote</span> <span style="color: #7388d6;">(</span><span style="color: #859900; font-weight: bold;">quote</span> quot<span style="color: #7388d6;">)</span><span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;; which returns ['quote 'quot]</span>
+</pre>
+</div>
+
+<p>
+Note that <code>&lt;expr&gt;</code> only needs to be syntactically valid (i.e. not freak out the
+parser). Illegal expressions can be quoted just fine:
+</p>
+<div class="org-src-container">
+<pre class="src src-fn">'<span style="color: #707183;">()</span> <span style="color: #586e75; font-style: italic;">;; returns [] (the empty list)</span>
+'<span style="color: #707183;">(</span>2 <span style="color: #7388d6;">(</span>3 4<span style="color: #7388d6;">)</span><span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;; returns [2 [3 4]]</span>
+'<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">quote</span><span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">;; returns ['quote]</span>
+</pre>
+</div>
+
+<p>
+This makes <code>quote</code> very handy for creating nested lists of atoms. (<code>quote</code> also has
+a big sister named <code>quasiquote</code>, which is covered in the section on macros, and
+allows for much more flexibility).
+</p>
+
+<p>
+<code>quote</code> is also the primary way to create symbols. As noted in subsection <a href="#org943233a">2.2.1</a>, this can lead to problems when we want a symbol whose name is a
+syntactically valid number. Adding an escape character to the symbol name
+designates to the parser that the token should be read as a symbol rather than a
+number. In fact, we can even use this trick to give variables numbers for names:
+</p>
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #586e75; font-style: italic;">;; probably don't do this</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">def</span> \2 3<span style="color: #707183;">)</span>
+2  <span style="color: #586e75; font-style: italic;">;; returns 2</span>
+\2 <span style="color: #586e75; font-style: italic;">;; returns 3</span>
+</pre>
+</div>
+
+<p>
+My recommendation: just don't use symbol names that are syntactically legal
+numbers.
+</p>
+</div>
+</div>
+</div>
+
+
+<div id="outline-container-orgf0f7143" class="outline-3">
+<h3 id="orgf0f7143"><span class="section-number-3">2.3</span> <span class="todo TODO">TODO</span> Control Flow and Functions</h3>
+<div class="outline-text-3" id="text-2-3">
+</div>
+<div id="outline-container-org0ed65bc" class="outline-4">
+<h4 id="org0ed65bc"><span class="section-number-4">2.3.1</span> <span class="todo TODO">TODO</span> Conditional Execution</h4>
+<div class="outline-text-4" id="text-2-3-1">
+<p>
+The conditional control flow primitives are <code>if</code> and <code>cond</code>.
+</p>
+
+<p>
+<code>if</code> takes exactly three arguments: a test expression, an expression to evaluate
+if the test is true, and an expression to evaluate if the test is false. In Fn,
+<code>nil</code> and <code>false</code> are considered to be false values, while all others are treated as
+<code>true</code>.
+</p>
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #586e75; font-style: italic;">;; if and cond syntax</span>
+
+<span style="color: #586e75; font-style: italic;">;; cond takes pairs of expressions and consequences</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">cond</span>
+  <span style="color: #2aa198; font-weight: bold;">false</span> 1
+  <span style="color: #2aa198; font-weight: bold;">nil</span>   2
+  <span style="color: #2aa198; font-weight: bold;">'foo</span>  3
+  <span style="color: #2aa198; font-weight: bold;">true</span>  4<span style="color: #707183;">)</span>
+<span style="color: #586e75; font-style: italic;">; =&gt; returns 3, because 'foo is the first true value</span>
+
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">defn</span> <span style="color: #cd9b1d;">fizzbuzz</span> <span style="color: #7388d6;">(</span>x<span style="color: #7388d6;">)</span>
+  <span style="color: #7388d6;">(</span><span style="color: #859900; font-weight: bold;">cond</span>
+    <span style="color: #909183;">(</span>= <span style="color: #709870;">(</span>mod x 15<span style="color: #709870;">)</span> 0<span style="color: #909183;">)</span> <span style="color: #2aa198; font-weight: bold;">'FizzBuzz</span>
+    <span style="color: #909183;">(</span>= <span style="color: #709870;">(</span>mod x 5<span style="color: #709870;">)</span> 0<span style="color: #909183;">)</span>  <span style="color: #2aa198; font-weight: bold;">'Buzz</span>
+    <span style="color: #909183;">(</span>= <span style="color: #709870;">(</span>mod x 3<span style="color: #709870;">)</span> 0<span style="color: #909183;">)</span>  <span style="color: #2aa198; font-weight: bold;">'Fizz</span>
+    <span style="color: #2aa198; font-weight: bold;">true</span>             x<span style="color: #7388d6;">)</span><span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span>fizzbuzz 6<span style="color: #707183;">)</span>  <span style="color: #586e75; font-style: italic;">; = Fizz</span>
+<span style="color: #707183;">(</span>fizzbuzz 7<span style="color: #707183;">)</span>  <span style="color: #586e75; font-style: italic;">; = 7</span>
+<span style="color: #707183;">(</span>fizzbuzz 45<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">; = FizzBuzz</span>
+<span style="color: #707183;">(</span>fizzbuzz 65<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">; = Buzz</span>
+</pre>
+</div>
+
+<p>
+<code>cond</code> is an alternative conditional syntax which is analogous to "if/else if"
+blocks in other programming languages. <code>cond</code> takes pairs of arguments and treats
+the first one as a test. If the test is true, it returns the result of the
+second argument in the pair. Otherwise it proceeds to the next pair, returning
+<code>nil</code> if the end is reached.
+</p>
+</div>
+</div>
+
+
+<div id="outline-container-org86219ad" class="outline-4">
+<h4 id="org86219ad"><span class="section-number-4">2.3.2</span> Functions and Calls</h4>
+<div class="outline-text-4" id="text-2-3-2">
+<p>
+Function calls have already been shown frequently in the manual prior to this
+point. For example, we've seen arithmetic with the functions <code>+</code>, <code>-</code>, <code>*</code>, and <code>/</code>:
+</p>
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #707183;">(</span>+ 1 2 3<span style="color: #707183;">)</span>      <span style="color: #586e75; font-style: italic;">; =&gt; 6</span>
+<span style="color: #707183;">(</span>- <span style="color: #7388d6;">(</span>/ 6 2<span style="color: #7388d6;">)</span> 3<span style="color: #707183;">)</span>  <span style="color: #586e75; font-style: italic;">; =&gt; 0</span>
+<span style="color: #707183;">(</span>* 17 <span style="color: #7388d6;">(</span>- 2 7<span style="color: #7388d6;">)</span><span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">; =&gt; -85</span>
+</pre>
+</div>
+
+<p>
+As you may have already surmised, in each parenthesized list above, the first
+element is the function and the remaining ones are its arguments. All
+parenthesized forms in Fn are either special forms, macros, or function calls,
+with function calls being the "default" and by far the most common.
+</p>
+
+<p>
+Functions are created with the <code>fn</code> special form, which requires a parameter list
+followed by a series of expressions that make up the function's body.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #586e75; font-style: italic;">; square a number</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">def</span> square
+  <span style="color: #7388d6;">(</span><span style="color: #859900; font-weight: bold;">fn</span> <span style="color: #909183;">(</span>x<span style="color: #909183;">)</span>
+    <span style="color: #909183;">(</span>* x x<span style="color: #909183;">)</span><span style="color: #7388d6;">)</span>
+
+<span style="color: #7388d6;">(</span>square 2<span style="color: #7388d6;">)</span> <span style="color: #586e75; font-style: italic;">; =&gt; 4</span>
+
+<span style="color: #586e75; font-style: italic;">; compute sqrt(x^2 + y^2)</span>
+<span style="color: #7388d6;">(</span><span style="color: #859900; font-weight: bold;">def</span> 2-norm 
+  <span style="color: #909183;">(</span><span style="color: #859900; font-weight: bold;">fn</span> <span style="color: #709870;">(</span>x y<span style="color: #709870;">)</span>
+    <span style="color: #709870;">(</span>sqrt <span style="color: #907373;">(</span>+ <span style="color: #6276ba;">(</span>square x<span style="color: #6276ba;">)</span> <span style="color: #6276ba;">(</span>square y<span style="color: #6276ba;">)</span><span style="color: #907373;">)</span><span style="color: #709870;">)</span><span style="color: #909183;">)</span><span style="color: #7388d6;">)</span>
+
+<span style="color: #7388d6;">(</span>2-norm 3 4<span style="color: #7388d6;">)</span>  <span style="color: #586e75; font-style: italic;">; =&gt; 5</span>
+<span style="color: #7388d6;">(</span>2-norm 5 12<span style="color: #7388d6;">)</span> <span style="color: #586e75; font-style: italic;">; =&gt; 13</span>
+</pre>
+</div>
+
+<p>
+The syntax <code>(defn ...)</code> is nothing more than a shorten way to say <code>(def .. (fn
+...))</code>.
+</p>
+
+<p>
+Functions can accept varying numbers of arguments. For this Fn offers <b>optional
+parameters</b> and <b>variadic parameters</b>. Optional parameters have default values that
+they assume when not passed explicitly. Variadic parameters, on the other hand,
+allow a function to be called with more arguments than it has parameters. The
+trailing arguments are passed to the function as a list. These are illustrated
+below:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #586e75; font-style: italic;">; compute the p-norm of (x,y), which is |x^p + y^p|^(1/p). </span>
+<span style="color: #586e75; font-style: italic;">; default is p = 2</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">defn</span> <span style="color: #cd9b1d;">p-norm</span> <span style="color: #7388d6;">(</span>x y <span style="color: #909183;">(</span>p 2<span style="color: #909183;">)</span><span style="color: #7388d6;">)</span>
+  <span style="color: #7388d6;">(</span><span style="color: #859900; font-weight: bold;">let</span> xp <span style="color: #909183;">(</span>** x p<span style="color: #909183;">)</span>
+       yp <span style="color: #909183;">(</span>** y p<span style="color: #909183;">)</span><span style="color: #7388d6;">)</span>
+  <span style="color: #7388d6;">(</span>** <span style="color: #909183;">(</span>abs <span style="color: #709870;">(</span>+ xp yp<span style="color: #709870;">)</span><span style="color: #909183;">)</span> <span style="color: #909183;">(</span>/ 1 p<span style="color: #909183;">)</span><span style="color: #7388d6;">)</span><span style="color: #707183;">)</span>
+
+<span style="color: #586e75; font-style: italic;">; p-norm accepts either 2 or 3 arguments</span>
+<span style="color: #707183;">(</span>p-norm 3 4<span style="color: #707183;">)</span>    <span style="color: #586e75; font-style: italic;">; =&gt; 5</span>
+<span style="color: #707183;">(</span>p-norm 3 4 2<span style="color: #707183;">)</span>  <span style="color: #586e75; font-style: italic;">; =&gt; 5 (same as default)</span>
+<span style="color: #707183;">(</span>p-norm 3 4 1<span style="color: #707183;">)</span>  <span style="color: #586e75; font-style: italic;">; =&gt; 7 (now p = 1)</span>
+
+<span style="color: #586e75; font-style: italic;">; compute x1^2 + x2^2 + ...</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">defn</span> <span style="color: #cd9b1d;">sum-squared</span> <span style="color: #7388d6;">(</span><span style="color: #859900;">&amp;</span> args<span style="color: #7388d6;">)</span>
+  <span style="color: #586e75; font-style: italic;">; see below for explanation of this line</span>
+  <span style="color: #7388d6;">(</span>apply + <span style="color: #909183;">(</span>map square args<span style="color: #909183;">)</span><span style="color: #7388d6;">)</span><span style="color: #707183;">)</span>
+
+<span style="color: #586e75; font-style: italic;">; accepts any number of arguments</span>
+<span style="color: #707183;">(</span>sum-squared<span style="color: #707183;">)</span>       <span style="color: #586e75; font-style: italic;">; =&gt; 0</span>
+<span style="color: #707183;">(</span>sum-squared 1<span style="color: #707183;">)</span>     <span style="color: #586e75; font-style: italic;">; =&gt; 1</span>
+<span style="color: #707183;">(</span>sum-squared 1 2<span style="color: #707183;">)</span>   <span style="color: #586e75; font-style: italic;">; =&gt; 5</span>
+<span style="color: #707183;">(</span>sum-squared 1 2 4<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">; =&gt; 21</span>
+</pre>
+</div>
+
+<p>
+Explanation of the function <code>sum-squared</code> above: <code>map</code> applies a function to every
+element of the list, in this case squaring each of the arguments. <code>apply</code>,
+explained in <a href="#orgabb132d">2.3.4</a>, passes the elements of a list to a function as positional
+arguments, in this case summing all the elements of the list.
+</p>
+
+<p>
+As you can see, optional parameters, (of which there may be zero or more), are
+designated by putting them in parenthesized lists with a default value. Variadic
+parameters, (of which their may be zero or one), are designated by the special
+symbol <code>&amp;</code>. No additional parameters can follow variadic parameters.
+</p>
+
+<p>
+Variadic and optional parameters can be mixed, in which case the variadic
+parameter picks up where the optional parameters leave off.
+</p>
+</div>
+
+<ol class="org-ol">
+<li><a id="orgb6a926e"></a>Checking for Optional Arguments<br />
+<div class="outline-text-5" id="text-2-3-2-1">
+<p>
+Sometimes, it is desirable to know whether an optional parameter was passed, or
+just set to the default value. To check whether an optional parameter was
+passed, you can use the name of that parameter prefixed with a question mark.
+For example,
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #586e75; font-style: italic;">; this returns yes if called with an argument, no otherwise</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">defn</span> <span style="color: #cd9b1d;">arg-checker</span> <span style="color: #7388d6;">(</span><span style="color: #909183;">(</span>x <span style="color: #2aa198; font-weight: bold;">nil</span><span style="color: #909183;">)</span><span style="color: #7388d6;">)</span>
+  <span style="color: #7388d6;">(</span><span style="color: #859900; font-weight: bold;">if</span> ?x
+      <span style="color: #8b7355;">"yes"</span>
+      <span style="color: #8b7355;">"no"</span><span style="color: #7388d6;">)</span><span style="color: #707183;">)</span>
+
+<span style="color: #707183;">(</span>arg-checker<span style="color: #707183;">)</span>    <span style="color: #586e75; font-style: italic;">; =&gt; "no"</span>
+<span style="color: #707183;">(</span>arg-checker 1<span style="color: #707183;">)</span>  <span style="color: #586e75; font-style: italic;">; =&gt; "yes"</span>
+</pre>
+</div>
+</div>
+</li>
+</ol>
+</div>
+
+
+<div id="outline-container-org9f8e36f" class="outline-4">
+<h4 id="org9f8e36f"><span class="section-number-4">2.3.3</span> Variable Capture</h4>
+<div class="outline-text-4" id="text-2-3-3">
+<p>
+Functions can refer to local variables. Sometimes, a function object might
+outlive the scope of the local variable it references. For these cases, Fn
+implements <b>variable capture</b>.
+</p>
+
+<p>
+When the variable's normal lifetime ends, a copy of it is made and saved so that
+the function can continue to use that variable during future calls. If multiple
+functions refer to the same variable, then they share a reference to it. This
+behavior is exhibited below:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #586e75; font-style: italic;">; simple variable capture example</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">with</span> <span style="color: #7388d6;">(</span>x 7<span style="color: #7388d6;">)</span>
+  <span style="color: #586e75; font-style: italic;">; global function get-x captures x</span>
+  <span style="color: #7388d6;">(</span><span style="color: #859900; font-weight: bold;">def</span> get-x <span style="color: #909183;">()</span>
+    x<span style="color: #7388d6;">)</span><span style="color: #707183;">)</span>
+
+<span style="color: #586e75; font-style: italic;">; x is still accessible even though it's out of scope</span>
+<span style="color: #707183;">(</span>get-x<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">; =&gt; 7</span>
+
+
+<span style="color: #586e75; font-style: italic;">; variable capture between multiple functions</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">with</span> <span style="color: #7388d6;">(</span>y 0<span style="color: #7388d6;">)</span>
+  <span style="color: #7388d6;">(</span><span style="color: #859900; font-weight: bold;">def</span> get-y <span style="color: #909183;">()</span>
+    y<span style="color: #7388d6;">)</span>
+  <span style="color: #7388d6;">(</span><span style="color: #859900; font-weight: bold;">def</span> set-y <span style="color: #909183;">(</span>v<span style="color: #909183;">)</span>
+    <span style="color: #909183;">(</span><span style="color: #859900; font-weight: bold;">set!</span> y v<span style="color: #909183;">)</span><span style="color: #7388d6;">)</span><span style="color: #707183;">)</span>
+
+<span style="color: #586e75; font-style: italic;">; reference to y is shared between get-y and set-y</span>
+<span style="color: #707183;">(</span>get-y<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">; =&gt; 0</span>
+<span style="color: #707183;">(</span>set-y 17<span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span>get-y<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">; =&gt; 17</span>
+<span style="color: #586e75; font-style: italic;">; i.e. get-y sees the changes made by set-y</span>
+</pre>
+</div>
+
+<p>
+Variable capture in Fn can be used to implement something analogous to private
+members in object-oriented programming languages. This is by letting functions
+in a table capture a variable. When the table exits scopes, these functions will
+be the only means to access the variable. Here's an example of a counter that
+guards access to its value:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">defn</span> <span style="color: #00688b;">Counter</span> <span style="color: #7388d6;">()</span>
+  <span style="color: #8b7355;">"Construct a counter which is initialized to 0."</span>
+  <span style="color: #586e75; font-style: italic;">; count is our "private member"</span>
+  <span style="color: #7388d6;">(</span><span style="color: #859900; font-weight: bold;">let</span> count 0<span style="color: #7388d6;">)</span>
+  <span style="color: #7388d6;">(</span><span style="color: #859900; font-weight: bold;">let</span> <span style="color: #2aa198; font-weight: bold;">self</span>
+    <span style="color: #586e75; font-style: italic;">; the functions in this table control access to count</span>
+    <span style="color: #909183;">{</span><span style="color: #2aa198; font-weight: bold;">'get</span>
+     <span style="color: #709870;">(</span><span style="color: #859900; font-weight: bold;">fn</span> <span style="color: #907373;">()</span> count<span style="color: #709870;">)</span>
+     <span style="color: #2aa198; font-weight: bold;">'inc</span>
+     <span style="color: #709870;">(</span><span style="color: #859900; font-weight: bold;">fn</span> <span style="color: #907373;">()</span>
+       <span style="color: #907373;">(</span><span style="color: #859900; font-weight: bold;">set!</span> count <span style="color: #6276ba;">(</span>+ count 1<span style="color: #6276ba;">)</span><span style="color: #907373;">)</span><span style="color: #709870;">)</span>
+     <span style="color: #2aa198; font-weight: bold;">'reset</span>
+     <span style="color: #709870;">(</span><span style="color: #859900; font-weight: bold;">fn</span> <span style="color: #907373;">()</span>
+       <span style="color: #907373;">(</span><span style="color: #859900; font-weight: bold;">set!</span> count 0<span style="color: #907373;">)</span><span style="color: #709870;">)</span><span style="color: #909183;">}</span><span style="color: #7388d6;">)</span>
+  <span style="color: #2aa198; font-weight: bold;">self</span><span style="color: #707183;">)</span>
+
+<span style="color: #586e75; font-style: italic;">; create a counter</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">def</span> my-counter <span style="color: #7388d6;">(</span><span style="color: #00688b;">Counter</span><span style="color: #7388d6;">)</span><span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span>my-counter.get<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">; =&gt; 0</span>
+<span style="color: #707183;">(</span>my-counter.inc<span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span>my-counter.inc<span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span>my-counter.inc<span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span>my-counter.get<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">; =&gt; 3</span>
+<span style="color: #707183;">(</span>my-counter.reset<span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span>my-counter.get<span style="color: #707183;">)</span> <span style="color: #586e75; font-style: italic;">; =&gt; 0</span>
+</pre>
+</div>
+
+<p>
+As shown above, variable capture allows mutable state to be attached to a
+function or group of functions. This can be very powerful. However, as prolific
+mutation often leads to bad, buggy programs, this functionality should be used
+sparingly, and only after weighing alternative solutions.
+</p>
+</div>
+</div>
+
+
+<div id="outline-container-orgabb132d" class="outline-4">
+<h4 id="orgabb132d"><span class="section-number-4">2.3.4</span> <span class="todo TODO">TODO</span> <code>apply</code></h4>
+</div>
+
+<div id="outline-container-org2969df2" class="outline-4">
+<h4 id="org2969df2"><span class="section-number-4">2.3.5</span> <span class="todo TODO">TODO</span> dollar-fn</h4>
+</div>
+</div>
+
+
+<div id="outline-container-orge744e73" class="outline-3">
+<h3 id="orge744e73"><span class="section-number-3">2.4</span> Namespaces and Import</h3>
+<div class="outline-text-3" id="text-2-4">
+<p>
+A <b>namespace</b> is a collection of global variable and macro definitions. All Fn
+code runs inside of some namespace.
+</p>
+
+<p>
+Namespaces are identified by a <b>name</b>, which is a string not containing any
+slashes, and a <b>package</b>, which is a string representing a logical collection of
+namespaces. They can be combined into the symbol <code>&lt;package&gt;/&lt;name&gt;</code>, which is
+called the <b>identifier</b> or <b>ID</b> of the namespace. This ID is required to be globally
+unique.
+</p>
+
+<p>
+<b>Examples of Namespace IDs:</b>
+</p>
+<div class="org-src-container">
+<pre class="src src-fn">fn/builtin              <span style="color: #586e75; font-style: italic;">; package is "fn", name is "builtin"</span>
+fn/internal/io          <span style="color: #586e75; font-style: italic;">; package is "fn/internal", name is "io"</span>
+my-project/util/linalg  <span style="color: #586e75; font-style: italic;">; package is "my-project/util", name is "linalg"</span>
+my-project/model        <span style="color: #586e75; font-style: italic;">; package is "my-project", name is "model"</span>
+</pre>
+</div>
+
+<p>
+When evaluating code from a file, the namespace name will always be the stem of
+the file. The package can be set via a package declaration, see <a href="#org0dda6be">2.4.2</a>.
+</p>
+
+<p>
+The default REPL namespace is <code>fn/interactive</code>. Fn source code passed in as a
+command line argument is also evaluated in this namespace.
+</p>
+</div>
+
+
+<div id="outline-container-org9236925" class="outline-4">
+<h4 id="org9236925"><span class="section-number-4">2.4.1</span> Import</h4>
+<div class="outline-text-4" id="text-2-4-1">
+<p>
+The <code>import</code> special form allows definitions from an external namespace to be
+copied into the current one. The syntax for import looks like this:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">import</span> &lt;namespace-id&gt;<span style="color: #707183;">)</span>                  <span style="color: #586e75; font-style: italic;">; invocation 1</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">import</span> &lt;namespace-id&gt; <span style="color: #859900;">:as</span> &lt;alias&gt;<span style="color: #707183;">)</span>      <span style="color: #586e75; font-style: italic;">; invocation 2</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">import</span> &lt;namespace-id&gt; <span style="color: #859900;">:no-prefix</span> <span style="color: #2aa198; font-weight: bold;">true</span><span style="color: #707183;">)</span>  <span style="color: #586e75; font-style: italic;">; invocation 3</span>
+</pre>
+</div>
+
+<p>
+Say we have a namespace <code>foo/bar/baz</code> containing variables named <code>bob</code> and
+<code>alice</code>:
+</p>
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #586e75; font-style: italic;">;;; baz.fn</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">package</span> foo/bar<span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">def</span> alice <span style="color: #8b7355;">"Alice"</span><span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">def</span> bob <span style="color: #8b7355;">"Bob"</span><span style="color: #707183;">)</span>
+</pre>
+</div>
+
+<p>
+We have three ways to import this namespace, shown above. All three cause the
+definitions from <code>foo/bar/baz</code> to be copied into the current namespace. However,
+in each case the created bindings will have different names. The three cases are
+illustrated below:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #586e75; font-style: italic;">;;; main.fn</span>
+
+<span style="color: #586e75; font-style: italic;">;; invocation 1</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">import</span> foo/bar/baz<span style="color: #707183;">)</span>
+<span style="color: #586e75; font-style: italic;">; variables look like this:</span>
+baz:alice
+baz:bob
+
+<span style="color: #586e75; font-style: italic;">;; invocation 2</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">import</span> foo/bar/baz <span style="color: #859900;">:as</span> b<span style="color: #707183;">)</span>
+<span style="color: #586e75; font-style: italic;">; variables look like this:</span>
+b:alice
+b:bob
+
+<span style="color: #586e75; font-style: italic;">;; invocation 3</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">import</span> foo/bar/baz <span style="color: #859900;">:no-prefix</span> <span style="color: #2aa198; font-weight: bold;">true</span><span style="color: #707183;">)</span>
+<span style="color: #586e75; font-style: italic;">; variables are imported directly (no colons)</span>
+alice
+bob
+</pre>
+</div>
+</div>
+</div>
+
+
+<div id="outline-container-org0dda6be" class="outline-4">
+<h4 id="org0dda6be"><span class="section-number-4">2.4.2</span> Package Declarations</h4>
+<div class="outline-text-4" id="text-2-4-2">
+<p>
+The first expression of a file (not counting comments) may be a <b>package
+declaration</b>. These have the form <code>(package &lt;package-name&gt;)</code>, where &lt;package-name&gt;
+is a symbol. This simply sets the package name for the file when it is
+interpreted. If no package declaration is present, the package <code>fn/user</code> is used.
+</p>
+
+<p>
+When a file is imported, a warning is generated if its package declaration
+disagrees with the package of the import. The import will still work, but some
+code may break.
+</p>
+</div>
+</div>
+
+
+<div id="outline-container-org3775542" class="outline-4">
+<h4 id="org3775542"><span class="section-number-4">2.4.3</span> Global Identifiers for Definitions</h4>
+<div class="outline-text-4" id="text-2-4-3">
+<p>
+When a new definition is made in any namespace, it is given a global identifier
+of the form <code>#/&lt;namespace-id&gt;:&lt;symbol&gt;</code> (since namespace IDs are unique, this is
+unique among all global definitions). Global IDs may be used as variable names
+to reference the definition without explicitly importing it. For example,
+<code>#/fn/builtin:map</code> refers to the function <code>map</code> in the <code>fn/builtin</code> namespace.
+</p>
+</div>
+</div>
+
+
+<div id="outline-container-org916f1a3" class="outline-4">
+<h4 id="org916f1a3"><span class="section-number-4">2.4.4</span> Locating Namespace Sources</h4>
+<div class="outline-text-4" id="text-2-4-4">
+<p>
+<b>Note:</b> This section is a precise, technical description of how namespace search
+works. In reality, you don't have to think so hard about namespace import. It
+works the way you'd want it to. For instance, I do <code>(import pkg/bar/baz)</code> from <code>pkg/foo</code>, it
+searches for a file <code>bar/baz.fn</code> in the directory of <code>foo.fn</code>.
+</p>
+
+<p>
+The first time a namespace is imported, we must find and load its source file.
+Subsequent imports will reuse the created namespace.
+</p>
+
+<p>
+When a file is run, its package is set as the <b>root package</b> and the file's
+directory is set as the <b>working directory</b>. When a new import is encountered, the
+following locations are searched:
+</p>
+<ul class="org-ul">
+<li>If the imported namespace is in the root package, then we search for the file
+<code>name.fn</code> in the working directory.</li>
+<li>If the imported package is in a subspace of the root package, say
+<code>root/subpackage/name</code>, then we look for the file <code>subpackage/name.fn</code> in the
+working directory.</li>
+<li>If the environment variable FN<sub>SEARCH</sub><sub>PATH</sub> is set to a colon-delimited
+sequence of directories, then we search each directory in the order provided.
+The file we look for is <code>package/fn</code>, where slashes in the package are converted
+into subdirectories in the search.</li>
+<li>Finally, the system namespace directory <code>${PREFIX}/ns</code> is searched. <code>${PREFIX}</code> is
+usually <code>/usr/local/lib/fn/</code>.</li>
+</ul>
+
+<p>
+Example: We have the following files:
+</p>
+<ul class="org-ul">
+<li>project/main.fn</li>
+<li>project/engine.fn</li>
+<li>project/util/http.fn</li>
+<li>project/util/math.fn</li>
+</ul>
+
+<p>
+Suppose main.fn has the following package declaration:
+</p>
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">package</span> devco/product<span style="color: #707183;">)</span>
+</pre>
+</div>
+
+<p>
+If we run the file main.fn, we can import all the other files like this:
+</p>
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">import</span> devco/product/engine<span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">import</span> devco/product/util/http<span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">import</span> devco/product/util/math<span style="color: #707183;">)</span>
+</pre>
+</div>
+
+<p>
+Furthermore, these names are preserved in nested imports. For instance, in
+http.fn we can import engine.fn and math.fn like this:
+</p>
+<div class="org-src-container">
+<pre class="src src-fn"><span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">import</span> devco/product/engine<span style="color: #707183;">)</span>
+<span style="color: #707183;">(</span><span style="color: #859900; font-weight: bold;">import</span> devco/product/util/math<span style="color: #707183;">)</span>
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+
+<div id="outline-container-org2f80de1" class="outline-3">
+<h3 id="org2f80de1"><span class="section-number-3">2.5</span> <span class="todo TODO">TODO</span> Macros</h3>
+<div class="outline-text-3" id="text-2-5">
+</div>
+<div id="outline-container-org90c1ccb" class="outline-4">
+<h4 id="org90c1ccb"><span class="section-number-4">2.5.1</span> Macro Basics</h4>
+</div>
+
+
+<div id="outline-container-org761cf21" class="outline-4">
+<h4 id="org761cf21"><span class="section-number-4">2.5.2</span> Quasiquotation</h4>
+</div>
+
+
+<div id="outline-container-org9b6b88c" class="outline-4">
+<h4 id="org9b6b88c"><span class="section-number-4">2.5.3</span> Variable Capture and <code>gensym</code></h4>
+</div>
+</div>
+</div>
+
+
+<div id="outline-container-org344888c" class="outline-2">
+<h2 id="org344888c"><span class="section-number-2">3</span> Command Line Interface</h2>
+<div class="outline-text-2" id="text-3">
+<p>
+All functionality is accessed via the <code>fn</code> command line program.
+</p>
+</div>
+
+<div id="outline-container-org886d80d" class="outline-3">
+<h3 id="org886d80d"><span class="section-number-3">3.1</span> Invocation and Namespace Determination</h3>
+<div class="outline-text-3" id="text-3-1">
+<p>
+The fn command line tool has the following interface:
+</p>
+<pre class="example">
+fn [options] [file | --eval string | - ] ARGS
+</pre>
+
+<p>
+When invoked without any arguments, a repl is started in namespace <code>fn/user</code>.
+</p>
+
+<p>
+The main options are:
+</p>
+<dl class="org-dl">
+<dt><code>-r</code></dt><dd>Start a REPL after evaluating all sources.</dd>
+<dt><code>--ns &lt;namespace&gt;</code></dt><dd>Use the specified namespace for evaluation. This also sets
+the namespace for the REPL (which otherwise defaults to <code>fn/user</code>).</dd>
+<dt><code>--no-rel-imports</code></dt><dd>Prevents <code>import</code> from searching for paths relative to the
+filename. See subsection <a href="#org6af3803">3.2</a> for details.</dd>
+<dt><code>-h</code></dt><dd>Show help and exit.</dd>
+</dl>
+<p>
+There are also two more options that are unlikely to be useful for a typical
+user:
+</p>
+<dl class="org-dl">
+<dt><code>-d</code></dt><dd>Print disassembled bytecode after compiling each expression.</dd>
+<dt><code>-l</code></dt><dd>Print LLIR (low-level intermediate representation) before compiling each
+expression.</dd>
+</dl>
+
+<p>
+When an <code>--ns</code> option is used with a file, that file's namespace name is
+overridden by the specified namespace. The file then just acts as a series of
+expressions to evaluate. This also prevents import from searching relative to
+the file path.
+</p>
+
+<p>
+In the absence of an <code>--ns</code> option, the namespace of a file is determined by the
+filename and contents. In particular, the filename stem is used as the short
+name. If the file specifies a package, then that package is used, otherwise the
+default package <code>fn/user</code> is used, e.g. a file <code>foo.fn</code> with no package declaration
+would be evaluated in the namespace <code>fn/user/foo</code>.
+</p>
+</div>
+</div>
+
+
+<div id="outline-container-org6af3803" class="outline-3">
+<h3 id="org6af3803"><span class="section-number-3">3.2</span> Import Search</h3>
+<div class="outline-text-3" id="text-3-2">
+<p>
+When the interpreter encounters an import form, it must locate and load the
+relevant source file (unless the namespace has already been created, as is the
+case for the builtin namespace, or for those namespaces already imported by
+another component).
+</p>
+
+<p>
+The interpreter has two ways to search for imports. The first way is to use the
+package and directory of a file to locate other components, while the second is
+to simply use a search path. The search path approach is pretty straightforward;
+it can be set using the <code>FN_SEARCH_PATH</code> environment variable, but by default it
+will simply check the Fn library directory on the system (something like
+<code>/usr/lib/Fn/ns</code>) before giving up.
+</p>
+
+<p>
+The first search method mentioned is called relative import search. This is how
+it works:
+</p>
+<ul class="org-ul">
+<li>The interpreter has a notion of a <i>working directory</i>. When evaluating a file,
+this is set to the directory containing the file. Otherwise it is the
+directory from which the interpreter was launched.</li>
+<li>The interpreter associates the package of the code being evaluated to the
+working directory. This package is saved by the interpreter as the <i>root
+package</i>.</li>
+<li>When an import is performed on any subpackage of the root package (including
+the root package itself), the interpreter will search for import files
+relative to the working directory based on the import name. (It will fall
+back to the search path if this fails).</li>
+</ul>
+
+<p>
+The specifics of the search algorithm are best explained by example. Suppose I
+evaluate a file <code>bar.fn</code> with package <code>baz/foo</code>. The namespace for the file is
+<code>baz/foo/bar</code> and the working directory is the directory of <code>bar.fn</code>, which we'll
+write as <code>${BAR_DIR}</code>.
+</p>
+
+<p>
+Let's see how imports work in this scenario:
+</p>
+<ul class="org-ul">
+<li><code>(import baz/foo/oof)</code> will cause the interpreter to look for a file
+<code>${BAR_DIR}/oof.fn</code>. This is because the directory <code>${BAR_DIR}</code> is associated to
+the package <code>baz/foo</code>.</li>
+<li>Similarly, <code>(import baz/foo/boom/grop)</code> looks for the file
+<code>${BAR_DIR}/boom/grop.fn</code>.</li>
+<li>However, <code>(import baz/dop)</code> will <b>not</b> look for a file named <code>${BAR_DIR}/../dop.fn</code>,
+because <code>baz</code> is not a subpackage of <code>baz/foo</code>.</li>
+</ul>
+
+<p>
+Lastly, we make one important notes about imports. Even if a file is located, it
+will not be used if it has a package declaration which doesn't match up with the
+requested one. In the above example, if we find <code>${BAR_DIR}/oof.fn</code>, but it has a
+package declaration placing it somewhere other than <code>baz/foo</code>, then the import
+will fail (and we'll end up using the search path).
+</p>
+</div>
+</div>
+
+
+<div id="outline-container-orgafae78b" class="outline-3">
+<h3 id="orgafae78b"><span class="section-number-3">3.3</span> REPL</h3>
+<div class="outline-text-3" id="text-3-3">
+<p>
+Fn's REPL allows interactive evaluation of code. It supports multi-line
+expressions. Optional GNU readline support is planned, but for now, it is highly
+recommended that you run the REPL in a wrapper that has command history, such as
+rlwrap or Emacs shell-mode.
+</p>
+
+<p>
+Additional functionality can be accessed by typing keywords (i.e. symbols whose
+names begin with ":"). The available REPL keywords are:
+</p>
+
+<dl class="org-dl">
+<dt><code>:help</code></dt><dd>List these options.</dd>
+<dt><code>:quit</code></dt><dd>Quit the interpreter. Can also be done by sending EOF with ctrl-d.</dd>
+<dt><code>:load &lt;filename&gt;</code></dt><dd>Evaluate a file in the current namespace.</dd>
+<dt><code>:reimport &lt;namespace&gt;</code></dt><dd>Redo a namespace import as if it was for the first
+time. Be warned that this will not overwrite the old functions if they've
+already been compiled into a new one.</dd>
+<dt><code>:ns &lt;namespace&gt;</code></dt><dd>Switch to the given namespace.</dd>
+</dl>
+
+<p>
+To be interpreted as REPL commands, these cannot be preceded by any whitespace.
+</p>
+
+<p>
+At the time of writing, these are not actually implemented in the codebase, but
+you can try your luck because there's a chance that this document is out of sync
+with my progress.
+</p>
+</div>
+</div>
+</div>
+
+
+<div id="outline-container-org990e8be" class="outline-2">
+<h2 id="org990e8be"><span class="section-number-2">4</span> Builtin Functions</h2>
+<div class="outline-text-2" id="text-4">
+</div>
+<div id="outline-container-org6e9445e" class="outline-3">
+<h3 id="org6e9445e"><span class="section-number-3">4.1</span> <code>fn/builtin</code></h3>
+<div class="outline-text-3" id="text-4-1">
+<p>
+These functions are automatically imported into every namespace upon creation.
+They are not all implemented at the time of writing, but a surprising number
+are.
+</p>
+
+<p>
+<b>Equality Comparisons</b>
+</p>
+<ul class="org-ul">
+<li><code>= (&amp; args)</code>
+<ul class="org-ul">
+<li>Returns true if all args are semantically equal</li>
+</ul></li>
+<li><code>same? (&amp; args)</code>
+<ul class="org-ul">
+<li>Behaves the same as <code>=</code> for numbers, symbols, bools, and the empty
+list. For other types, only returns true if all the arguments correspond to
+the same garbage collector object.</li>
+</ul></li>
+</ul>
+
+
+<p>
+<b>Type queries:</b>
+</p>
+<ul class="org-ul">
+<li><code>number?</code>, <code>string?</code>, <code>list?</code>, <code>table?</code>, <code>function?</code>, <code>symbol?</code>, <code>bool?</code>
+<ul class="org-ul">
+<li>These accept a single argument and return true if it has the corresponding
+type, false otherwise.</li>
+</ul></li>
+</ul>
+
+
+<p>
+<b>Functions on Symbols</b>
+</p>
+<ul class="org-ul">
+<li><code>gensym ()</code>
+<ul class="org-ul">
+<li>create a nameless symbol which is guaranteed to be unique</li>
+</ul></li>
+<li><code>intern (string)</code>
+<ul class="org-ul">
+<li>create a symbol from a string</li>
+</ul></li>
+<li><code>symname (symbol)</code>
+<ul class="org-ul">
+<li>get a symbol's name as a string</li>
+</ul></li>
+</ul>
+
+<p>
+<b>Functions on Numbers</b>
+</p>
+<ul class="org-ul">
+<li><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>**</code>
+<ul class="org-ul">
+<li>Arithmetic operators. These accept arbitrarily many arguments.</li>
+<li><code>**</code> is exponentiation.</li>
+<li>Calling with no arguments yields the identity element for the operation.</li>
+<li>Calling with one argument yields the argument itself for <code>+</code>, <code>*</code>, and <code>**</code>, the
+multiplicative inverse for <code>/</code>, and the additive inverse for <code>-</code>.</li>
+<li>Underlying operations are performed on IEEE 64-bit floats (with truncated
+significand).</li>
+</ul></li>
+<li><code>abs</code>, <code>exp</code>, <code>log</code>
+<ul class="org-ul">
+<li>Functions of exactly one argument that perform their respective mathematical
+operations.</li>
+<li><code>log</code> is natural log</li>
+</ul></li>
+<li><code>mod (quantity modulus)</code>
+<ul class="org-ul">
+<li>Computes <code>quantity</code> modulo <code>modulus</code>. The second argument must be an
+integer.</li>
+</ul></li>
+<li><code>integer?</code>
+<ul class="org-ul">
+<li>One argument of any type. True if it's an integer, false otherwise.</li>
+</ul></li>
+<li><code>floor, ceil</code></li>
+<li><code>frac-part</code></li>
+<li><code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>
+<ul class="org-ul">
+<li>The usual quantity comparisons. Accept arbitrarily many args. Always return
+true if 1 or 0 args are passed.</li>
+</ul></li>
+</ul>
+
+<p>
+<b>Functions on Strings</b>
+</p>
+<ul class="org-ul">
+<li><code>String (&amp; args)</code>
+<ul class="org-ul">
+<li>convert each argument to a string and concatenate them</li>
+</ul></li>
+<li><code>substring (str start (len -1))</code>
+<ul class="org-ul">
+<li>get a substring. Negative length values represent distances from the end of
+the string, with -1 indicating that the substring should go to the end.</li>
+</ul></li>
+</ul>
+
+<p>
+<b>Functions on Lists</b>
+</p>
+<ul class="org-ul">
+<li><code>List</code>
+<ul class="org-ul">
+<li>Creates a list from its arguments.</li>
+</ul></li>
+<li><code>cons (hd tl)</code>
+<ul class="org-ul">
+<li>prepend <code>hd</code> to a list <code>tl</code></li>
+</ul></li>
+<li><code>head, tail</code>
+<ul class="org-ul">
+<li>One argument. Get the head or tail of a list, respectively.</li>
+</ul></li>
+<li><code>nth (n list)</code>
+<ul class="org-ul">
+<li>Get the nth element of a list, indexed from 0.</li>
+</ul></li>
+<li><code>take,</code> <code>drop,</code> <code>split</code> <code>(n list)</code>
+<ul class="org-ul">
+<li><code>take</code> takes the first n elements of a list. <code>drop</code> drops the first n elements
+of a list. <code>split</code> does both at once and returns a list <code>[front back]</code>, where
+front and back are the two pieces of the list.</li>
+</ul></li>
+<li><code>take-while, drop-while, split-after (pred list)</code>
+<ul class="org-ul">
+<li><code>pred</code> is a function of one argument used as a predicate</li>
+<li>Analogous to take, drop, and split, but instead of splitting after <code>n</code>
+elements, they split on the first element for which <code>pred</code> fails.</li>
+</ul></li>
+</ul>
+
+<p>
+<b>Functions on Tables</b>
+</p>
+<ul class="org-ul">
+<li><code>Table</code>
+<ul class="org-ul">
+<li>Accepts an even number of arguments. Treats them as alternating key/value
+pairs and constructs a table.</li>
+</ul></li>
+<li><code>get (table key)</code>
+<ul class="org-ul">
+<li>Get a value from a table. A runtime exception is generated if the table has
+no such key.</li>
+</ul></li>
+<li><code>get-default (table key (default nil))</code>
+<ul class="org-ul">
+<li>Get a value from a table, return default if it's not found.</li>
+</ul></li>
+<li><code>has-key? (table key)</code>
+<ul class="org-ul">
+<li>True or false depending on if key is a key for table.</li>
+</ul></li>
+<li><code>get-keys</code>
+<ul class="org-ul">
+<li>Returns a list of keys to a table. No promises about the order.</li>
+</ul></li>
+</ul>
+
+
+<p>
+<b>Functions on Collections</b> 
+Strings aren't really collections, but some of these work on them too.
+</p>
+<ul class="org-ul">
+<li><code>length</code>
+<ul class="org-ul">
+<li>Returns length for strings and lists, number of keys for tables.</li>
+</ul></li>
+<li><code>concat (&amp; args)</code>
+<ul class="org-ul">
+<li>Concatenate arguments in the order provided</li>
+<li>All arguments must have the same type</li>
+<li>When concatenating tables which have keys in common, the last table in the
+argument list takes precedence.</li>
+</ul></li>
+<li><code>contains? (coll x)</code>
+<ul class="org-ul">
+<li>True if <code>(= x y)</code> for some <code>y</code> in the collection, false otherwise.</li>
+<li>Doesn't work on strings</li>
+</ul></li>
+<li><code>reverse</code>
+<ul class="org-ul">
+<li>This one doesn't work on tables.</li>
+</ul></li>
+<li><code>empty?</code>
+<ul class="org-ul">
+<li>Works on strings, lists, and tables.</li>
+</ul></li>
+</ul>
+
+<p>
+<b>Functions on Bools</b>
+</p>
+<ul class="org-ul">
+<li><code>or</code>, <code>and</code> (wrappers for the builtins)</li>
+<li><code>not</code></li>
+<li><code>nand</code></li>
+<li><code>nor</code></li>
+<li><code>xor</code></li>
+<li><code>xnor</code></li>
+</ul>
+
+<p>
+<b>Transformations</b>
+</p>
+<ul class="org-ul">
+<li><code>apply (fun arg0 arg1 &amp; args)</code>
+<ul class="org-ul">
+<li>The last two arguments must be a list and a table, respectively. Calls the
+provided function in the following way: all arguments before the last two
+are passed as positional arguments. The list is expanded and its elements
+are passed as positional arguments. The table is used for keyword arguments.
+Its keys should be symbols (but not keywords).</li>
+<li>This wraps a builtin operator</li>
+</ul></li>
+<li><code>partial (fun &amp; args)</code>
+<ul class="org-ul">
+<li>partially apply a function</li>
+</ul></li>
+<li><code>comp (fun &amp; funs)</code>
+<ul class="org-ul">
+<li>compose the provided functions</li>
+</ul></li>
+<li><code>map (fun &amp; colls)</code>
+<ul class="org-ul">
+<li>we all know <code>map</code></li>
+<li>as a bonus, it also works on tables</li>
+</ul></li>
+<li><code>maprev (fun &amp; colls)</code>
+<ul class="org-ul">
+<li>like map, but only for lists and the resulting list is reversed</li>
+<li>this is faster than map</li>
+</ul></li>
+<li><code>foldl (fun init coll)</code>
+<ul class="org-ul">
+<li>perform a left fold</li>
+<li><code>fun</code> accepts arguments <code>(accumulator input)</code></li>
+</ul></li>
+<li><code>foldr (fun init coll)</code>
+<ul class="org-ul">
+<li>perform a right fold</li>
+<li><code>fun</code> accepts arguments <code>(input accumulator)</code></li>
+</ul></li>
+<li><code>filter (fun coll)</code>
+<ul class="org-ul">
+<li>works on lists and tables</li>
+</ul></li>
+</ul>
+
+<p>
+<b>Macros</b>
+</p>
+<ul class="org-ul">
+<li><code>-&gt;</code>, <code>-&gt;&gt;</code> 
+<ul class="org-ul">
+<li>Threading macros. These work like they do in Clojure. No time now to type a
+description here.</li>
+</ul></li>
+</ul>
+
+<p>
+<b>Error Generation</b>
+</p>
+<ul class="org-ul">
+<li><code>error (message)</code>
+<ul class="org-ul">
+<li>Stops execution and emits the provided error message.</li>
+</ul></li>
+</ul>
+</div>
+</div>
+</div>
+
+
+<div id="outline-container-org53313c3" class="outline-2">
+<h2 id="org53313c3"><span class="section-number-2">5</span> FFI</h2>
+<div class="outline-text-2" id="text-5">
+<p>
+Fn will provide an FFI that works in the following way:
+</p>
+<ul class="org-ul">
+<li>Create C source file that includes the <code>fnffi.h</code> header, which provides functions
+for manipulating Fn values.
+<ul class="org-ul">
+<li>The functions intended to be called from Fn must have a particular type
+signature.</li>
+</ul></li>
+<li>Compile the file into a shared library.</li>
+<li>Back in Fn, use the namespace <code>fn/ffi</code> to import functions by name from the
+shared library.</li>
+</ul>
+</div>
+</div>
+<div id="footnotes">
+<h2 class="footnotes">Footnotes: </h2>
+<div id="text-footnotes">
+
+<div class="footdef"><sup><a id="fn.1" class="footnum" href="#fnr.1">1</a></sup> <div class="footpara"><p class="footpara">
+In Fn, the <code>with</code> operator provides the functionality of what
+most Lisp-like languages call <code>let</code>, while Fn's <code>let</code> is quite different, as it acts
+on the surrounding environment.
+</p></div></div>
+
+<div class="footdef"><sup><a id="fn.2" class="footnum" href="#fnr.2">2</a></sup> <div class="footpara"><p class="footpara">
+Two keys are equal if <code>(= k1 k2)</code> is true (using the builtin
+equality function). For simple data types the meaning of equality is obvious.
+Lists and tables are compared componentwise. That is, two lists are equal if and
+only if all their respective entries are equal. Two tables are equal if their
+key sets are equal (disregarding order), and for each key the corresponding
+values in each table are equal.
+</p></div></div>
+
+
+</div>
+</div></div>
+<div id="postamble" class="status">
+<p class="author">Author: Jack Pugmire</p>
+<p class="date">Created: 2021-12-14 Tue 03:38</p>
+<p class="validation"><a href="https://validator.w3.org/check?uri=referer">Validate</a></p>
+</div>
+</body>
+</html>

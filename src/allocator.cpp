@@ -48,7 +48,7 @@ void allocator::dealloc(gc_header* o) {
     case GC_TYPE_TABLE:
         mem_usage -= sizeof(fn_table);
         ((fn_table*)o)->contents.~table();
-        free(o);
+        table_pool.free_object((fn_table*)o);
         break;
     case GC_TYPE_FUNCTION: {
         // FIXME: count the size of the upvals array
@@ -142,7 +142,9 @@ void alloc_cons(istate* S, value* where, value hd, value tl) {
 
 void alloc_table(istate* S, value* where) {
     collect(S);
-    auto res = (fn_table*)alloc_bytes(S->alloc, sizeof(fn_table));
+    auto res = S->alloc->table_pool.new_object();
+    S->alloc->mem_usage += sizeof(fn_table);
+    // auto res = (fn_table*)alloc_bytes(S->alloc, sizeof(fn_table));
     init_gc_header(&res->h, GC_TYPE_TABLE);
     new (&res->contents) table<value, value>;
     res->metatable = V_NIL;

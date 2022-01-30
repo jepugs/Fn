@@ -1,0 +1,7 @@
+(defn comp (fun & funs)
+  (if (empty? funs)
+      fun
+      (fn (& args :& kwargs)
+        (fun (apply (apply comp funs {}))
+             args
+             kwargs))))

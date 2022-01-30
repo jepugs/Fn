@@ -1,0 +1,1521 @@
+% Created 2021-12-12 Sun 20:55
+% Intended LaTeX compiler: pdflatex
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{grffile}
+\usepackage{longtable}
+\usepackage{wrapfig}
+\usepackage{rotating}
+\usepackage[normalem]{ulem}
+\usepackage{amsmath}
+\usepackage{textcomp}
+\usepackage{amssymb}
+\usepackage{capt-of}
+\usepackage{hyperref}
+\author{Jack Pugmire}
+\date{\today}
+\title{Fn Language Specification}
+\hypersetup{
+ pdfauthor={Jack Pugmire},
+ pdftitle={Fn Language Specification},
+ pdfkeywords={},
+ pdfsubject={},
+ pdfcreator={Emacs 27.2 (Org mode 9.4.4)}, 
+ pdflang={English}}
+\begin{document}
+
+\maketitle
+\tableofcontents
+
+
+\section{About this Document}
+\label{sec:orge8c6f6a}
+
+This document fully specifies the syntax and semantics of the Fn programming
+language. Any part of it may be changed at any time. Since the interpreter is
+still unfinished, its actual behavior may differ from what's described here.
+
+Section \ref{sec:orgbc0d4fa} contains a description of the semantics of Fn. It's
+meant to read like a user's manual, and should cover everything about the core
+language when it's done. I'm trying to make this readable.
+
+After this comes the technical part of the document. It's a big old list of all
+the types of expressions in Fn with precise descriptions of their behaviors.
+
+Following this is the lexical analysis section. This rounds out the
+specification by giving a character-by-character description of Fn syntax. I'm
+planning to rewrite this at some point. It's in rough shape after repeated
+cut-and-pastes from different documents.
+
+At the end is some other miscellaneous stuff I copied from old design documents
+because I didn't want to delete it from the main repository yet.
+
+There will be more sections (and subsections!) in the future.
+
+
+\section{Language Description}
+\label{sec:orgbc0d4fa}
+
+\subsection{Overview}
+\label{sec:org91300c7}
+
+Fn is a dynamically typed, garbage-collected, general-purpose programming
+language with Lisp-like syntax. A couple of its defining characteristics are:
+\begin{itemize}
+\item The core language has relatively few operators, with special care taken to
+ensure they have consistent and concise syntax.
+\item Fn is designed for a "mostly functional" programming style, where immutability
+and referential transparency are favored, but not required.
+\item The native macro system allows definition of new syntax (and even entire
+domain-specific languages) using regular Fn code and data structures.
+\end{itemize}
+
+The syntax looks like this:
+
+\begin{verbatim}
+(def sqrt-precision 0.001)
+(def approx-sqrt (x)
+  (letfn iterate (guess)
+    (if (< (abs (- x (* guess guess)) sqrt-precision))
+        guess
+        (iterate (/ (+ guess (/ x guess) 2)))))
+  (if (>= x 0)
+      (iterate (/ x 2))
+      (error "Cannot approximate square root of a negative number.")))
+\end{verbatim}
+
+
+\subsection{Variables and Mutation}
+\label{sec:orga508ab5}
+
+\subsubsection{Local Variables}
+\label{sec:orgc302283}
+
+Local variables can be created using one of the special operators \texttt{let}, \texttt{letfn}, or
+\texttt{with}.\footnote{In Fn, the \texttt{with} operator provides the functionality of what
+most Lisp-like languages call \texttt{let}, while Fn's \texttt{let} is quite different, as it acts
+on the surrounding environment.} They all bind variables in the same way, but with
+different syntax for programmer convenience. Function parameters are also
+treated as local variables within the function body.
+
+Before proceeding, we note that the full story about local variables involves
+variable capture semantics, which are covered in a later section. Variable
+capture doesn't affect any of the concepts discussed in the rest of this section.
+
+\texttt{let} is the most elementary way to create a local variable. It defines one or
+more new variables in the current lexical environment.
+
+\begin{verbatim}
+;; let binds variables to the given values
+(let x 'symbol)
+;; multiple definitions can be made in a single let
+(let a 16
+     b (reverse "string")
+     ;; value expressions can refer to variables from earlier in the same let
+     c (+ a (length b))
+\end{verbatim}
+
+\texttt{with} is similar to \texttt{let}, but rather than creating definitions in the containing
+environment, it creates a new lexical environment.
+
+\begin{verbatim}
+;; this creates two variables
+(with (a 3
+       b 4)
+  ;; the body can contain multiple expressions
+  (println "hello")
+  (+ a b))
+;; returns 7
+;; the variables a, b do not exist outside of the with body
+\end{verbatim}
+
+\texttt{letfn} has a streamlined syntax for creating functions, but otherwise behaves
+like \texttt{let}. See the documentation below for details.
+
+All local variables can have their value changed with \texttt{set!}. The exclamation
+point is because mutation is not to be taken lightly. The syntax for \texttt{set!} is
+like this:
+
+\begin{verbatim}
+(set! var-name new-value)
+;; for example
+(let var 'hi)
+(println var) ;; prints 'hi
+(set! var 'lo)
+(println var) ;; prints 'lo
+\end{verbatim}
+
+Note that attempting to \texttt{set!} a global variable will result in an error.
+
+
+\subsubsection{Global Variables}
+\label{sec:org25d2c11}
+
+Global variables in Fn are created using \texttt{def} or \texttt{defn}. E.g.
+
+\begin{verbatim}
+(def my-global 'special-constant)
+(def my-other-global (+ 21 69))
+\end{verbatim}
+
+\texttt{defn} behaves exactly like \texttt{def}, but has special syntax streamlined for defining
+functions.
+
+Global variables are immutable, i.e. they cannot be changed by using \texttt{set!}.
+However, by assigning global variables to mutable datatypes or by exploiting
+variable capture (discussed in a later section), mutable state can still be
+associated to a global variable. This is intended behavior, however, it is not
+recommended that you abuse it.
+
+
+\subsection{Data Types}
+\label{sec:orgd17d65e}
+
+Fn provides the following builtin data types (type names in Fn are
+\texttt{Capitalized-Like-This}):
+
+\begin{description}
+\item[{\texttt{Nil}}] The special constant \texttt{nil}, used to indicate no value.
+\item[{\texttt{Bool}}] The special boolean constants \texttt{true} and \texttt{false}.
+\item[{\texttt{Num}}] Floating-point numbers. (These are almost IEEE 64-bit floats, but we
+truncate the significand by four bits to fit type information).
+\item[{\texttt{Symbol}}] Internalized strings. These are essentially strings with a faster
+equality test, at the expensive of slower access to the characters of the
+string. They are used extensively by the macro system.
+\item[{\texttt{String}}] (Immutable) sequences of bytes. Usually these are UTF-8 encoded
+character streams.
+\item[{\texttt{List}}] (Immutable) singley-linked lists.
+\item[{\texttt{Table}}] Mutable key-value stores.
+\end{description}
+
+Of these, only lists and tables logically contain other values. (Substrings can
+be extracted from strings, but this actually creates a new string object and
+just copies in data from the other string). So, we call \texttt{List} and \texttt{Table} the two
+\textbf{compound data types}, and call the rest of them \textbf{simple data types}.
+
+\subsubsection{Simple Data Types}
+\label{sec:org10b3e3a}
+Here is what the syntax looks like for the simple data types:
+
+\begin{verbatim}
+;; numbers are pretty much what you'd expect
+2
+-6
+3.14159
+2.0e-6 ;; we have scientific notation
+0xFf ;; hexadecimal, even!
+
+;; strings are enclosed within matched double quotes
+"string"
+"Fn uses escape codes from C, e.g. \\ \"\n"
+""
+
+;; symbols are prefixed by a single quote.
+'sym1
+'sym2
+;; symbols can contain whitespace and syntax characters, provided they are 
+;; escaped with a backslash
+'sym\ with\ \"escapes\"
+;; be careful about the quote operator. If the quoted expression is a number,
+;; it will result in a number instead of a symbol. You can get around this 
+;; with escapes:
+'0xb8  ;; this is a number
+'\0xb8 ;; this is a symbol
+
+;; booleans and nil are called by name
+true
+false
+nil
+\end{verbatim}
+
+See also subsection \ref{sec:orgdf14b97} for more on symbols and the quote operator.
+
+
+\subsubsection{Lists}
+\label{sec:orga48c356}
+
+Lists in Fn are what you'd expect for a functional programming language. They're
+created using square brackets or by using the \texttt{List} function.
+
+\begin{verbatim}
+[] ; empty list
+['a 'b] ; list of two symbols
+[1 'a "str"] ; lists may contain objects of arbitrary type
+
+;; List is identical to square bracket syntax
+[1 2 3]
+(List 1 2 3)
+\end{verbatim}
+
+Lists can be manipulated with builtin functions:
+
+\begin{verbatim}
+(def list1 [["str" 2] 'a 'b])
+(def list2 [0 2 4 6 8 10])
+
+;; head and tail access the head and tail of the list
+(head list1) ;=> ["str" 2]
+(head list2) ;=> 0
+(tail list1) ;=> ['a 'b]
+
+(tail [])    ;=> []
+(head [])    ;=> error (empty list has no head)
+
+;; nth allows random access:
+(nth list1 2) ;=> 'b
+(nth list2 1) ;=> 2
+
+;; length gives the length of a list
+(length []) ;=> 0
+(length list1) ;=> 3
+(length list2) ;=> 6
+
+;; cons prepends elements
+(cons 2 []) ;=> [2]
+(cons nil list1) ;=> [nil ["str" 2] 'a 'b]
+
+;; concat concatenates two or more lists
+(concat [1 2 3] [4 5 6]) ;=> [1 2 3 4 5 6]
+(concat [37] ['foo] ["bar"]) ;=> [37 'foo "bar"]
+(concat list2 list1) ;=> [0 2 4 6 8 10 ["str" 2] 'a 'b]
+
+;; reverse reverse the direction of a list
+(reverse list2) => [10 8 6 4 2 0]
+\end{verbatim}
+
+
+\subsubsection{{\bfseries\sffamily TODO} Tables}
+\label{sec:org4014214}
+
+Tables are key-value stores. Any type of object may be used as a key or a value,
+(note, however, that it takes longer to hash more complicated data structures
+since we have to descend on their fields)\footnote{Two keys are equal if \texttt{(= k1 k2)} is true (using the builtin
+equality function). For simple data types the meaning of equality is obvious.
+Lists and tables are compared componentwise. That is, two lists are equal if and
+only if all their respective entries are equal. Two tables are equal if their
+key sets are equal (disregarding order), and for each key the corresponding
+values in each table are equal.}.
+
+Tables are built using braces \texttt{\{\}} or the equivalent \texttt{Table} function. This must be
+passed an even number of arguments.
+
+\begin{verbatim}
+{} ;=> empty table
+{'key1 4 'key 6} ;=> table with two kv-pairs
+(Table 'key1 4 'key 6) ;=> table with two kv-pairs
+\end{verbatim}
+
+Table elements may be accessed using the builtin function \texttt{get}. When the key is a
+constant symbol, dot syntax (or the equivalent \texttt{dot} special operator) can be
+used instead. This is how this looks:
+
+\begin{verbatim}
+(def tab1 {'name "Mr. Table"
+          'occupation "Holds data"
+          'child {'name "Table Jr." 
+                  'occupation "Holds less data"}})
+(def tab2 {0 'zero 1 'one 2 'two 3 'three 4 'four})
+
+;; these all return "Mr. Table"
+(get tab1 'name)
+tab1.name
+(dot tab1 name) ; equivalent syntax to the dot expression
+;; Note that the symbols in the dot expressions are unquoted. Arguments to dot 
+;; must be unquoted symbols or a compilation error occurs.
+
+;; get is more flexible than dot and allows arbitrary key and value expressions
+(get tab2 (+ 1 2)) ;=> 'three
+(get {'k 'v} 'k) ;=> 'v
+
+;; dot makes it convenient to descend on tables with symbolic key names
+tab1.child.name ;=> "Table Jr."
+;; equivalent expression:
+(dot tab1 child name)
+\end{verbatim}
+
+Since tables are mutable, the main way to populate them is to use the \texttt{set!}
+operator (the same one as for local variables). In this case, the first argument
+may be any legal \texttt{get} or \texttt{dot} expression on a table.
+
+Lastly, tables size can be checked with \texttt{length}, a list of keys can be retrieved
+with \texttt{table-keys}, and two or more tables can be combined with \texttt{concat} (if any of
+the tables have keys in common, the last table in the argument list takes
+priority).
+
+
+\subsubsection{Quoting}
+\label{sec:orgdf14b97}
+
+"Quoting" refers to the process of converting Fn source code into native Fn
+data. This allows us to easily process and manipulate Fn source code using the
+same facilities as for normal data.
+
+Quoting is the secret sauce that makes Fn's macro system work. It's the main
+reason why Fn has the syntax it has.
+
+The \texttt{quote} special operator has syntax:
+\begin{verbatim}
+(quote <expr>) ;; or, equivalently
+'<expr>
+\end{verbatim}
+where \texttt{<expr>} can be any expression (in fact, it need not be a legal expression
+by itself). These two notations are exactly the same. The interpreter expands
+the second into the first before evaluation.
+
+The value returned by quote is guaranteed to only consist of lists, symbols,
+numbers, and strings. We refer to the latter three as \textbf{atoms}. Here are some
+examples:
+\begin{verbatim}
+'(a b c) ;; returns ['a 'b 'c]
+'"string" ;; returns "string"
+'(+ a (/ x 2)) ;; returns ['+ 'a ['/ 'x 2]]
+
+''quot ;; is equivalent to
+(quote (quote quot)) ;; which returns ['quote 'quot]
+\end{verbatim}
+
+Note that \texttt{<expr>} only needs to be syntactically valid (i.e. not freak out the
+parser). Illegal expressions can be quoted just fine:
+\begin{verbatim}
+'() ;; returns [] (the empty list)
+'(2 (3 4)) ;; returns [2 [3 4]]
+'(quote) ;; returns ['quote]
+\end{verbatim}
+
+This makes \texttt{quote} very handy for creating nested lists of atoms. (\texttt{quote} also has
+a big sister named \texttt{quasiquote}, which is covered in the section on macros, and
+allows for much more flexibility).
+
+\texttt{quote} is also the primary way to create symbols. As noted in subsection \ref{sec:org10b3e3a}, this can lead to problems when we want a symbol whose name is a
+syntactically valid number. Adding an escape character to the symbol name
+designates to the parser that the token should be read as a symbol rather than a
+number. In fact, we can even use this trick to give variables numbers for names:
+\begin{verbatim}
+;; probably don't do this
+(def \2 3)
+2  ;; returns 2
+\2 ;; returns 3
+\end{verbatim}
+
+My recommendation: just don't use symbol names that are syntactically legal
+numbers.
+
+
+\subsection{{\bfseries\sffamily TODO} Control Flow and Functions}
+\label{sec:org67814c5}
+
+\subsubsection{Conditional Execution}
+\label{sec:org0a9ff87}
+
+The conditional control flow primitives are \texttt{if} and \texttt{cond}.
+
+
+\subsubsection{Creating Functions}
+\label{sec:org87d2bc1}
+
+Functions are created using \texttt{fn}.
+
+A short syntax is also provided for creating functions via the dollar sign,
+which expands into a \texttt{dollar-fn} special form.
+
+For example:
+\begin{verbatim}
+(fn (x) (* x x))
+$(* $ $)
+(dollar-fn (* $ $))
+\end{verbatim}
+
+All three of the above take in a single argument and square it. Note that
+dollar-fn uses \texttt{\$} (or equivalently, \texttt{\$0}) for the name of the first parameter.
+(Other positional parameters can be accessed with \texttt{\$1}, \texttt{\$2}, and so on). See
+subsection \ref{sec:org975cdcb} for more details.
+
+\texttt{fn} on the other hand has an explicit parameter list. The syntax for parameter
+lists is this:
+\begin{verbatim}
+param-list      ::=  '(' <req-param>* <opt-param>* <var-params>? ')'
+req-param       ::= <identifier>
+opt-param       ::= (<identifier> <init-form>)
+var-params      ::= <var-list-param> <var-table-param>?
+                  | <var-table-param> <var-list-param>?
+var-list-param  ::= '&' <identifier>
+var-table-param ::= ':&' <identifier>
+\end{verbatim}
+
+In other words, parameter lists consist of zero or more required parameters,
+zero or more optional parameters, and optionally end with variadic table and
+list arguments.
+
+Each of these parameters has an associated identifier (i.e. a symbol that is a
+legal name). In the function's body, the respective arguments are bound to these
+names. See subsection \ref{sec:org8352aea} for information about how argument lists
+are processed during functino calls.
+
+
+\subsubsection{Function Calls}
+\label{sec:org8352aea}
+
+Fn allows arguments to be named in function calls very similarly to Python.
+Named arguments are passed using keywords, which are simply symbols whose names
+begin with \texttt{:}. These symbols are not legal identifiers, so their appearance in
+function calls is unambiguous. We also place the restriction that positional
+arguments may not follow named ones. (Believe me, I tried to make it work
+without that, and it's a mess at every level).
+
+First we will deal with the case where there are no variadic parameters. See the
+following example.
+\begin{verbatim}
+;; this function has 3 positional parameters, the last of which is optional
+(defn arg-demo (x y (z 2))
+  (* z (+ x y)))
+
+;; here are a couple of ways we could call this function
+(arg-demo 2 3)            ; x = 2, y = 3, z = 2, result = 10
+(arg-demo 2 3 4)          ; x = 2, y = 3, z = 4, result = 20
+(arg-demo :x 2 :y 3)      ; x = 2, y = 3, z = 2, result = 10
+(arg-demo :z 2 :y 3 :x 2) ; x = 2, y = 3, z = 2, result = 10
+(arg-demo :z 3 1 2)       ; error! positional argument following named argument
+\end{verbatim}
+
+To be precise, function parameters (still considering the case where there are
+no variadic parameters) are bound using the following procedure:
+\begin{itemize}
+\item the unnamed arguments are bound to positional parameters in order
+\item the named arguments are bound to their respective parameters, raising an error
+if any duplicates or unrecognized names are found
+\item unbound optional parameters are set to their default values. If any required
+parameters remain unbound, an error is raised
+\end{itemize}
+
+Now, variadic arguments change some of the rules. We have two types of variadic
+parameters in Fn: variadic tables, and variadic lists.
+
+For tables, the semantics are very simple. Functions with a variadic table
+parameter can accept any named argument, not just the names corresponding to
+their functions (duplicated names are still not allowed). Moreover, it's now
+possible for a named argument to have the same name as a positional argument.
+\begin{verbatim}
+;; demo function ignores first arg and returns table
+(def var-tab-demo ((x nil) :& tab) ; variadic table arguments denoted with :&
+  tab)
+
+(var-tab-demo 0)         ; result = {}
+(var-tab-demo :y 2 :x 1) ; result = {'y 1}
+(var-tab-demo 1 :x 2)    ; result = {'x 2}
+\end{verbatim}
+
+As can be seen above, the variadic table is constructed by taking all
+unrecognized named arguments and inserting them into the table as key-value
+pairs. Moreover, if a named argument is recognized, but was already provided as
+a positional argument, then that goes to the variadic table as well.
+
+Variadic lists are analogous to variadic tables, but where those act on trailing
+named arguments, variadic lists act on trailing positional arguments. As such,
+it is impossible to use named arguments while at the same time passing a
+non-empty variadic list argument, except in the case where there is also a
+variadic table parameter to catch the trailing arguments.
+\begin{verbatim}
+;; demo function ignores first arg and returns list
+(def var-lst-demo (x & list) ; variadic lists denoted with &
+  list)
+
+(var-lst-demo 0 1 2)  ;=> [1 2]
+(var-lst-demo 0)      ;=> []
+(var-lst-demo 0 :x 2) ;=> syntax error
+(var-lst-demo :x 0)   ;=> []
+(var-lst-demo :x 0 1) ;=> syntax error
+
+;; demo function using both variadic parameters
+(def var-mixed-demo (x & list :& table)
+  [list table])
+
+;; names not explicitly in the parameter list get sent to the variadic table
+(var-mixed-demo :x 4 :y 2) ;=> [[] {'y 2}]
+;; with a variadic table argument, duplicate names are allowed if one is a 
+;; positional arg:
+(var-mixed-demo 'a 'b :x 4 :y 2) ;=> [['b] {'x 4 'y 2}]
+;; as always, keywords cannot precede positional arguments
+(var-mixed-demo :x 4 :y 2 'a 'b) ;=> syntax error
+\end{verbatim}
+
+
+\subsubsection{Variable Capture}
+\label{sec:org9945995}
+
+
+\subsubsection{dollar-fn}
+\label{sec:org975cdcb}
+
+\subsection{{\bfseries\sffamily TODO} Namespaces and Import}
+\label{sec:org4b0fe4d}
+
+\subsubsection{Namespaces and Packages}
+\label{sec:orgdeda7f2}
+
+All code in Fn runs inside some namespace, which is used to hold currently
+visible global variables and macros.
+
+A \textbf{namespace} is a collection of macro and variable definitions. Namespaces are
+identified by a \textbf{name}, which is a string not containing any slashes, and a
+\textbf{package}, which is a string representing a logical collection of namespaces.
+Finally, the symbol \texttt{<package>/<name>} is called the \textbf{identifier} or \textbf{ID} of the
+namespace. This ID is required to be globally unique.
+
+\textbf{Examples of Namespace IDs:}
+\begin{verbatim}
+fn/builtin              ; package is "fn", name is "builtin"
+fn/internal/io          ; package is "fn/internal", name is "io"
+my-project/util/linalg  ; package is "my-project/util", name is "linalg"
+my-project/model        ; package is "my-project", name is "model"
+\end{verbatim}
+
+When evaluating code from a file, the namespace name will always be the stem of
+the file. The package can be set via a package declaration, see \ref{sec:orgb5d06fc}.
+
+The default REPL namespace is \texttt{fn/interactive}. Fn source code passed in as a
+command line argument is also evaluated in this namespace.
+
+
+\subsubsection{Import}
+\label{sec:org85057e2}
+
+The \texttt{import} special form allows definitions from an external namespace to be
+copied into the current one. The syntax for import looks like this:
+
+\begin{verbatim}
+(import <namespace-id>)                  ; invocation 1
+(import <namespace-id> :as <alias>)      ; invocation 2
+(import <namespace-id> :no-prefix true)  ; invocation 3
+\end{verbatim}
+
+Say we have a namespace \texttt{foo/bar/baz} containing variables named \texttt{bob} and
+\texttt{alice}:
+\begin{verbatim}
+;;; baz.fn
+(package foo/bar)
+(def alice "Alice")
+(def bob "Bob")
+\end{verbatim}
+
+We have three ways to import this namespace, shown above. All three cause the
+definitions from \texttt{foo/bar/baz} to be copied into the current namespace. However,
+in each case the created bindings will have different names. The three cases are
+illustrated below:
+
+\begin{verbatim}
+;;; main.fn
+
+;; invocation 1
+(import foo/bar/baz)
+; variables look like this:
+baz:alice
+baz:bob
+
+;; invocation 2
+(import foo/bar/baz :as b)
+; variables look like this:
+b:alice
+b:bob
+
+;; invocation 3
+(import foo/bar/baz :no-prefix true)
+; variables are imported directly (no colons)
+alice
+bob
+\end{verbatim}
+
+
+\subsubsection{Package Declarations}
+\label{sec:orgb5d06fc}
+
+The first expression of a file (not counting comments) may be a \textbf{package
+declaration}. These have the form \texttt{(package <package-name>)}, where <package-name>
+is a symbol.
+
+
+\subsubsection{Global Names}
+\label{sec:org3673a57}
+
+After a namespace has been imported once, its bindings can be referenced even
+without importing it explicitly. This is done by using symbols whose names are
+structured like with \texttt{/<namespace>:<symbol>}. For example, \texttt{/fn/builtin:map}
+refers to the function \texttt{map} in the \texttt{fn/builtin} namespace.
+
+
+\subsection{{\bfseries\sffamily TODO} Macros}
+\label{sec:org725e1c4}
+
+\subsubsection{Macro Basics}
+\label{sec:org73c1c41}
+
+\subsubsection{Quasiquotation}
+\label{sec:orgb06d932}
+
+\subsubsection{Variable Capture and \texttt{gensym}}
+\label{sec:orgf78a814}
+
+
+\section{Formal Semantics}
+\label{sec:org24ca7ef}
+
+This section is a formal description of every type of expression in Fn. It is
+currently incomplete and inaccurate. I don't know why you'd want to look at it.
+
+\begin{verbatim}
+program ::= expr* expr ::= immediate
+        | variable
+        | special-form
+        | function-call
+        | macro-call
+\end{verbatim}
+
+\subsection{Immediate Expressions and Variables}
+\label{sec:org66b2d79}
+
+Syntax:
+\begin{verbatim}
+immediate ::= boolean 
+          | nil
+          | number
+          | string
+variable ::= non-special-symbol
+\end{verbatim}
+
+An immediate expression is a literal representing a constant value. On
+evaluation, immediate expressions immediately return the value they represent.
+
+Variables are represented by non-special symbols, (where special symbols are
+those naming special forms, boolean values, or nil). If there exists a binding
+in the current environment for the provided symbol, then its value is returned.
+Otherwise an exception is raised.
+
+
+\subsection{Special forms}
+\label{sec:orgccc45ce}
+
+Special forms are so called because they have different semantics than function
+or macro calls.
+
+\subsubsection{and}
+\label{sec:orgc6e15b7}
+Syntax:
+\begin{verbatim}
+and-expr ::= "(" "and" expr* ")"
+\end{verbatim}
+
+Expressions are evaluated one at a time until a logically false value is
+encountered, then returns \texttt{false}. If the end of the list is reached, returns
+\texttt{true}.
+
+\subsubsection{cond}
+\label{sec:orgcf965a5}
+Syntax:
+\begin{verbatim}
+cond-expr ::= "(" "cond" cond-case+ ")"
+cond-case ::= expr expr
+\end{verbatim}
+
+For each cond-case, the following is done:
+\begin{itemize}
+\item evaluate the first expression
+\item if the first expression is logically true, return the value of the second
+expression
+\item otherwise, proceed to the next cond-case.
+\end{itemize}
+
+If the end of the list is reached, returns \texttt{nil}.
+\subsubsection{def}
+\label{sec:orgd2a8583}
+Syntax:
+\begin{verbatim}
+def-expr ::= "(" "def" identifier expr ")"
+         | "(" "def" func-proto expr+")"
+func-proto ::= "(" identifier param-list ")"
+\end{verbatim}
+
+Create a (global) binding in the current namespace. The first syntax binds the
+identifier to the value of the expression. The second syntax creates a function
+with the specified name and parameter list and the expressions as its body. In
+either case, if the identifier is already bound, an exception is raised.
+
+Returns \texttt{null}.
+
+\subsubsection{{\bfseries\sffamily TODO} defmacro}
+\label{sec:orgcbb20c2}
+Syntax:
+\begin{verbatim}
+defmacro-expr ::= "(" "defmacro" identifier param-list expr+ ")"
+\end{verbatim}
+
+\subsubsection{defn}
+\label{sec:org7c526d7}
+\subsubsection{do}
+\label{sec:org04e81c1}
+Syntax:
+\begin{verbatim}
+do-expr ::= "(" "do" expr* ")"
+\end{verbatim}
+
+Evaluates provided expressions one at a time, returning the value of the last
+one, or \texttt{null} if no expressions are given.
+
+\subsubsection{do-inline}
+\label{sec:orga9c498c}
+\subsubsection{{\bfseries\sffamily TODO} dot}
+\label{sec:orgd4f17ad}
+Syntax:
+\begin{verbatim}
+dot-expr ::= dotted-symbol
+           | "(" "dot" symbol+ ")"
+\end{verbatim}
+
+This operator is usually used with the dotted-symbol syntax, e.g. \texttt{table.key}.
+
+The first symbol (leftmost in the inline notation) must name a variable bound to
+a table. The next symbol is used as a key to access an element of the table. If
+additional symbols are provided, then they are used as keys to recursively
+descend into a tree of tables. An exception is raised if one of the keys is
+invalid or if an attempt is made to access an object which is not a table.
+
+\subsubsection{dollar-fn}
+\label{sec:org6e1a6d5}
+Syntax:
+\begin{verbatim}
+dollar-fn-expr ::= "(" "dollar-fn" expr ")"
+               | "$(" expr+ ")"
+               | "$[" expr+ "]"
+               | "${" expr+ "}"
+               | "$`" form
+\end{verbatim}
+
+Creates an anonymous function which evaluates the provided expression. With the
+"\$" syntax, this is the expression after the dollar sign. (The only expressions
+which may follow are parenthesized forms, quasiquote forms, or list/table
+expressions).
+
+Within the provided expression, variables named \texttt{\$N} where N is a nonnegative
+integer, are bound to the corresponding positional parameters starting from 0.
+In addition, \texttt{\$} is bound to the first parameter \texttt{\$0} and \texttt{\$\&} is used for a
+variadic parameter.
+
+The parameter list for the created function accepts as many positional
+parameters as the highest value of N and a variadic parameter only if \texttt{\$\&}
+appears in the expression. (This is accomplished by performing code-walking,
+including macroexpansion, before compiling the \texttt{dollar-fn}).
+
+\subsubsection{if}
+\label{sec:org4e4e8bd}
+Syntax:
+\begin{verbatim}
+if-expr ::= "(" "if" test-expr expr expr ")"
+test-expr ::= expr
+\end{verbatim}
+
+Evaluates test-expr. If the result is logically true, evaluates the second
+argument, otherwise evaluates final argument, returning the result.
+
+\subsubsection{{\bfseries\sffamily TODO} import}
+\label{sec:org4dec73f}
+Syntax:
+\begin{verbatim}
+import-expr ::= "(" "import" import-designator
+                             [:as identifier] ")"
+import-designator ::= string | symbol
+\end{verbatim}
+
+Import bindings from another namespace. Every variable and macro definition from
+the target namespace is copied into the current namespace. The newly created
+bindings have names of the form \texttt{namespace-name:variable-name}. Since it is
+illegal to create variables whose names contain the colon character, this
+ensures that no name collisions can occur, provided there is not already a
+namespace imported with this name.
+
+If an identifier is provided via the \texttt{:as} argument, then that is used instead of
+the namespace name.
+
+When \texttt{import} is used on a namespace that is not already loaded, the interpreter
+checks for appropriate files in the search path, then compiles and loads them as
+necessary.
+
+\begin{enumerate}
+\item Future changes
+\label{sec:org670e3b5}
+
+\begin{itemize}
+\item Support for unqualified imports will be added (i.e. imports without the \texttt{namespace\textasciitilde{}name:}
+prefix).
+\item Import may be changed so as to not recursively import imports from the package
+named. With current behavior, we could get names like \texttt{ns1:ns2:function} when
+\texttt{ns1} imports \texttt{ns2}. This is mostly harmless, but we'd rather not overclutter
+namespaces if only for memory concerns. Also, it could definitely cause
+trouble if used with unqualified imports.
+\item Along with unqualified imports, we may add the notion of exports to
+namespaces, so that only certain bindings in a namespace are even made
+available to external namespaces. This is probably good for convenience for
+users of a library, but it also can give implementors some peace of mind
+knowing that their internal functions won't be called directly by user code.
+\end{itemize}
+\end{enumerate}
+
+\subsubsection{fn}
+\label{sec:org0edb310}
+Syntax:
+\begin{verbatim}
+fn-expr ::= "(" "fn" "(" param-list ")" expr+ ")"
+\end{verbatim}
+
+Creates a function object using the provided parameter list and function body.
+
+Functions have full variable capture semantics. Among other things, this means
+that captured variables are shared among functions, so that if one function
+mutates the variable, this change is reflected in the other functions accessing
+the variable.
+
+\subsubsection{let}
+\label{sec:org86dee5a}
+Syntax:
+\begin{verbatim}
+let-expr ::= "(" "let" let-pair+ ")"
+let-pair ::= identifier expr
+\end{verbatim}
+
+Extends the current local environment. For each let-pair initially binds the
+provided identifier to null. Then, in the order provided, each expression is
+evaluated and the binding is updated to the resultant value.
+
+The initial null-binding allows definition of recursive and even mutually
+recursive functions. Care must be taken because this null binding will shadow
+existing variables with the same name.
+
+Returns null.
+
+\subsubsection{{\bfseries\sffamily TODO} letfn}
+\label{sec:orgc57dccf}
+\subsubsection{or}
+\label{sec:org94bce3a}
+Syntax:
+\begin{verbatim}
+or-expr ::= "(" "or" expr* ")"
+\end{verbatim}
+
+Evaluates provided expressions one at a time until a logically true value is
+obtained. Then returns \texttt{true}. If the end of the list is reached, returns \texttt{false}.
+
+\subsubsection{quasiquote}
+\label{sec:orgf21b880}
+Syntax:
+\begin{verbatim}
+quasiquote-expr ::= "`" form
+                | "(" "quasiquote" form ")"
+\end{verbatim}
+
+First, creates a fn object corresponding to form just like quote. Before
+returning the form, the following transformation is done:
+\begin{itemize}
+\item The form is walked like a tree.
+\item When an unquote-expr is encountered, instead of descending into it, evaluate
+its argument and insert the result into the tree at that point.
+\item When an unquote-splicing form is encountered, instead of descending into it,
+evaluate its argument. If the result is not a list or if this is root of the
+tree, raise an error. Otherwise, splice the elements of the list inline into
+the tree at this point.
+\item Along the way, we keep track of all symbols whose names begin with a hash
+character "\#". For each unique hash symbol, a single gensym is created, and
+the hash symbols are replaced by the gensyms in the final expansion. For
+example, see the following code snippet:
+\end{itemize}
+\begin{verbatim}
+`(#sym1 #sym2 #sym2) ; is the same as
+(with (sym1 (gensym)
+       sym2 (gensym))
+ [sym1 sym2 sym2])
+\end{verbatim}
+Note that \#-symbols have lexical scope, i.e. they are shared by quasiquote forms
+occurring within the outer form.
+
+IMPLNOTE: the semantics of \#-symbols may be too complicated for what they get
+us. Might be better to just make the developer deal with \texttt{gensym} directly, or to
+make \#-symbols a feature of defmacro.
+
+\subsubsection{quote}
+\label{sec:orgcd4124b}
+Syntax:
+\begin{verbatim}
+quote-expr ::= "'" form
+           | "(" "quote" form ")"
+\end{verbatim}
+
+Returns the syntactic form as an fn object (a tree of atoms and lists).
+
+\subsubsection{unquote}
+\label{sec:orgfe08fb0}
+Syntax:
+\begin{verbatim}
+unquote-expr ::= "," expr
+             | "(" "unquote" expr ")"
+\end{verbatim}
+Emits an error unless encountered within a quasiquote form.
+
+\subsubsection{unquote-splicing}
+\label{sec:org3e26911}
+Syntax:
+\begin{verbatim}
+unquote-splicing-expr ::= ",@" expr | "(" "unquote-splicing" expr ")"
+\end{verbatim}
+Emits an error unless encountered within a quasiquote form.
+
+\subsubsection{{\bfseries\sffamily TODO} set!}
+\label{sec:orgdce4a8b}
+Syntax:
+\begin{verbatim}
+set!-form ::= "(" "set!" place expr ")"
+place ::= identifier 
+      | dot-expr
+      | get-form
+get-form ::= "(" "get" expr+ ")"
+\end{verbatim}
+
+\subsubsection{with}
+\label{sec:org3b2c38d}
+Syntax:
+\begin{verbatim}
+with-expr ::= "(" with-bindings expr+ ")"
+with-bindings ::= "(" (id expr)* ")"
+\end{verbatim}
+
+Behaves like \texttt{let}, but rather than operating on the enclosing lexical
+environment, instead creates a new child environment and adds bindings to that,
+then evaluates the provided expressions in the newly created environment.
+
+Note that this is how \texttt{let} works in most LISP-like languages.
+
+
+\subsection{Function Calls}
+\label{sec:orgb336eed}
+
+Syntax:
+\begin{verbatim}
+function-call ::= "(" func argument-list ")"
+\end{verbatim}
+where \texttt{func} may be any expression other than a reserved symbol.
+
+First, the function and then all the arguments are evaluated from left to right.
+
+Arguments are bound to parameters as follows:
+
+Positional arguments are bound to the function's parameters in the order
+provided. If there are more positional arguments than parameters, a list of the
+extras are bound to the variadic list parameter if one exists. If not, an error
+is generated.
+
+After this, keyword arguments are bound to parameters by name. If two keyword
+arguments have the same name, an error is raised. If the name isn't one of the
+function's parameters, or if it names a parameter already provided by a
+positional argument, it is added to the variadic table parameter if one exists.
+If not, an error is raised.
+
+If any parameters without default values remain unbound, an error is raised.
+
+Then, the function is called. Foreign functions have behavior determined by the
+external code they call. Ordinary functions work by switching back to the
+lexical environment in which they were created, binding parameters as local
+variables, and executing the function body.
+
+
+\subsection{Macro Calls}
+\label{sec:orga472829}
+
+Syntax:
+\begin{verbatim}
+macro-call ::= "(" macro-name form* ")"
+macro-name ::= identifier | dot-expr
+\end{verbatim}
+
+The expressions for macro arguments aren't evaluated, but are converted to data
+and passed to the macro function as arguments. The resultant value is treated as
+code and evaluated.
+
+In order to prevent ambiguity, macros do not recognize keyword arguments. A
+keyword will be passed to the macro as a positional argument containing the
+keyword symbol.
+
+
+\section{Lexical Analysis}
+\label{sec:orgaaae3dc}
+
+The component which processes Fn source into lexical tokens is called the
+\textbf{scanner}. Conceptually, we put in a sequence of bytes and get back a sequence
+of tokens.
+
+Tokens are dividide into two groups: fixed width and variable width. The fixed
+width tokens are:
+\begin{description}
+\item[{'('}] left paren
+\item[{')'}] right paren
+\item[{'['}] left bracket
+\item[{']'}] right bracket
+\item[{'\{'}] left brace
+\item[{'\}'}] right brace
+\item[{'$\backslash$''}] quote
+\item[{'`'}] backtick
+\item[{',@'}] comma at
+\item[{','}] comma
+\item[{'\$`'}] dollar backtick
+\item[{'\$('}] dollar paren
+\item[{'\$['}] dollar bracket
+\item[{'\$\{'}] dollar brace
+\end{description}
+
+Fixed width tokens are generated when the scanner encounters one of the
+corresponding quoted strings above.
+
+Variable width tokens are:
+\begin{description}
+\item[{<number>}] numeric literal
+\item[{<string>}] string literal
+\item[{<symbol>}] symbol
+\item[{<dot>}] dot expression (2 or more symbols separated by '.')
+\end{description}
+
+\subsection{Comments}
+\label{sec:org08d4324}
+
+A comments begins with the unescaped character \texttt{';'} and end at the end of the
+line.
+
+Comments are skipped over without generating a token.
+
+\subsection{Numbers, Symbols, and Dots}
+\label{sec:org4232e10}
+
+Numbers are defined according to regular expressions as in the following
+pseudo-BNF grammar:
+
+\begin{verbatim}
+<number> ::= "[+-]?(<dec>|<hex>)"
+<dec>    ::= "[0-9]+\.?<exp>?"
+           | "[0-9]*\.[0-9]+<exp>?"
+<exp>    ::= "[eE][+-]?[0-9]+"
+<hex>    ::= "0[Xx][0-9A-Fa-f]+\.?"
+           | "0[Xx][0-9A-Fa-f]*\.[0-9A-Fa-f]"
+\end{verbatim}
+
+A symbol is defined to be a sequence of symbol characters and escaped characters
+which is not a number. Symbol characters are all printable ASCII characters
+other than whitespace or those contained in the string \texttt{";()\{\}[]\textbackslash{}"\textbackslash{}\textbackslash{}'`,."}. An
+escaped character is a sequence of two characters, the escape \texttt{'\textbackslash{}\textbackslash{}'} followed by
+an arbitrary character. When the symbol is internalized, the escape character is
+ignored, so its name will contain only the second character of the escape
+sequence.
+
+If an escape character is followed by EOF, a scanning error is raised.
+
+Note that by injecting an escape character, one may cause numbers to be treated
+as symbols. Adding an escape in front of any normal character normally no
+effect, but in this case, it causes the number reader to fail, so the number's
+characters will read as a symbol.
+
+Finally, a dot token is a symbol token which contains the dot character \texttt{'.'},
+subject to some additional restrictions. Dots can not occur in the first or last
+position of the string, and it can not contain successive dots. In addition, the
+substring before the first dot may not be a syntactically valid number. If any
+of these conditions is violated, a scanning error is raised.
+
+\subsection{{\bfseries\sffamily TODO} String Literals}
+\label{sec:org01888e7}
+
+String scanning starts when the scanner encounters the (unescaped) character
+\texttt{'"'} and ends when it encounters an unescaped \texttt{'"'}. Along the way, all bytes
+encountered are read verbatim, except for the escape character '$\backslash$\', which is
+followed by an escape sequence. The entire escape sequence is read into the
+string according to the following table \footnote{These string escapes are mainly the same as the ones in C.}:
+\begin{description}
+\item[{'$\backslash$''}] single quote
+\item[{'$\backslash$"'}] double quote
+\item[{'$\backslash$?'}] question mark
+\item[{'\a'}] ASCII bell
+\item[{'\b'}] backspace
+\item[{'\f'}] form feed
+\item[{'\n'}] newline
+\item[{'\r'}] ASCII carriage return
+\item[{'\t'}] tab
+\item[{'\v'}] vertical tab
+\item[{'\NNN' (NNN is a 1- to 3- digit octal number)}] byte NNN (octal)
+\item[{'\xNN' (NN any two-digit hex number)}] the byte NN (hexadecimal)
+\item[{'\uC' (C any 4-digit hex unicode code point)}] unicode code point (2 bytes)
+\item[{'\UC' (C any 8-digit hex unicode code point)}] unicode code point (4 bytes)
+\end{description}
+
+\subsection{Source Encoding}
+\label{sec:org523c108}
+
+Currently, Fn only supports ASCII encoded text files. Behavior on other/extended
+encodings is undefined. In the future, Fn will be extended so that UTF-8
+characters can appear in strings and symbols.
+
+
+\section{{\bfseries\sffamily TODO} Built-in Functions}
+\label{sec:org9c50f32}
+
+Fn provides a number of built-in functions in the namespace \texttt{fn.builtin}.
+Whenever a new namespace is created, it automatically inherits all the bindings
+from \texttt{fn.builtin}, so these bindings are always available as global variables.
+
+Builtin functions are split into primitive and nonprimitive functions. This
+classification is not overly rigorous, but the rule is that primitive functions
+expose core language functionality which cannot be used any other way. On the
+other hand, all nonprimitive functions could theoretically be implemented in Fn
+source code by using the primitives.
+
+\subsection{Primitive Functions}
+\label{sec:org4e804c2}
+
+\begin{description}
+\item[{apply (obj arg0 arg1 \& args)}] Call obj as a function. Positional arguments
+for the call are generated by taking a list of all but the last two arguments
+(to apply), and concatenating that with the second-to-last argument, which
+must be a list. The last argument (to apply) is a table of keyword arguments.
+
+\item[{gensym ()}] Generate a symbol with a guaranteed unique id. This is used for
+macro writing.
+\item[{symbol-name (x)}] get the name of a symbol as a string
+
+\item[{length (obj)}] Depending on the type of obj, returns
+\begin{itemize}
+\item the length of a string in bytes,
+\item the number of elements in a list, or
+\item the number of keys in a table or namespace.
+\end{itemize}
+\item[{concat (seq0 \& seqs)}] Concatenate strings or lists. All the arguments must
+be of the same type.
+\item[{nth (n seq)}] Get the nth element of a list or string. If seq is a string the
+result will be a string of length 1 containing the (n-1)th byte of the string.
+
+\item[{=}] check for equality
+\item[{same?}] check for equality
+\item[{not}] logical not
+\end{description}
+
+
+Type Checkers:
+
+\begin{description}
+\item[{bool?}] 
+
+\item[{function?}] 
+
+\item[{int?}] 
+
+\item[{list?}] 
+
+\item[{namespace?}] 
+
+\item[{number?}] 
+
+\item[{null?}] 
+
+\item[{string?}] 
+
+\item[{symbol?}] 
+
+\item[{table?}] 
+\end{description}
+
+Lists and Strings:
+\begin{description}
+\item[{List (\& objs)}] Create a list of the given objects
+\item[{empty? (obj)}] Equivalent to \texttt{(= obj [])}.
+\item[{cons (hd tl)}] Create a new list by prepending hd to tl.
+\item[{head (list)}] get the first element of a list. Error on empty.
+\item[{tail (list)}] drop the first element of a list. Returns empty on empty.
+\end{description}
+
+Tables and Namespaces:
+\begin{description}
+\item[{Table (\& kv-pairs)}] Create a table. The argument list is a sequence
+of pairs consisting of keys followed by values.
+\item[{get (key obj)}] access a field from a table or namespace
+\item[{get-keys (obj)}] get a list of keys from a table or namespace
+\item[{has-key? (obj key)}] get a list of keys from a table or namespace
+\end{description}
+
+Arithmetic:
+\begin{description}
+\item[{+}] 
+
+\item[{-}] 
+
+\item[{*}] 
+
+\item[{/}] 
+
+\item[{**}] 
+
+\item[{<}] 
+
+\item[{>}] 
+
+\item[{<=}] 
+
+\item[{>=}] 
+
+\item[{floor}] 
+
+\item[{ceil}] 
+\end{description}
+
+\subsection{Nonprimitive functions}
+\label{sec:orgf3599f1}
+
+(Note: a user type can implement any or all of these functions by adding methods
+for them. Sorry, that isn't documented yet).
+
+All of these are non-destructive.
+
+\begin{itemize}
+\item has-key? (table)
+
+\item concat (\& seqs)
+\item reverse (seq)
+
+\item insert (elt n seq)
+\item append (elt seq)
+\item prepend (elt seq)
+\item sort (seq (ascending true))
+\item sort-by (fun seq (ascending true))
+
+\item head (seq)
+\item tail (seq)
+\item nth (n seq)
+
+\item take (test seq)
+\item drop (test seq)
+\item take-while (test seq)
+\item drop-while (test seq)
+\item split-at (n seq)
+\item split-when (test seq)
+
+\item group (n seq)
+\item group-by (key seq)
+\item subseq (start end seq)
+
+\item dedup (seq) [remove duplicates]
+\item replace (n elt seq)
+
+\item empty? (seq)
+\item contains? (seq)
+
+\item length< (seq n) [compare lengths w/o nec. computing the thing]
+\item length> (seq n)
+\item length<= (seq n)
+\item length>= (seq n)
+
+\item map (fun seq0 \& seqs)
+\item fold (fun init seq0 \& seqs)
+\item filter (test seq)
+\item every? (test seq)
+\item any? (test seq)
+\end{itemize}
+
+
+
+
+\section{Future Extensions}
+\label{sec:org72dcd46}
+
+The version of Fn described in this document is version 0.1. The language \textbf{will}
+change before version 1.0. In particular, I have to, \textbf{have to}, add pattern
+matching.
+
+Items marked with (Proposed) below are things that might not make it into the
+final language.
+
+\subsection{Pattern Destructuring in \texttt{def} and \texttt{let}}
+\label{sec:orgb8d083e}
+
+Once pattern matching is added to Fn, \texttt{let} and \texttt{def} will be able to do
+automatic destructuring on the pattern to bind variables. For instance,
+\begin{verbatim}
+(def [x y] [1 2])
+\end{verbatim}
+binds \texttt{x} to \texttt{1} and \texttt{y} to \texttt{2}.
+
+When matching fails, an error will be raised.
+
+
+\subsection{(Proposed) \texttt{\#}-Syntax for Collections}
+\label{sec:org6d1883e}
+
+So, we turn \texttt{\#} into a syntax character and give \texttt{\#()}, \texttt{\#[]}, \texttt{\#\{\}}, etc. syntactic
+meanings.
+
+There are a couple of options for how to do this:
+\begin{itemize}
+\item \texttt{\#()} could expand to \texttt{(values)} (if we implement multiple values as proposed), or
+to a set or tuple type.
+\item \texttt{\$\{\}} could expand to \texttt{(Set)} or \texttt{(Vector)}, or if we add typed tables, \texttt{\#\{type ...\}}
+could be used to construct types (e.g. \texttt{(construct type ...)}).
+\item \texttt{\#[]} could expand to \texttt{(Vector)} or \texttt{(values)}.
+\item Alternatively, if we lean into lazy data structures, then the \texttt{\#} structures
+could be the respective lazy equivalents
+\end{itemize}
+
+I'm most likely to set \texttt{\#[]} to \texttt{(Vector ...)}. Using \texttt{\#\{\}} for \texttt{(Set ...)} would also
+make sense, but if typed tables get added, those will be more important for
+sets. If multiple values get added, then the \texttt{\#()} syntax should really be used
+for that.
+
+Drawbacks: this would make hash into a special character as opposed to just a
+symbol constituent.
+
+
+\subsection{Global Names for Definitions}
+\label{sec:org9fae995}
+
+A global variable name consists of a forward slash, the full namespace name, a
+colon, and an identifier in that namespace, in that order. For example:
+\begin{verbatim}
+/fn/builtin:+
+\end{verbatim}
+is the global name for the builtin \texttt{+} function.
+
+This is implemented as follows:
+\begin{itemize}
+\item make it illegal to name namespaces beginning with a slash
+\item make it illegal to create variables whose names contain colons.
+(Alternatively, can make it illegal to create variables whose names start with
+a slash).
+\item variable names that have this syntax are evaluated a little differently
+\end{itemize}
+
+To get the global name of a symbol, we'll provide a builtin function called
+\texttt{global-name}, e.g. \texttt{(global-name '+)} is \texttt{'/fn/builtin:+}.
+
+
+\subsection{(Proposed) \texttt{,:}-Syntax for Global Names in Quasiquote}
+\label{sec:orgc8beef5}
+
+The syntax \texttt{,:var} expands \texttt{(unquote (global-name 'var))}. This will be necessary
+for all non-builtin functions included in macro expansions, (and should be used
+for builtin functions too).
+
+
+\subsection{(Proposed) Multiple Return Values}
+\label{sec:org223188a}
+
+Idk, these are useful in Matlab and Haskell has this sort of thing going on with
+its tuples.
+
+So we create a multiple values object with \texttt{(values x y ...)}. These objects are
+tricky; as soon as they get used they collapse to a single value (in this case
+the result of expression \texttt{x}).
+
+However, when a multiple values object is returned to a \texttt{let} or \texttt{def}, then we can
+use destructuring to access the additional values. For example:
+\begin{verbatim}
+(defn my-fun () (values 1 2 3))
+(def x (my-fun)) ; sets x = 1
+(def (values y z) ; sets y = 1, z = 2
+(def (values y z w) ; sets y = 1, z = 2, w = 3
+\end{verbatim}
+
+Together with \#-syntax for values, this might be a very useful feature. It would
+look like this:
+\begin{verbatim}
+(def #(y z) (my-fun)) ; sets y = 1, z = 2
+(def (values y z w) (my-fun)) ; sets y = 1, z = 2, w = 3
+\end{verbatim}
+
+
+\subsection{Schemas, Metatables, and Table Calls}
+\label{sec:org34618cf}
+
+Tables are gonna get a metatable like in Lua. This will simply be a second,
+invisible table, accessible via a \texttt{metatable} builtin function.
+
+The \texttt{metatable} may contain these two things (more may be added):
+\begin{itemize}
+\item an \textbf{on-call function}. If set, this allows the table to be called like a
+function by invoking the on-call function on the given arguments.
+\item a \textbf{schema} for the table
+\end{itemize}
+
+The on-call function is self-explanatory:
+\begin{verbatim}
+(def tab { 'value 27 })
+(set! (get (metatable tab) 'on-call) 
+      (fn (x) (+ x tab.value)))
+(tab 42) ;=> 69
+\end{verbatim}
+
+Schemas are objects describing the following information:
+\begin{itemize}
+\item a schema name that can be used to do pattern matching on this kind of object
+\item optional type annotations for values in the table
+\item pattern matching functions
+\item (Proposed) protocols implemented by the table. (Note: this may belong directly
+in the metatable?)
+\end{itemize}
+
+So, giving a table a schema provides:
+\begin{itemize}
+\item data validation
+\item accessors
+\item pattern matching
+\end{itemize}
+All of this with very little overhead.
+
+So giving a table a schema is a big deal. It basically promotes the the object
+from a table to a more complex type. For this reason, we call tables with
+non-nil schemas \textbf{structures}. It is intended that structures will be used
+extensively in Fn as the main way to organize data.
+
+Through use of variable capture, functions contained in a table may access or
+mutate that table. This makes it possible to implement full, stateful
+object-oriented programming using structures containing functions, although I
+don't know why you'd want to.
+
+However, we functional programmers still benefit from structures containing
+functions. In particular, this is a handy way to simultaneously save typing and
+avoid namespace pollution. For instance, consider:
+\begin{verbatim}
+;; database structure has a send function
+(my-db.query my-query)
+;; vs. a global function to do it
+(db-query my-db my-query)
+\end{verbatim}
+Moreover, we see this gives us something Python calls "duck typing". Any
+table with an appropriate query function will work in the first expression
+above. I think that's pretty neat.
+
+You could even implement ADTs a la Haskell using schemas, but I don't expect
+they'd be nearly as useful without that sweet, sweet type system.
+
+
+\subsection{(Proposed) Table Immutability Rules}
+\label{sec:orge599d70}
+
+It would be really great to have some guarantee of a table's immutability.
+
+Mutable tables are great for initialization and certain types of imperative
+algorithms. However, immutable tables are better for functional programming, and
+we like that.
+
+I propose the following changes:
+\begin{itemize}
+\item tables are immutable by default
+\item mutable tables may be created via \texttt{(M-Table ...)}, and have mutable metatables
+\item builtin functions are provided to copy mutable tables to immutable ones and
+vice versa
+\end{itemize}
+
+In addition, it may be possible to allow mutable tables to be made immutable in
+certain situations, in order to save the copying operation. In order to prevent
+this from wreaking havoc, it might be best to provide some builtin function that
+exposes this functionality. E.g. \texttt{(build-table x)} where x is a function that
+takes a mutable table, mutates it, and returns it at the end. Provided the
+return value is the same table as was put in, it is then converted to a mutable
+table directly, with no copying.
+\end{document}

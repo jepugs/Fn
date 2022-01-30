@@ -1,0 +1,42 @@
+(package fn)
+
+(import fn/internal/io
+  :prefix int
+  :no-prefix false)
+
+open-file
+
+
+(defn File-Stream (filename (mode "rw"))
+  (let self
+    {'proto File-Stream
+     ; this is a string containing the bytes of a FILE*
+     'native-handle (int:open-file filename mode)
+     'place 0
+     'size
+     (fn ()
+       (int:file-size self.native-handle))
+     'eof
+     (fn ()
+       (int:eof self.native-handle))
+     'seek
+     (fn (place)
+       (set! self.place place)
+       (int:seek self.native-handle place))
+     'close
+     (fn ()
+       (int:close self.native-handle))
+     'write
+     (fn (bytes)
+       (int:write self.native-handle bytes))
+     'writeln
+     (fn (bytes)
+       (int:writeln self.native-handle bytes))
+     'read
+     (fn (num-bytes)
+       (int:read self.native-handle bytes))
+     'readln
+     (fn ()
+       (int:readln self.native-handle bytes))})
+  self)
+
