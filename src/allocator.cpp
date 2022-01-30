@@ -52,12 +52,16 @@ void allocator::dealloc(gc_header* o) {
         break;
     case GC_TYPE_FUNCTION: {
         // FIXME: count the size of the upvals array
-        mem_usage -= sizeof(fn_function);
-        free(o);
+        auto f = (fn_function*)o;
+        mem_usage -= sizeof(fn_function) + sizeof(value)*f->stub->num_opt
+            + sizeof(upvalue_cell*)*f->stub->num_upvals;
+        free(((fn_function*)o)->init_vals);
+        fun_pool.free_object((fn_function*)o);
     }
         break;
     case GC_TYPE_FUN_STUB: {
         auto x = (function_stub*)o;
+        mem_usage -= sizeof(function_stub);
         x->code.~dyn_array();
         x->const_arr.~dyn_array();
         x->sub_funs.~dyn_array();
@@ -250,16 +254,17 @@ static upvalue_cell* open_upval(istate* S, u32 pos) {
 void alloc_fun(istate* S, value* where, fn_function* enclosing,
         function_stub* stub) {
     collect(S);
-    auto sz = sizeof(fn_function) + stub->num_opt*sizeof(value)
+    auto res = S->alloc->fun_pool.new_object();
+    S->alloc->mem_usage += sizeof(fn_function);
+    // size of upvals + initvals arrays
+    auto sz = stub->num_opt*sizeof(value)
         + stub->num_upvals*sizeof(upvalue_cell);
-    auto res = (fn_function*)alloc_bytes(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_FUNCTION);
-    res->init_vals = (value*)(sizeof(fn_function) + (u8*)res);
+    res->init_vals = (value*)alloc_bytes(S->alloc, sz);
     for (u32 i = 0; i < stub->num_opt; ++i) {
         res->init_vals[i] = V_NIL;
     }
-    res->upvals = (upvalue_cell**)(sizeof(fn_function)
-            + stub->num_opt*sizeof(value) + (u8*)res);
+    res->upvals = (upvalue_cell**)(stub->num_opt*sizeof(value) + (u8*)res->init_vals);
     res->stub = stub;
 
     // set up upvalues

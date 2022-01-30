@@ -42,6 +42,8 @@ public:
     u64 collect_threshold;
 
     object_pool<fn_cons> cons_pool;
+    object_pool<fn_function> fun_pool;
+    object_pool<fn_table> table_pool;
 
     istate* S;
     gc_header* objs_head;
