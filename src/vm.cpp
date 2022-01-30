@@ -241,11 +241,13 @@ void execute_fun(istate* S) {
             auto id = code_short(S, pc);
             pc += 2;
             auto fqn = vsymbol(cur_fun()->stub->const_arr[id]);
-            if (!push_global(S, fqn)) {
+            auto x = S->G->def_tab.get2(fqn);
+            if (!x) {
                 ierror(S, "Failed to find global variable " + (*S->symtab)[fqn]);
                 S->pc = pc;
                 return;
             }
+            push(S, x->val);
         }
             break;
         case OP_SET_GLOBAL: {

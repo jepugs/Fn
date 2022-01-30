@@ -139,8 +139,8 @@ public:
         return array[i].val;
     }
 
-    // returns nullptr when no object is associated to the key
-    optional<T> get(const K& k) const {
+    // get a pointer to an entry
+    entry* get2(const K& k) const {
         u32 h = hash(k);
         u32 i = h % this->cap;
         // this count is so that we don't wrap around a full array
@@ -150,16 +150,25 @@ public:
             if (array[i].live) {
                 if (array[i].key == k) {
                     // found the key
-                    return array[i].val;
+                    return &array[i];
                 }
             } else {
-                // no entry for this key
-                return std::nullopt;
+                return nullptr;
             }
             i = (i+1) % cap;
             ++ct;
         }
-        return std::nullopt;
+        return nullptr;
+    }
+
+    // returns nullptr when no object is associated to the key
+    optional<T> get(const K& k) const {
+        auto e = get2(k);
+        if (e) {
+            return e->val;
+        } else {
+            return std::nullopt;
+        }
     }
 
     bool has_key(const K& k) const {

@@ -17,6 +17,7 @@ namespace fn {
 #define fn_for_list(var, lst) \
     for (auto var = lst; var != V_EMPTY; var = vtail(var))
 
+
 static void def_foreign_fun(istate* S, const string& name, const string& params,
         void (*foreign)(istate*)) {
     push_foreign_fun(S, foreign, params);
@@ -254,12 +255,12 @@ fn_fun(get, "get", "(obj & keys)") {
             ierror(S, "get can only descend on tables.");
             return;
         }
-        auto x = vtable(peek(S))->contents.get(S->stack[i]);
-        if (!x.has_value()) {
+        auto x = vtable(peek(S))->contents.get2(S->stack[i]);
+        if (!x) {
             ierror(S, "get failed: no such key.");
             return;
         }
-        S->stack[S->sp-1] = *x;
+        S->stack[S->sp-1] = x->val;
     }
 }
 
