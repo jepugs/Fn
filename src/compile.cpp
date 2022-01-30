@@ -298,6 +298,7 @@ void compiler::compile_set(llir_set* form) {
             compile_llir(form->value);
             update_code_info(ft->stub, form->header.origin);
             write_byte(OP_COPY);
+            update_hwm(sp+1);
             write_byte(0);
             write_byte(OP_SET_LOCAL);
             write_byte(l->index);
@@ -307,6 +308,7 @@ void compiler::compile_set(llir_set* form) {
         if (u) {
             compile_llir(form->value);
             update_code_info(ft->stub, form->header.origin);
+            update_hwm(sp+1);
             write_byte(OP_COPY);
             write_byte(0);
             write_byte(OP_SET_UPVALUE);
@@ -342,7 +344,7 @@ void compiler::compile_set(llir_set* form) {
 }
 
 void compiler::compile_var(llir_var* form) {
-    ++sp;
+    update_hwm(++sp);
     // first, identify special constants
     if (form->name == intern(S, "nil")) {
         write_byte(OP_NIL);

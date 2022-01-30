@@ -9,6 +9,8 @@ namespace fn {
 
 // size used for the istate stack
 constexpr u32 STACK_SIZE = 512;
+// the minimum amount of spare stack space for foreign functions
+constexpr u32 FOREIGN_MIN_STACK = 20;
 
 struct allocator;
 struct global_env;
@@ -21,7 +23,7 @@ struct istate {
     u32 pc;                                  // program counter
     u32 bp;                                  // base ptr
     u32 sp;                                  // stack ptr (rel to stack bottom)
-    fn_function* fun;                        // current function
+    fn_function* callee;                     // current function
     u8* code;                                // reference to function code
     dyn_array<upvalue_cell*> open_upvals;    // open upvalues on the stack
     value stack[STACK_SIZE];

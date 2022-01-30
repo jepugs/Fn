@@ -17,7 +17,7 @@ istate* init_istate() {
     res->pc = 0;
     res->bp = 0;
     res->sp = 0;
-    res->fun = nullptr;
+    res->callee = nullptr;
     res->err_happened = false;
     res->err_msg = nullptr;
     // set up namespace

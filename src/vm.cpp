@@ -74,37 +74,39 @@ static inline bool get_method(istate* S, fn_table* tab, value key, u32 place) {
     return true;
 }
 
-static inline bool arrange_call_stack(istate* S, fn_function* callee, u32 n) {
-    auto stub = callee->stub;
-    u32 min_args = stub->num_params - stub->num_opt;
+static inline bool arrange_call_stack(istate* S, u32 n) {
+    auto num_params = S->callee->stub->num_params;
+    auto num_opt = S->callee->stub->num_opt;
+    auto vari = S->callee->stub->vari;
+    u32 min_args = num_params - num_opt;
     if (n < min_args) {
         ierror(S, "Too few arguments in function call.");
         return false;
-    } else if (n > stub->num_params) {
+    } else if (n > num_params) {
         // handle variadic parameter
-        if (stub->vari) {
-            pop_to_list(S, n - stub->num_params);
+        if (vari) {
+            pop_to_list(S, n - num_params);
         } else {
             ierror(S, "Too many arguments in function call.");
             return false;
         }
         // indicator args are all true in this case
-        for (u32 i = min_args; i < stub->num_params; ++i) {
+        for (u32 i = min_args; i < num_params; ++i) {
             push(S, V_TRUE);
         }
     } else {
-        for (u32 i = n; i < stub->num_params; ++i) {
-            push(S, callee->init_vals[i]);
+        for (u32 i = n; i < num_params; ++i) {
+            push(S, S->callee->init_vals[i]);
         }
-        if (stub->vari) {
+        if (vari) {
             push(S, V_EMPTY);
         }
         // push indicator args
-        u32 m = stub->num_params < n ? stub->num_params : n;
+        u32 m = num_params < n ? num_params : n;
         for (u32 i = min_args; i < m; ++i) {
             push(S, V_TRUE);
         }
-        for (u32 i = n; i < stub->num_params; ++i) {
+        for (u32 i = n; i < num_params; ++i) {
             push(S, V_FALSE);
         }
     }
@@ -128,18 +130,27 @@ void call(istate* S, u32 n) {
         return;
     }
     auto fun = vfunction(callee);
-
     // FIXME: ensure minimum stack space available
     if (fun->stub->foreign) {
+        if (S->sp + n + FOREIGN_MIN_STACK >= STACK_SIZE) {
+            ierror(S, "Not enough stack space for call.");
+            return;
+        }
         foreign_call(S, fun, n);
     } else {
         auto save_bp = S->bp;
         auto save_code = S->code;
+        auto save_callee = S->callee;
+        S->callee = fun;
+        S->code = fun->stub->code.data;
         S->bp = S->sp - n;
-        if (!arrange_call_stack(S, fun, n)) {
+        if (S->bp + fun->stub->space >= STACK_SIZE) {
+            ierror(S, "Not enough stack space for call.");
             return;
         }
-        S->code = fun->stub->code.data;
+        if (!arrange_call_stack(S, n)) {
+            return;
+        }
         execute_fun(S);
         if (S->err_happened) {
             std::ostringstream os;
@@ -153,6 +164,7 @@ void call(istate* S, u32 n) {
         S->stack[S->bp-1] = peek(S, 0);
         S->sp = S->bp;  // with the return value, this is the new stack pointer
         S->bp = save_bp;
+        S->callee = save_callee;
         S->code = save_code;
     }
 }
@@ -168,6 +180,9 @@ static inline bool tail_call(istate* S, u8 n, u32* pc) {
         foreign_call(S, fun, n);
         return true;
     }
+    // set these so the GC can't get 'em before we're done
+    S->callee = fun;
+    S->code = fun->stub->code.data;
     close_upvals(S, S->bp);
     // move the new call information to the base pointer
     S->stack[S->bp - 1] = callee;
@@ -175,10 +190,9 @@ static inline bool tail_call(istate* S, u8 n, u32* pc) {
         S->stack[S->bp + i] = S->stack[S->sp - n + i];
     }
     S->sp = S->bp + n;
-    if (!arrange_call_stack(S, vfunction(callee), n)) {
+    if (!arrange_call_stack(S, n)) {
         return false;
     }
-    S->code = fun->stub->code.data;
     *pc = 0;
     return true;
 }

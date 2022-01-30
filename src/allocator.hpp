@@ -33,6 +33,11 @@
 
 namespace fn {
 
+constexpr u64 GC_CARD_SIZE = 16348;
+struct gc_card {
+    gc_card* next;
+};
+
 class allocator {
 public:
     u64 mem_usage;

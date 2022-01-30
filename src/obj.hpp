@@ -62,11 +62,8 @@ constexpr u8 GC_TYPE_TABLE      = 0x03;
 constexpr u8 GC_TYPE_FUNCTION   = 0x04;
 constexpr u8 GC_TYPE_BIGNUM     = 0x05;
 constexpr u8 GC_TYPE_UPVALUE    = 0x0a;
-
 // function stubs (hold code, etc)
 constexpr u8 GC_TYPE_FUN_STUB   = 0x06;
-// upvalues
-constexpr u8 GC_TYPE_UPVAL      = 0x07;
 // vm_state objects
 constexpr u8 GC_TYPE_VM_STATE   = 0x08;
 
@@ -152,6 +149,7 @@ struct function_stub {
     u8 num_params;      // # of parameters
     u8 num_opt;         // # of optional params (i.e. of initforms)
     bool vari;          // variadic parameter
+    u8 space;           // stack space required
 
     // if foreign != nullptr, then all following fields are ignored, and calling
     // this function will be deferred to calling foreign

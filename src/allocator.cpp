@@ -164,6 +164,7 @@ static function_stub* mk_func_stub(allocator* alloc, symbol_id ns_id) {
     res->num_params = 0;
     res->num_opt = 0;
     res->num_upvals = 0;
+    res->space = 1;
     res->vari = false;
     res->foreign = nullptr;
     res->ns_id = ns_id;
