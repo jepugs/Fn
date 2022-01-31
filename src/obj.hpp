@@ -229,8 +229,8 @@ public:
 
 // constant values
 constexpr value V_NIL  = { .raw = TAG_NIL };
-constexpr value V_FALSE = { .raw = TAG_FALSE };
-constexpr value V_TRUE  = { .raw = TAG_TRUE };
+constexpr value V_NO = { .raw = TAG_FALSE };
+constexpr value V_YES  = { .raw = TAG_TRUE };
 constexpr value V_EMPTY = { .raw = TAG_EMPTY };
 constexpr value V_UNIN = { .raw = TAG_UNIN };
 

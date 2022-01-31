@@ -26,19 +26,18 @@ static void def_foreign_fun(istate* S, const string& name, const string& params,
 }
 
 fn_fun(eq, "=", "(x0 & args)") {
-    auto x0 = get(S, 0);
     for (u32 i = S->bp; i < S->sp; ++i) {
         // FIXME: check type
-        if (S->stack[i] != x0) {
-            push(S, V_FALSE);
+        if (S->stack[i] != get(S,0)) {
+            push(S, V_NO);
             return;
         }
     }
-    push(S, V_TRUE);
+    push(S, V_YES);
 }
 
 fn_fun(list_q, "list?", "(x)") {
-    push(S, vis_cons(peek(S)) || peek(S) == V_EMPTY ? V_TRUE : V_FALSE);
+    push(S, vis_cons(peek(S)) || peek(S) == V_EMPTY ? V_YES : V_NO);
 }
 
 fn_fun(le, "<=", "(x0 & args)") {
@@ -47,38 +46,44 @@ fn_fun(le, "<=", "(x0 & args)") {
         ierror(S, "Arguments to <= not a number.");
         return;
     }
+    auto n = vnumber(x0);
     for (u32 i = S->bp; i < S->sp; ++i) {
         auto x1 = S->stack[i];
         if (!vis_number(x1)) {
             ierror(S, "Arguments to <= not a number.");
             return;
         }
-        if (vnumber(x0) > vnumber(x1)) {
-            push(S, V_FALSE);
+        auto m = vnumber(x1);
+        if (n > m) {
+            push(S, V_NO);
             return;
         }
+        n = m;
     }
-    push(S, V_TRUE);
+    push(S, V_YES);
 }
 
 fn_fun(ge, ">=", "(x0 & args)") {
     auto x0 = get(S, 0);
     if (!vis_number(x0)) {
-        ierror(S, "Arguments to >= must be numbers.");
+        ierror(S, "Arguments to >= not a number.");
         return;
     }
+    auto n = vnumber(x0);
     for (u32 i = S->bp; i < S->sp; ++i) {
         auto x1 = S->stack[i];
         if (!vis_number(x1)) {
-            ierror(S, "Argument to >= not a number.");
+            ierror(S, "Arguments to >= not a number.");
             return;
         }
-        if (vnumber(x0) < vnumber(x1)) {
-            push(S, V_FALSE);
+        auto m = vnumber(x1);
+        if (n < m) {
+            push(S, V_NO);
             return;
         }
+        n = m;
     }
-    push(S, V_TRUE);
+    push(S, V_YES);
 }
 
 fn_fun(ceil, "ceil", "(x)") {
@@ -216,7 +221,7 @@ fn_fun(tail, "tail", "(x)") {
 }
 
 fn_fun(empty_q, "empty?", "(x)") {
-    push(S, peek(S) == V_EMPTY ? V_TRUE : V_FALSE);
+    push(S, peek(S) == V_EMPTY ? V_YES : V_NO);
 }
 
 fn_fun(mod, "mod", "(x modulus)") {

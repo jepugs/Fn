@@ -106,9 +106,9 @@ string v_to_string(value v, const symbol_table* symbols, bool code_format) {
     case TAG_NIL:
         return "nil";
     case TAG_TRUE:
-        return "true";
+        return "yes";
     case TAG_FALSE:
-        return "false";
+        return "no";
     case TAG_EMPTY:
         return "[]";
     case TAG_UNIN:

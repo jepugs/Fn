@@ -92,7 +92,7 @@ static inline bool arrange_call_stack(istate* S, u32 n) {
         }
         // indicator args are all true in this case
         for (u32 i = min_args; i < num_params; ++i) {
-            push(S, V_TRUE);
+            push(S, V_YES);
         }
     } else {
         for (u32 i = n; i < num_params; ++i) {
@@ -104,10 +104,10 @@ static inline bool arrange_call_stack(istate* S, u32 n) {
         // push indicator args
         u32 m = num_params < n ? num_params : n;
         for (u32 i = min_args; i < m; ++i) {
-            push(S, V_TRUE);
+            push(S, V_YES);
         }
         for (u32 i = n; i < num_params; ++i) {
-            push(S, V_FALSE);
+            push(S, V_NO);
         }
     }
     return true;

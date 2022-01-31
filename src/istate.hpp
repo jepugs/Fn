@@ -61,8 +61,8 @@ void push_string(istate* S, u32 size);
 void push_string(istate* S, const string& str);
 void push_sym(istate* S, symbol_id sym);
 void push_nil(istate* S);
-void push_true(istate* S);
-void push_false(istate* S);
+void push_yes(istate* S);
+void push_no(istate* S);
 
 void push_cons(istate* S, value hd, value tl);
 void push_table(istate* S);

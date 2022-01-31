@@ -104,7 +104,7 @@ llir_form* expander::expand_and(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length == 1) {
-        return (llir_form*)mk_llir_var(loc, intern("true"));
+        return (llir_form*)mk_llir_var(loc, intern("yes"));
     } else if (length == 2) {
         return expand_meta(lst[1], meta);
     }
@@ -771,7 +771,7 @@ llir_form* expander::expand_or(const source_loc& loc,
         ast_form** lst,
         expander_meta* meta) {
     if (length == 1) {
-        return (llir_form*)mk_llir_var(loc, intern("false"));
+        return (llir_form*)mk_llir_var(loc, intern("no"));
     } else if (length == 2) {
         return expand_meta(lst[1], meta);
     }

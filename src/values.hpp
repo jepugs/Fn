@@ -54,7 +54,7 @@ inline u64 vis_nil(value v) {
     return v.raw == V_NIL.raw;
 }
 inline u64 vis_bool(value v) {
-    return v == V_TRUE || v == V_FALSE;
+    return v == V_YES || v == V_NO;
 }
 inline u64 vis_emptyl(value v) {
     return v == V_EMPTY;
@@ -86,9 +86,9 @@ inline value vbox_symbol(symbol_id v) {
 }
 inline value vbox_bool(bool v) {
     if (v) {
-        return V_TRUE;
+        return V_YES;
     } else {
-        return V_FALSE;
+        return V_NO;
     }
 }
 inline value vbox_ptr(void* p, u64 tag) {
@@ -135,7 +135,7 @@ inline symbol_id vsymbol(value v) {
 }
 
 inline bool vtruth(value v) {
-    return !(v.raw == V_NIL.raw || v.raw == V_FALSE.raw);
+    return !(v.raw == V_NIL.raw || v.raw == V_NO.raw);
 }
 
 inline u32 vstrlen(value v) {

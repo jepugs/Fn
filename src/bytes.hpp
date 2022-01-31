@@ -71,10 +71,10 @@ enum OPCODES : u8 {
     OP_CONST,
     // nil, push nil value
     OP_NIL,
-    // false, push false value
-    OP_FALSE,
-    // true, push true value
-    OP_TRUE,
+    // no, push false value
+    OP_NO,
+    // yes, push true value
+    OP_YES,
 
 
     // control flow & function calls
@@ -112,10 +112,9 @@ inline u8 instr_width(u8 instr) {
     switch (instr) {
     case OP_NOP:
     case OP_POP:
-    case OP_BY_GUID:
     case OP_NIL:
-    case OP_FALSE:
-    case OP_TRUE:
+    case OP_NO:
+    case OP_YES:
     case OP_RETURN:
     case OP_OBJ_GET:
     case OP_OBJ_SET:

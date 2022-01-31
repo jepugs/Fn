@@ -103,11 +103,11 @@ void push_sym(istate* S, symbol_id sym) {
 void push_nil(istate* S) {
     push(S, V_NIL);
 }
-void push_true(istate* S) {
-    push(S, V_TRUE);
+void push_yes(istate* S) {
+    push(S, V_YES);
 }
-void push_false(istate* S) {
-    push(S, V_FALSE);
+void push_no(istate* S) {
+    push(S, V_NO);
 }
 
 void push_cons(istate* S, value hd, value tl) {
