@@ -3,6 +3,7 @@
 #include "istate.hpp"
 #include <iostream>
 
+//#define GC_DISABLE
 //#define GC_STRESS
 //#define GC_VERBOSE
 
@@ -384,6 +385,9 @@ static void sweep(istate* S) {
 }
 
 void collect(istate* S) {
+#ifdef GC_DISABLE
+    return;
+#endif
     auto alloc = S->alloc;
 #ifndef GC_STRESS
     if (alloc->mem_usage >= alloc->collect_threshold) {

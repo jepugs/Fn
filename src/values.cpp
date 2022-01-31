@@ -65,7 +65,12 @@ string v_to_string(value v, const symbol_table* symbols, bool code_format) {
     switch(tag) {
     case TAG_NUM:
         {   std::ostringstream os;
-            os << std::noshowpoint << vnumber(v);
+            auto n = vnumber(v);
+            if (n == (u64)n) {
+                os << (u64)n;
+            } else {
+                os << std::noshowpoint << vnumber(v);
+            }
             return os.str();
         }
     case TAG_CONS:

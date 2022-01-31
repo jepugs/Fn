@@ -30,6 +30,17 @@ constant_id add_string_const(istate* S, function_tree* ft, const string& str) {
     return res;
 }
 
+// expand symbols beginning with a colon to their global name
+static symbol_id handle_colons(istate* S, symbol_id sid) {
+    auto name = symname(S, sid);
+    if (name[0] == ':') {
+        auto name2 = resolve_sym(S, S->ns_id, intern(S, name.substr(1)));
+        return intern(S, "#" + symname(S, name2));
+    } else {
+        return sid;
+    }
+}
+
 static void push_quoted(istate* S, ast_form* form) {
     switch (form->kind) {
     case ak_number_atom:
@@ -39,7 +50,7 @@ static void push_quoted(istate* S, ast_form* form) {
         push_string(S, *form->datum.str);
         break;
     case ak_symbol_atom:
-        push(S, vbox_symbol(form->datum.sym));
+        push(S, vbox_symbol(handle_colons(S, form->datum.sym)));
         break;
     case ak_list:
         // FIXME: check for stack overflows
@@ -1195,7 +1206,7 @@ llir_form* expander::expand_meta(ast_form* ast, expander_meta* meta) {
     }
     case ak_symbol_atom:
         update_dollar_syms(S->symtab, ast->datum.sym, meta);
-        return (llir_form*)mk_llir_var(ast->loc, ast->datum.sym);
+        return (llir_form*)mk_llir_var(ast->loc, handle_colons(S, ast->datum.sym));
     case ak_list:
         return expand_list(ast, meta);
     }

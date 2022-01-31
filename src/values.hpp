@@ -41,6 +41,9 @@ inline u64 vis_string(value v) {
 inline u64 vis_cons(value v) {
     return vtag(v) == TAG_CONS;
 }
+inline u64 vis_list(value v) {
+    return v == V_EMPTY || vtag(v) == TAG_CONS;
+}
 inline u64 vis_table(value v) {
     return vtag(v) == TAG_TABLE;
 }

@@ -122,6 +122,19 @@ static inline void foreign_call(istate* S, fn_function* fun, u32 n) {
     S->bp = save_bp;
 }
 
+// unroll a list on top of the stack (i.e. place its elements in order on the
+// stack). Returns the length of the list
+static inline u32 unroll_list(istate* S) {
+    u32 n = 0;
+    while (peek(S,0) != V_EMPTY) {
+        push(S, vtail(peek(S, 0)));
+        S->stack[S->sp - 2] = vhead(S->stack[S->sp - 2]);
+        ++n;
+    }
+    --S->sp;
+    return n;
+}
+
 void call(istate* S, u32 n) {
     // update the call frame
     auto callee = peek(S, n);
@@ -218,7 +231,7 @@ void execute_fun(istate* S) {
             push(S, S->stack[S->sp - code_byte(S, pc++) - 1]);
             break;
         case OP_UPVALUE: {
-            auto u = cur_fun()->upvals[code_byte(S, pc++)];
+            auto u = S->callee->upvals[code_byte(S, pc++)];
             if (u->closed) {
                 push(S, u->datum.val);
             } else {
@@ -227,7 +240,7 @@ void execute_fun(istate* S) {
         }
             break;
         case OP_SET_UPVALUE: {
-            auto u = cur_fun()->upvals[code_byte(S, pc++)];
+            auto u = S->callee->upvals[code_byte(S, pc++)];
             if (u->closed) {
                 u->datum.val = peek(S, 0);
             } else {
@@ -239,7 +252,7 @@ void execute_fun(istate* S) {
         case OP_CLOSURE: {
             auto fid = code_short(S, pc);
             pc += 2;
-            create_fun(S, cur_fun(), fid);
+            create_fun(S, S->callee, fid);
         }
             break;
         case OP_CLOSE: {
@@ -254,7 +267,7 @@ void execute_fun(istate* S) {
         case OP_GLOBAL: {
             auto id = code_short(S, pc);
             pc += 2;
-            auto fqn = vsymbol(cur_fun()->stub->const_arr[id]);
+            auto fqn = vsymbol(S->callee->stub->const_arr[id]);
             auto x = S->G->def_tab.get2(fqn);
             if (!x) {
                 ierror(S, "Failed to find global variable " + (*S->symtab)[fqn]);
@@ -267,7 +280,7 @@ void execute_fun(istate* S) {
         case OP_SET_GLOBAL: {
             auto id = code_short(S, pc);
             pc += 2;
-            auto fqn = cur_fun()->stub->const_arr[id];
+            auto fqn = S->callee->stub->const_arr[id];
             set_global(S, vsymbol(fqn), peek(S, 0));
             S->stack[S->sp-1] = fqn;
         }
@@ -300,17 +313,17 @@ void execute_fun(istate* S) {
             break;
 
         case OP_CONST:
-            push(S, cur_fun()->stub->const_arr[code_short(S, pc)]);
+            push(S, S->callee->stub->const_arr[code_short(S, pc)]);
             pc += 2;
             break;
         case OP_NIL:
             push(S, V_NIL);
             break;
-        case OP_FALSE:
-            push(S, V_FALSE);
+        case OP_NO:
+            push(S, V_NO);
             break;
-        case OP_TRUE:
-            push(S, V_TRUE);
+        case OP_YES:
+            push(S, V_YES);
             break;
 
         case OP_JUMP: {
@@ -378,6 +391,32 @@ void execute_fun(istate* S) {
             }
         }
             break;
+        case OP_APPLY: {
+            // unroll the list on top of the stack
+            if (!vis_list(peek(S, 0))) {
+                ierror(S, "Final argument to apply must be a list.");
+                return;
+            }
+            auto n = code_byte(S, pc++) + unroll_list(S);
+            call(S, n);
+            if (S->err_happened) {
+                S->pc = pc;
+                return;
+            }
+        }
+            return;
+        case OP_TAPPLY: {
+            // unroll the list on top of the stack
+            if (!vis_list(peek(S, 0))) {
+                ierror(S, "Final argument to apply must be a list.");
+                return;
+            }
+            auto n = code_byte(S, pc++) + unroll_list(S);
+            if (!tail_call(S, n, &pc)) {
+                return;
+            }
+        }
+            return;
 
         case OP_RETURN:
             // close upvalues and exit the loop. The call() function will handle

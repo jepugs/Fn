@@ -60,8 +60,6 @@ enum OPCODES : u8 {
     // macro-set, set the macro function associated to a symbol. stack arguments:
     // ->[function] symbol.
     OP_SET_MACRO,
-    // get global by its full name, e.g. /fn/builtin:map
-    OP_BY_GUID,
 
     // perform method calls. Stack: ->[arg-n] ... arg-0 object symbol
     OP_CALLM,

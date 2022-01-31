@@ -162,11 +162,14 @@ void compiler::update_hwm(u32 local_hwm) {
 void compiler::compile_llir(llir_form* form, bool tail) {
     update_code_info(ft->stub, form->origin);
     switch (form->tag) {
-    case lt_def:
-        compile_def((llir_def*)form);
+    case lt_apply:
+        compile_apply((llir_apply*)form, tail);
         break;
     case lt_call:
         compile_call((llir_call*)form, tail);
+        break;
+    case lt_def:
+        compile_def((llir_def*)form);
         break;
     case lt_const:
         update_hwm(sp + 1);
@@ -246,7 +249,7 @@ void compiler::compile_call(llir_call* form, bool tail) {
         sp = start_sp + 1;
         return;
     } else if (form->callee->tag == lt_var) {
-        auto x = (llir_var*)form;
+        auto x = (llir_var*)form->callee;
         if (x->name == intern(S, "get")) {
             compile_get(form);
             return;
@@ -262,6 +265,15 @@ void compiler::compile_call(llir_call* form, bool tail) {
     write_byte(tail ? OP_TCALL : OP_CALL);
     write_byte(form->num_args);
     sp = start_sp + 1;
+}
+
+void compiler::compile_apply(llir_apply* form, bool tail) {
+    compile_llir(form->callee);
+    for (u32 i = 0; i < form->num_args; ++i) {
+        compile_llir(form->args[i]);
+    }
+    write_byte(tail ? OP_TAPPLY : OP_APPLY);
+    write_byte(form->num_args - 1);
 }
 
 void compiler::compile_def(llir_def* form) {
@@ -343,16 +355,26 @@ void compiler::compile_set(llir_set* form) {
     }
 }
 
+static bool is_fqn(const string& str) {
+    return str[0] == '#' && str.find(':') != string::npos;
+}
+
 void compiler::compile_var(llir_var* form) {
     update_hwm(++sp);
     // first, identify special constants
-    if (form->name == intern(S, "nil")) {
+    if (form->name == cached_sym(S, SC_NIL)) {
         write_byte(OP_NIL);
-    } else if (form->name == intern(S, "true")) {
-        write_byte(OP_TRUE);
-    } else if (form->name == intern(S, "false")) {
-        write_byte(OP_FALSE);
+    } else if (form->name == cached_sym(S, SC_YES)) {
+        write_byte(OP_YES);
+    } else if (form->name == cached_sym(S, SC_NO)) {
+        write_byte(OP_NO);
     } else {
+        if (is_fqn(symname(S,form->name))) {
+            auto fqn = intern(S, symname(S, form->name).substr(1));
+            write_byte(OP_GLOBAL);
+            write_short(add_const(S, ft, vbox_symbol(fqn)));
+            return;
+        }
         auto l = lookup_var(form->name);
         if (l != nullptr) {
             write_byte(OP_LOCAL);
@@ -466,20 +488,17 @@ static void disassemble_instr(u8* code_start, std::ostream& out) {
     case OP_SET_GLOBAL:
         out << "set-global";
         break;
-    case OP_BY_GUID:
-        out << "by-guid";
-        break;
     case OP_CONST:
         out << "const " << read_short(&code_start[1]);
         break;
     case OP_NIL:
         out << "nil";
         break;
-    case OP_FALSE:
-        out << "false";
+    case OP_NO:
+        out << "no";
         break;
-    case OP_TRUE:
-        out << "true";
+    case OP_YES:
+        out << "yes";
         break;
     case OP_OBJ_GET:
         out << "obj-get";
@@ -536,7 +555,7 @@ static void disassemble_instr(u8* code_start, std::ostream& out) {
 static void disassemble_stub(std::ostringstream& os, istate* S, function_stub* stub) {
     for (u32 i = 0; i < stub->code.size; i += instr_width(stub->code[i])) {
         disassemble_instr(&stub->code[i], os);
-        if (stub->code[i] == OP_CONST) {
+        if (stub->code[i] == OP_CONST || stub->code[i] == OP_GLOBAL) {
             auto val = stub->const_arr[read_short(&stub->code[i+1])];
             os << "    " << "; " << v_to_string(val, S->symtab, true);
         }
@@ -544,20 +563,27 @@ static void disassemble_stub(std::ostringstream& os, istate* S, function_stub* s
     }
 }
 
-void disassemble_top(istate* S, bool recur) {
-    auto stub = vfunction(peek(S))->stub;
+static void disassemble_with_header(std::ostringstream& os, istate* S,
+        function_stub* stub, const string& header, bool recur) {
+    os << header << '\n';
     if (stub->foreign) {
-        push_string(S, "<foreign_fun>");
+        os << "; <foreign_fun>";
         return;
-    }
-    std::ostringstream os;
-    disassemble_stub(os, S, stub);
-    if (recur) {
-        for (u32 i = 0; i < stub->sub_funs.size; ++i) {
-            os << "; subfun " << i << "\n";
-            disassemble_stub(os, S, stub->sub_funs[i]);
+    } else {
+        disassemble_stub(os, S, stub);
+        if (recur) {
+            for (u32 i = 0; i < stub->sub_funs.size; ++i) {
+                disassemble_with_header(os, S, stub->sub_funs[i],
+                        ";" + header + ":" + std::to_string(i), recur);
+            }
         }
     }
+}
+
+void disassemble_top(istate* S, bool recur) {
+    auto stub = vfunction(peek(S))->stub;
+    std::ostringstream os;
+    disassemble_with_header(os, S, stub, "; function", recur);
     push_string(S, os.str());
 }
 
