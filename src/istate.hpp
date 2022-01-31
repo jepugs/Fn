@@ -3,6 +3,7 @@
 
 #include "base.hpp"
 #include "obj.hpp"
+#include "symbols.hpp"
 #include "values.hpp"
 
 namespace fn {
@@ -18,6 +19,7 @@ struct global_env;
 struct istate {
     allocator* alloc;
     symbol_table* symtab;
+    symbol_cache* symcache;
     global_env* G;                           // global definitions
     symbol_id ns_id;                         // current namespace
     u32 pc;                                  // program counter
@@ -37,7 +39,8 @@ struct istate {
 istate* init_istate();
 void free_istate(istate*);
 
-//void ierror(istate* S, const char* message);
+void set_ns(istate* S, symbol_id ns_id);
+
 void ierror(istate* S, const string& message);
 
 void push(istate* S, value v);
@@ -54,6 +57,7 @@ void set(istate* S, u32 index, value v);
 symbol_id intern(istate* S, const string& str);
 symbol_id gensym(istate* S);
 string symname(istate* S, symbol_id sid);
+symbol_id cached_sym(istate* S, sc_index i);
 
 // create values on top of the stack
 void push_number(istate* S, f64 num);

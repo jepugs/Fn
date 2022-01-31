@@ -7,11 +7,19 @@
 
 namespace fn {
 
+static void setup_symcache(istate* S) {
+    for (u32 i = 0; i < SYMCACHE_SIZE; ++i) {
+        S->symcache->syms[i] = intern(S, sc_names[i]);
+    }
+}
+
 istate* init_istate() {
     auto res = new istate;
     res->alloc = new allocator{res};
     // TODO: allocate this through the allocator instead
     res->symtab = new symbol_table;
+    res->symcache = new symbol_cache;
+    setup_symcache(res);
     res->G = new global_env;
     res->ns_id = intern(res, "fn/user");
     res->pc = 0;
@@ -29,6 +37,7 @@ void free_istate(istate* S) {
     delete S->G;
     delete S->alloc;
     delete S->symtab;
+    delete S->symcache;
     if (S->err_happened) {
         free(S->err_msg);
     }
@@ -85,6 +94,9 @@ string symname(istate* S, symbol_id sym) {
     return S->symtab->symbol_name(sym);
 }
 
+symbol_id cached_sym(istate* S, sc_index i) {
+    return S->symcache->syms[i];
+}
 
 void push_number(istate* S, f64 num) {
     push(S, vbox_number(num));
