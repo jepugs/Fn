@@ -200,7 +200,7 @@ given context."
                 "letfn\\|or\\|namespace\\|quasiquote\\|quote\\|unquote\\|"
                 "unquote-splicing\\|set!\\|with\\)\\_>")
        1 font-lock-keyword-face)
-      ("\\_<\\(true\\|false\\|nil\\)\\_>" 1 font-lock-constant-face)
+      ("\\_<\\(yes\\|no\\|nil\\)\\_>" 1 font-lock-constant-face)
       ("\\_<\\(self\\)\\(\\.\\|\\_>\\)" 1 font-lock-constant-face)
       ;; dollar syntax
       ("\\([$]\\)[([{`]" 1 font-lock-keyword-face)
