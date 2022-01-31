@@ -1,7 +1,0 @@
-(defn my-fun (x)
-  (letfn local ()
-    (fn (x) (+ x 2)))
-  (local))
-
-(my-fun 11)
-
