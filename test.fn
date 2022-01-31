@@ -12,16 +12,19 @@
    'filter (fn (self fun)
              (lfilter fun self))})
 
-(with (old-head head
-       old-tail tail)
-  (defn head (x)
-    (if (list? x)
-        (old-head x)
-        (x.head)))
-  (defn tail (x)
-    (if (list? x)
-        (old-tail x)
-        (x.tail))))
+(defn List (& args)
+  args)
+
+; (with (old-head head
+;        old-tail tail)
+;   (defn head (x)
+;     (if (list? x)
+;         (old-head x)
+;         (x.head)))
+;   (defn tail (x)
+;     (if (list? x)
+;         (old-tail x)
+;         (x.tail))))
 
 (defn Lazy-List (fun)
   (with-metatable Lazy-List-Meta
@@ -90,7 +93,7 @@
           (pred (rem.head))
           (lcons (rem.head)
                  (Lazy-List $(unbox-lazy (next (rem.tail)))))
-          true (next (rem.tail))))
+          yes (next (rem.tail))))
   (next lazy))
 
 (def N>=0
@@ -114,9 +117,9 @@
     (letfn iter (rem)
       (let n (rem.head))
       (cond
-        (= (mod x n) 0) false
-        (>= n max) true
-        true (iter (rem.tail))))
+        (= (mod x n) 0) no
+        (>= n max) yes
+        yes (iter (rem.tail))))
     (iter primes))
   (def primes
     (lconcat init-primes
@@ -130,4 +133,4 @@
       (l.head)
       (lnth (- n 1) (l.tail))))
 
-(lnth 9999 primes)
+(lnth 99999 primes)
