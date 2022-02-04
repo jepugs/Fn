@@ -3,8 +3,16 @@
 #include "istate.hpp"
 #include <iostream>
 
+// uncomment to disable the GC. This will lead to very high memory consumption.
+// It is used to develop new data structures without fully implementing
+// their allocation/collection functions first.
 //#define GC_DISABLE
+
+// uncomment to run the GC before every allocation. This will obviously tank
+// performance and is only used to locate GC bugs
 //#define GC_STRESS
+
+// uncomment to have the GC print information to STDOUT on every collection
 //#define GC_VERBOSE
 
 namespace fn {
@@ -12,11 +20,11 @@ namespace fn {
 // 64KiB for first collect. Actual usage will be a somewhat higher because
 // tables/functions/chunks create some extra data depending on
 // entries/upvalues/code
-static constexpr u32 FIRST_COLLECT = 64 * 1024;
-static constexpr f64 COLLECT_SCALE_FACTOR = 2;
-// This essentially says no more than this proportion of available memory may be
-// devoted to persistent objects
-static constexpr f64 RESCALE_TH = 0.8;
+static constexpr u64 FIRST_COLLECT = 64 * 1024;
+static constexpr u64 COLLECT_SCALE_FACTOR = 2;
+// This essentially says no more than this percentage of available memory may be
+// devoted to persistent objects. (It must be less than 100)
+static constexpr u64 RESCALE_TH = 80;
 
 
 allocator::allocator(istate* S)
@@ -393,7 +401,7 @@ void collect(istate* S) {
     if (alloc->mem_usage >= alloc->collect_threshold) {
 #endif
         collect_now(S);
-        if (alloc->mem_usage >= RESCALE_TH * alloc->collect_threshold) {
+        if (100 * alloc->mem_usage >= RESCALE_TH * alloc->collect_threshold) {
             alloc->collect_threshold *= COLLECT_SCALE_FACTOR;
         }
 #ifndef GC_STRESS
