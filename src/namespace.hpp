@@ -32,6 +32,10 @@ symbol_id resolve_sym(istate* S, symbol_id ns_id, symbol_id name);
 bool push_global(istate* S, symbol_id fqn);
 // set by FQN, creating a new definition if necessary
 void set_global(istate* S, symbol_id fqn, value new_val);
+// get a macro by its FQN. Returns false on failed lookup
+bool push_macro(istate* S, symbol_id fqn);
+// set a macro, creating a new definition if necessary
+void set_macro(istate* S, symbol_id fqn, fn_function* fun);
 // add a new namespace. If the namespace already exists, this returns the
 // existing namespace.
 fn_namespace* add_ns(istate* S, symbol_id ns_id);
@@ -40,8 +44,10 @@ fn_namespace* get_ns(istate* S, symbol_id ns_id);
 // copy definitions from one namespace to another (this is logically half of an
 // import, the other half being the file search/compilation step). Prefix is
 // prepended to the imported variables.
-bool copy_defs(istate* S, symbol_id dest_id, symbol_id src_id,
+bool copy_defs(istate* S, fn_namespace* dest, fn_namespace* src,
         const string& prefix, bool overwrite=true);
+// switch namespaces, creating a new one if necessary.
+void switch_ns(istate* S, symbol_id new_ns);
 
 
 // namespace id destructuring

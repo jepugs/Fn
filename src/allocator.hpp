@@ -96,8 +96,8 @@ void alloc_foreign_fun(istate* S,
         value* where,
         void (*foreign)(istate*),
         u32 num_args,
-        bool var_arg,
-        symbol_id ns_id);
+        bool vari,
+        u32 num_upvals);
 void alloc_fun(istate* S, value* where, fn_function* enclosing,
         function_stub* stub);
 

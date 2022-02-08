@@ -57,7 +57,7 @@ struct dyn_array {
     }
     dyn_array& operator= (const dyn_array<t>& other) {
         this->~dyn_array();
-        capacity = other.capacity;
+        capacity = other.size;
         size = other.size;
         data = (t*)malloc(size*sizeof(t));
         for (u32 i = 0; i < size; ++i) {
@@ -88,7 +88,7 @@ struct dyn_array {
         if (capacity >= min_cap) {
             return;
         }
-        auto new_cap = capacity;
+        auto new_cap = capacity == 0 ? 1 : capacity;
         while (new_cap < min_cap) {
             new_cap *= 2;
         }

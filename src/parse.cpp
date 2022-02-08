@@ -457,4 +457,31 @@ dyn_array<ast_form*> partial_parse_input(scanner* sc,
     return res;
 }
 
+ast_form* pop_syntax(istate* S, const source_loc& loc) {
+    auto v = peek(S);
+    ast_form* res;
+    if (vis_symbol(v)) {
+        res = mk_symbol_form(loc, vsymbol(v));
+    } else if (vis_number(v)) {
+        res = mk_number_form(loc, vnumber(v));
+    } else if (vis_string(v)) {
+        res = mk_string_form(loc, (const char*)vstring(v)->data);
+    } else if (vis_list(v)) {
+        auto lst = v;
+        dyn_array<ast_form*> a;
+        while (lst != V_EMPTY) {
+            push(S, vhead(lst));
+            a.push_back(pop_syntax(S, loc));
+            lst = vtail(lst);
+        }
+        res = mk_list_form(loc, &a);
+    } else {
+        ierror(S, "Cannot convert value to syntax\n");
+        res = nullptr;
+    }
+    pop(S);
+
+    return res;
+}
+
 }

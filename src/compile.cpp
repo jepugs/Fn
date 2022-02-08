@@ -171,6 +171,9 @@ void compiler::compile_llir(llir_form* form, bool tail) {
     case lt_def:
         compile_def((llir_def*)form);
         break;
+    case lt_defmacro:
+        compile_defmacro((llir_defmacro*)form);
+        break;
     case lt_const:
         update_hwm(sp + 1);
         write_byte(OP_CONST);
@@ -280,6 +283,13 @@ void compiler::compile_def(llir_def* form) {
     compile_llir(form->value);
     write_byte(OP_SET_GLOBAL);
     auto fqn = resolve_sym(S, S->ns_id, form->name);
+    write_short(add_const(S, ft, vbox_symbol(fqn)));
+}
+
+void compiler::compile_defmacro(llir_defmacro* form) {
+    auto fqn = resolve_sym(S, S->ns_id, form->name);
+    compile_llir(form->macro_fun);
+    write_byte(OP_SET_MACRO);
     write_short(add_const(S, ft, vbox_symbol(fqn)));
 }
 
@@ -483,10 +493,10 @@ static void disassemble_instr(u8* code_start, std::ostream& out) {
         out << "close " << (i32)code_start[1];
         break;
     case OP_GLOBAL:
-        out << "global " << read_short(&code_start[1]);;
+        out << "global " << read_short(&code_start[1]);
         break;
     case OP_SET_GLOBAL:
-        out << "set-global";
+        out << "set-global " << read_short(&code_start[1]);
         break;
     case OP_CONST:
         out << "const " << read_short(&code_start[1]);
@@ -507,10 +517,10 @@ static void disassemble_instr(u8* code_start, std::ostream& out) {
         out << "obj-set";
         break;
     case OP_MACRO:
-        out << "macro";
+        out << "macro " << read_short(&code_start[1]);
         break;
     case OP_SET_MACRO:
-        out << "set-macro";
+        out << "set-macro " << read_short(&code_start[1]);
         break;
     case OP_CALLM:
         out << "callm " << (i32)code_start[1];

@@ -5,7 +5,7 @@
 
 namespace fn {
 
-constexpr u32 SYMCACHE_SIZE = 7;
+constexpr u32 SYMCACHE_SIZE = 8;
 
 // used to store precomputed symbols
 struct symbol_cache {
@@ -15,6 +15,7 @@ struct symbol_cache {
 // standard symbol cache indices
 enum sc_index {
     SC___CALL,
+    SC_FN_BUILTIN,
     SC_APPLY,
     SC_DEF,
     SC_NIL,
@@ -26,6 +27,7 @@ enum sc_index {
 // names for the symbol cache symbols
 constexpr const char* sc_names[] = {
     "__call",
+    "fn/builtin",
     "apply",
     "def",
     "nil",

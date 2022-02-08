@@ -2,6 +2,7 @@
 #define __FN_PARSE_HPP
 
 #include "base.hpp"
+#include "istate.hpp"
 #include "scan.hpp"
 #include "values.hpp"
 
@@ -109,6 +110,9 @@ dyn_array<ast_form*> partial_parse_input(scanner* sc,
         u32* bytes_used,
         bool* resumable,
         fault* err);
+
+// create an ast_form* from the top of the stack
+ast_form* pop_syntax(istate* S, const source_loc& loc);
 
 }
 #endif

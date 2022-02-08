@@ -62,10 +62,8 @@ void allocator::dealloc(gc_header* o) {
     case GC_TYPE_FUNCTION: {
         // FIXME: count the size of the upvals array
         auto f = (fn_function*)o;
-        mem_usage -= sizeof(fn_function) + sizeof(value)*f->stub->num_opt
-            + sizeof(upvalue_cell*)*f->stub->num_upvals;
-        free(((fn_function*)o)->init_vals);
-        fun_pool.free_object((fn_function*)o);
+        mem_usage -= sizeof(fn_function);
+        free(f);
     }
         break;
     case GC_TYPE_FUN_STUB: {
@@ -162,7 +160,7 @@ void alloc_table(istate* S, value* where) {
     add_obj(S->alloc, &res->h);
 }
 
-static function_stub* mk_func_stub(allocator* alloc, symbol_id ns_id) {
+static function_stub* mk_fun_stub(allocator* alloc, symbol_id ns_id) {
     auto res = (function_stub*)alloc_bytes(alloc, (sizeof(function_stub)));
     init_gc_header(&res->h, GC_TYPE_FUN_STUB);
     new (&res->code) dyn_array<u8>;
@@ -186,7 +184,7 @@ static function_stub* mk_func_stub(allocator* alloc, symbol_id ns_id) {
 
 void alloc_sub_stub(istate* S, function_stub* where) {
     collect(S);
-    auto res = mk_func_stub(S->alloc, where->ns_id);
+    auto res = mk_fun_stub(S->alloc, where->ns_id);
     where->sub_funs.push_back(res);
     ++S->alloc->count;
     add_obj(S->alloc, &res->h);
@@ -200,7 +198,7 @@ void alloc_empty_fun(istate* S,
     init_gc_header(&res->h, GC_TYPE_FUNCTION);
     res->init_vals = nullptr;
     res->upvals = nullptr;
-    res->stub = mk_func_stub(S->alloc, ns_id);
+    res->stub = mk_fun_stub(S->alloc, ns_id);
     *where = vbox_function(res);
     S->alloc->count += 2;
     add_obj(S->alloc, &res->h);
@@ -212,16 +210,18 @@ void alloc_foreign_fun(istate* S,
         void (*foreign)(istate*),
         u32 num_params,
         bool vari,
-        symbol_id ns_id) {
+        u32 num_upvals) {
     collect(S);
-    auto res = (fn_function*)alloc_bytes(S->alloc, sizeof(fn_function));
+    auto res = (fn_function*)alloc_bytes(S->alloc, sizeof(fn_function)
+            + num_upvals * sizeof(upvalue_cell*));
     init_gc_header(&res->h, GC_TYPE_FUNCTION);
     res->init_vals = nullptr;
-    res->upvals = nullptr;
-    res->stub = mk_func_stub(S->alloc, ns_id);
+    res->upvals = (upvalue_cell**)((u8*)res + sizeof(fn_function));
+    res->stub = mk_fun_stub(S->alloc, S->ns_id);
     res->stub->foreign = foreign;
     res->stub->num_params = num_params;
     res->stub->num_opt = 0;
+    res->stub->num_upvals = num_upvals;
     res->stub->vari = vari;
     *where = vbox_function(res);
     S->alloc->count += 2;
@@ -266,13 +266,13 @@ static upvalue_cell* open_upval(istate* S, u32 pos) {
 void alloc_fun(istate* S, value* where, fn_function* enclosing,
         function_stub* stub) {
     collect(S);
-    auto res = S->alloc->fun_pool.new_object();
-    S->alloc->mem_usage += sizeof(fn_function);
     // size of upvals + initvals arrays
-    auto sz = stub->num_opt*sizeof(value)
-        + stub->num_upvals*sizeof(upvalue_cell);
+    auto sz = sizeof(fn_function)
+        + stub->num_upvals*sizeof(upvalue_cell)
+        + stub->num_opt*sizeof(value);
+    auto res = (fn_function*)alloc_bytes(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_FUNCTION);
-    res->init_vals = (value*)alloc_bytes(S->alloc, sz);
+    res->init_vals = (value*)((u8*)res + sizeof(fn_function));
     for (u32 i = 0; i < stub->num_opt; ++i) {
         res->init_vals[i] = V_NIL;
     }

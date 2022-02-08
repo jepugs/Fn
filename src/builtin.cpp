@@ -95,6 +95,10 @@ fn_fun(ceil, "ceil", "(x)") {
     push_number(S, ceil(vnumber(x0)));
 }
 
+fn_fun(gensym, "gensym", "()") {
+    push_sym(S, gensym(S));
+}
+
 fn_fun(add, "+", "(& args)") {
     f64 res = 0;
     for (u32 i = S->bp; i < S->sp; ++i) {
@@ -286,6 +290,8 @@ fn_fun(metatable, "metatable", "(table)") {
 }
 
 void install_builtin(istate* S) {
+    auto save_ns = S->ns_id;
+    switch_ns(S, cached_sym(S, SC_FN_BUILTIN));
     fn_add_builtin(S, eq);
     // fn_add_builtin(S, same_q);
 
@@ -299,7 +305,7 @@ void install_builtin(istate* S) {
 
     // fn_add_builtin(S, intern);
     // fn_add_builtin(S, symname);
-    // fn_add_builtin(S, gensym);
+    fn_add_builtin(S, gensym);
 
     fn_add_builtin(S, add);
     fn_add_builtin(S, sub);
@@ -351,7 +357,10 @@ void install_builtin(istate* S) {
     // these should be replaced with proper I/O facilities
     // fn_add_builtin(S, print);
     // fn_add_builtin(S, println);
+
+    S->ns_id = save_ns;
+    copy_defs(S, get_ns(S, save_ns),
+            get_ns(S, cached_sym(S, SC_FN_BUILTIN)), "");
 }
 
 }
-

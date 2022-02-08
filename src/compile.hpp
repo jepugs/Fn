@@ -68,6 +68,7 @@ private:
     void compile_call(llir_call* form, bool tail);
     void compile_apply(llir_apply* form, bool tail);
     void compile_def(llir_def* form);
+    void compile_defmacro(llir_defmacro* form);
     void compile_fn(llir_fn* form);
     void compile_set(llir_set* form);
     void compile_var(llir_var* form);

@@ -94,6 +94,19 @@ void free_function_tree(istate* S, function_tree* ft) {
     delete ft;
 }
 
+bool expander::is_macro(symbol_id sym) {
+    auto fqn = resolve_sym(S, S->ns_id, sym);
+    return S->G->macro_tab.has_key(fqn);
+}
+
+bool expander::is_macro_call(ast_form* ast) {
+    if (ast->kind == ak_list && ast->list_length > 0) {
+        auto op = ast->datum.list[0];
+        return op->kind == ak_symbol_atom && is_macro(op->datum.sym);
+    }
+    return false;
+}
+
 bool expander::is_operator_list(const string& op_name, ast_form* ast) {
     if (ast->kind != ak_list) {
         return false;
@@ -285,18 +298,46 @@ bool expander::is_letfn(ast_form* ast) {
     return is_operator_list("letfn", ast);
 }
 
-void expander::flatten_do_body(u32 length,
+bool expander::macroexpand_body(u32 length, ast_form** lst,
+        dyn_array<ast_form*>* buf, expander_meta* meta) {
+    for (u32 i = 0; i < length; ++i) {
+        auto ast = lst[i];
+        if (is_macro_call(ast)) {
+            auto sym = ast->datum.list[0]->datum.sym;
+            ast = macroexpand(ast->loc, sym, ast->list_length - 1,
+                    &ast->datum.list[1], meta);
+            if (!ast) {
+                return false;
+            }
+            buf->push_back(ast);
+        } else {
+            buf->push_back(ast->copy());
+        }
+    }
+    return true;
+}
+
+bool expander::flatten_do_body(u32 length,
         ast_form** lst,
         dyn_array<ast_form*>* buf,
         expander_meta* meta) {
-    for (u32 i = 0; i < length; ++i) {
-        if (is_do_inline(lst[i])) {
-            // this will just splice in the other forms
-            flatten_do_body(lst[i]->list_length-1, &lst[i]->datum.list[1], buf, meta);
-        } else {
-            buf->push_back(lst[i]);
+    // expand macros first
+    dyn_array<ast_form*> expanded;
+    if (!macroexpand_body(length, lst, &expanded, meta)) {
+        for (auto ast : expanded) {
+            free_ast_form(ast);
         }
+        return false;
     }
+    for (auto ast : expanded) {
+        if (is_do_inline(ast)) {
+            flatten_do_body(ast->list_length-1, &ast->datum.list[1], buf, meta);
+        } else {
+            buf->push_back(ast->copy());
+        }
+        free_ast_form(ast);
+    }
+    return true;
 }
 
 llir_form* expander::expand_let_in_do(u32 length,
@@ -400,6 +441,9 @@ bool expander::expand_do_recur(u32 length,
         ast_form** ast_body,
         dyn_array<llir_form*>* buf,
         expander_meta* meta) {
+    if (length == 0) {
+        return true;
+    }
     for (u32 i = 0; i < length; ++i) {
         auto ast = ast_body[i];
         if (is_let(ast)) {
@@ -455,23 +499,31 @@ llir_form* expander::expand_body(const source_loc& loc,
 
     dyn_array<ast_form*> ast_buf;
     flatten_do_body(length, lst, &ast_buf, meta);
+    llir_form* res;
 
     // check if first form is let or letfn to avoid wrapping with an empty with
     if (is_let(ast_buf[0])) {
-        return expand_let_in_do(ast_buf.size, ast_buf.data, meta);
+        res = expand_let_in_do(ast_buf.size, ast_buf.data, meta);
     } else if (is_letfn(ast_buf[0])) {
-        return expand_letfn_in_do(ast_buf.size, ast_buf.data, meta);
+        res = expand_letfn_in_do(ast_buf.size, ast_buf.data, meta);
+    } else {
+        dyn_array<llir_form*> llir_buf;
+        if (!expand_do_recur(ast_buf.size, ast_buf.data, &llir_buf, meta)) {
+            for (auto ast : ast_buf) {
+                free_ast_form(ast);
+            }
+            return nullptr;
+        }
+        auto w = mk_llir_with(loc, 0, llir_buf.size);
+        for (u32 i = 0; i < llir_buf.size; ++i) {
+            w->body[i] = llir_buf[i];
+        }
+        res = (llir_form*) w;
     }
-
-    dyn_array<llir_form*> llir_buf;
-    if (!expand_do_recur(ast_buf.size, ast_buf.data, &llir_buf, meta)) {
-        return nullptr;
+    for (auto ast : ast_buf) {
+        free_ast_form(ast);
     }
-    auto res = mk_llir_with(loc, 0, llir_buf.size);
-    for (u32 i = 0; i < llir_buf.size; ++i) {
-        res->body[i] = llir_buf[i];
-    }
-    return (llir_form*)res;
+    return res;
 }
 
 llir_form* expander::expand_do_inline(const source_loc& loc,
@@ -1074,17 +1126,16 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
     auto& loc = lst->loc;
     auto sym = lst->datum.list[0]->datum.sym;
     // first check for macros
-    // if (is_macro(sym)) {
-    //     auto ast = inter->expand_macro(sym, chunk->ns_id,
-    //             lst->list_length - 1, &lst->datum.list[1], loc, err);
-    //     if (!ast) {
-    //         err->message = "(During macroexpansion): " + err->message;
-    //         return nullptr;
-    //     }
-    //     auto res = expand_meta(ast, meta);
-    //     free_ast_form(ast);
-    //     return res;
-    // }
+    if (is_macro(sym)) {
+        auto form = macroexpand(loc, sym, lst->list_length - 1,
+                &lst->datum.list[1], meta);
+        if (!form) {
+            return nullptr;
+        }
+        auto res = expand_meta(form, meta);
+        free_ast_form(form);
+        return res;
+    }
 
     auto name = (*S->symtab)[sym];
     // special forms
@@ -1137,6 +1188,39 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
 
     // function calls
     return expand_call(lst->loc, lst->list_length, lst->datum.list, meta);
+}
+
+ast_form* expander::macroexpand1(const source_loc& loc, symbol_id name,
+        u32 num_args, ast_form** args, expander_meta* meta) {
+    push_macro(S, resolve_sym(S, S->ns_id, name));
+    for (u32 i = 0; i < num_args; ++i) {
+        push_quoted(S, args[i]);
+    }
+    call(S, num_args);
+    if (S->err_happened) {
+        return nullptr;
+    }
+    return pop_syntax(S, loc);
+}
+
+ast_form* expander::macroexpand(const source_loc& loc, symbol_id name,
+        u32 num_args, ast_form** args, expander_meta* meta) {
+    auto ast = macroexpand1(loc, name, num_args, args, meta);
+    // macroexpand recursively
+    do {
+        if (!ast) {
+            return nullptr;
+        } else if (is_macro_call(ast)) {
+            auto tmp = ast;
+            auto sym = ast->datum.list[0]->datum.sym;
+            ast = macroexpand1(ast->loc, sym, ast->list_length - 1,
+                    &ast->datum.list[1], meta);
+            free_ast_form(tmp);
+        } else {
+            break;
+        }
+    } while (true);
+    return ast;
 }
 
 llir_form* expander::expand_list(ast_form* lst, expander_meta* meta) {

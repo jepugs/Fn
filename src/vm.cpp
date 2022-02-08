@@ -278,6 +278,7 @@ void execute_fun(istate* S) {
         }
             break;
         case OP_SET_GLOBAL: {
+            // FIXME: check that the ID is a symbol
             auto id = code_short(S, pc);
             pc += 2;
             auto fqn = S->callee->stub->const_arr[id];
@@ -311,7 +312,28 @@ void execute_fun(istate* S) {
             S->sp -= 2;
         }
             break;
-
+        case OP_MACRO: {
+            auto id = code_short(S, pc);
+            pc += 2;
+            auto fqn = vsymbol(S->callee->stub->const_arr[id]);
+            auto x = S->G->macro_tab.get2(fqn);
+            if (!x) {
+                ierror(S, "Failed to find global variable " + (*S->symtab)[fqn]);
+                return;
+            }
+            push(S, vbox_function(x->val));
+        }
+            break;
+        case OP_SET_MACRO: {
+            // FIXME: check whether the new macro is a function and the name is
+            // a symbol.
+            auto id = code_short(S, pc);
+            pc += 2;
+            auto fqn = S->callee->stub->const_arr[id];
+            set_macro(S, vsymbol(fqn), vfunction(peek(S, 0)));
+            S->stack[S->sp-1] = fqn;
+        }
+            break;
         case OP_CONST:
             push(S, S->callee->stub->const_arr[code_short(S, pc)]);
             pc += 2;

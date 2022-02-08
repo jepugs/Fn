@@ -116,8 +116,6 @@ inline u8 instr_width(u8 instr) {
     case OP_RETURN:
     case OP_OBJ_GET:
     case OP_OBJ_SET:
-    case OP_MACRO:
-    case OP_SET_MACRO:
     case OP_IMPORT:
     case OP_TABLE:
         return 1;
@@ -136,6 +134,8 @@ inline u8 instr_width(u8 instr) {
         return 2;
     case OP_GLOBAL:
     case OP_SET_GLOBAL:
+    case OP_MACRO:
+    case OP_SET_MACRO:
     case OP_CONST:
     case OP_JUMP:
     case OP_CJUMP:

@@ -65,6 +65,7 @@ private:
     function_tree* ft;
 
     bool is_macro(symbol_id sym);
+    bool is_macro_call(ast_form* form);
 
     bool is_operator_list(const string& op_name, ast_form* form);
 
@@ -97,7 +98,7 @@ private:
     bool is_let(ast_form* ast);
     bool is_letfn(ast_form* ast);
     // lst doesn't include the do symbol at 0
-    void flatten_do_body(u32 length,
+    bool flatten_do_body(u32 length,
             ast_form** lst,
             dyn_array<ast_form*>* buf,
             expander_meta* meta);
@@ -215,6 +216,19 @@ private:
     llir_form* expand_call(const source_loc& loc,
             u32 len,
             ast_form** lst,
+            expander_meta* meta);
+    // macro expansion functions
+    ast_form* macroexpand(const source_loc& loc,
+            symbol_id name,
+            u32 num_args,
+            ast_form** args,
+            expander_meta* meta);
+    ast_form* macroexpand1(const source_loc& loc,
+            symbol_id name,
+            u32 num_args,
+            ast_form** args,
+            expander_meta* meta);
+    bool macroexpand_body(u32 length, ast_form** lst, dyn_array<ast_form*>* buf,
             expander_meta* meta);
     // assumes lst[0] is a symbol
     llir_form* expand_symbol_list(ast_form* lst, expander_meta* meta);

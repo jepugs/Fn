@@ -39,6 +39,19 @@ void set_global(istate* S, symbol_id fqn, value new_val) {
     S->G->def_tab.insert(fqn, new_val);
 }
 
+bool push_macro(istate* S, symbol_id fqn) {
+    auto res = S->G->macro_tab.get(fqn);
+    if (!res.has_value()) {
+        return false;
+    }
+    push(S, vbox_function(*res));
+    return true;
+}
+
+void set_macro(istate* S, symbol_id fqn, fn_function* fun) {
+    S->G->macro_tab.insert(fqn, fun);
+}
+
 fn_namespace* add_ns(istate* S, symbol_id ns_id) {
     auto x = S->G->ns_tab.get(ns_id);
     if (x.has_value()) {
@@ -46,6 +59,7 @@ fn_namespace* add_ns(istate* S, symbol_id ns_id) {
     }
     auto res = new fn_namespace{.id = ns_id};
     S->G->ns_tab.insert(ns_id, res);
+    copy_defs(S, res, get_ns(S, cached_sym(S, SC_FN_BUILTIN)), "");
     return res;
 }
 
@@ -59,6 +73,9 @@ fn_namespace* get_ns(istate* S, symbol_id ns_id) {
 
 bool copy_defs(istate* S, fn_namespace* dest, fn_namespace* src,
         const string& prefix, bool overwrite) {
+    if (dest == nullptr || src == nullptr) {
+        return true;
+    }
     for (auto e : src->resolve) {
         auto name = intern(S, prefix + symname(S, e->key));
         if (!overwrite && dest->resolve.has_key(name)) {
@@ -68,6 +85,10 @@ bool copy_defs(istate* S, fn_namespace* dest, fn_namespace* src,
         dest->resolve.insert(name, e->val);
     }
     return true;
+}
+
+void switch_ns(istate* S, symbol_id new_ns) {
+    S->ns_id = add_ns(S, new_ns)->id;
 }
 
 void ns_id_destruct(const string& ns_id, string* prefix, string* stem) {
