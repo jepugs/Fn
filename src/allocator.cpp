@@ -205,6 +205,17 @@ void alloc_empty_fun(istate* S,
     add_obj(S->alloc, &res->stub->h);
 }
 
+static void alloc_upval(istate* S, upvalue_cell** where, u32 pos) {
+    collect(S);
+    auto res = new upvalue_cell;
+    init_gc_header(&res->h, GC_TYPE_UPVALUE);
+    res->closed = false;
+    res->datum.pos = pos;
+    *where = res;
+    S->alloc->count += 1;
+    add_obj(S->alloc, &res->h);
+}
+
 void alloc_foreign_fun(istate* S,
         value* where,
         void (*foreign)(istate*),
@@ -217,6 +228,11 @@ void alloc_foreign_fun(istate* S,
     init_gc_header(&res->h, GC_TYPE_FUNCTION);
     res->init_vals = nullptr;
     res->upvals = (upvalue_cell**)((u8*)res + sizeof(fn_function));
+    for (u32 i = 0; i < num_upvals; ++i) {
+        alloc_upval(S, &res->upvals[i], 0);
+        res->upvals[i]->datum.val = V_NIL;
+        res->upvals[i]->closed = true;
+    }
     res->stub = mk_fun_stub(S->alloc, S->ns_id);
     res->stub->foreign = foreign;
     res->stub->num_params = num_params;
@@ -227,17 +243,6 @@ void alloc_foreign_fun(istate* S,
     S->alloc->count += 2;
     add_obj(S->alloc, &res->h);
     add_obj(S->alloc, &res->stub->h);
-}
-
-static void alloc_upval(istate* S, upvalue_cell** where, u32 pos) {
-    collect(S);
-    auto res = new upvalue_cell;
-    init_gc_header(&res->h, GC_TYPE_UPVALUE);
-    res->closed = false;
-    res->datum.pos = pos;
-    *where = res;
-    S->alloc->count += 1;
-    add_obj(S->alloc, &res->h);
 }
 
 static upvalue_cell* open_upval(istate* S, u32 pos) {
