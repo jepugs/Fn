@@ -202,12 +202,11 @@ fn_fun(List, "List", "(& args)") {
 }
 
 fn_fun(cons, "cons", "(hd tl)") {
-    auto hd = get(S, 0);
     auto tl = get(S, 1);
     if (tl != V_EMPTY && !vis_cons(tl)) {
         ierror(S, "cons tail must be a list");
     }
-    push_cons(S, hd, tl);
+    push_cons(S, S->bp, S->bp + 1);
 }
 
 fn_fun(head, "head", "(x)") {
@@ -253,7 +252,7 @@ fn_fun(Table, "Table", "(& args)") {
             ierror(S, "Table requires an even number of arguments.");
             return;
         }
-        res->contents.insert(S->stack[i], S->stack[i+1]);
+        table_set(S, res, S->stack[i], S->stack[i+1]);
     }
 }
 
@@ -264,12 +263,13 @@ fn_fun(get, "get", "(obj & keys)") {
             ierror(S, "get can only descend on tables.");
             return;
         }
-        auto x = vtable(peek(S))->contents.get2(S->stack[i]);
+
+        auto x = table_get(S, vtable(peek(S)), S->stack[i]);
         if (!x) {
             ierror(S, "get failed: no such key.");
             return;
         }
-        S->stack[S->sp-1] = x->val;
+        S->stack[S->sp-1] = x[1];
     }
 }
 

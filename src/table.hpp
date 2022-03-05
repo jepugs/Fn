@@ -171,6 +171,27 @@ public:
         }
     }
 
+    // get a pointer using a precomputed hash
+    entry* get_ph(const K& k, u64 hash_val) const {
+        u32 i = hash_val % this->cap;
+        // this count is so that we don't wrap around a full array
+        u64 ct = 0;
+        // do linear probing
+        while(ct < cap) {
+            if (array[i].live) {
+                if (array[i].key == k) {
+                    // found the key
+                    return &array[i];
+                }
+            } else {
+                return nullptr;
+            }
+            i = (i+1) % cap;
+            ++ct;
+        }
+        return nullptr;
+    }
+
     bool has_key(const K& k) const {
         u32 h = hash(k);
         u32 i = h % this->cap;

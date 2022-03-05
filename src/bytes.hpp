@@ -132,8 +132,6 @@ inline u8 instr_width(u8 instr) {
     case OP_APPLY:
     case OP_TAPPLY:
         return 2;
-    case OP_GLOBAL:
-    case OP_SET_GLOBAL:
     case OP_MACRO:
     case OP_SET_MACRO:
     case OP_CONST:
@@ -141,6 +139,9 @@ inline u8 instr_width(u8 instr) {
     case OP_CJUMP:
     case OP_CLOSURE:
         return 3;
+    case OP_GLOBAL:
+    case OP_SET_GLOBAL:
+        return 5;
     default:
         // TODO: shouldn't get here. maybe raise a warning?
         return 1;

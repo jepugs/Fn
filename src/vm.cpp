@@ -20,8 +20,9 @@ namespace fn {
 // must have the istate variable passed in directly or it could be computed
 // multiple times.
 #define cur_fun() (vfunction(S->stack[S->bp-1]))
-#define code_byte(S, where) (S->code[where])
-#define code_short(S, where) (*((u16*)&S->code[where]))
+#define code_byte(S, where) (S->callee->stub->code.data[where])
+#define code_short(S, where) (*((u16*)&S->callee->stub->code.data[where]))
+#define code_u32(S, where) (*((u32*)&S->callee->stub->code.data[where]))
 #define push(S, v) S->stack[S->sp] = v;++S->sp;
 #define peek(S, i) (S->stack[S->sp-((i))-1])
 
@@ -44,19 +45,19 @@ static inline void close_upvals(istate* S, u32 min_addr) {
 // function creation requires initvals to be present on the stack. After popping
 // initvals, the new function is pushed to the top of the stack. Upvalues are
 // opened or copied from the enclosing function as needed.
-static inline void create_fun(istate* S, fn_function* enclosing, constant_id fid) {
-    auto stub = enclosing->stub->sub_funs[fid];
+static inline void create_fun(istate* S, u32 enclosing, constant_id fid) {
     push(S, V_NIL);
     // this sets up upvalues, and initializes initvals to nil
-    alloc_fun(S, &S->stack[S->sp - 1], enclosing, stub);
+    alloc_fun(S, S->sp - 1, enclosing, fid);
     auto fun = vfunction(S->stack[S->sp - 1]);
     // set up initvals
-    for (u32 i = 0; i < stub->num_opt; ++i) {
-        fun->init_vals[i] = S->stack[S->sp - 1 - stub->num_opt + i];
+    auto num_opt = fun->stub->num_opt;
+    for (u32 i = 0; i < num_opt; ++i) {
+        fun->init_vals[i] = S->stack[S->sp - 1 - num_opt + i];
     }
     // move the function to the appropriate place on the stack
-    S->stack[S->sp - 1 - stub->num_opt] = S->stack[S->sp - 1];
-    S->sp = S->sp - stub->num_opt;
+    S->stack[S->sp - 1 - num_opt] = S->stack[S->sp - 1];
+    S->sp = S->sp - num_opt;
 }
 
 // on success returns true and sets place on stack to the method. On failure
@@ -66,11 +67,11 @@ static inline bool get_method(istate* S, fn_table* tab, value key, u32 place) {
     if (!vis_table(m)) {
         return false;
     }
-    auto x = vtable(m)->contents.get(key);
-    if (!x.has_value()) {
+    auto x = table_get(S, vtable(m), key);
+    if (!x) {
         return false;
     }
-    S->stack[place] = *x;
+    S->stack[place] = x[1];
     return true;
 }
 
@@ -152,10 +153,8 @@ void call(istate* S, u32 n) {
         foreign_call(S, fun, n);
     } else {
         auto save_bp = S->bp;
-        auto save_code = S->code;
-        auto save_callee = S->callee;
+        bool restore_callee = S->callee;
         S->callee = fun;
-        S->code = fun->stub->code.data;
         S->bp = S->sp - n;
         if (S->bp + fun->stub->space >= STACK_SIZE) {
             ierror(S, "Not enough stack space for call.");
@@ -177,8 +176,7 @@ void call(istate* S, u32 n) {
         S->stack[S->bp-1] = peek(S, 0);
         S->sp = S->bp;  // with the return value, this is the new stack pointer
         S->bp = save_bp;
-        S->callee = save_callee;
-        S->code = save_code;
+        S->callee = restore_callee ? vfunction(S->stack[save_bp - 1]) : nullptr;
     }
 }
 
@@ -195,10 +193,9 @@ static inline bool tail_call(istate* S, u8 n, u32* pc) {
     }
     // set these so the GC can't get 'em before we're done
     S->callee = fun;
-    S->code = fun->stub->code.data;
+    S->stack[S->bp - 1] = callee;
     close_upvals(S, S->bp);
     // move the new call information to the base pointer
-    S->stack[S->bp - 1] = callee;
     for (u32 i = 0; i < n; ++i) {
         S->stack[S->bp + i] = S->stack[S->sp - n + i];
     }
@@ -252,7 +249,7 @@ void execute_fun(istate* S) {
         case OP_CLOSURE: {
             auto fid = code_short(S, pc);
             pc += 2;
-            create_fun(S, S->callee, fid);
+            create_fun(S, S->bp-1, fid);
         }
             break;
         case OP_CLOSE: {
@@ -265,25 +262,23 @@ void execute_fun(istate* S) {
         }
             break;
         case OP_GLOBAL: {
-            auto id = code_short(S, pc);
-            pc += 2;
-            auto fqn = vsymbol(S->callee->stub->const_arr[id]);
-            auto x = S->G->def_tab.get2(fqn);
-            if (!x) {
-                ierror(S, "Failed to find global variable " + (*S->symtab)[fqn]);
+            auto id = code_u32(S, pc);
+            pc += 4;
+            auto v = S->G->def_arr[id];
+            if (v == V_UNIN) {
+                ierror(S, "Failed to find global variable.");
                 S->pc = pc;
                 return;
             }
-            push(S, x->val);
+            push(S, v);
+
         }
             break;
         case OP_SET_GLOBAL: {
-            // FIXME: check that the ID is a symbol
-            auto id = code_short(S, pc);
-            pc += 2;
-            auto fqn = S->callee->stub->const_arr[id];
-            set_global(S, vsymbol(fqn), peek(S, 0));
-            S->stack[S->sp-1] = fqn;
+            auto id = code_u32(S, pc);
+            pc += 4;
+            S->G->def_arr[id] = peek(S,0);
+            S->stack[S->sp-1] = V_NIL;
         }
             break;
         case OP_OBJ_GET: {
@@ -292,10 +287,10 @@ void execute_fun(istate* S) {
                 S->pc = pc;
                 return;
             }
-            auto x = vtable(peek(S, 1))->contents.get(peek(S, 0));
+            auto x = table_get(S, vtable(peek(S, 1)), peek(S, 0));
             S->sp -= 2;
-            if (x.has_value()) {
-                push(S, *x);
+            if (x) {
+                push(S, x[1]);
             } else {
                 push(S, V_NIL);
             }
@@ -307,7 +302,8 @@ void execute_fun(istate* S) {
                 S->pc = pc;
                 return;
             }
-            vtable(peek(S, 2))->contents.insert(peek(S, 1), peek(S, 0));
+            table_set(S, vtable(peek(S, 2)), peek(S, 1), peek(S, 0));
+            // vtable(peek(S, 2))->contents.insert(peek(S, 1), peek(S, 0));
             S->stack[S->sp - 3] = peek(S, 0);
             S->sp -= 2;
         }

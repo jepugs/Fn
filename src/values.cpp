@@ -89,22 +89,23 @@ string v_to_string(value v, const symbol_table* symbols, bool code_format) {
             return string{(char*)vstring(v)->data};
         }
     case TAG_TABLE:
-        {   // TODO: recursively track which objects we've descended into
-            t = vtable(v);
-            auto keys = t->contents.keys();
-            if (keys.empty()) {
-                return "{}";
-            }
-            res = "{";
-            auto k = keys.front();
-            res += v_to_string(k,symbols,code_format) + " "
-                + v_to_string(*t->contents.get(k),symbols,code_format);
-            keys.pop_front();
-            for (auto k : keys) {
-                res += " " + v_to_string(k,symbols) + " "
-                    + v_to_string(*t->contents.get(k),symbols,code_format);
-            }
-            return res + "}";
+        {   // TODO: recursively print objects
+            //t = vtable(v);
+            // auto keys = t->contents.keys();
+            // if (keys.empty()) {
+            //     return "{}";
+            // }
+            // res = "{";
+            // auto k = keys.front();
+            // res += v_to_string(k,symbols,code_format) + " "
+            //     + v_to_string(*t->contents.get(k),symbols,code_format);
+            // keys.pop_front();
+            // for (auto k : keys) {
+            //     res += " " + v_to_string(k,symbols) + " "
+            //         + v_to_string(*t->contents.get(k),symbols,code_format);
+            // }
+            // return res + "}";
+            return "{}";
         }
     case TAG_FUNC:
         return "<function>";

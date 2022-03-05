@@ -27,16 +27,23 @@ symbol_id resolve_sym(istate* S, symbol_id ns_id, symbol_id name) {
 }
 
 bool push_global(istate* S, symbol_id fqn) {
-    auto res = S->G->def_tab.get(fqn);
-    if (!res.has_value()) {
+    auto res = S->G->def_tab.get2(fqn);
+    if (!res) {
         return false;
     }
-    push(S, *res);
+    push(S, S->G->def_arr[res->val]);
     return true;
 }
 
 void set_global(istate* S, symbol_id fqn, value new_val) {
-    S->G->def_tab.insert(fqn, new_val);
+    auto x = S->G->def_tab.get2(fqn);
+    if (x) {
+        S->G->def_arr[x->val] = new_val;
+    } else {
+        auto id = S->G->def_arr.size;
+        S->G->def_arr.push_back(new_val);
+        S->G->def_tab.insert(fqn, id);
+    }
 }
 
 bool push_macro(istate* S, symbol_id fqn) {

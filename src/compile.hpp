@@ -79,11 +79,15 @@ private:
     // functions to write to code
     void write_byte(u8 u);
     void write_short(u16 u);
+    void write_u32(u32 u);
+    u32 read_u32(u32 where);
     void patch_byte(u8 u, u32 where);
     void patch_short(u16 u, u32 where);
     void patch_jump(u32 jmp_addr, u32 dest);
     lexical_var* lookup_var(symbol_id sid);
     local_upvalue* lookup_upval(symbol_id sid);
+
+    u32 get_global_id(symbol_id fqn);
 
     void compile_error(const string& msg);
 

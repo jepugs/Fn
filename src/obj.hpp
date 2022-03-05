@@ -25,7 +25,7 @@ constexpr u8 OBJ_ALIGN      = 32;
 
 constexpr u64 TAG_NUM       = 0x00;
 
-// NOTE: I want these to line up with the GC_TYPE tags in base.hpp
+// NOTE: I want these to line up with the GC_TYPE tags
 constexpr u64 TAG_STRING    = 0x01;
 constexpr u64 TAG_CONS      = 0x02;
 constexpr u64 TAG_TABLE     = 0x03;
@@ -50,41 +50,41 @@ union value {
     bool operator!=(const value& v) const;
 };
 
-// bits used in the gc_header
-constexpr u8 GC_GLOBAL_BIT      = 0x10;
-constexpr u8 GC_TYPE_BITMASK    = 0x0f;
-
 // GC Types
-// NOTE: I want these five to line up with the type tags in values.hpp
 constexpr u8 GC_TYPE_STRING     = 0x01;
 constexpr u8 GC_TYPE_CONS       = 0x02;
 constexpr u8 GC_TYPE_TABLE      = 0x03;
 constexpr u8 GC_TYPE_FUNCTION   = 0x04;
-constexpr u8 GC_TYPE_BIGNUM     = 0x05;
 constexpr u8 GC_TYPE_UPVALUE    = 0x0a;
 // function stubs (hold code, etc)
 constexpr u8 GC_TYPE_FUN_STUB   = 0x06;
-// vm_state objects
-constexpr u8 GC_TYPE_VM_STATE   = 0x08;
 
-// currently unused (intended for use by copying collector)
+// dynamic arrays managed by the GC
+constexpr u8 GC_TYPE_GCARRAY    = 0x0e;
+// for use by the copying collector
 constexpr u8 GC_TYPE_FORWARD    = 0x0f;
 
 // header contained at the beginning of every object
 struct alignas (OBJ_ALIGN) gc_header {
-    u8 mark;
-    u8 bits;
-    // used to include objects in a list
-    gc_header* next;
+    u8 type;
+    u32 size;
+    // used for copying objects
+    gc_header* forward;
+};
+
+struct alignas (OBJ_ALIGN) gc_array {
+    gc_header h;
+    u32 size;
+    u32 entry_size;
+    u8 data[0];
 };
 
 // initialize a gc header in place
-void init_gc_header(gc_header* dest, u8 gc_type);
+void init_gc_header(gc_header* dest, u8 type, u32 size);
 // set a header to designate that its object has been moved to ptr
 void set_gc_forward(gc_header* dest, gc_header* ptr);
 
-// number of children per node in the table
-constexpr u8 FN_TABLE_BREADTH = 32;
+constexpr u8 FN_TABLE_INIT_CAP = 16;
 
 // a string of fixed size
 struct alignas (OBJ_ALIGN) fn_string {
@@ -101,17 +101,23 @@ struct alignas (OBJ_ALIGN) fn_cons {
     value tail;
 };
 
-// fn tables are represented by hash tries
+// hash tables
 struct alignas (OBJ_ALIGN) fn_table {
     gc_header h;
-    // when mutated, the table is added to this GC list
-    gc_header* updated_list;
+    // number of entries in the tables
+    u32 size;
+    // full size of the hash table
+    u32 cap;
+    // size at which the table will be rehashed
+    u32 rehash;
+    // array of size 2*cap*sizeof(value) holding the table
+    gc_array* data;
+    value* contents;
     value metatable;
-    table<value,value> contents;
 };
 
 // A location storing a captured variable. These are shared across functions.
-struct upvalue_cell {
+struct alignas(OBJ_ALIGN) upvalue_cell {
     gc_header h;
     bool closed;
     union {
@@ -142,7 +148,7 @@ struct code_info {
 
 
 // a stub describing a function
-struct function_stub {
+struct alignas(OBJ_ALIGN) function_stub {
     // function stubs are managed by the garbage collector
     gc_header h;
 
@@ -151,8 +157,7 @@ struct function_stub {
     bool vari;          // variadic parameter
     u8 space;           // stack space required
 
-    // if foreign != nullptr, then all following fields are ignored, and calling
-    // this function will be deferred to calling foreign
+    // if foreign != nullptr, then this is a foreign function
     void (*foreign)(istate*);
 
     dyn_array<u8> code;                  // code for the function
@@ -182,8 +187,6 @@ code_info* instr_loc(function_stub* stub, u32 pc);
 // represents a function value
 struct alignas (OBJ_ALIGN) fn_function {
     gc_header h;
-    // when an upvalue is mutated, the function is added to this GC list
-    gc_header* updated_list;
     function_stub* stub;
     upvalue_cell** upvals;
     value* init_vals;

@@ -3,13 +3,13 @@
 
 namespace fn {
 
-void init_gc_header(gc_header* dest, u8 bits) {
+void init_gc_header(gc_header* dest, u8 type, u32 size) {
     if (dest == nullptr) {
         dest = new gc_header;
     }
     new(dest) gc_header {
-        .mark = 0,
-        .bits=bits
+        .type=type,
+            .size = size
     };
 }
 
@@ -56,9 +56,9 @@ symbol_id symbol_table::intern(const string& str) {
         // this is just fatal lmao
         throw std::runtime_error("Symbol table exhausted.");
     }
-    auto v = by_name.get(str);
-    if (v.has_value()) {
-        return v->id;
+    auto v = by_name.get2(str);
+    if (v) {
+        return v->val.id;
     } else {
         u32 id = by_id.size;
         symtab_entry s{id, new string{str}};

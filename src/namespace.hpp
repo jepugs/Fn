@@ -14,8 +14,11 @@ struct fn_namespace {
 };
 
 struct global_env {
-    // definitions/macros indexed by their fully qualified name (FQN)
-    table<symbol_id,value> def_tab;
+    // definition IDs indexed by fully qualified name (FQN)
+    table<symbol_id,u32> def_tab;
+    // actual global definitions
+    dyn_array<value> def_arr;
+    // macros indexed by FQN
     table<symbol_id,fn_function*> macro_tab;
     // table of namespaces by name
     table<symbol_id,fn_namespace*> ns_tab;

@@ -1,3 +1,4 @@
+#include "allocator.hpp"
 #include "compile.hpp"
 
 #include "vm.hpp"
@@ -10,25 +11,48 @@ void compiler::compile_error(const string& msg) {
 }
 
 void compiler::write_byte(u8 u) {
-    ft->stub->code.push_back(u);
+    handle_stub(ft->stub)->code.push_back(u);
 }
 
 void compiler::write_short(u16 u) {
     u8* data = (u8*)&u;
-    ft->stub->code.push_back(data[0]);
-    ft->stub->code.push_back(data[1]);
+    handle_stub(ft->stub)->code.push_back(data[0]);
+    handle_stub(ft->stub)->code.push_back(data[1]);
+}
+
+void compiler::write_u32(u32 u) {
+    u8* data = (u8*)&u;
+    handle_stub(ft->stub)->code.push_back(data[0]);
+    handle_stub(ft->stub)->code.push_back(data[1]);
+    handle_stub(ft->stub)->code.push_back(data[2]);
+    handle_stub(ft->stub)->code.push_back(data[3]);
+}
+
+u32 compiler::read_u32(u32 where) {
+    return *((u32*) &handle_stub(ft->stub)->code[where]);
 }
 
 void compiler::patch_short(u16 u, u32 where) {
     u8* data = (u8*)&u;
-    ft->stub->code[where] = data[0];
-    ft->stub->code[where+1] = data[1];
+    handle_stub(ft->stub)->code[where] = data[0];
+    handle_stub(ft->stub)->code[where+1] = data[1];
 }
 
 void compiler::patch_jump(u32 jmp_addr, u32 dest) {
     i64 offset = dest - jmp_addr - 3;
     // FIXME: check distance fits in 16 bits
     patch_short((i16)offset, jmp_addr+1);
+}
+
+u32 compiler::get_global_id(symbol_id fqn) {
+    auto x = S->G->def_tab.get2(fqn);
+    if (x) {
+        return x->val;
+    }
+    S->G->def_arr.push_back(V_UNIN);
+    auto id = S->G->def_arr.size - 1;
+    S->G->def_tab.insert(fqn, id);
+    return id;
 }
 
 // look up a lexical variable
@@ -63,9 +87,9 @@ local_upvalue* compiler::lookup_upval(symbol_id sid) {
             };
             uv_head = u;
             // add to the function stub
-            ++ft->stub->num_upvals;
-            ft->stub->upvals_direct.push_back(true);
-            ft->stub->upvals.push_back(l->index);
+            handle_stub(ft->stub)->upvals_direct.push_back(true);
+            handle_stub(ft->stub)->upvals.push_back(l->index);
+            ++handle_stub(ft->stub)->num_upvals;
         }
         auto v = parent->lookup_upval(sid);
         if (v) {
@@ -76,9 +100,9 @@ local_upvalue* compiler::lookup_upval(symbol_id sid) {
                 .next = uv_head
             };
             uv_head = u;
-            ++ft->stub->num_upvals;
-            ft->stub->upvals_direct.push_back(false);
-            ft->stub->upvals.push_back(v->index);
+            handle_stub(ft->stub)->upvals_direct.push_back(false);
+            handle_stub(ft->stub)->upvals.push_back(v->index);
+            ++handle_stub(ft->stub)->num_upvals;
         }
     }
     return u;
@@ -96,6 +120,7 @@ void compile_form(istate* S, ast_form* ast) {
     }
     compiler c{S, ft};
     c.compile();
+
     // no longer need the tree
     free_function_tree(S, ft);
 }
@@ -138,7 +163,7 @@ void compiler::compile() {
         var_head = l;
     }
     // push indicator params
-    u32 i = ft->params.size - ft->stub->num_opt;
+    u32 i = ft->params.size - handle_stub(ft->stub)->num_opt;
     for (; i < ft->params.size; ++i) {
         auto str = "?" + (*S->symtab)[ft->params[i]];
         auto l = new lexical_var {
@@ -160,7 +185,7 @@ void compiler::update_hwm(u32 local_hwm) {
 }
 
 void compiler::compile_llir(llir_form* form, bool tail) {
-    update_code_info(ft->stub, form->origin);
+    update_code_info(handle_stub(ft->stub), form->origin);
     switch (form->tag) {
     case lt_apply:
         compile_apply((llir_apply*)form, tail);
@@ -184,20 +209,20 @@ void compiler::compile_llir(llir_form* form, bool tail) {
         auto x = (llir_if*)form;
         compile_llir(x->test);
 
-        auto start = ft->stub->code.size;
+        auto start = handle_stub(ft->stub)->code.size;
         write_byte(OP_CJUMP);
         write_short(0);
         --sp;
         compile_llir(x->then, tail);
         --sp;
 
-        auto end_then = ft->stub->code.size;
+        auto end_then = handle_stub(ft->stub)->code.size;
         write_byte(OP_JUMP);
         write_short(0);
 
-        patch_jump(start, ft->stub->code.size);
+        patch_jump(start, handle_stub(ft->stub)->code.size);
         compile_llir(x->elce, tail);
-        patch_jump(end_then, ft->stub->code.size);
+        patch_jump(end_then, handle_stub(ft->stub)->code.size);
     }
         break;
     case lt_fn:
@@ -246,7 +271,7 @@ void compiler::compile_call(llir_call* form, bool tail) {
         for(u32 i = 0; i < form->num_args; ++i) {
             compile_llir(form->args[i]);
         }
-        update_code_info(ft->stub, form->header.origin);
+        update_code_info(handle_stub(ft->stub), form->header.origin);
         write_byte(tail ? OP_TCALLM : OP_CALLM);
         write_byte(form->num_args);
         sp = start_sp + 1;
@@ -264,7 +289,8 @@ void compiler::compile_call(llir_call* form, bool tail) {
         compile_llir(form->args[i]);
     }
     // put code info back after processing arguments
-    update_code_info(ft->stub, form->header.origin);
+    update_code_info(handle_stub(ft->stub), form->header.origin);
+    // DEBUG
     write_byte(tail ? OP_TCALL : OP_CALL);
     write_byte(form->num_args);
     sp = start_sp + 1;
@@ -283,7 +309,7 @@ void compiler::compile_def(llir_def* form) {
     compile_llir(form->value);
     write_byte(OP_SET_GLOBAL);
     auto fqn = resolve_sym(S, S->ns_id, form->name);
-    write_short(add_const(S, ft, vbox_symbol(fqn)));
+    write_u32(get_global_id(fqn));
 }
 
 void compiler::compile_defmacro(llir_defmacro* form) {
@@ -299,16 +325,14 @@ void compiler::compile_fn(llir_fn* form) {
     for (u32 i = 0; i < form->num_opt; ++i) {
         compile_llir(form->inits[i]);
     }
-    update_code_info(ft->stub, form->header.origin);
+    update_code_info(handle_stub(ft->stub), form->header.origin);
     write_byte(OP_CLOSURE);
     write_short(form->fun_id);
     sp = start_sp + 1;
     // compile the sub function stub
     auto sub = ft->sub_funs[form->fun_id];
-    if (sub->stub->code.size == 0) {
-        compiler c{S, sub, this};
-        c.compile();
-    }
+    compiler c{S, sub, this};
+    c.compile();
 }
 
 void compiler::compile_set(llir_set* form) {
@@ -318,7 +342,7 @@ void compiler::compile_set(llir_set* form) {
         auto l = lookup_var(sid);
         if (l) {
             compile_llir(form->value);
-            update_code_info(ft->stub, form->header.origin);
+            update_code_info(handle_stub(ft->stub), form->header.origin);
             write_byte(OP_COPY);
             update_hwm(sp+1);
             write_byte(0);
@@ -329,7 +353,7 @@ void compiler::compile_set(llir_set* form) {
         auto u = lookup_upval(sid);
         if (u) {
             compile_llir(form->value);
-            update_code_info(ft->stub, form->header.origin);
+            update_code_info(handle_stub(ft->stub), form->header.origin);
             update_hwm(sp+1);
             write_byte(OP_COPY);
             write_byte(0);
@@ -382,7 +406,7 @@ void compiler::compile_var(llir_var* form) {
         if (is_fqn(symname(S,form->name))) {
             auto fqn = intern(S, symname(S, form->name).substr(1));
             write_byte(OP_GLOBAL);
-            write_short(add_const(S, ft, vbox_symbol(fqn)));
+            write_u32(get_global_id(fqn));
             return;
         }
         auto l = lookup_var(form->name);
@@ -399,7 +423,7 @@ void compiler::compile_var(llir_var* form) {
         }
         auto fqn = resolve_sym(S, S->ns_id, form->name);
         write_byte(OP_GLOBAL);
-        write_short(add_const(S, ft, vbox_symbol(fqn)));
+        write_u32(get_global_id(fqn));
     }
 }
 
@@ -425,7 +449,7 @@ void compiler::compile_with(llir_with* form, bool tail) {
     }
     for (u32 i = 0; i < form->num_vars; ++i) {
         compile_llir(form->values[i]);
-        update_code_info(ft->stub, form->header.origin);
+        update_code_info(handle_stub(ft->stub), form->header.origin);
         write_byte(OP_SET_LOCAL);
         write_byte(old_sp + i + 1);
         --sp;
@@ -442,7 +466,7 @@ void compiler::compile_with(llir_with* form, bool tail) {
         }
         compile_llir(form->body[i], tail);
     }
-    update_code_info(ft->stub, form->header.origin);
+    update_code_info(handle_stub(ft->stub), form->header.origin);
 
     // in the tail position, this is handled by the subsequent return
     if (!tail) {
@@ -493,10 +517,11 @@ static void disassemble_instr(u8* code_start, std::ostream& out) {
         out << "close " << (i32)code_start[1];
         break;
     case OP_GLOBAL:
-        out << "global " << read_short(&code_start[1]);
+        // TODO: print GLOBAL and SET_GLOBAL IDs
+        out << "global ";
         break;
     case OP_SET_GLOBAL:
-        out << "set-global " << read_short(&code_start[1]);
+        out << "set-global ";
         break;
     case OP_CONST:
         out << "const " << read_short(&code_start[1]);
@@ -563,11 +588,17 @@ static void disassemble_instr(u8* code_start, std::ostream& out) {
 }
 
 static void disassemble_stub(std::ostringstream& os, istate* S, function_stub* stub) {
+    std::cout << "disasm\n";
     for (u32 i = 0; i < stub->code.size; i += instr_width(stub->code[i])) {
         disassemble_instr(&stub->code[i], os);
-        if (stub->code[i] == OP_CONST || stub->code[i] == OP_GLOBAL) {
-            auto val = stub->const_arr[read_short(&stub->code[i+1])];
+        if (stub->code[i] == OP_CONST) {
+            auto id = read_short(&stub->code[i+1]);
+            auto val = stub->const_arr[id];
             os << "    " << "; " << v_to_string(val, S->symtab, true);
+        } else if (stub->code[i] == OP_GLOBAL) {
+            // TODO: print global value
+            // auto id = read_u32(&stub->code[i+1]);
+            // os << "    " << "; " << id;
         }
         os << '\n';
     }

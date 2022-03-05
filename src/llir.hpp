@@ -13,6 +13,8 @@ namespace fn {
 enum llir_tag {
     // apply operation
     lt_apply,
+    // constant
+    lt_const,
     // global definition
     lt_def,
     // macro definition
@@ -21,8 +23,6 @@ enum llir_tag {
     lt_dot,
     // function call
     lt_call,
-    // constant lookup
-    lt_const,
     // conditional
     lt_if,
     // function creation
@@ -67,7 +67,6 @@ struct llir_apply {
 llir_apply* mk_llir_apply(const source_loc& origin,
         llir_form* callee,
         local_address num_args);
-void clear_llir_apply(llir_apply* obj);
 void free_llir_apply(llir_apply* obj);
 
 struct llir_call {
@@ -79,16 +78,13 @@ struct llir_call {
 llir_call* mk_llir_call(const source_loc& origin,
         llir_form* callee,
         local_address num_args);
-void clear_llir_call(llir_call* obj);
 void free_llir_call(llir_call* obj);
 
 struct llir_const {
     llir_form header;
     constant_id id;
 };
-llir_const* mk_llir_const(const source_loc& origin,
-        constant_id id,
-        llir_const* dest=nullptr);
+llir_const* mk_llir_const(const source_loc& origin, constant_id id);
 void free_llir_const(llir_const* obj);
 
 struct llir_def {
@@ -96,11 +92,8 @@ struct llir_def {
     symbol_id name;
     llir_form* value;
 };
-llir_def* mk_llir_def(const source_loc& origin,
-        symbol_id name,
-        llir_form* value,
-        llir_def* dest=nullptr);
-void clear_llir_def(llir_def* obj);
+llir_def* mk_llir_def(const source_loc& origin, symbol_id name,
+        llir_form* value);
 void free_llir_def(llir_def* obj);
 
 struct llir_defmacro {
@@ -110,9 +103,7 @@ struct llir_defmacro {
 };
 llir_defmacro* mk_llir_defmacro(const source_loc& origin,
         symbol_id name,
-        llir_form* macro_fun,
-        llir_defmacro* dest=nullptr);
-void clear_llir_defmacro(llir_defmacro* obj);
+        llir_form* macro_fun);
 void free_llir_defmacro(llir_defmacro* obj);
 
 struct llir_dot {
@@ -122,9 +113,7 @@ struct llir_dot {
 };
 llir_dot* mk_llir_dot(const source_loc& origin,
         llir_form* obj,
-        symbol_id key,
-        llir_dot* dest=nullptr);
-void clear_llir_dot(llir_dot* obj);
+        symbol_id key);
 void free_llir_dot(llir_dot* obj);
 
 struct llir_if {
@@ -136,9 +125,7 @@ struct llir_if {
 llir_if* mk_llir_if(const source_loc& origin,
         llir_form* test,
         llir_form* then,
-        llir_form* elce,
-        llir_if* dest=nullptr);
-void clear_llir_if(llir_if* obj);
+        llir_form* elce);
 void free_llir_if(llir_if* obj);
 
 struct llir_fn {
@@ -151,9 +138,7 @@ struct llir_fn {
 };
 llir_fn* mk_llir_fn(const source_loc& origin,
         constant_id fun_id,
-        local_address num_opt,
-        llir_fn* dest=nullptr);
-void clear_llir_fn(llir_fn* obj);
+        local_address num_opt);
 void free_llir_fn(llir_fn* obj);
 
 struct llir_import {
@@ -164,8 +149,7 @@ struct llir_import {
     bool unqualified;
 };
 llir_import* mk_llir_import(const source_loc& origin,
-        symbol_id target,
-        llir_import* dest=nullptr);
+        symbol_id target);
 void free_llir_import(llir_import* obj);
 
 struct llir_set {
@@ -175,9 +159,7 @@ struct llir_set {
 };
 llir_set* mk_llir_set(const source_loc& origin,
         llir_form* target,
-        llir_form* value,
-        llir_set* dest=nullptr);
-void clear_llir_set(llir_set* obj);
+        llir_form* value);
 void free_llir_set(llir_set* obj);
 
 struct llir_var {
@@ -185,8 +167,7 @@ struct llir_var {
     symbol_id name;
 };
 llir_var* mk_llir_var(const source_loc& origin,
-        symbol_id name,
-        llir_var* dest=nullptr);
+        symbol_id name);
 void free_llir_var(llir_var* obj);
 
 struct llir_with {
@@ -199,15 +180,12 @@ struct llir_with {
 };
 llir_with* mk_llir_with(const source_loc& origin,
         local_address num_vars,
-        u32 body_length,
-        llir_with* dest=nullptr);
-void clear_llir_with(llir_with* obj);
+        u32 body_length);
 void free_llir_with(llir_with* obj);
 
-void clear_llir_form(llir_form* obj);
 void free_llir_form(llir_form* obj);
 
-llir_form* copy_llir_form(llir_form* src, llir_form* dest=nullptr);
+llir_form* copy_llir_form(llir_form* src);
 
 // for debugging/testing
 string print_llir(llir_form* f, symbol_table& st, dyn_array<value>* const_arr);

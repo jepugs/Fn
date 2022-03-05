@@ -12,15 +12,13 @@ llir_apply* mk_llir_apply(const source_loc& origin,
         .args=new llir_form*[num_args],
     };
 }
-void clear_llir_apply(llir_apply* obj) {
+
+void free_llir_apply(llir_apply* obj) {
     for (u32 i = 0; i < obj->num_args; ++i) {
         free_llir_form(obj->args[i]);
     }
     delete[] obj->args;
     free_llir_form(obj->callee);
-}
-void free_llir_apply(llir_apply* obj) {
-    clear_llir_apply(obj);
     delete obj;
 }
 
@@ -35,21 +33,17 @@ llir_call* mk_llir_call(const source_loc& origin,
         .args=new llir_form*[num_args]
     };
 }
-void clear_llir_call(llir_call* obj) {
+void free_llir_call(llir_call* obj) {
     free_llir_form(obj->callee);
     for (int i = 0; i < obj->num_args; ++i) {
         free_llir_form(obj->args[i]);
     }
     delete[] obj->args;
-}
-void free_llir_call(llir_call* obj) {
-    clear_llir_call(obj);
     delete obj;
 }
 
 llir_const* mk_llir_const(const source_loc& origin,
-        constant_id id,
-        llir_const* dest) {
+        constant_id id) {
     return new llir_const{
         .header={.origin=origin, .tag=lt_const},
         .id=id
@@ -61,126 +55,85 @@ void free_llir_const(llir_const* obj) {
 
 llir_def* mk_llir_def(const source_loc& origin,
         symbol_id name,
-        llir_form* value,
-        llir_def* dest) {
-    if (dest == nullptr) {
-        dest = new llir_def;
-    }
-    return new(dest) llir_def {
+        llir_form* value) {
+    return new llir_def {
         .header={.origin=origin, .tag=lt_def},
         .name=name,
         .value=value
     };
 }
-void clear_llir_def(llir_def* obj) {
-    free_llir_form(obj->value);
-}
 void free_llir_def(llir_def* obj) {
-    clear_llir_def(obj);
+    free_llir_form(obj->value);
     delete obj;
 }
 
 llir_defmacro* mk_llir_defmacro(const source_loc& origin,
         symbol_id name,
-        llir_form* macro_fun,
-        llir_defmacro* dest) {
-    if (dest == nullptr) {
-        dest = new llir_defmacro;
-    }
-    return new(dest) llir_defmacro {
+        llir_form* macro_fun) {
+    return new llir_defmacro {
         .header={.origin=origin, .tag=lt_defmacro},
         .name=name,
         .macro_fun=macro_fun
     };
 }
-void clear_llir_defmacro(llir_defmacro* obj) {
-    free_llir_form(obj->macro_fun);
-}
 void free_llir_defmacro(llir_defmacro* obj) {
-    clear_llir_defmacro(obj);
+    free_llir_form(obj->macro_fun);
     delete obj;
 }
 
 llir_dot* mk_llir_dot(const source_loc& origin,
         llir_form* obj,
-        symbol_id key,
-        llir_dot* dest) {
-    if (dest == nullptr) {
-        dest = new llir_dot;
-    }
-    (*dest) = {
+        symbol_id key) {
+    return new llir_dot {
         .header={.origin=origin, .tag=lt_dot},
         .obj=obj,
         .key=key
     };
-    return dest;
-}
-void clear_llir_dot(llir_dot* obj) {
-    free_llir_form(obj->obj);
 }
 void free_llir_dot(llir_dot* obj) {
-    clear_llir_dot(obj);
+    free_llir_form(obj->obj);
     delete obj;
 }
 
 llir_if* mk_llir_if(const source_loc& origin,
         llir_form* test,
         llir_form* then,
-        llir_form* elce,
-        llir_if* dest) {
-    if (dest == nullptr) {
-        dest = new llir_if;
-    }
-    return new(dest) llir_if {
+        llir_form* elce) {
+    return new llir_if {
         .header={.origin=origin, .tag=lt_if},
         .test=test,
         .then=then,
         .elce=elce
     };
 }
-void clear_llir_if(llir_if* obj) {
+void free_llir_if(llir_if* obj) {
     free_llir_form(obj->test);
     free_llir_form(obj->then);
     free_llir_form(obj->elce);
-}
-void free_llir_if(llir_if* obj) {
-    clear_llir_if(obj);
     delete obj;
 }
 
 llir_fn* mk_llir_fn(const source_loc& origin,
         constant_id fun_id,
-        local_address num_opt,
-        llir_fn* dest) {
-    if (dest == nullptr) {
-        dest = new llir_fn;
-    }
-    return new(dest) llir_fn {
+        local_address num_opt) {
+    return new llir_fn {
         .header={.origin=origin, .tag=lt_fn},
         .fun_id=fun_id,
         .num_opt=num_opt,
         .inits=new llir_form*[num_opt]
     };
-
 }
-void clear_llir_fn(llir_fn* obj) {
+void free_llir_fn(llir_fn* obj) {
     for (int i = 0; i < obj->num_opt; ++i) {
         free_llir_form(obj->inits[i]);
     }
     delete[] obj->inits;
-}
-void free_llir_fn(llir_fn* obj) {
-    clear_llir_fn(obj);
     delete obj;
 }
 
 llir_import* mk_llir_import(const source_loc& origin,
-        symbol_id target,
-        llir_import* dest) {
-    if (dest == nullptr) {
-        dest = new llir_import;
-    }
-    return new(dest) llir_import {
+        symbol_id target) {
+    return new llir_import {
         .header={.origin=origin, .tag=lt_import},
         .target=target
     };
@@ -191,33 +144,22 @@ void free_llir_import(llir_import* obj) {
 
 llir_set* mk_llir_set(const source_loc& origin,
         llir_form* target,
-        llir_form* value,
-        llir_set* dest) {
-    if (dest == nullptr) {
-        dest = new llir_set;
-    }
-    return new(dest) llir_set {
+        llir_form* value) {
+    return new llir_set {
         .header={.origin=origin, .tag=lt_set},
         .target=target,
         .value=value
     };
 }
-void clear_llir_set(llir_set* obj) {
+void free_llir_set(llir_set* obj) {
     free_llir_form(obj->target);
     free_llir_form(obj->value);
-}
-void free_llir_set(llir_set* obj) {
-    clear_llir_set(obj);
     delete obj;
 }
 
 llir_var* mk_llir_var(const source_loc& origin,
-        symbol_id name,
-        llir_var* dest) {
-    if (dest == nullptr) {
-        dest = new llir_var;
-    }
-    return new(dest) llir_var{
+        symbol_id name) {
+    return new llir_var{
         .header={.origin=origin, .tag=lt_var},
         .name=name
     };
@@ -228,12 +170,8 @@ void free_llir_var(llir_var* obj) {
 
 llir_with* mk_llir_with(const source_loc& origin,
         local_address num_vars,
-        u32 body_length,
-        llir_with* dest) {
-    if (dest == nullptr) {
-        dest = new llir_with;
-    }
-    return new(dest) llir_with{
+        u32 body_length) {
+    return new llir_with{
         .header={.origin=origin, .tag=lt_with},
         .num_vars=num_vars,
         .vars=new symbol_id[num_vars],
@@ -242,7 +180,7 @@ llir_with* mk_llir_with(const source_loc& origin,
         .body=new llir_form*[body_length]
     };
 }
-void clear_llir_with(llir_with* obj) {
+void free_llir_with(llir_with* obj) {
     for (u32 i = 0; i < obj->num_vars; ++i) {
         free_llir_form(obj->values[i]);
     }
@@ -252,48 +190,7 @@ void clear_llir_with(llir_with* obj) {
     delete[] obj->vars;
     delete[] obj->values;
     delete[] obj->body;
-}
-void free_llir_with(llir_with* obj) {
-    clear_llir_with(obj);
     delete obj;
-}
-
-void clear_llir_form(llir_form* obj) {
-    switch (obj->tag) {
-    case lt_apply:
-        clear_llir_apply((llir_apply*)obj);
-        break;
-    case lt_def:
-        clear_llir_def((llir_def*)obj);
-        break;
-    case lt_defmacro:
-        clear_llir_defmacro((llir_defmacro*)obj);
-        break;
-    case lt_dot:
-        clear_llir_dot((llir_dot*)obj);
-        break;
-    case lt_call:
-        clear_llir_call((llir_call*)obj);
-        break;
-    case lt_const:
-        break;
-    case lt_fn:
-        clear_llir_fn((llir_fn*)obj);
-        break;
-    case lt_if:
-        clear_llir_if((llir_if*)obj);
-        break;
-    case lt_import:
-        break;
-    case lt_set:
-        clear_llir_set((llir_set*)obj);
-        break;
-    case lt_var:
-        break;
-    case lt_with:
-        clear_llir_with((llir_with*)obj);
-        break;
-    }
 }
 
 void free_llir_form(llir_form* obj) {

@@ -508,7 +508,7 @@ fn_fun(empty_q, "empty?", "(x)") {
         h->push(V_TRUE);
         break;
     case TAG_TABLE:
-        h->push(vtable(args[0])->contents.get_size() == 0 ? V_TRUE : V_FALSE);
+        h->push(vtable(args[0])->size == 0 ? V_TRUE : V_FALSE);
         break;
     default:
         h->error("empty? argument must be a list or a table.");
@@ -527,7 +527,7 @@ fn_fun(length, "length", "(x)") {
     } else if (tag == TAG_EMPTY) {
         h->push(vbox_number(0));
     } else if (tag == TAG_TABLE) {
-        h->push(vbox_number(vtable(args[0])->contents.get_size()));
+        h->push(vbox_number(vtable(args[0])size));
     } else if (tag == TAG_STRING) {
         h->push(vbox_number(vstring(args[0])->size));
     } else {
@@ -564,6 +564,7 @@ fn_fun(Table, "Table", "(& args)") {
             h->error("Table requires an even number of arguments.");
             return;
         }
+        table_set(S,
         vtable(res)->contents.insert(vhead(it), vhead(tl));
         it = tl;
     }
@@ -631,7 +632,7 @@ fn_fun(metatable, "metatable", "(table)") {
     h->push(vtable(args[0])->metatable);
 }
 
-fn_fun(with_metatable, "with-metatable", "(meta table)") {
+fn_fun(set_metatable, "set-metatable", "(meta table)") {
     h->assert_type(TAG_TABLE, args[0]);
     h->assert_type(TAG_TABLE, args[1]);
     if (h->failed()) {
@@ -639,10 +640,7 @@ fn_fun(with_metatable, "with-metatable", "(meta table)") {
     }
     h->push_table();
     auto x = vtable(h->peek());
-    x->contents = vtable(args[1])->contents;
     x->metatable = args[0];
-    //h->push(args[1]);
-    //vtable(args[1])->metatable = args[0];
 }
 
 fn_fun(error, "error", "(message)") {

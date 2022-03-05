@@ -1,5 +1,5 @@
-#ifndef __FN_SSTATE_HPP
-#define __FN_SSTATE_HPP
+#ifndef __FN_ISTATE_HPP
+#define __FN_ISTATE_HPP
 
 #include "base.hpp"
 #include "obj.hpp"
@@ -26,7 +26,6 @@ struct istate {
     u32 bp;                                  // base ptr
     u32 sp;                                  // stack ptr (rel to stack bottom)
     fn_function* callee;                     // current function
-    u8* code;                                // reference to function code
     dyn_array<upvalue_cell*> open_upvals;    // open upvalues on the stack
     value stack[STACK_SIZE];
     // error handling
@@ -68,8 +67,14 @@ void push_nil(istate* S);
 void push_yes(istate* S);
 void push_no(istate* S);
 
-void push_cons(istate* S, value hd, value tl);
+// hd and tl are positions on the stack
+void push_cons(istate* S, u32 hd, u32 tl);
 void push_table(istate* S);
+
+// returns an array of two values, key followed by value, which should not be
+// freed
+value* table_get(istate* S, fn_table* tab, value k);
+void table_set(istate* S, fn_table* tab, value k, value v);
 
 // create a list from the top n elements of the stack
 void pop_to_list(istate* S, u32 n);

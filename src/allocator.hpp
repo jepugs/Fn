@@ -1,10 +1,6 @@
 #ifndef __FN_ALLOCATOR_HPP
 #define __FN_ALLOCATOR_HPP
 
-// Defining this variable (which should be done via CMAKE) causes the garbage
-// collector to run frequently and often emit output.
-//#define GC_DEBUG
-
 #include "base.hpp"
 #include "bytes.hpp"
 #include "namespace.hpp"
@@ -16,26 +12,39 @@
 // to not pollute the macro namespace)
 
 // access parts of the gc_header
-#define gc_mark(h) (((h).mark))
-#define gc_global(h) (((h).bits & GC_GLOBAL_BIT) == GC_GLOBAL_BIT)
-#define gc_old(h) (((h).bits & GC_OLD_BIT) == GC_OLD_BIT)
-#define gc_type(h) (((h).bits & GC_TYPE_BITMASK))
-
-#define gc_set_mark(h) (((h).mark = 1))
-#define gc_unset_mark(h) (((h).mark = 0))
-
-#define gc_set_global(h) ((h).bits = (h).bits | GC_GLOBAL_BIT)
-#define gc_unset_global(h) (((h).bits &= ~GC_GLOBAL_BIT))
-
-#define gc_set_old(h) ((h).bits = (h).bits | GC_OLD_BIT)
-#define gc_unset_old(h) (((h).bits &= ~GC_OLD_BIT))
-
+#define gc_type(h) (((h).type))
+#define handle_object(h) ((h->obj))
 
 namespace fn {
 
-constexpr u64 GC_CARD_SIZE = 16348;
-struct gc_card {
-    gc_card* next;
+// a handle provides a way to maintain references to Fn values while still
+// allowing them to be moved by the allocator
+struct gc_handle {
+    // the object being held by this handle. The allocator will update this
+    // pointer during collection, if necessary.
+    gc_header* obj;
+    // if false, this gc_handle will be cleaned up by the allocator
+    bool alive;
+    // linked list maintained by the allocator
+    gc_handle* next;
+};
+
+// TODO: write a value_handle struct that does something similar
+
+constexpr u64 GC_CARD_SIZE = 2 << 15;
+
+struct gc_card_header {
+    gc_card_header* next;
+    bool discard;
+    u32 pointer;
+    u32 num_objs;
+};
+
+struct alignas(GC_CARD_SIZE) gc_card {
+    union {
+        gc_card_header h;
+        u8 data[GC_CARD_SIZE];
+    } u;
 };
 
 class allocator {
@@ -46,31 +55,14 @@ public:
     // increased if mem_usage > 0.5*collect_threshold after a collection.
     u64 collect_threshold;
 
-    object_pool<fn_cons> cons_pool;
-    object_pool<fn_function> fun_pool;
-    object_pool<fn_table> table_pool;
+    object_pool<gc_card> card_pool;
+    gc_card* active_card;
 
     istate* S;
-    gc_header* objs_head;
+    gc_handle* gc_handles;
 
     // deallocate an object, rendering all references to it meaningless
     void dealloc(gc_header* o);
-
-    // helpers for mark
-    //void mark_descend_value(value v);
-    void add_mark_value(value v);
-    // this marks an object and adds accessible nodes to the marking_list.
-    void mark_descend(gc_header* o);
-    // starting from roots and pins, set the mark on all accessible objects.
-    void mark();
-
-    // add all root objects to marking_list
-    void add_roots_for_marking();
-
-    // sweeping iterates over the list of objects doing the following:
-    // - delete unmarked objects
-    // - remove the mark from marked objects
-    void sweep();
 
     allocator(istate* I);
     ~allocator();
@@ -83,12 +75,14 @@ public:
     void print_status();
 };
 
+gc_handle* get_handle(allocator* alloc, gc_header* obj);
+void release_handle(gc_handle* handle);
 void* alloc_bytes(allocator* alloc, u64 size);
 void alloc_string(istate* S, value* where, u32 size);
 void alloc_string(istate* S, value* where, const string& str);
-void alloc_cons(istate* S, value* where, value hd, value tl);
+void alloc_cons(istate* S, u32 where, u32 hd, u32 tl);
 void alloc_table(istate* S, value* where);
-void alloc_sub_stub(istate* S, function_stub* where);
+void alloc_sub_stub(istate* S, gc_handle* stub_handle);
 void alloc_empty_fun(istate* S,
         value* where,
         symbol_id ns_id);
@@ -98,8 +92,7 @@ void alloc_foreign_fun(istate* S,
         u32 num_args,
         bool vari,
         u32 num_upvals);
-void alloc_fun(istate* S, value* where, fn_function* enclosing,
-        function_stub* stub);
+void alloc_fun(istate* S, u32 where, u32 enclosing, constant_id fid);
 
 void collect(istate* S);
 void collect_now(istate* S);

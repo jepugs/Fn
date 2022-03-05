@@ -1,6 +1,7 @@
 #ifndef __FN_EXPAND_HPP
 #define __FN_EXPAND_HPP
 
+#include "allocator.hpp"
 #include "array.hpp"
 #include "base.hpp"
 #include "istate.hpp"
@@ -8,7 +9,13 @@
 #include "namespace.hpp"
 #include "parse.hpp"
 
+
+
 namespace fn {
+
+inline function_stub* handle_stub(gc_handle* h) {
+    return (function_stub*)h->obj;
+}
 
 using namespace fn_parse;
 
@@ -26,10 +33,7 @@ struct function_tree {
     // the vm_thread holding our unfinished function. This is also used for
     // macroexpansion, building values, and signaling errors.
     istate* S;
-    // the function stub we're building
-    function_stub* stub;
-    // used to cache constants to prevent duplicate entries in the table
-    table<value, constant_id> const_lookup;
+    gc_handle* stub;
     // functions contained in this one. This mirrors the structure of the
     // sub_funs array in the stub, i.e. if there are three entries here, there
     // are three entries there, and the corresponding function stub pointers

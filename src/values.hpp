@@ -13,20 +13,10 @@
 
 namespace fn {
 
-/// value representation
-
-
-struct fn_string;
-struct fn_cons;
-struct fn_table;
-struct fn_function;
-
-
 // convert a value to a string
 string v_to_string(value v,
         const symbol_table* symbols,
         bool code_format=false);
-
 
 // type information
 inline u64 vtag(value v) {
@@ -48,7 +38,7 @@ inline u64 vis_table(value v) {
     return vtag(v) == TAG_TABLE;
 }
 inline u64 vis_function(value v) {
-    return (v.raw & TAG_FUNC) == TAG_FUNC;
+    return vtag(v) == TAG_FUNC;
 }
 inline u64 vis_symbol(value v) {
     return vtag(v) == TAG_SYM;
@@ -57,13 +47,13 @@ inline u64 vis_nil(value v) {
     return v.raw == V_NIL.raw;
 }
 inline u64 vis_bool(value v) {
-    return v == V_YES || v == V_NO;
+    return v.raw == V_YES.raw || v.raw == V_NO.raw;
 }
 inline u64 vis_emptyl(value v) {
-    return v == V_EMPTY;
+    return v.raw == V_EMPTY.raw;
 }
 inline u64 vis_unin(value v) {
-    return v == V_UNIN;
+    return v.raw == V_UNIN.raw;
 }
 
 inline bool vhas_header(value v) {
@@ -111,10 +101,28 @@ inline value vbox_table(fn_table* p) {
 inline value vbox_function(fn_function* p) {
     return vbox_ptr(p, TAG_FUNC);
 }
+inline value vbox_header(gc_header* h) {
+    switch (h->type) {
+    case GC_TYPE_STRING:
+        return vbox_string((fn_string*)h);
+    case GC_TYPE_CONS:
+        return vbox_cons((fn_cons*)h);
+    case GC_TYPE_TABLE:
+        return vbox_table((fn_table*)h);
+    case GC_TYPE_FUNCTION:
+        return vbox_function((fn_function*)h);
+    default:
+        return V_NIL;
+    }
+}
 
 // accessing objects from a value
 inline f64 vnumber(value v) {
     return v.num;
+}
+inline void* vpointer(value v) {
+    v.raw = v.raw & ~TAG_MASK;
+    return v.ptr;
 }
 inline fn_string* vstring(value v) {
     v.raw = v.raw & ~TAG_MASK;
@@ -171,36 +179,8 @@ inline value drop(u32 n, value v) {
 
 // tables
 inline u32 vnum_keys(value v) {
-    return vtable(v)->contents.get_size();
+    return vtable(v)->size;
 }
-inline forward_list<value> vgetkeys(value v) {
-    return vtable(v)->contents.keys();
-}
-inline bool vhaskey(value v, value key, value* result) {
-    auto x = vtable(v)->contents.get(key);
-    if (x.has_value()) {
-        if (result != nullptr) {
-            *result = *x;
-        }
-        return true;
-    } else {
-        return false;
-    }
-}
-// returns V_NIL if no such value is found
-inline value vget(value v, value key) {
-    value res;
-    if (vhaskey(v, key, &res)) {
-        return res;
-    } else {
-        return V_NIL;
-    }
-}
-inline void vset(value v, value key, value new_val) {
-    vtable(v)->contents.insert(key, new_val);
-}
-
-
 
 inline void* get_pointer(value v) {
     // mask out the three l_sb with 0's

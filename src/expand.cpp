@@ -11,12 +11,8 @@ using namespace fn_parse;
 // Note: the istate* is currently unused, but when we eventually move array
 // management into the allocator, this will change.
 constant_id add_const(istate* S, function_tree* ft, value v) {
-    auto x = ft->const_lookup.get(v);
-    if (x.has_value()) {
-        return *x;
-    }
-    ft->stub->const_arr.push_back(v);
-    return ft->stub->const_arr.size - 1;
+    handle_stub(ft->stub)->const_arr.push_back(v);
+    return handle_stub(ft->stub)->const_arr.size - 1;
 }
 
 constant_id add_number_const(istate* S, function_tree* ft, f64 num) {
@@ -70,17 +66,18 @@ constant_id add_quoted_const(istate* S, function_tree* ft, ast_form* form) {
 }
 
 function_tree* add_sub_fun(istate* S, function_tree* ft) {
-    auto fid = ft->stub->sub_funs.size;
+    auto fid = ft->sub_funs.size;
     alloc_sub_stub(S, ft->stub);
-    auto sub_tree = init_function_tree(S, ft->stub->sub_funs[fid]);
+    auto sub_tree = init_function_tree(S,
+            handle_stub(ft->stub)->sub_funs[fid]);
     ft->sub_funs.push_back(sub_tree);
     return sub_tree;
 }
 
 function_tree* init_function_tree(istate* S, function_stub* stub) {
     auto res = new function_tree;
-    res->stub = stub;
     res->body = nullptr;
+    res->stub = get_handle(S->alloc, &stub->h);
     return res;
 }
 
@@ -91,6 +88,7 @@ void free_function_tree(istate* S, function_tree* ft) {
     for (auto s : ft->sub_funs) {
         free_function_tree(S, s);
     }
+    release_handle(ft->stub);
     delete ft;
 }
 
@@ -556,9 +554,9 @@ llir_form* expander::expand_dollar_fn(const source_loc& loc,
 
     // add parameters to the new function
     auto m = meta2.max_dollar_sym;
-    sub_tree->stub->num_params = m+1;
-    sub_tree->stub->num_opt = 0;
-    for (u32 i = 0; i < sub_tree->stub->num_params; ++i) {
+    handle_stub(sub_tree->stub)->num_params = m+1;
+    handle_stub(sub_tree->stub)->num_opt = 0;
+    for (u32 i = 0; i < handle_stub(sub_tree->stub)->num_params; ++i) {
         sub_tree->params.push_back(intern("$" + std::to_string(i)));
     }
 
@@ -705,7 +703,7 @@ llir_fn* expander::expand_sub_fun(const source_loc& loc,
     }
 
     // FIXME: check if we exceed maximum numbers anywhere
-    auto sub_stub = sub_tree->stub;
+    auto sub_stub = handle_stub(sub_tree->stub);
     sub_stub->num_params = positional.size;
     sub_stub->num_opt = positional.size - num_req;
     sub_stub->vari = has_var_list;

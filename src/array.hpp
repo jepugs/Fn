@@ -114,6 +114,9 @@ struct dyn_array {
         new(&data[size]) t{item};
         ++size;
     }
+    void pop() {
+        --size;
+    }
 
     // This resizes the array, but on decrease it will never actually shrink the
     // array. The values which were past the end of the new array will be
