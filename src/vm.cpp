@@ -20,9 +20,9 @@ namespace fn {
 // must have the istate variable passed in directly or it could be computed
 // multiple times.
 #define cur_fun() (vfunction(S->stack[S->bp-1]))
-#define code_byte(S, where) (S->callee->stub->code.data[where])
-#define code_short(S, where) (*((u16*)&S->callee->stub->code.data[where]))
-#define code_u32(S, where) (*((u32*)&S->callee->stub->code.data[where]))
+#define code_byte(S, where) (S->callee->stub->code->data[where])
+#define code_short(S, where) (*((u16*)&S->callee->stub->code->data[where]))
+#define code_u32(S, where) (*((u32*)&S->callee->stub->code->data[where]))
 #define push(S, v) S->stack[S->sp] = v;++S->sp;
 #define peek(S, i) (S->stack[S->sp-((i))-1])
 
@@ -311,7 +311,7 @@ void execute_fun(istate* S) {
         case OP_MACRO: {
             auto id = code_short(S, pc);
             pc += 2;
-            auto fqn = vsymbol(S->callee->stub->const_arr[id]);
+            auto fqn = vsymbol(((value*)S->callee->stub->const_arr->data)[id]);
             auto x = S->G->macro_tab.get2(fqn);
             if (!x) {
                 ierror(S, "Failed to find global variable " + (*S->symtab)[fqn]);
@@ -325,13 +325,13 @@ void execute_fun(istate* S) {
             // a symbol.
             auto id = code_short(S, pc);
             pc += 2;
-            auto fqn = S->callee->stub->const_arr[id];
+            auto fqn = ((value*)S->callee->stub->const_arr->data)[id];
             set_macro(S, vsymbol(fqn), vfunction(peek(S, 0)));
             S->stack[S->sp-1] = fqn;
         }
             break;
         case OP_CONST:
-            push(S, S->callee->stub->const_arr[code_short(S, pc)]);
+            push(S, ((value*)S->callee->stub->const_arr->data)[code_short(S, pc)]);
             pc += 2;
             break;
         case OP_NIL:

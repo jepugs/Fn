@@ -75,13 +75,18 @@ public:
     void print_status();
 };
 
+constexpr u64 INIT_GC_ARRAY_SIZE = 8;
+
 gc_handle* get_handle(allocator* alloc, gc_header* obj);
 void release_handle(gc_handle* handle);
 void* alloc_bytes(allocator* alloc, u64 size);
 // gc_bytes are byte arrays used internally by some objects
 gc_bytes* alloc_gc_bytes(allocator* alloc, u64 nbytes);
 gc_bytes* realloc_gc_bytes(allocator* alloc, gc_bytes* src, u64 new_size);
-void grow_gc_array(allocator* alloc, gc_bytes** arr, u64* cap, u64 size);
+void grow_gc_array(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
+        u64 entry_size);
+void init_gc_array(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
+        u64 entry_size);
 void alloc_string(istate* S, value* where, u32 size);
 void alloc_string(istate* S, value* where, const string& str);
 void alloc_cons(istate* S, u32 where, u32 hd, u32 tl);

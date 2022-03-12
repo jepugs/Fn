@@ -11,8 +11,7 @@ using namespace fn_parse;
 // Note: the istate* is currently unused, but when we eventually move array
 // management into the allocator, this will change.
 constant_id add_const(istate* S, function_tree* ft, value v) {
-    handle_stub(ft->stub)->const_arr.push_back(v);
-    return handle_stub(ft->stub)->const_arr.size - 1;
+    return push_back_const(S, ft->stub, v);
 }
 
 constant_id add_number_const(istate* S, function_tree* ft, f64 num) {
@@ -69,7 +68,7 @@ function_tree* add_sub_fun(istate* S, function_tree* ft) {
     auto fid = ft->sub_funs.size;
     alloc_sub_stub(S, ft->stub);
     auto sub_tree = init_function_tree(S,
-            handle_stub(ft->stub)->sub_funs[fid]);
+            ((function_stub**)handle_stub(ft->stub)->sub_funs->data)[fid]);
     ft->sub_funs.push_back(sub_tree);
     return sub_tree;
 }

@@ -11,31 +11,31 @@ void compiler::compile_error(const string& msg) {
 }
 
 void compiler::write_byte(u8 u) {
-    handle_stub(ft->stub)->code.push_back(u);
+    push_back_code(S, ft->stub, u);
 }
 
 void compiler::write_short(u16 u) {
     u8* data = (u8*)&u;
-    handle_stub(ft->stub)->code.push_back(data[0]);
-    handle_stub(ft->stub)->code.push_back(data[1]);
+    write_byte(data[0]);
+    write_byte(data[1]);
 }
 
 void compiler::write_u32(u32 u) {
     u8* data = (u8*)&u;
-    handle_stub(ft->stub)->code.push_back(data[0]);
-    handle_stub(ft->stub)->code.push_back(data[1]);
-    handle_stub(ft->stub)->code.push_back(data[2]);
-    handle_stub(ft->stub)->code.push_back(data[3]);
+    write_byte(data[0]);
+    write_byte(data[1]);
+    write_byte(data[2]);
+    write_byte(data[3]);
 }
 
 u32 compiler::read_u32(u32 where) {
-    return *((u32*) &handle_stub(ft->stub)->code[where]);
+    return *((u32*) &handle_stub(ft->stub)->code->data[where]);
 }
 
 void compiler::patch_short(u16 u, u32 where) {
     u8* data = (u8*)&u;
-    handle_stub(ft->stub)->code[where] = data[0];
-    handle_stub(ft->stub)->code[where+1] = data[1];
+    handle_stub(ft->stub)->code->data[where] = data[0];
+    handle_stub(ft->stub)->code->data[where+1] = data[1];
 }
 
 void compiler::patch_jump(u32 jmp_addr, u32 dest) {
@@ -87,9 +87,7 @@ local_upvalue* compiler::lookup_upval(symbol_id sid) {
             };
             uv_head = u;
             // add to the function stub
-            handle_stub(ft->stub)->upvals_direct.push_back(true);
-            handle_stub(ft->stub)->upvals.push_back(l->index);
-            ++handle_stub(ft->stub)->num_upvals;
+            push_back_upval(S, ft->stub, true, l->index);
         }
         auto v = parent->lookup_upval(sid);
         if (v) {
@@ -100,9 +98,7 @@ local_upvalue* compiler::lookup_upval(symbol_id sid) {
                 .next = uv_head
             };
             uv_head = u;
-            handle_stub(ft->stub)->upvals_direct.push_back(false);
-            handle_stub(ft->stub)->upvals.push_back(v->index);
-            ++handle_stub(ft->stub)->num_upvals;
+            push_back_upval(S, ft->stub, false, v->index);
         }
     }
     return u;
@@ -209,20 +205,20 @@ void compiler::compile_llir(llir_form* form, bool tail) {
         auto x = (llir_if*)form;
         compile_llir(x->test);
 
-        auto start = handle_stub(ft->stub)->code.size;
+        auto start = handle_stub(ft->stub)->code_size;
         write_byte(OP_CJUMP);
         write_short(0);
         --sp;
         compile_llir(x->then, tail);
         --sp;
 
-        auto end_then = handle_stub(ft->stub)->code.size;
+        auto end_then = handle_stub(ft->stub)->code_size;
         write_byte(OP_JUMP);
         write_short(0);
 
-        patch_jump(start, handle_stub(ft->stub)->code.size);
+        patch_jump(start, handle_stub(ft->stub)->code_size);
         compile_llir(x->elce, tail);
-        patch_jump(end_then, handle_stub(ft->stub)->code.size);
+        patch_jump(end_then, handle_stub(ft->stub)->code_size);
     }
         break;
     case lt_fn:
@@ -589,13 +585,13 @@ static void disassemble_instr(u8* code_start, std::ostream& out) {
 
 static void disassemble_stub(std::ostringstream& os, istate* S, function_stub* stub) {
     std::cout << "disasm\n";
-    for (u32 i = 0; i < stub->code.size; i += instr_width(stub->code[i])) {
-        disassemble_instr(&stub->code[i], os);
-        if (stub->code[i] == OP_CONST) {
-            auto id = read_short(&stub->code[i+1]);
-            auto val = stub->const_arr[id];
+    for (u32 i = 0; i < stub->code_size; i += instr_width(stub->code->data[i])) {
+        disassemble_instr(&stub->code->data[i], os);
+        if (stub->code->data[i] == OP_CONST) {
+            auto id = read_short(&stub->code->data[i+1]);
+            auto val = ((value*)stub->const_arr->data)[id];
             os << "    " << "; " << v_to_string(val, S->symtab, true);
-        } else if (stub->code[i] == OP_GLOBAL) {
+        } else if (stub->code->data[i] == OP_GLOBAL) {
             // TODO: print global value
             // auto id = read_u32(&stub->code[i+1]);
             // os << "    " << "; " << id;
@@ -613,8 +609,9 @@ static void disassemble_with_header(std::ostringstream& os, istate* S,
     } else {
         disassemble_stub(os, S, stub);
         if (recur) {
-            for (u32 i = 0; i < stub->sub_funs.size; ++i) {
-                disassemble_with_header(os, S, stub->sub_funs[i],
+            auto data = (function_stub**)stub->sub_funs->data;
+            for (u32 i = 0; i < stub->sub_fun_size; ++i) {
+                disassemble_with_header(os, S, data[i],
                         ";" + header + ":" + std::to_string(i), recur);
             }
         }
