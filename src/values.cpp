@@ -17,8 +17,28 @@ bool value::operator==(const value& v) const {
     case TAG_CONS:
         return vcons(*this)->head == vcons(v)->head
             && vcons(*this)->tail == vcons(v)->tail;
-    case TAG_TABLE:
-        return vtable(*this)->contents == vtable(v)->contents;
+    case TAG_TABLE: {
+        auto tab1 = vtable(*this);
+        auto tab2 = vtable(v);
+        auto m = tab1->cap;
+        if (tab2->cap != m) {
+            return false;
+        }
+        if (tab1->size != tab2->size) {
+            return false;
+        }
+        auto data1 = (value*)tab1->data->data;
+        auto data2 = (value*)tab2->data->data;
+        for (u32 i = 0; i < 2*m; i += 2) {
+            if (data1[i] != data2[i]) {
+                return false;
+            }
+            if (data1[i] != V_UNIN && data1[i+1] != data2[i+1]) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     // default behavior when raw values are inequal is to return false. note:
     // this default case accounts for numbers, symbols, true, false, null,

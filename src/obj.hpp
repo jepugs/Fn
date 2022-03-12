@@ -59,8 +59,8 @@ constexpr u8 GC_TYPE_UPVALUE    = 0x0a;
 // function stubs (hold code, etc)
 constexpr u8 GC_TYPE_FUN_STUB   = 0x06;
 
-// dynamic arrays managed by the GC
-constexpr u8 GC_TYPE_GCARRAY    = 0x0e;
+// dynamic byte arrays used internally by tables, function_stubs
+constexpr u8 GC_TYPE_GC_BYTES   = 0x0e;
 // for use by the copying collector
 constexpr u8 GC_TYPE_FORWARD    = 0x0f;
 
@@ -72,11 +72,9 @@ struct alignas (OBJ_ALIGN) gc_header {
     gc_header* forward;
 };
 
-struct alignas (OBJ_ALIGN) gc_array {
+struct alignas (OBJ_ALIGN) gc_bytes {
     gc_header h;
-    u32 size;
-    u32 entry_size;
-    u8 data[0];
+    u8* data;
 };
 
 // initialize a gc header in place
@@ -111,8 +109,7 @@ struct alignas (OBJ_ALIGN) fn_table {
     // size at which the table will be rehashed
     u32 rehash;
     // array of size 2*cap*sizeof(value) holding the table
-    gc_array* data;
-    value* contents;
+    gc_bytes* data;
     value metatable;
 };
 

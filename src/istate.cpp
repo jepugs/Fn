@@ -136,17 +136,18 @@ static value* find_table_slot(fn_table* tab, value k) {
     auto h = hash(k);
     auto m = 2 * tab->cap;
     auto start = 2 * (h % tab->cap);
+    auto data = (value*)tab->data->data;
     for (u32 i = start; i < m; i += 2) {
-        if (tab->contents[i] == V_UNIN
-                || tab->contents[i] == k) {
-            return &tab->contents[i];
+        if (data[i] == V_UNIN
+                || data[i] == k) {
+            return &data[i];
         }
     }
     // restart search from the beginning of the tree
     for (u32 i = 0; i < start; ++i) {
-        if (tab->contents[i] == V_UNIN
-                || tab->contents[i] == k) {
-            return &tab->contents[i];
+        if (data[i] == V_UNIN
+                || data[i] == k) {
+            return &data[i];
         }
     }
     return nullptr;
@@ -156,19 +157,20 @@ value* table_get(istate* S, fn_table* tab, value k) {
     auto h = hash(k);
     auto m = 2 * tab->cap;
     auto start = 2 * (h % tab->cap);
+    auto data = (value*)tab->data->data;
     for (u32 i = start; i < m; i += 2) {
-        if (tab->contents[i] == V_UNIN) {
+        if (data[i] == V_UNIN) {
             return nullptr;
-        } else if (tab->contents[i] == k) {
-            return &tab->contents[i];
+        } else if (data[i] == k) {
+            return &data[i];
         }
     }
     // restart search from the beginning of the tree
     for (u32 i = 0; i < start; ++i) {
-        if (tab->contents[i] == V_UNIN) {
+        if (data[i] == V_UNIN) {
             return nullptr;
-        } else if (tab->contents[i] == k) {
-            return &tab->contents[i];
+        } else if (data[i] == k) {
+            return &data[i];
         }
     }
     return nullptr;
@@ -180,15 +182,14 @@ void table_set(istate* S, fn_table* tab, value k, value v) {
         auto old_cap = tab->cap;
         tab->cap = 2 * tab->cap;
         tab->rehash = tab->cap * 3 / 4;
-        auto old_arr = tab->contents;
-        // FIXME: replace with a gc builtin array
-        tab->contents = (value*)realloc(tab->contents, 2*tab->cap*sizeof(value));
+        auto old_arr = (value*)tab->data->data;
+        tab->data = alloc_gc_bytes(S->alloc, 2*tab->cap*sizeof(value));
         tab->size = 0;
 
         // initialize new array
         auto m = 2 * tab->cap;
         for (u32 i = 0; i < m; i += 2) {
-            tab->contents[i] = V_UNIN;
+            ((value*)tab->data->data)[i] = V_UNIN;
         }
 
         // insert old elements

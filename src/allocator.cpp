@@ -10,7 +10,7 @@
 
 // uncomment to run the GC before every allocation. This will obviously tank
 // performance and is only used to locate GC bugs
-#define GC_STRESS
+//#define GC_STRESS
 
 // uncomment to have the GC print information to STDOUT on every collection
 //#define GC_VERBOSE
@@ -88,6 +88,21 @@ void* alloc_bytes(allocator* alloc, u64 size) {
     return res;
 }
 
+gc_bytes* alloc_gc_bytes(allocator* alloc, u64 nbytes) {
+    auto sz = sizeof(gc_bytes) + nbytes;
+    auto res = (gc_bytes*)alloc_bytes(alloc, sz);
+    init_gc_header(&res->h, GC_TYPE_GC_BYTES, sz);
+    res->data = (u8*)(sizeof(gc_bytes) + (u64)res);
+    return res;
+}
+
+gc_bytes* realloc_gc_bytes(allocator* alloc, gc_bytes* src, u64 new_size) {
+    auto res = alloc_gc_bytes(alloc, new_size);
+    memcpy(res, src, src->h.size);
+    res->data = (u8*)(sizeof(gc_bytes) + (u64)res);
+    return res;
+}
+
 void alloc_string(istate* S, value* where, u32 len) {
     collect(S);
     auto sz = round_to_align(sizeof(fn_string) + len + 1);
@@ -132,9 +147,9 @@ void alloc_table(istate* S, value* where) {
     res->size = 0;
     res->cap = FN_TABLE_INIT_CAP;
     res->rehash = 3 * FN_TABLE_INIT_CAP / 4;
-    res->contents = (value*)malloc(2 * FN_TABLE_INIT_CAP * sizeof(value));
+    res->data = alloc_gc_bytes(S->alloc, 2*FN_TABLE_INIT_CAP*sizeof(value));
     for (u32 i = 0; i < 2*FN_TABLE_INIT_CAP; i += 2) {
-        res->contents[i] = V_UNIN;
+        ((value*)(res->data->data))[i] = V_UNIN;
     }
     res->metatable = V_NIL;
     *where = vbox_table(res);
@@ -302,12 +317,13 @@ static void update_or_q_header(gc_header** place, dyn_array<gc_header**>* q) {
 }
 
 // copy an object to a new gc_card. THIS DOES NOT UPDATE INTERNAL POINTERS
-static void copy_and_forward(istate* S, gc_header* obj) {
+static gc_header* copy_and_forward(istate* S, gc_header* obj) {
     auto alloc = S->alloc;
     auto new_loc = (gc_header*)alloc_bytes(alloc, obj->size);
     memcpy(new_loc, obj, obj->size);
     obj->type = GC_TYPE_FORWARD;
     obj->forward = new_loc;
+    return new_loc;
 }
 
 void move_live_object(istate* S, gc_header* obj,
@@ -327,12 +343,15 @@ void move_live_object(istate* S, gc_header* obj,
         break;
     case GC_TYPE_TABLE: {
         auto tab = (fn_table*)obj;
+        // move the array
+        tab->data = realloc_gc_bytes(S->alloc, tab->data, 2*tab->cap*sizeof(value));
         update_or_q_value(&tab->metatable, val_q);
+        auto data = (value*)tab->data->data;
         auto m = tab->cap * 2;
         for (u32 i = 0; i < m; i += 2) {
-            if (tab->contents[i].raw != V_UNIN.raw) {
-                update_or_q_value(&tab->contents[i], val_q);
-                update_or_q_value(&tab->contents[i+1], val_q);
+            if (data[i].raw != V_UNIN.raw) {
+                update_or_q_value(&data[i], val_q);
+                update_or_q_value(&data[i+1], val_q);
             }
         } 
     }
@@ -455,12 +474,6 @@ void mark(istate* S) {
         while (i < c->u.h.pointer) {
             auto h = (gc_header*)&c->u.data[i];
             switch (h->type) {
-            case GC_TYPE_STRING:
-                break;
-            case GC_TYPE_TABLE: {
-                free(((fn_table*)h)->contents);
-                break;
-            }
             case GC_TYPE_FUN_STUB: {
                 auto stub = (function_stub*) h;
                 stub->code.~dyn_array();
