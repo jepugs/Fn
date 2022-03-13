@@ -1,4 +1,6 @@
 // obj.hpp -- representations of Fn objects
+// This file just contains structure definitions. For functions to manipulate
+// data structures, see allocator.hpp (as this requires input from the GC)
 #ifndef __FN_OBJ_HPP
 #define __FN_OBJ_HPP
 
@@ -77,6 +79,13 @@ struct alignas (OBJ_ALIGN) gc_bytes {
     u8* data;
 };
 
+template<typename T>
+struct gc_array {
+    gc_bytes* data;
+    u64 cap;
+    u64 size;
+};
+
 // initialize a gc header in place
 void init_gc_header(gc_header* dest, u8 type, u32 size);
 // set a header to designate that its object has been moved to ptr
@@ -140,7 +149,6 @@ struct source_info {
 struct code_info {
     u32 start_addr;
     source_loc loc;
-    code_info* prev;
 };
 
 // a stub describing a function
@@ -156,44 +164,25 @@ struct alignas(OBJ_ALIGN) function_stub {
     // if foreign != nullptr, then this is a foreign function
     void (*foreign)(istate*);
 
-    gc_bytes* code;                      // code for the function
-    u64 code_cap;
-    u64 code_size;
-    gc_bytes* const_arr;                 // constants
-    u64 const_cap;
-    u64 const_size;
-    gc_bytes* sub_funs;                  // contained functions
-    u64 sub_fun_cap;
-    u64 sub_fun_size;
-    symbol_id ns_id;                     // namespace ID
-    fn_namespace* ns;                    // function namespace
+    gc_array<u8> code;                 // bytecode
+    gc_array<value> const_arr;         // constants
+    gc_array<function_stub*> sub_funs; // contained functions
+    symbol_id ns_id;                   // namespace ID
+    fn_namespace* ns;                  // function namespace
 
-    local_address num_upvals;
-    // Array of upvalue addresses. These are either stack addresses (for local
-    // upvalues)
-    gc_bytes* upvals;
-    u64 upvals_cap;
-    u64 upvals_size;
+    // Array of upvalue addresses. These are stack addresses for direct upvalues
+    // and upvalue IDs for indirect upvalues.
+    gc_array<u8> upvals;
     // Corresponding array telling whether each upvalue is direct or not
-    gc_bytes* upvals_direct;
-    u64 upvals_direct_cap;
-    u64 upvals_direct_size;
+    gc_array<bool> upvals_direct;
     // An upval is considered direct if it is from the immediately surrounding
     // call frame. Otherwise, it is indirect.
 
     // metadata
     string* name;
     string* filename;
-    code_info* ci_head;
+    gc_array<code_info> ci_arr;
 };
-
-void update_code_info(function_stub* to, const source_loc& loc);
-code_info* instr_loc(function_stub* stub, u32 pc);
-
-struct gc_handle;
-constant_id push_back_const(istate* S, gc_handle* stub_handle, value v);
-void push_back_code(istate* S, gc_handle* stub_handle, u8 b);
-void push_back_upval(istate* S, gc_handle* stub_handle, bool direct, u8 index);
 
 // represents a function value
 struct alignas (OBJ_ALIGN) fn_function {

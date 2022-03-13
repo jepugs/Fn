@@ -28,14 +28,18 @@ void compiler::write_u32(u32 u) {
     write_byte(data[3]);
 }
 
+u8 compiler::read_byte(u32 where) {
+    return handle_stub(ft->stub)->code.data->data[where];
+}
+
 u32 compiler::read_u32(u32 where) {
-    return *((u32*) &handle_stub(ft->stub)->code->data[where]);
+    return *((u32*) &handle_stub(ft->stub)->code.data->data[where]);
 }
 
 void compiler::patch_short(u16 u, u32 where) {
     u8* data = (u8*)&u;
-    handle_stub(ft->stub)->code->data[where] = data[0];
-    handle_stub(ft->stub)->code->data[where+1] = data[1];
+    handle_stub(ft->stub)->code.data->data[where] = data[0];
+    handle_stub(ft->stub)->code.data->data[where+1] = data[1];
 }
 
 void compiler::patch_jump(u32 jmp_addr, u32 dest) {
@@ -181,7 +185,7 @@ void compiler::update_hwm(u32 local_hwm) {
 }
 
 void compiler::compile_llir(llir_form* form, bool tail) {
-    update_code_info(handle_stub(ft->stub), form->origin);
+    update_code_info(S, handle_stub(ft->stub), form->origin);
     switch (form->tag) {
     case lt_apply:
         compile_apply((llir_apply*)form, tail);
@@ -205,20 +209,20 @@ void compiler::compile_llir(llir_form* form, bool tail) {
         auto x = (llir_if*)form;
         compile_llir(x->test);
 
-        auto start = handle_stub(ft->stub)->code_size;
+        auto start = handle_stub(ft->stub)->code.size;
         write_byte(OP_CJUMP);
         write_short(0);
         --sp;
         compile_llir(x->then, tail);
         --sp;
 
-        auto end_then = handle_stub(ft->stub)->code_size;
+        auto end_then = handle_stub(ft->stub)->code.size;
         write_byte(OP_JUMP);
         write_short(0);
 
-        patch_jump(start, handle_stub(ft->stub)->code_size);
+        patch_jump(start, handle_stub(ft->stub)->code.size);
         compile_llir(x->elce, tail);
-        patch_jump(end_then, handle_stub(ft->stub)->code_size);
+        patch_jump(end_then, handle_stub(ft->stub)->code.size);
     }
         break;
     case lt_fn:
@@ -267,7 +271,7 @@ void compiler::compile_call(llir_call* form, bool tail) {
         for(u32 i = 0; i < form->num_args; ++i) {
             compile_llir(form->args[i]);
         }
-        update_code_info(handle_stub(ft->stub), form->header.origin);
+        update_code_info(S, handle_stub(ft->stub), form->header.origin);
         write_byte(tail ? OP_TCALLM : OP_CALLM);
         write_byte(form->num_args);
         sp = start_sp + 1;
@@ -285,7 +289,7 @@ void compiler::compile_call(llir_call* form, bool tail) {
         compile_llir(form->args[i]);
     }
     // put code info back after processing arguments
-    update_code_info(handle_stub(ft->stub), form->header.origin);
+    update_code_info(S, handle_stub(ft->stub), form->header.origin);
     // DEBUG
     write_byte(tail ? OP_TCALL : OP_CALL);
     write_byte(form->num_args);
@@ -321,7 +325,7 @@ void compiler::compile_fn(llir_fn* form) {
     for (u32 i = 0; i < form->num_opt; ++i) {
         compile_llir(form->inits[i]);
     }
-    update_code_info(handle_stub(ft->stub), form->header.origin);
+    update_code_info(S, handle_stub(ft->stub), form->header.origin);
     write_byte(OP_CLOSURE);
     write_short(form->fun_id);
     sp = start_sp + 1;
@@ -338,7 +342,7 @@ void compiler::compile_set(llir_set* form) {
         auto l = lookup_var(sid);
         if (l) {
             compile_llir(form->value);
-            update_code_info(handle_stub(ft->stub), form->header.origin);
+            update_code_info(S, handle_stub(ft->stub), form->header.origin);
             write_byte(OP_COPY);
             update_hwm(sp+1);
             write_byte(0);
@@ -349,7 +353,7 @@ void compiler::compile_set(llir_set* form) {
         auto u = lookup_upval(sid);
         if (u) {
             compile_llir(form->value);
-            update_code_info(handle_stub(ft->stub), form->header.origin);
+            update_code_info(S, handle_stub(ft->stub), form->header.origin);
             update_hwm(sp+1);
             write_byte(OP_COPY);
             write_byte(0);
@@ -445,7 +449,7 @@ void compiler::compile_with(llir_with* form, bool tail) {
     }
     for (u32 i = 0; i < form->num_vars; ++i) {
         compile_llir(form->values[i]);
-        update_code_info(handle_stub(ft->stub), form->header.origin);
+        update_code_info(S, handle_stub(ft->stub), form->header.origin);
         write_byte(OP_SET_LOCAL);
         write_byte(old_sp + i + 1);
         --sp;
@@ -462,7 +466,7 @@ void compiler::compile_with(llir_with* form, bool tail) {
         }
         compile_llir(form->body[i], tail);
     }
-    update_code_info(handle_stub(ft->stub), form->header.origin);
+    update_code_info(S, handle_stub(ft->stub), form->header.origin);
 
     // in the tail position, this is handled by the subsequent return
     if (!tail) {
@@ -584,14 +588,14 @@ static void disassemble_instr(u8* code_start, std::ostream& out) {
 }
 
 static void disassemble_stub(std::ostringstream& os, istate* S, function_stub* stub) {
-    std::cout << "disasm\n";
-    for (u32 i = 0; i < stub->code_size; i += instr_width(stub->code->data[i])) {
-        disassemble_instr(&stub->code->data[i], os);
-        if (stub->code->data[i] == OP_CONST) {
-            auto id = read_short(&stub->code->data[i+1]);
-            auto val = ((value*)stub->const_arr->data)[id];
+    // FIXME: stop accessing gc arrays directly you dumbass
+    for (u32 i = 0; i < stub->code.size; i += instr_width(stub->code.data->data[i])) {
+        disassemble_instr(&stub->code.data->data[i], os);
+        if (stub->code.data->data[i] == OP_CONST) {
+            auto id = read_short(&stub->code.data->data[i+1]);
+            auto val = gc_array_get(&stub->const_arr, id);
             os << "    " << "; " << v_to_string(val, S->symtab, true);
-        } else if (stub->code->data[i] == OP_GLOBAL) {
+        } else if (stub->code.data->data[i] == OP_GLOBAL) {
             // TODO: print global value
             // auto id = read_u32(&stub->code[i+1]);
             // os << "    " << "; " << id;
@@ -609,9 +613,8 @@ static void disassemble_with_header(std::ostringstream& os, istate* S,
     } else {
         disassemble_stub(os, S, stub);
         if (recur) {
-            auto data = (function_stub**)stub->sub_funs->data;
-            for (u32 i = 0; i < stub->sub_fun_size; ++i) {
-                disassemble_with_header(os, S, data[i],
+            for (u32 i = 0; i < stub->sub_funs.size; ++i) {
+                disassemble_with_header(os, S, gc_array_get(&stub->sub_funs, i),
                         ";" + header + ":" + std::to_string(i), recur);
             }
         }

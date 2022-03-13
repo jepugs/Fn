@@ -79,18 +79,26 @@ constexpr u64 INIT_GC_ARRAY_SIZE = 8;
 
 gc_handle* get_handle(allocator* alloc, gc_header* obj);
 void release_handle(gc_handle* handle);
-void* alloc_bytes(allocator* alloc, u64 size);
-// gc_bytes are byte arrays used internally by some objects
+
+// routine to get bytes from the allocator. Does not trigger collection.
+void* get_bytes(allocator* alloc, u64 size);
+
+// gc_bytes are byte arrays used internally by some objects. These routines will
+// not trigger collection, since this could cause the object containing the
+// array to be moved.
 gc_bytes* alloc_gc_bytes(allocator* alloc, u64 nbytes);
 gc_bytes* realloc_gc_bytes(allocator* alloc, gc_bytes* src, u64 new_size);
-void grow_gc_array(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
+void grow_gc_array0(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
         u64 entry_size);
-void init_gc_array(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
+void init_gc_array0(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
         u64 entry_size);
-void alloc_string(istate* S, value* where, u32 size);
-void alloc_string(istate* S, value* where, const string& str);
+
+// object creation routines. Each of these triggers a collection at the
+// beginning.
+void alloc_string(istate* S, u32 where, u32 size);
+void alloc_string(istate* S, u32 where, const string& str);
 void alloc_cons(istate* S, u32 where, u32 hd, u32 tl);
-void alloc_table(istate* S, value* where);
+void alloc_table(istate* S, u32 where);
 void alloc_sub_stub(istate* S, gc_handle* stub_handle);
 void alloc_empty_fun(istate* S,
         value* where,
@@ -103,8 +111,44 @@ void alloc_foreign_fun(istate* S,
         u32 num_upvals);
 void alloc_fun(istate* S, u32 where, u32 enclosing, constant_id fid);
 
+// functions for mutating function stubs. These are used by the compiler. These
+// DO NOT trigger collection. (As such they could theoretically cause an out of
+// memory error).
+constant_id push_back_const(istate* S, gc_handle* stub_handle, value v);
+void push_back_code(istate* S, gc_handle* stub_handle, u8 b);
+void push_back_upval(istate* S, gc_handle* stub_handle, bool direct, u8 index);
+void update_code_info(istate* S, function_stub* to, const source_loc& loc);
+// get the location of an instruction based on the code_info array in the
+// function stub. This doesn't perform mutation, but it's here because it needs
+// the gc_array functions
+code_info* instr_loc(function_stub* stub, u32 pc);
+
 void collect(istate* S);
 void collect_now(istate* S);
+
+// gc_arrays wrap gc_bytes objects so that they can be conveniently used as
+// dynamic arrays for objects of arbitrary size. These are the routines to
+// manipulate them.
+template<typename T>
+void init_gc_array(istate* S, gc_array<T>* arr) {
+    arr->cap = INIT_GC_ARRAY_SIZE;
+    arr->size = 0;
+    arr->data = alloc_gc_bytes(S->alloc, INIT_GC_ARRAY_SIZE*sizeof(T));
+}
+
+template<typename T>
+void push_back_gc_array(istate* S, gc_array<T>* arr, const T& value) {
+    if (arr->cap <= arr->size) {
+        arr->cap *= 2;
+        arr->data = realloc_gc_bytes(S->alloc, arr->data, arr->cap * sizeof(T));
+    }
+    ((T*)arr->data->data)[arr->size++] = value;
+}
+
+template<typename T>
+T& gc_array_get(gc_array<T>* arr, u64 i) {
+    return ((T*)arr->data->data)[i];
+}
 
 }
 

@@ -26,56 +26,6 @@ bool fn_string::operator==(const fn_string& s) const {
     return true;
 }
 
-void update_code_info(function_stub* to, const source_loc& loc) {
-    auto c = new code_info {
-        .start_addr = (u32)to->code_size,
-        .loc = loc,
-        .prev = to->ci_head
-    };
-    to->ci_head = c;
-}
-
-code_info* instr_loc(function_stub* stub, u32 pc) {
-    auto c = stub->ci_head;
-    while (c != nullptr) {
-        if (c->start_addr <= pc) {
-            break;
-        }
-        c = c->prev;
-    }
-    return c;
-}
-
-constant_id push_back_const(istate* S, gc_handle* stub_handle, value v) {
-    auto stub = (function_stub*) stub_handle->obj;
-    grow_gc_array(S->alloc, &stub->const_arr, &stub->const_cap,
-            &stub->const_size, sizeof(value));
-    stub = (function_stub*) stub_handle->obj;
-    auto id = stub->const_size - 1;
-    ((value*)stub->const_arr->data)[id] = v;
-    return id;
-}
-
-void push_back_code(istate* S, gc_handle* stub_handle, u8 b) {
-    auto stub = (function_stub*) stub_handle->obj;
-    grow_gc_array(S->alloc, &stub->code, &stub->code_cap, &stub->code_size,
-            sizeof(u8));
-    stub = (function_stub*) stub_handle->obj;
-    stub->code->data[stub->code_size - 1] = b;
-}
-void push_back_upval(istate* S, gc_handle* stub_handle, bool direct, u8 index) {
-    auto stub = (function_stub*) stub_handle->obj;
-    grow_gc_array(S->alloc, &stub->upvals, &stub->upvals_cap,
-            &stub->upvals_size, sizeof(u8));
-    stub = (function_stub*) stub_handle->obj;
-    stub->upvals->data[stub->upvals_size - 1] = index;
-    grow_gc_array(S->alloc, &stub->upvals_direct, &stub->upvals_direct_cap,
-            &stub->upvals_direct_size, sizeof(bool));
-    stub = (function_stub*) stub_handle->obj;
-    ((bool*)stub->upvals_direct->data)[stub->upvals_direct_size - 1] = direct;
-    ++stub->num_upvals;
-}
-
 symbol_table::~symbol_table() {
     for (auto x : by_id) {
         delete x.name;

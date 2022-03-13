@@ -4,8 +4,7 @@ namespace fn {
 
 bool source_loc::operator==(const source_loc& other) {
     return this->line == other.line
-        && this->col == other.col
-        && this->filename == other.filename;
+        && this->col == other.col;
 }
 
 bool source_loc::operator!=(const source_loc& other) {

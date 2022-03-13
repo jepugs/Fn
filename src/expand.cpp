@@ -68,7 +68,7 @@ function_tree* add_sub_fun(istate* S, function_tree* ft) {
     auto fid = ft->sub_funs.size;
     alloc_sub_stub(S, ft->stub);
     auto sub_tree = init_function_tree(S,
-            ((function_stub**)handle_stub(ft->stub)->sub_funs->data)[fid]);
+            gc_array_get(&handle_stub(ft->stub)->sub_funs, fid));
     ft->sub_funs.push_back(sub_tree);
     return sub_tree;
 }

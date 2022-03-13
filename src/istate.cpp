@@ -103,11 +103,11 @@ void push_number(istate* S, f64 num) {
 }
 void push_string(istate* S, u32 size) {
     push_nil(S);
-    alloc_string(S, &S->stack[S->sp - 1], size);
+    alloc_string(S, S->sp - 1, size);
 }
 void push_string(istate* S, const string& str)  {
     push_nil(S);
-    alloc_string(S, &S->stack[S->sp - 1], str);
+    alloc_string(S, S->sp - 1, str);
 }
 void push_sym(istate* S, symbol_id sym) {
     push(S, vbox_symbol(sym));
@@ -129,7 +129,7 @@ void push_cons(istate* S, u32 hd, u32 tl) {
 
 void push_table(istate* S) {
     push_nil(S);
-    alloc_table(S, &S->stack[S->sp - 1]);
+    alloc_table(S, S->sp - 1);
 }
 
 static value* find_table_slot(fn_table* tab, value k) {

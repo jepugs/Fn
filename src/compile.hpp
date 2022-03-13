@@ -80,6 +80,7 @@ private:
     void write_byte(u8 u);
     void write_short(u16 u);
     void write_u32(u32 u);
+    u8 read_byte(u32 where);
     u32 read_u32(u32 where);
     void patch_byte(u8 u, u32 where);
     void patch_short(u16 u, u32 where);

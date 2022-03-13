@@ -20,9 +20,9 @@ namespace fn {
 // must have the istate variable passed in directly or it could be computed
 // multiple times.
 #define cur_fun() (vfunction(S->stack[S->bp-1]))
-#define code_byte(S, where) (S->callee->stub->code->data[where])
-#define code_short(S, where) (*((u16*)&S->callee->stub->code->data[where]))
-#define code_u32(S, where) (*((u32*)&S->callee->stub->code->data[where]))
+#define code_byte(S, where) (S->callee->stub->code.data->data[where])
+#define code_short(S, where) (*((u16*)&S->callee->stub->code.data->data[where]))
+#define code_u32(S, where) (*((u32*)&S->callee->stub->code.data->data[where]))
 #define push(S, v) S->stack[S->sp] = v;++S->sp;
 #define peek(S, i) (S->stack[S->sp-((i))-1])
 
@@ -167,8 +167,7 @@ void call(istate* S, u32 n) {
         if (S->err_happened) {
             std::ostringstream os;
             auto c = instr_loc(fun->stub, S->pc - 1);
-            os << "At (" << c->loc.line << "," << c->loc.col << ") in "
-               << c->loc.filename << ":  \n" << S->err_msg;
+            os << "At (" << c->loc.line << "," << c->loc.col << "): \n" << S->err_msg;
             ierror(S, os.str());
             return;
         }
@@ -311,7 +310,7 @@ void execute_fun(istate* S) {
         case OP_MACRO: {
             auto id = code_short(S, pc);
             pc += 2;
-            auto fqn = vsymbol(((value*)S->callee->stub->const_arr->data)[id]);
+            auto fqn = vsymbol(gc_array_get(&S->callee->stub->const_arr, id));
             auto x = S->G->macro_tab.get2(fqn);
             if (!x) {
                 ierror(S, "Failed to find global variable " + (*S->symtab)[fqn]);
@@ -325,13 +324,13 @@ void execute_fun(istate* S) {
             // a symbol.
             auto id = code_short(S, pc);
             pc += 2;
-            auto fqn = ((value*)S->callee->stub->const_arr->data)[id];
+            auto fqn = gc_array_get(&S->callee->stub->const_arr, id);
             set_macro(S, vsymbol(fqn), vfunction(peek(S, 0)));
             S->stack[S->sp-1] = fqn;
         }
             break;
         case OP_CONST:
-            push(S, ((value*)S->callee->stub->const_arr->data)[code_short(S, pc)]);
+            push(S, gc_array_get(&S->callee->stub->const_arr, code_short(S, pc)));
             pc += 2;
             break;
         case OP_NIL:

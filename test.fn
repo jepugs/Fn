@@ -12,8 +12,8 @@
    'filter (fn (self fun)
              (lfilter fun self))})
 
-(defn List (& args)
-  args)
+; (defn List (& args)
+;   args)
 
 ; (with (old-head head
 ;        old-tail tail)
@@ -89,11 +89,11 @@
 (defn lfilter (pred lazy)
   (letfn next (rem)
          (cond
-          (rem.empty?) rem
-          (pred (rem.head))
-          (lcons (rem.head)
-                 (Lazy-List $(unbox-lazy (next (rem.tail)))))
-          yes (next (rem.tail))))
+           (rem.empty?) rem
+           (pred (rem.head))
+           (lcons (rem.head)
+                  (Lazy-List $(unbox-lazy (next (rem.tail)))))
+           yes (next (rem.tail))))
   (next lazy))
 
 (def N>=0
@@ -101,6 +101,8 @@
          $(Lazy-List (fn ()
                        [$0 (next-int (+ $0 1))])))
     (next-int 0)))
+
+; (list->lazy [1 2 3 4])
 
 (do
   (let init-primes (list->lazy [2 3 5 7])
@@ -127,10 +129,9 @@
                           (let next (candidates.filter prime-test?))
                           [(next.head) (next.tail)])))))
 
-
 (defn lnth (n l)
   (if (<= n 0)
       (l.head)
       (lnth (- n 1) (l.tail))))
 
-(lnth 99999 primes)
+(lnth 999 primes)

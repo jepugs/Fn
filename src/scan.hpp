@@ -198,9 +198,8 @@ struct token {
 
 class scanner {
 public:
-    scanner(std::istream* in, const string& filename="", int line=1, int col=0)
+    scanner(std::istream* in, int line=1, int col=0)
         : input{in}
-        , filename{filename}
         , line{line}
         , col{col} {
     }
@@ -229,7 +228,6 @@ private:
     bool close_stream = false;
 
     // these track location in input (used for generating error messages)
-    string filename;
     int line;
     int col;
 
@@ -273,7 +271,7 @@ private:
 
     // throw an appropriate fn_exception
     inline void error(const char* msg) {
-        throw fn_exception{"scanner", msg, source_loc{filename, line, col-1}};
+        throw fn_exception{"scanner", msg, source_loc{line, col-1}};
     }
 };
 

@@ -82,7 +82,7 @@ void release_handle(gc_handle* handle) {
     handle->alive = false;
 }
 
-void* alloc_bytes(allocator* alloc, u64 size) {
+void* get_bytes(allocator* alloc, u64 size) {
     alloc->mem_usage += size;
     if (size + alloc->active_card->u.h.pointer > GC_CARD_SIZE) {
         // TODO: account for very large objects
@@ -95,7 +95,7 @@ void* alloc_bytes(allocator* alloc, u64 size) {
 
 gc_bytes* alloc_gc_bytes(allocator* alloc, u64 nbytes) {
     auto sz = round_to_align(sizeof(gc_bytes) + nbytes);
-    auto res = (gc_bytes*)alloc_bytes(alloc, sz);
+    auto res = (gc_bytes*)get_bytes(alloc, sz);
     init_gc_header(&res->h, GC_TYPE_GC_BYTES, sz);
     res->data = (u8*)(sizeof(gc_bytes) + (u64)res);
     return res;
@@ -111,7 +111,7 @@ gc_bytes* realloc_gc_bytes(allocator* alloc, gc_bytes* src, u64 new_size) {
     return res;
 }
 
-void grow_gc_array(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
+void grow_gc_array0(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
         u64 entry_size) {
     if (*cap > *size) {
         ++(*size);
@@ -122,42 +122,42 @@ void grow_gc_array(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
     }
 }
 
-void init_gc_array(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
+void init_gc_array0(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
         u64 entry_size) {
     *cap = INIT_GC_ARRAY_SIZE;
     *size = 0;
     *arr = alloc_gc_bytes(alloc, *cap * entry_size);
 }
 
-void alloc_string(istate* S, value* where, u32 len) {
+void alloc_string(istate* S, u32 where, u32 len) {
     collect(S);
     auto sz = round_to_align(sizeof(fn_string) + len + 1);
-    auto res = (fn_string*)alloc_bytes(S->alloc, sz);
+    auto res = (fn_string*)get_bytes(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_STRING, sz);
     res->data = (u8*) (((u8*)res) + sizeof(fn_string));
     res->data[len] = 0;
-    *where = vbox_string(res);
+    S->stack[where] = vbox_string(res);
     ++S->alloc->count;
 }
 
-void alloc_string(istate* S, value* where, const string& str) {
+void alloc_string(istate* S, u32 where, const string& str) {
     collect(S);
     auto len = str.size();
     auto sz = round_to_align(sizeof(fn_string) + len + 1);
-    auto res = (fn_string*)alloc_bytes(S->alloc, sz);
+    auto res = (fn_string*)get_bytes(S->alloc, sz);
     res->size = len;
     init_gc_header(&res->h, GC_TYPE_STRING, sz);
     res->data = (u8*) (((u8*)res) + sizeof(fn_string));
     memcpy(res->data, str.c_str(), len);
     res->data[len] = 0;
-    *where = vbox_string(res);
+    S->stack[where] = vbox_string(res);
     ++S->alloc->count;
 }
 
 void alloc_cons(istate* S, u32 where, u32 hd, u32 tl) {
     collect(S);
     auto sz = round_to_align(sizeof(fn_cons));
-    auto res = (fn_cons*)alloc_bytes(S->alloc, sz);
+    auto res = (fn_cons*)get_bytes(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_CONS, sz);
     res->head = S->stack[hd];
     res->tail = S->stack[tl];
@@ -165,10 +165,10 @@ void alloc_cons(istate* S, u32 where, u32 hd, u32 tl) {
     ++S->alloc->count;
 }
 
-void alloc_table(istate* S, value* where) {
+void alloc_table(istate* S, u32 where) {
     collect(S);
     auto sz =  round_to_align(sizeof(fn_table));
-    auto res = (fn_table*)alloc_bytes(S->alloc, sz);
+    auto res = (fn_table*)get_bytes(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_TABLE, sz);
     res->size = 0;
     res->cap = FN_TABLE_INIT_CAP;
@@ -178,26 +178,23 @@ void alloc_table(istate* S, value* where) {
         ((value*)(res->data->data))[i] = V_UNIN;
     }
     res->metatable = V_NIL;
-    *where = vbox_table(res);
+    S->stack[where] = vbox_table(res);
     ++S->alloc->count;
 }
 
-static function_stub* mk_fun_stub(allocator* alloc, symbol_id ns_id) {
+static function_stub* mk_fun_stub(istate* S, symbol_id ns_id) {
+    auto& alloc = S->alloc;
     auto sz = sizeof(function_stub);
-    auto res = (function_stub*)alloc_bytes(alloc, sz);
+    auto res = (function_stub*)get_bytes(alloc, sz);
     init_gc_header(&res->h, GC_TYPE_FUN_STUB, sz);
-    init_gc_array(alloc, &res->code, &res->code_cap, &res->code_size, sizeof(u8));
-    init_gc_array(alloc, &res->const_arr, &res->const_cap, &res->const_size,
-            sizeof(value));
-    init_gc_array(alloc, &res->sub_funs, &res->sub_fun_cap, &res->sub_fun_size,
-            sizeof(function_stub*));
-    init_gc_array(alloc, &res->upvals, &res->upvals_cap, &res->upvals_size,
-            sizeof(u8));
-    init_gc_array(alloc, &res->upvals_direct, &res->upvals_direct_cap,
-            &res->upvals_direct_size, sizeof(bool));
+    init_gc_array(S, &res->code);
+    init_gc_array(S, &res->const_arr);
+    init_gc_array(S, &res->sub_funs);
+    init_gc_array(S, &res->upvals);
+    init_gc_array(S, &res->upvals_direct);
+    init_gc_array(S, &res->ci_arr);
     res->num_params = 0;
     res->num_opt = 0;
-    res->num_upvals = 0;
     res->space = 1;
     res->vari = false;
     res->foreign = nullptr;
@@ -205,19 +202,14 @@ static function_stub* mk_fun_stub(allocator* alloc, symbol_id ns_id) {
     // we can't actually set up the ns info here, so we leave it uninitialized
     res->name = nullptr;
     res->filename = nullptr;
-    res->ci_head = nullptr;
     return res;
 }
 
 void alloc_sub_stub(istate* S, gc_handle* stub_handle) {
     collect(S);
     auto stub = (function_stub*)stub_handle->obj;
-    grow_gc_array(S->alloc, &stub->sub_funs, &stub->sub_fun_cap,
-            &stub->sub_fun_size, sizeof(function_stub*));
-    stub = (function_stub*)stub_handle->obj;
-    auto res = mk_fun_stub(S->alloc, stub->ns_id);
-    auto data = (function_stub**)stub->sub_funs->data;
-    data[stub->sub_fun_size - 1] = res;
+    auto res = mk_fun_stub(S, stub->ns_id);
+    push_back_gc_array(S, &stub->sub_funs, res);
     ++S->alloc->count;
 }
 
@@ -226,18 +218,18 @@ void alloc_empty_fun(istate* S,
         symbol_id ns_id) {
     collect(S);
     auto sz = sizeof(fn_function);
-    auto res = (fn_function*)alloc_bytes(S->alloc, sz);
+    auto res = (fn_function*)get_bytes(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
     res->init_vals = nullptr;
     res->upvals = nullptr;
-    res->stub = mk_fun_stub(S->alloc, ns_id);
+    res->stub = mk_fun_stub(S, ns_id);
     *where = vbox_function(res);
     S->alloc->count += 2;
 }
 
 static upvalue_cell* alloc_open_upval(istate* S, u32 pos) {
     auto sz = round_to_align(sizeof(upvalue_cell));
-    auto res = (upvalue_cell*)alloc_bytes(S->alloc, sz);
+    auto res = (upvalue_cell*)get_bytes(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_UPVALUE, sz);
     res->closed = false;
     res->datum.pos = pos;
@@ -247,7 +239,7 @@ static upvalue_cell* alloc_open_upval(istate* S, u32 pos) {
 
 static upvalue_cell* alloc_closed_upval(istate* S) {
     auto sz = sizeof(upvalue_cell);
-    auto res = (upvalue_cell*)alloc_bytes(S->alloc, sz);
+    auto res = (upvalue_cell*)get_bytes(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_UPVALUE, sz);
     res->closed = true;
     res->datum.val = V_NIL;
@@ -264,7 +256,7 @@ void alloc_foreign_fun(istate* S,
     collect(S);
     auto sz = round_to_align(sizeof(fn_function)
             + num_upvals * sizeof(upvalue_cell*));
-    auto res = (fn_function*)alloc_bytes(S->alloc, sz);
+    auto res = (fn_function*)get_bytes(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
     res->init_vals = nullptr;
     res->upvals = (upvalue_cell**)((u8*)res + sizeof(fn_function));
@@ -272,11 +264,11 @@ void alloc_foreign_fun(istate* S,
         res->upvals[i] = alloc_closed_upval(S);
         res->upvals[i]->closed = true;
     }
-    res->stub = mk_fun_stub(S->alloc, S->ns_id);
+    res->stub = mk_fun_stub(S, S->ns_id);
     res->stub->foreign = foreign;
     res->stub->num_params = num_params;
-    res->stub->num_upvals = num_upvals;
     res->stub->vari = vari;
+    // FIXME: allocate foreign fun upvals
     *where = vbox_function(res);
     S->alloc->count += 2;
 }
@@ -302,12 +294,12 @@ static upvalue_cell* open_upval(istate* S, u32 pos) {
 void alloc_fun(istate* S, u32 where, u32 enclosing, constant_id fid) {
     collect(S);
     auto enc_fun = vfunction(S->stack[enclosing]);
-    auto stub = ((function_stub**)enc_fun->stub->sub_funs->data)[fid];
+    auto stub = gc_array_get(&enc_fun->stub->sub_funs, fid);
     // size of upvals + initvals arrays
     auto sz = round_to_align(sizeof(fn_function)
             + stub->num_opt*sizeof(value)
-            + stub->num_upvals*sizeof(upvalue_cell*));
-    auto res = (fn_function*)alloc_bytes(S->alloc, sz);
+            + stub->upvals.size*sizeof(upvalue_cell*));
+    auto res = (fn_function*)get_bytes(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
     res->init_vals = (value*)((u8*)res + sizeof(fn_function));
     for (u32 i = 0; i < stub->num_opt; ++i) {
@@ -317,11 +309,11 @@ void alloc_fun(istate* S, u32 where, u32 enclosing, constant_id fid) {
     res->stub = stub;
 
     // set up upvalues
-    for (u32 i = 0; i < stub->num_upvals; ++i) {
-        if (((bool*)stub->upvals_direct->data)[i]) {
-            res->upvals[i] = open_upval(S, S->bp + stub->upvals->data[i]);
+    for (u32 i = 0; i < stub->upvals.size; ++i) {
+        if (gc_array_get(&stub->upvals_direct, i)) {
+            res->upvals[i] = open_upval(S, S->bp + gc_array_get(&stub->upvals, i));
         } else {
-            res->upvals[i] = enc_fun->upvals[stub->upvals->data[i]];
+            res->upvals[i] = enc_fun->upvals[gc_array_get(&stub->upvals, i)];
         }
     }
 
@@ -329,6 +321,42 @@ void alloc_fun(istate* S, u32 where, u32 enclosing, constant_id fid) {
     S->alloc->count += 1;
 }
 
+constant_id push_back_const(istate* S, gc_handle* stub_handle, value v) {
+    auto stub = (function_stub*) stub_handle->obj;
+    push_back_gc_array(S, &stub->const_arr, v);
+    return stub->const_arr.size - 1;
+}
+
+void push_back_code(istate* S, gc_handle* stub_handle, u8 b) {
+    auto stub = (function_stub*) stub_handle->obj;
+    push_back_gc_array(S, &stub->code, b);
+}
+
+void push_back_upval(istate* S, gc_handle* stub_handle, bool direct, u8 index) {
+    auto stub = (function_stub*) stub_handle->obj;
+    push_back_gc_array(S, &stub->upvals, index);
+    push_back_gc_array(S, &stub->upvals_direct, direct);
+}
+
+void update_code_info(istate* S, function_stub* to, const source_loc& loc) {
+    push_back_gc_array(S, &to->ci_arr,
+            code_info {
+                .start_addr = (u32)to->code.size,
+                .loc = loc
+            });
+}
+
+code_info* instr_loc(function_stub* stub, u32 pc) {
+    for (u64 i = stub->ci_arr.size; i > 0; --i) {
+        auto& c = gc_array_get(&stub->ci_arr, i-1);
+        if (c.start_addr <= pc) {
+            return &c;
+        }
+    }
+    // this is safe since the first location is always added when the function
+    // is created.
+    return &gc_array_get(&stub->ci_arr, 0);
+}
 
 
 static void update_or_q_value(value* place, dyn_array<value*>* q) {
@@ -353,7 +381,7 @@ static void update_or_q_header(gc_header** place, dyn_array<gc_header**>* q) {
 // copy an object to a new gc_card. THIS DOES NOT UPDATE INTERNAL POINTERS
 static gc_header* copy_and_forward(istate* S, gc_header* obj) {
     auto alloc = S->alloc;
-    auto new_loc = (gc_header*)alloc_bytes(alloc, obj->size);
+    auto new_loc = (gc_header*)get_bytes(alloc, obj->size);
     memcpy(new_loc, obj, obj->size);
     obj->type = GC_TYPE_FORWARD;
     obj->forward = new_loc;
@@ -365,10 +393,14 @@ static void copy_gc_bytes(istate* S, gc_bytes** obj) {
     (*obj)->data = (sizeof(gc_bytes) + (u8*)*obj);
 }
 
+template<typename T>
+static void copy_gc_array(istate* S, gc_array<T>* arr) {
+    copy_gc_bytes(S, &arr->data);
+}
+
 void move_live_object(istate* S, gc_header* obj, dyn_array<gc_header**>* hdr_q,
         dyn_array<value*>* val_q) {
-    copy_and_forward(S, obj);
-    obj = obj->forward;
+    obj = copy_and_forward(S, obj);
 
     switch (gc_type(*obj)) {
     case GC_TYPE_STRING: {
@@ -384,7 +416,6 @@ void move_live_object(istate* S, gc_header* obj, dyn_array<gc_header**>* hdr_q,
         auto tab = (fn_table*)obj;
         // move the array
         copy_gc_bytes(S, &tab->data);
-        // tab->data = realloc_gc_bytes(S->alloc, tab->data, 2*tab->cap*sizeof(value));
         update_or_q_value(&tab->metatable, val_q);
         auto data = (value*)tab->data->data;
         auto m = tab->cap * 2;
@@ -407,7 +438,7 @@ void move_live_object(istate* S, gc_header* obj, dyn_array<gc_header**>* hdr_q,
         f->upvals = (upvalue_cell**) (sizeof(fn_function)
                 + f->stub->num_opt * sizeof(value) + (u8*)f);
         // update the location of the upvals and initvals arrays
-        for (local_address i = 0; i < f->stub->num_upvals; ++i) {
+        for (local_address i = 0; i < f->stub->upvals.size; ++i) {
             update_or_q_header((gc_header**)&f->upvals[i], hdr_q);
         }
         // init vals
@@ -418,18 +449,18 @@ void move_live_object(istate* S, gc_header* obj, dyn_array<gc_header**>* hdr_q,
         break;
     case GC_TYPE_FUN_STUB: {
         auto s = (function_stub*)obj;
-        copy_gc_bytes(S, &s->code);
-        copy_gc_bytes(S, &s->const_arr);
-        copy_gc_bytes(S, &s->sub_funs);
-        copy_gc_bytes(S, &s->upvals);
-        copy_gc_bytes(S, &s->upvals_direct);
-        for (u64 i = 0; i < s->sub_fun_size; ++i) {
-            auto data = (function_stub**)s->sub_funs->data;
-            update_or_q_header((gc_header**)&data[i], hdr_q);
+        copy_gc_array(S, &s->code);
+        copy_gc_array(S, &s->const_arr);
+        copy_gc_array(S, &s->sub_funs);
+        copy_gc_array(S, &s->upvals);
+        copy_gc_array(S, &s->upvals_direct);
+        copy_gc_array(S, &s->ci_arr);
+        for (u64 i = 0; i < s->sub_funs.size; ++i) {
+            update_or_q_header((gc_header**)&gc_array_get(&s->sub_funs, i),
+                    hdr_q);
         }
-        for (u64 i = 0; i < s->const_size; ++i) {
-            auto data = (value*)s->const_arr->data;
-            update_or_q_value(&data[i], val_q);
+        for (u64 i = 0; i < s->const_arr.size; ++i) {
+            update_or_q_value(&gc_array_get(&s->const_arr, i), val_q);
         }
     }
         break;

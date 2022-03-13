@@ -69,7 +69,6 @@ constexpr u64 max_local_address = 255;
 // indicates that the bytecode was either internally generated or came from a
 // REPL.
 struct source_loc {
-    string filename;
     int line = 1;
     int col = 0;
     bool operator==(const source_loc& other);
@@ -95,7 +94,7 @@ inline void set_fault(fault* f,
 inline void emit_error(std::ostream* out, const fault& err) {
     auto& origin = err.origin;
     (*out) << "[" + err.subsystem + "] Error at line " << origin.line
-           << ", col " << origin.col << " in " << origin.filename << ":\n\t"
+           << ", col " << origin.col << ":\n\t"
            << err.message << '\n';
 }
 
@@ -132,7 +131,7 @@ public:
         // build formatted error message
         std::ostringstream ss;
         ss << "[" + subsystem + "] error at line " << origin.line << ",col " << origin.col
-           << " in " << origin.filename << ":\n\t" << message;
+           << ":\n\t" << message;
         formatted = new string(ss.str());
         
     }

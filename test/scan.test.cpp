@@ -11,7 +11,7 @@ using namespace fn_scan;
 
 static inline void test_token(const char* str, token_kind k, int nth=0) {
     std::istringstream in(str);
-    auto sc = new scanner(&in, "<test-input>");
+    auto sc = new scanner(&in);
     auto tok = sc->next_token();
     while (nth > 0) {
         tok = sc->next_token();
@@ -24,7 +24,7 @@ static inline void test_token(const char* str, token_kind k, int nth=0) {
 
 static inline void test_num_token(const char* str, f64 num, int nth=0) {
     std::istringstream in{str};
-    auto sc = new scanner(&in, "<test-input>");
+    auto sc = new scanner(&in);
     auto tok = sc->next_token();
     while (nth > 0) {
         tok = sc->next_token();
@@ -38,7 +38,7 @@ static inline void test_num_token(const char* str, f64 num, int nth=0) {
 
 static inline void test_str_token(const char* str, const char* cmp, int nth=0) {
     std::istringstream in(str);
-    auto sc = new scanner(&in, "<test-input>");
+    auto sc = new scanner(&in);
     auto tok = sc->next_token();
     while (nth > 0) {
         tok = sc->next_token();
@@ -52,7 +52,7 @@ static inline void test_str_token(const char* str, const char* cmp, int nth=0) {
 
 static inline void test_sym_token(const char* str, const char* cmp, int nth=0) {
     std::istringstream in(str);
-    auto sc = new scanner(&in, "<test-input>");
+    auto sc = new scanner(&in);
     auto tok = sc->next_token();
     while (nth > 0) {
         tok = sc->next_token();
@@ -66,7 +66,7 @@ static inline void test_sym_token(const char* str, const char* cmp, int nth=0) {
 
 static inline void test_dot_token(const char* str, const char* cmp, int nth=0) {
     std::istringstream in(str);
-    auto sc = new scanner(&in, "<test-input>");
+    auto sc = new scanner(&in);
     auto tok = sc->next_token();
     while (nth > 0) {
         tok = sc->next_token();
