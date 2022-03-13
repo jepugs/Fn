@@ -35,9 +35,21 @@ constexpr u64 GC_CARD_SIZE = 2 << 12;
 
 struct gc_card_header {
     gc_card_header* next;
-    bool discard;
-    u32 pointer;
-    u32 num_objs;
+    u32 count;
+    u16 pointer;
+
+    // following fields are currently unused but will be supported in a future
+    // version of the garbage collector
+
+    // persistent cards are used to store large objects
+    bool persistent;
+    // mark is used to collect persistent cards
+    // This isn't used in non-persistent gc cards. Maybe it shouldn't be here?
+    bool mark;
+    // Set to true when an object in this card is written to
+    bool dirty;
+    // generation.
+    u8 gen;
 };
 
 struct alignas(GC_CARD_SIZE) gc_card {
@@ -88,10 +100,6 @@ void* get_bytes(allocator* alloc, u64 size);
 // array to be moved.
 gc_bytes* alloc_gc_bytes(allocator* alloc, u64 nbytes);
 gc_bytes* realloc_gc_bytes(allocator* alloc, gc_bytes* src, u64 new_size);
-void grow_gc_array0(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
-        u64 entry_size);
-void init_gc_array0(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
-        u64 entry_size);
 
 // object creation routines. Each of these triggers a collection at the
 // beginning.
@@ -101,10 +109,10 @@ void alloc_cons(istate* S, u32 where, u32 hd, u32 tl);
 void alloc_table(istate* S, u32 where);
 void alloc_sub_stub(istate* S, gc_handle* stub_handle);
 void alloc_empty_fun(istate* S,
-        value* where,
+        u32 where,
         symbol_id ns_id);
 void alloc_foreign_fun(istate* S,
-        value* where,
+        u32 where,
         void (*foreign)(istate*),
         u32 num_args,
         bool vari,

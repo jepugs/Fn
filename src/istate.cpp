@@ -217,7 +217,7 @@ void pop_to_list(istate* S, u32 n) {
 
 void push_empty_fun(istate* S) {
     push_nil(S);
-    alloc_empty_fun(S, &S->stack[S->sp - 1], S->ns_id);
+    alloc_empty_fun(S, S->sp - 1, S->ns_id);
 }
 
 void push_foreign_fun(istate* S,
@@ -253,7 +253,7 @@ void push_foreign_fun(istate* S,
         free_ast_form(f);
     }
     push_nil(S);
-    alloc_foreign_fun(S, &S->stack[S->sp - 1], foreign, num_args, vari, 0);
+    alloc_foreign_fun(S, S->sp - 1, foreign, num_args, vari, 0);
 }
 
 void print_top(istate* S) {

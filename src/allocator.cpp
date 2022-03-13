@@ -33,7 +33,9 @@ static inline constexpr u64 round_to_align(u64 size) {
 static void add_gc_card(allocator* alloc) {
     auto new_card = alloc->card_pool.new_object();
     new_card->u.h.next = &alloc->active_card->u.h;
-    new_card->u.h.discard = false;
+    new_card->u.h.persistent = false;
+    new_card->u.h.gen = 0;
+    new_card->u.h.count = 0;
     new_card->u.h.pointer = round_to_align(sizeof(gc_card_header));
     alloc->active_card = new_card;
 }
@@ -44,7 +46,6 @@ gc_card* get_gc_card(gc_header* h) {
 
 allocator::allocator(istate* S)
     : mem_usage{0}
-    , count{0}
     , collect_threshold{FIRST_COLLECT}
     , active_card{nullptr}
     , S{S}
@@ -90,6 +91,7 @@ void* get_bytes(allocator* alloc, u64 size) {
     }
     auto res = (void*)&alloc->active_card->u.data[alloc->active_card->u.h.pointer];
     alloc->active_card->u.h.pointer += size;
+    ++alloc->active_card->u.h.count;
     return res;
 }
 
@@ -109,24 +111,6 @@ gc_bytes* realloc_gc_bytes(allocator* alloc, gc_bytes* src, u64 new_size) {
     res->h.size = sz;
     res->data = (u8*)(sizeof(gc_bytes) + (u64)res);
     return res;
-}
-
-void grow_gc_array0(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
-        u64 entry_size) {
-    if (*cap > *size) {
-        ++(*size);
-    } else {
-        *cap *= 2;
-        ++(*size);
-        *arr = realloc_gc_bytes(alloc, *arr, *cap * entry_size);
-    }
-}
-
-void init_gc_array0(allocator* alloc, gc_bytes** arr, u64* cap, u64* size,
-        u64 entry_size) {
-    *cap = INIT_GC_ARRAY_SIZE;
-    *size = 0;
-    *arr = alloc_gc_bytes(alloc, *cap * entry_size);
 }
 
 void alloc_string(istate* S, u32 where, u32 len) {
@@ -214,7 +198,7 @@ void alloc_sub_stub(istate* S, gc_handle* stub_handle) {
 }
 
 void alloc_empty_fun(istate* S,
-        value* where,
+        u32 where,
         symbol_id ns_id) {
     collect(S);
     auto sz = sizeof(fn_function);
@@ -223,7 +207,7 @@ void alloc_empty_fun(istate* S,
     res->init_vals = nullptr;
     res->upvals = nullptr;
     res->stub = mk_fun_stub(S, ns_id);
-    *where = vbox_function(res);
+    S->stack[where] = vbox_function(res);
     S->alloc->count += 2;
 }
 
@@ -248,7 +232,7 @@ static upvalue_cell* alloc_closed_upval(istate* S) {
 }
 
 void alloc_foreign_fun(istate* S,
-        value* where,
+        u32 where,
         void (*foreign)(istate*),
         u32 num_params,
         bool vari,
@@ -269,7 +253,7 @@ void alloc_foreign_fun(istate* S,
     res->stub->num_params = num_params;
     res->stub->vari = vari;
     // FIXME: allocate foreign fun upvals
-    *where = vbox_function(res);
+    S->stack[where] = vbox_function(res);
     S->alloc->count += 2;
 }
 
@@ -570,14 +554,22 @@ void collect(istate* S) {
 #endif
 }
 
+static u64 count_objects(istate* S) {
+    auto ct = 0;
+    for (auto c = S->alloc->active_card; c != nullptr; c = (gc_card*)c->u.h.next) {
+        ct += c->u.h.count;
+    }
+    return ct;
+}
+
 void collect_now(istate* S) {
 #ifdef GC_VERBOSE
-    std::cout << ">>GC START: " << S->alloc->count << " objects "
+    std::cout << ">>GC START: " << count_objects(S) << " objects "
               << "(" << S->alloc->mem_usage << " bytes)" << '\n';
 #endif
     mark(S);
 #ifdef GC_VERBOSE
-    std::cout << "<<GC END: " << S->alloc->count << " objects "
+    std::cout << "<<GC END: " << count_objects(S) << " objects "
               << "(" << S->alloc->mem_usage << " bytes)" << '\n';
 #endif
 }
