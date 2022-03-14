@@ -179,8 +179,8 @@ struct alignas(OBJ_ALIGN) function_stub {
     // call frame. Otherwise, it is indirect.
 
     // metadata
-    string* name;
-    string* filename;
+    fn_string* name;
+    fn_string* filename;
     gc_array<code_info> ci_arr;
 };
 

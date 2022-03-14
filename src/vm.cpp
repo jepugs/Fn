@@ -166,9 +166,10 @@ void call(istate* S, u32 n) {
         execute_fun(S);
         if (S->err_happened) {
             std::ostringstream os;
-            auto c = instr_loc(fun->stub, S->pc - 1);
-            os << "At (" << c->loc.line << "," << c->loc.col << "): \n" << S->err_msg;
-            ierror(S, os.str());
+            S->stack_trace.push_back(trace_frame{
+                        .callee = S->callee,
+                        .pc = S->pc
+                    });
             return;
         }
         // return value
@@ -266,7 +267,7 @@ void execute_fun(istate* S) {
             auto v = S->G->def_arr[id];
             if (v == V_UNIN) {
                 ierror(S, "Failed to find global variable.");
-                S->pc = pc;
+                S->pc = pc - 5;
                 return;
             }
             push(S, v);
@@ -283,7 +284,7 @@ void execute_fun(istate* S) {
         case OP_OBJ_GET: {
             if (!vis_table(peek(S, 1))) {
                 ierror(S, "obj-get target is not a table.");
-                S->pc = pc;
+                S->pc = pc - 1;
                 return;
             }
             auto x = table_get(S, vtable(peek(S, 1)), peek(S, 0));
@@ -298,11 +299,10 @@ void execute_fun(istate* S) {
         case OP_OBJ_SET: {
             if (!vis_table(peek(S, 2))) {
                 ierror(S, "obj-set target is not a table.");
-                S->pc = pc;
+                S->pc = pc - 1;
                 return;
             }
             table_set(S, vtable(peek(S, 2)), peek(S, 1), peek(S, 0));
-            // vtable(peek(S, 2))->contents.insert(peek(S, 1), peek(S, 0));
             S->stack[S->sp - 3] = peek(S, 0);
             S->sp -= 2;
         }
@@ -314,6 +314,7 @@ void execute_fun(istate* S) {
             auto x = S->G->macro_tab.get2(fqn);
             if (!x) {
                 ierror(S, "Failed to find global variable " + (*S->symtab)[fqn]);
+                S->pc = pc - 3;
                 return;
             }
             push(S, vbox_function(x->val));

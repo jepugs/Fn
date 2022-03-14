@@ -16,6 +16,11 @@ constexpr u32 FOREIGN_MIN_STACK = 20;
 struct allocator;
 struct global_env;
 
+struct trace_frame {
+    fn_function* callee;
+    u32 pc;
+};
+
 struct istate {
     allocator* alloc;
     symbol_table* symtab;
@@ -28,11 +33,15 @@ struct istate {
     fn_function* callee;                     // current function
     dyn_array<upvalue_cell*> open_upvals;    // open upvalues on the stack
     value stack[STACK_SIZE];
+    fn_string* filename;                     // used for function metadata
+
     // error handling
     bool err_happened;
     // this is nullptr unless err_happened == true, in which case it must be
     // freed after processing the error.
-    char* err_msg;
+    fn_string* err_msg;
+    // used to generate stack traces on error
+    dyn_array<trace_frame> stack_trace;
 };
 
 istate* init_istate();
@@ -92,14 +101,19 @@ void push_empty_fun(istate* S);
 // push a foreign function by that wraps the provided function pointer
 void push_foreign_fun(istate* S,
         void (*foreign)(istate*),
+        const string& name,
         const string& params);
 void push_foreign_fun(istate* S,
         void (*foreign)(istate*),
+        const string& name,
         const string& params,
         u8 num_upvals);
 
 // print out the top of the stack to stdout
 void print_top(istate* S);
+
+// print out a stack trace to stdout
+void print_stack_trace(istate* S);
 
 }
 

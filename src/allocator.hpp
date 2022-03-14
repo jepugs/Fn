@@ -107,7 +107,7 @@ void alloc_string(istate* S, u32 where, u32 size);
 void alloc_string(istate* S, u32 where, const string& str);
 void alloc_cons(istate* S, u32 where, u32 hd, u32 tl);
 void alloc_table(istate* S, u32 where);
-void alloc_sub_stub(istate* S, gc_handle* stub_handle);
+void alloc_sub_stub(istate* S, gc_handle* stub_handle, const string& name);
 void alloc_empty_fun(istate* S,
         u32 where,
         symbol_id ns_id);
@@ -116,7 +116,8 @@ void alloc_foreign_fun(istate* S,
         void (*foreign)(istate*),
         u32 num_args,
         bool vari,
-        u32 num_upvals);
+        u32 num_upvals,
+        const string& name);
 void alloc_fun(istate* S, u32 where, u32 enclosing, constant_id fid);
 
 // functions for mutating function stubs. These are used by the compiler. These

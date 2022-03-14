@@ -175,7 +175,8 @@ int main(int argc, char** argv) {
         compile_form(S, form);
         free_ast_form(form);
         if (S->err_happened) {
-            std::cout << "Error: " << S->err_msg << '\n';
+            std::cout << "Error: " << string{(char*)S->err_msg->data} << '\n';
+            print_stack_trace(S);
             free_istate(S);
             return -1;
         }
@@ -184,7 +185,8 @@ int main(int argc, char** argv) {
         // pop(S);
         call(S, 0);
         if (S->err_happened) {
-            std::cout << "Error: " << S->err_msg << '\n';
+            std::cout << "Error: " << string{(char*)S->err_msg->data} << '\n';
+            print_stack_trace(S);
             free_istate(S);
             return -1;
         }

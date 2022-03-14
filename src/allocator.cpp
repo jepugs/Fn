@@ -166,7 +166,7 @@ void alloc_table(istate* S, u32 where) {
     ++S->alloc->count;
 }
 
-static function_stub* mk_fun_stub(istate* S, symbol_id ns_id) {
+static function_stub* mk_fun_stub(istate* S, symbol_id ns_id, fn_string* name) {
     auto& alloc = S->alloc;
     auto sz = sizeof(function_stub);
     auto res = (function_stub*)get_bytes(alloc, sz);
@@ -184,29 +184,34 @@ static function_stub* mk_fun_stub(istate* S, symbol_id ns_id) {
     res->foreign = nullptr;
     res->ns_id = ns_id;
     // we can't actually set up the ns info here, so we leave it uninitialized
-    res->name = nullptr;
-    res->filename = nullptr;
+    res->name = name;
+    res->filename = S->filename;
     return res;
 }
 
-void alloc_sub_stub(istate* S, gc_handle* stub_handle) {
-    collect(S);
+void alloc_sub_stub(istate* S, gc_handle* stub_handle, const string& name) {
+    // push_string invokes the collector so we don't need a separate collect
+    // call here. Sorry for the leaky abstraction
+    push_string(S, name);
     auto stub = (function_stub*)stub_handle->obj;
-    auto res = mk_fun_stub(S, stub->ns_id);
+    auto res = mk_fun_stub(S, stub->ns_id, vstring(peek(S)));
     push_back_gc_array(S, &stub->sub_funs, res);
+    pop(S); // get rid of the name
     ++S->alloc->count;
 }
 
 void alloc_empty_fun(istate* S,
         u32 where,
         symbol_id ns_id) {
-    collect(S);
+    // empty name for the empty function
+    push_string(S, "<top>");
     auto sz = sizeof(fn_function);
     auto res = (fn_function*)get_bytes(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
     res->init_vals = nullptr;
     res->upvals = nullptr;
-    res->stub = mk_fun_stub(S, ns_id);
+    res->stub = mk_fun_stub(S, ns_id, vstring(peek(S)));
+    pop(S); // name
     S->stack[where] = vbox_function(res);
     S->alloc->count += 2;
 }
@@ -236,8 +241,9 @@ void alloc_foreign_fun(istate* S,
         void (*foreign)(istate*),
         u32 num_params,
         bool vari,
-        u32 num_upvals) {
-    collect(S);
+        u32 num_upvals,
+        const string& name) {
+    push_string(S, name);
     auto sz = round_to_align(sizeof(fn_function)
             + num_upvals * sizeof(upvalue_cell*));
     auto res = (fn_function*)get_bytes(S->alloc, sz);
@@ -248,7 +254,8 @@ void alloc_foreign_fun(istate* S,
         res->upvals[i] = alloc_closed_upval(S);
         res->upvals[i]->closed = true;
     }
-    res->stub = mk_fun_stub(S, S->ns_id);
+    res->stub = mk_fun_stub(S, S->ns_id, vstring(peek(S)));
+    pop(S);
     res->stub->foreign = foreign;
     res->stub->num_params = num_params;
     res->stub->vari = vari;
@@ -446,6 +453,9 @@ void move_live_object(istate* S, gc_header* obj, dyn_array<gc_header**>* hdr_q,
         for (u64 i = 0; i < s->const_arr.size; ++i) {
             update_or_q_value(&gc_array_get(&s->const_arr, i), val_q);
         }
+        // metadata
+        update_or_q_header((gc_header**)&s->name, hdr_q);
+        update_or_q_header((gc_header**)&s->filename, hdr_q);
     }
         break;
     case GC_TYPE_UPVALUE: {
@@ -498,6 +508,11 @@ void mark(istate* S) {
             *prev = *next;
             delete tmp;
         }
+    }
+    // debugging info
+    hdr_q.push_back((gc_header**)&S->filename);
+    for (auto& f : S->stack_trace) {
+        hdr_q.push_back((gc_header**)&f.callee);
     }
 
     while (true) {

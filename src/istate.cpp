@@ -26,6 +26,9 @@ istate* init_istate() {
     res->bp = 0;
     res->sp = 0;
     res->callee = nullptr;
+    push_string(res, "<internal>");
+    res->filename = vstring(peek(res));
+    pop(res);
     res->err_happened = false;
     res->err_msg = nullptr;
     // set up namespace
@@ -38,19 +41,13 @@ void free_istate(istate* S) {
     delete S->alloc;
     delete S->symtab;
     delete S->symcache;
-    if (S->err_happened) {
-        free(S->err_msg);
-    }
     delete S;
 }
 
 void ierror(istate* S, const string& message) {
-    auto len = message.length();
-    if (S->err_msg != nullptr) {
-        free(S->err_msg);
-    }
-    S->err_msg = (char*)malloc(len+1);
-    memcpy(S->err_msg, message.c_str(), len+1);
+    push_string(S, message);
+    S->err_msg = vstring(peek(S));
+    pop(S);
     S->err_happened = true;
 }
 
@@ -222,6 +219,7 @@ void push_empty_fun(istate* S) {
 
 void push_foreign_fun(istate* S,
         void (*foreign)(istate*),
+        const string& name,
         const string& params) {
     fault err;
     auto forms = fn_parse::parse_string(params, S->symtab, &err);
@@ -253,11 +251,25 @@ void push_foreign_fun(istate* S,
         free_ast_form(f);
     }
     push_nil(S);
-    alloc_foreign_fun(S, S->sp - 1, foreign, num_args, vari, 0);
+    alloc_foreign_fun(S, S->sp - 1, foreign, num_args, vari, 0, name);
 }
 
 void print_top(istate* S) {
     std::cout << v_to_string(peek(S), S->symtab, true) << '\n';
+}
+
+void print_stack_trace(istate* S) {
+    std::ostringstream os;
+    os << "Stack trace:\n";
+    for (auto& f : S->stack_trace) {
+        if (f.callee) {
+            auto c = instr_loc(f.callee->stub, f.pc);
+            os << "  File " << string{(char*)f.callee->stub->filename->data}
+               << ", line " << c->loc.line << ", col " << c->loc.col << " in "
+               << string{(char*)f.callee->stub->name->data} << '\n';
+        }
+    }
+    std::cout << os.str();
 }
 
 }
