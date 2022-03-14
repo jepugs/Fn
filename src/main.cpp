@@ -166,6 +166,7 @@ int main(int argc, char** argv) {
     auto S = init_istate();
     install_builtin(S);
 
+    set_filename(S, "<stdin>");
     scanner sc{&std::cin};
     fault err;
     bool resumable;

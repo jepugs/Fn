@@ -64,9 +64,9 @@ constant_id add_quoted_const(istate* S, function_tree* ft, ast_form* form) {
     return res;
 }
 
-function_tree* add_sub_fun(istate* S, function_tree* ft) {
+function_tree* add_sub_fun(istate* S, function_tree* ft, const string& name) {
     auto fid = ft->sub_funs.size;
-    alloc_sub_stub(S, ft->stub, "unnamed-fun");
+    alloc_sub_stub(S, ft->stub, name);
     auto sub_tree = init_function_tree(S,
             gc_array_get(&handle_stub(ft->stub)->sub_funs, fid));
     ft->sub_funs.push_back(sub_tree);
@@ -255,7 +255,8 @@ llir_form* expander::expand_defmacro(const source_loc& loc,
         return nullptr;
     }
 
-    auto value = expand_sub_fun(loc, lst[2], length-3, &lst[3], meta);
+    auto name = symname(S, lst[1]->datum.sym);
+    auto value = expand_sub_fun(loc, name, lst[2], length-3, &lst[3], meta);
     if (!value) {
         return nullptr;
     }
@@ -275,7 +276,8 @@ llir_form* expander::expand_defn(const source_loc& loc,
         return nullptr;
     }
 
-    auto value = expand_sub_fun(loc, lst[2], length-3, &lst[3], meta);
+    auto name = symname(S, lst[1]->datum.sym);
+    auto value = expand_sub_fun(loc, name, lst[2], length-3, &lst[3], meta);
     if (!value) {
         return nullptr;
     }
@@ -407,8 +409,9 @@ llir_form* expander::expand_letfn_in_do(u32 length,
     }
 
     // generate llir for the new function
-    auto fn_form = (llir_form*)expand_sub_fun(loc, letfn_lst[2], letfn_len-3,
-            &letfn_lst[3], meta);
+    auto name = symname(S, letfn_lst[1]->datum.sym);
+    auto fn_form = (llir_form*)expand_sub_fun(loc, name, letfn_lst[2],
+            letfn_len-3, &letfn_lst[3], meta);
     if (!fn_form) {
         return nullptr;
     }
@@ -541,7 +544,8 @@ llir_form* expander::expand_dollar_fn(const source_loc& loc,
     }
 
     // expand the thing in a new subtree
-    auto sub_tree = add_sub_fun(S, ft);
+    auto name = string{(char*)handle_stub(ft->stub)->name->data} + ":$";
+    auto sub_tree = add_sub_fun(S, ft, name);
     expander_meta meta2 = {.max_dollar_sym=-1};
     auto tmp = ft;
     ft = sub_tree;
@@ -597,7 +601,8 @@ llir_form* expander::expand_dot(const source_loc& loc,
 }
 
 llir_fn* expander::expand_sub_fun(const source_loc& loc,
-        ast_form* params,
+        const string& name,
+        const ast_form* params,
         u32 body_length,
         ast_form** body,
         expander_meta* meta) {
@@ -607,7 +612,9 @@ llir_fn* expander::expand_sub_fun(const source_loc& loc,
     }
 
     // create a new function stub
-    auto sub_tree = add_sub_fun(S, ft);
+    auto id = handle_stub(ft->stub)->sub_funs.size;
+    auto fullname = convert_fn_string(handle_stub(ft->stub)->name) + ":" + name;
+    auto sub_tree = add_sub_fun(S, ft, fullname);
 
     auto tmp = ft;
     // set ft so that constants get written to the right place
@@ -729,7 +736,8 @@ llir_form* expander::expand_fn(const source_loc& loc,
         return nullptr;
     }
 
-    return (llir_form*)expand_sub_fun(loc, lst[1], length-2, &lst[2], meta);
+    auto name = std::to_string(ft->sub_funs.size);
+    return (llir_form*)expand_sub_fun(loc, name, lst[1], length-2, &lst[2], meta);
 }
 
 llir_form* expander::expand_if(const source_loc& loc,

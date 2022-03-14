@@ -48,6 +48,7 @@ istate* init_istate();
 void free_istate(istate*);
 
 void set_ns(istate* S, symbol_id ns_id);
+void set_filename(istate* S, const string& name);
 
 void ierror(istate* S, const string& message);
 

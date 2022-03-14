@@ -53,7 +53,7 @@ constant_id add_string_const(istate* S, function_tree* ft, const string& str);
 constant_id add_quoted_const(istate* S, function_tree* ft, ast_form* to_quote);
 // add a subfunction to a function tree. This causes a new stub to be created
 // too.
-function_tree* add_sub_fun(istate* S, function_tree* ft);
+function_tree* add_sub_fun(istate* S, function_tree* ft, const string& name);
 // these are for writing code to the function tree. FIXME: should move these to
 // the compiler.
 constant_id writeu8(istate* S, function_tree* ft, u8 u);
@@ -142,7 +142,8 @@ private:
             expander_meta* meta);
 
     llir_fn* expand_sub_fun(const source_loc& loc,
-            ast_form* params,
+            const string& name,
+            const ast_form* params,
             u32 body_length,
             ast_form** body,
             expander_meta* meta);

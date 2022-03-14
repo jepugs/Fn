@@ -44,6 +44,12 @@ void free_istate(istate* S) {
     delete S;
 }
 
+void set_filename(istate* S, const string& name) {
+    push_string(S, name);
+    S->filename = vstring(peek(S));
+    pop(S);
+}
+
 void ierror(istate* S, const string& message) {
     push_string(S, message);
     S->err_msg = vstring(peek(S));
@@ -263,10 +269,16 @@ void print_stack_trace(istate* S) {
     os << "Stack trace:\n";
     for (auto& f : S->stack_trace) {
         if (f.callee) {
-            auto c = instr_loc(f.callee->stub, f.pc);
-            os << "  File " << string{(char*)f.callee->stub->filename->data}
-               << ", line " << c->loc.line << ", col " << c->loc.col << " in "
-               << string{(char*)f.callee->stub->name->data} << '\n';
+            if (f.callee->stub->foreign) {
+                os << "  File " << convert_fn_string(f.callee->stub->filename)
+                   << " in foreign function "
+                   << convert_fn_string(f.callee->stub->name) << '\n';
+            } else {
+                auto c = instr_loc(f.callee->stub, f.pc);
+                os << "  File " << string{(char*)f.callee->stub->filename->data}
+                   << ", line " << c->loc.line << ", col " << c->loc.col << " in "
+                   << string{(char*)f.callee->stub->name->data} << '\n';
+            }
         }
     }
     std::cout << os.str();

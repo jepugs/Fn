@@ -195,8 +195,8 @@ void alloc_sub_stub(istate* S, gc_handle* stub_handle, const string& name) {
     push_string(S, name);
     auto stub = (function_stub*)stub_handle->obj;
     auto res = mk_fun_stub(S, stub->ns_id, vstring(peek(S)));
-    push_back_gc_array(S, &stub->sub_funs, res);
     pop(S); // get rid of the name
+    push_back_gc_array(S, &stub->sub_funs, res);
     ++S->alloc->count;
 }
 
@@ -204,7 +204,7 @@ void alloc_empty_fun(istate* S,
         u32 where,
         symbol_id ns_id) {
     // empty name for the empty function
-    push_string(S, "<top>");
+    push_string(S, symname(S, ns_id));
     auto sz = sizeof(fn_function);
     auto res = (fn_function*)get_bytes(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);

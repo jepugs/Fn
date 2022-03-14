@@ -20,7 +20,8 @@ namespace fn {
 
 static void def_foreign_fun(istate* S, const string& name, const string& params,
         void (*foreign)(istate*)) {
-    push_foreign_fun(S, foreign, name, params);
+    auto fullname = symname(S, S->ns_id) + ":" + name;
+    push_foreign_fun(S, foreign, fullname, params);
     set_global(S, resolve_sym(S, S->ns_id, intern(S, name)), peek(S));
     pop(S);
 }

@@ -101,6 +101,10 @@ struct alignas (OBJ_ALIGN) fn_string {
     bool operator==(const fn_string& other) const;
 };
 
+inline string convert_fn_string(fn_string* s) {
+    return string{(char*)s->data};
+}
+
 // a cell in a linked list
 struct alignas (OBJ_ALIGN) fn_cons {
     gc_header h;

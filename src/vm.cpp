@@ -26,6 +26,14 @@ namespace fn {
 #define push(S, v) S->stack[S->sp] = v;++S->sp;
 #define peek(S, i) (S->stack[S->sp-((i))-1])
 
+static void add_trace_frame(istate* S, fn_function* callee, u32 pc) {
+    S->stack_trace.push_back(
+            trace_frame{
+                .callee = callee,
+                .pc = pc
+            });
+}
+
 static inline void close_upvals(istate* S, u32 min_addr) {
     u32 i = S->open_upvals.size;
     while (i > 0) {
@@ -114,10 +122,16 @@ static inline bool arrange_call_stack(istate* S, u32 n) {
     return true;
 }
 
-static inline void foreign_call(istate* S, fn_function* fun, u32 n) {
+static inline void foreign_call(istate* S, fn_function* fun, u32 n, u32 pc) {
     auto save_bp = S->bp;
     S->bp = S->sp - n;
     fun->stub->foreign(S);
+    if (S->err_happened) {
+        // add the foreign function frame as well as the caller frame
+        add_trace_frame(S, vfunction(S->stack[S->bp - 1]), 0);
+        add_trace_frame(S, S->callee, pc);
+        return;
+    }
     S->stack[S->bp-1] = peek(S, 0);
     S->sp = S->bp;  // with the return value, this is the new stack pointer
     S->bp = save_bp;
@@ -136,10 +150,11 @@ static inline u32 unroll_list(istate* S) {
     return n;
 }
 
-void call(istate* S, u32 n) {
+static void icall(istate* S, u32 n, u32 pc) {
     // update the call frame
     auto callee = peek(S, n);
     if (!vis_function(callee)) {
+        add_trace_frame(S, S->callee, pc);
         ierror(S, "Attempt to call non-function value.");
         return;
     }
@@ -147,16 +162,19 @@ void call(istate* S, u32 n) {
     // FIXME: ensure minimum stack space available
     if (fun->stub->foreign) {
         if (S->sp + n + FOREIGN_MIN_STACK >= STACK_SIZE) {
+            add_trace_frame(S, S->callee, pc);
             ierror(S, "Not enough stack space for call.");
             return;
         }
-        foreign_call(S, fun, n);
+        foreign_call(S, fun, n, pc);
     } else {
         auto save_bp = S->bp;
         bool restore_callee = S->callee;
         S->callee = fun;
         S->bp = S->sp - n;
         if (S->bp + fun->stub->space >= STACK_SIZE) {
+            // Can't complete function call for lack of stack space
+            add_trace_frame(S, vfunction(S->stack[save_bp-1]), S->pc);
             ierror(S, "Not enough stack space for call.");
             return;
         }
@@ -165,12 +183,12 @@ void call(istate* S, u32 n) {
         }
         execute_fun(S);
         if (S->err_happened) {
-            std::ostringstream os;
-            S->stack_trace.push_back(trace_frame{
-                        .callee = S->callee,
-                        .pc = S->pc
-                    });
-            return;
+            if (restore_callee) {
+                // notice we add the stack trace for the calling function, not
+                // the callee. The callee is added at the error origin
+                add_trace_frame(S, vfunction(S->stack[save_bp-1]), pc);
+                return;
+            }
         }
         // return value
         S->stack[S->bp-1] = peek(S, 0);
@@ -178,6 +196,10 @@ void call(istate* S, u32 n) {
         S->bp = save_bp;
         S->callee = restore_callee ? vfunction(S->stack[save_bp - 1]) : nullptr;
     }
+}
+
+void call(istate* S, u32 n) {
+    icall(S, n, 0);
 }
 
 static inline bool tail_call(istate* S, u8 n, u32* pc) {
@@ -188,7 +210,7 @@ static inline bool tail_call(istate* S, u8 n, u32* pc) {
     }
     auto fun = vfunction(callee);
     if (fun->stub->foreign) {
-        foreign_call(S, fun, n);
+        foreign_call(S, fun, n, *pc);
         return true;
     }
     // set these so the GC can't get 'em before we're done
@@ -266,8 +288,8 @@ void execute_fun(istate* S) {
             pc += 4;
             auto v = S->G->def_arr[id];
             if (v == V_UNIN) {
+                add_trace_frame(S, S->callee, pc - 5);
                 ierror(S, "Failed to find global variable.");
-                S->pc = pc - 5;
                 return;
             }
             push(S, v);
@@ -283,8 +305,8 @@ void execute_fun(istate* S) {
             break;
         case OP_OBJ_GET: {
             if (!vis_table(peek(S, 1))) {
+                add_trace_frame(S, S->callee, pc - 1);
                 ierror(S, "obj-get target is not a table.");
-                S->pc = pc - 1;
                 return;
             }
             auto x = table_get(S, vtable(peek(S, 1)), peek(S, 0));
@@ -298,8 +320,8 @@ void execute_fun(istate* S) {
             break;
         case OP_OBJ_SET: {
             if (!vis_table(peek(S, 2))) {
+                add_trace_frame(S, S->callee, pc - 1);
                 ierror(S, "obj-set target is not a table.");
-                S->pc = pc - 1;
                 return;
             }
             table_set(S, vtable(peek(S, 2)), peek(S, 1), peek(S, 0));
@@ -313,8 +335,8 @@ void execute_fun(istate* S) {
             auto fqn = vsymbol(gc_array_get(&S->callee->stub->const_arr, id));
             auto x = S->G->macro_tab.get2(fqn);
             if (!x) {
+                add_trace_frame(S, S->callee, pc - 3);
                 ierror(S, "Failed to find global variable " + (*S->symtab)[fqn]);
-                S->pc = pc - 3;
                 return;
             }
             push(S, vbox_function(x->val));
@@ -359,15 +381,15 @@ void execute_fun(istate* S) {
             --S->sp;
             break;
         case OP_CALL:
-            call(S, code_byte(S, pc++));
+            icall(S, code_byte(S, pc), pc - 1);
+            pc++;
             if (S->err_happened) {
-                S->pc = pc;
                 return;
             }
             break;
         case OP_TCALL:
             if (!tail_call(S, code_byte(S, pc++), &pc)) {
-                S->pc = pc;
+                add_trace_frame(S, S->callee, pc - 1);
                 return;
             }
             break;
@@ -376,18 +398,17 @@ void execute_fun(istate* S) {
             auto sym = peek(S, num_args+1);
             auto tab = peek(S, num_args);
             if (!vis_table(tab)) {
+                add_trace_frame(S, S->callee, pc - 2);
                 ierror(S, "Method call operand not a table.");
-                S->pc = pc;
                 return;
             }
             if (!get_method(S, vtable(tab), sym, S->sp - num_args - 2)) {
+                add_trace_frame(S, S->callee, pc - 2);
                 ierror(S, "Method lookup failed.");
-                S->pc = pc;
                 return;
             }
-            call(S, num_args+1);
+            icall(S, num_args+1, pc - 2);
             if (S->err_happened) {
-                S->pc = pc;
                 return;
             }
         }
@@ -397,14 +418,17 @@ void execute_fun(istate* S) {
             auto sym = peek(S, num_args+1);
             auto tab = peek(S, num_args);
             if (!vis_table(tab)) {
+                add_trace_frame(S, S->callee, pc - 1);
                 ierror(S, "Method call operand not a table.");
                 return;
             }
             if (!get_method(S, vtable(tab), sym, S->sp - num_args - 2)) {
+                add_trace_frame(S, S->callee, pc - 1);
                 ierror(S, "Method lookup failed.");
                 return;
             }
             if (!tail_call(S, num_args+1, &pc)) {
+                add_trace_frame(S, S->callee, pc - 1);
                 return;
             }
         }
@@ -412,13 +436,13 @@ void execute_fun(istate* S) {
         case OP_APPLY: {
             // unroll the list on top of the stack
             if (!vis_list(peek(S, 0))) {
+                add_trace_frame(S, S->callee, pc - 1);
                 ierror(S, "Final argument to apply must be a list.");
                 return;
             }
             auto n = code_byte(S, pc++) + unroll_list(S);
-            call(S, n);
+            icall(S, n, pc - 2);
             if (S->err_happened) {
-                S->pc = pc;
                 return;
             }
         }
@@ -426,11 +450,13 @@ void execute_fun(istate* S) {
         case OP_TAPPLY: {
             // unroll the list on top of the stack
             if (!vis_list(peek(S, 0))) {
+                add_trace_frame(S, S->callee, pc - 1);
                 ierror(S, "Final argument to apply must be a list.");
                 return;
             }
             auto n = code_byte(S, pc++) + unroll_list(S);
             if (!tail_call(S, n, &pc)) {
+                add_trace_frame(S, S->callee, pc - 2);
                 return;
             }
         }
