@@ -168,10 +168,14 @@ int main(int argc, char** argv) {
 
     set_filename(S, "<stdin>");
     scanner sc{&std::cin};
-    fault err;
     bool resumable;
 
-    auto form = parse_next_form(&sc, S->symtab, &resumable, &err);
+    auto form = parse_next_form(&sc, S, &resumable);
+    if (S->err_happened) {
+        std::cout << convert_fn_string(S->err_msg) << '\n';
+        free_istate(S);
+        return -1;
+    }
     while (form != nullptr) {
         compile_form(S, form);
         free_ast_form(form);
@@ -193,7 +197,12 @@ int main(int argc, char** argv) {
         }
         print_top(S);
         pop(S);
-        form = parse_next_form(&sc, S->symtab, &resumable, &err);
+        form = parse_next_form(&sc, S, &resumable);
+        if (S->err_happened) {
+            std::cout << convert_fn_string(S->err_msg) << '\n';
+            free_istate(S);
+            return -1;
+        }
     }
     free_istate(S);
 

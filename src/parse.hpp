@@ -31,7 +31,7 @@ struct ast_form {
         ast_form** list;
     } datum;
 
-    // make a deep copy. Must be deleted later
+    // make a deep copy. The copy must be deleted separately
     ast_form* copy() const;
 
     string as_string(const symbol_table* symtab) const;
@@ -41,22 +41,22 @@ struct ast_form {
     symbol_id get_symbol() const;
 };
 
-ast_form* mk_number_form(source_loc loc, f64 num, ast_form* dest=nullptr);
-ast_form* mk_string_form(source_loc loc,
+ast_form* mk_number_form(const source_loc& loc, f64 num, ast_form* dest=nullptr);
+ast_form* mk_string_form(const source_loc& loc,
         const string& str,
         ast_form* dest=nullptr);
-ast_form* mk_string_form(source_loc loc,
+ast_form* mk_string_form(const source_loc& loc,
         string&& str,
         ast_form* dest=nullptr);
-ast_form* mk_symbol_form(source_loc loc,
+ast_form* mk_symbol_form(const source_loc& loc,
         symbol_id sym,
         ast_form* dest=nullptr);
-ast_form* mk_list_form(source_loc loc,
+ast_form* mk_list_form(const source_loc& loc,
         u32 list_length,
         ast_form** list,
         ast_form* dest=nullptr);
 // make a list form by copying the contents of a vector
-ast_form* mk_list_form(source_loc loc,
+ast_form* mk_list_form(const source_loc& loc,
         dyn_array<ast_form*>* lst,
         ast_form* dest=nullptr);
 
@@ -73,43 +73,37 @@ void free_ast_form(ast_form* form, bool recursive=true);
 // *resumable = true and *bytes_used to the number of bytes used after the last
 // successful parse. This is mainly for the REPL.
 ast_form* parse_next_form(scanner* sc,
-        symbol_table* symtab,
-        bool* resumable,
-        fault* err);
+        istate* S,
+        bool* resumable);
 
 // This is the same as above, but we pass in the first token directly (as
 // opposed to getting it from the scanner). Used for prefix operators.
 ast_form* parse_next_form(scanner* sc,
-        symbol_table* symtab,
+        istate* S,
         token t0,
-        bool* resumable,
-        fault* err);
+        bool* resumable);
 
 // Attempt to parse as many ast_forms as possible from the given scanner.
 dyn_array<ast_form*> parse_from_scanner(scanner* sc,
-        symbol_table* symtab,
-        fault* err);
+        istate* S);
 
 // Attempt to parse as many ast_forms as possible from the given string. The
 // parse_error* structure is set to the first error encountered.
 dyn_array<ast_form*> parse_string(const string& src,
-        symbol_table* symtab,
-        fault* err);
+        istate* S);
 
 // Parse AST forms from in until an error is encountered
 dyn_array<ast_form*> parse_input(std::istream* in,
-        symbol_table* symtab,
-        fault* err);
+        istate* S);
 
 // This sets *resumable the same way as in parse_next_form. In addition, on
 // error, it sets *bytes_used to be the number of bytes consumed after the last
 // successful parse. This is used for detecting the ends of expressions at the
 // REPL to enable multi-line input and multiple expressions per line.
 dyn_array<ast_form*> partial_parse_input(scanner* sc,
-        symbol_table* symtab,
+        istate* S,
         u32* bytes_used,
-        bool* resumable,
-        fault* err);
+        bool* resumable);
 
 // create an ast_form* from the top of the stack
 ast_form* pop_syntax(istate* S, const source_loc& loc);

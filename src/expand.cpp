@@ -1322,7 +1322,10 @@ bool expander::is_keyword(symbol_id sym) const {
 
 void expander::e_fault(const source_loc& loc, const string& msg) {
     // FIXME: incorporate source location here
-    ierror(S, msg);
+    std::ostringstream os;
+    os << "File " << convert_fn_string(S->filename) << ", line "
+       << loc.line << ", col " << loc.col << ":\n  " << msg;
+    ierror(S, os.str());
 }
 
 void expand(istate* S, function_tree* ft, ast_form* ast) {

@@ -8,7 +8,14 @@ namespace fn_parse {
 using namespace fn;
 using namespace fn_scan;
 
-ast_form* mk_number_form(source_loc loc, f64 num, ast_form* dest) {
+static void parse_error(istate* S, const source_loc& loc, const string& msg) {
+    std::ostringstream os;
+    os << "File " << convert_fn_string(S->filename) << ", line " << loc.line
+       << ", col " << loc.col << ":\n  " << msg;
+    ierror(S, os.str());
+}
+
+ast_form* mk_number_form(const source_loc& loc, f64 num, ast_form* dest) {
     if (dest == nullptr) {
         dest = new ast_form;
     }
@@ -19,7 +26,7 @@ ast_form* mk_number_form(source_loc loc, f64 num, ast_form* dest) {
     };
 }
 
-ast_form* mk_string_form(source_loc loc,
+ast_form* mk_string_form(const source_loc& loc,
         const string& str,
         ast_form* dest) {
     if (dest == nullptr) {
@@ -32,7 +39,7 @@ ast_form* mk_string_form(source_loc loc,
     };
 }
 
-ast_form* mk_string_form(source_loc loc,
+ast_form* mk_string_form(const source_loc& loc,
         string&& str,
         ast_form* dest) {
     if (dest == nullptr) {
@@ -45,7 +52,7 @@ ast_form* mk_string_form(source_loc loc,
     };
 }
 
-ast_form* mk_symbol_form(source_loc loc, symbol_id sym, ast_form* dest) {
+ast_form* mk_symbol_form(const source_loc& loc, symbol_id sym, ast_form* dest) {
     if (dest == nullptr) {
         dest = new ast_form;
     }
@@ -56,7 +63,7 @@ ast_form* mk_symbol_form(source_loc loc, symbol_id sym, ast_form* dest) {
     };
 }
 
-ast_form* mk_list_form(source_loc loc,
+ast_form* mk_list_form(const source_loc& loc,
         u32 length,
         ast_form** lst,
         ast_form* dest) {
@@ -71,7 +78,7 @@ ast_form* mk_list_form(source_loc loc,
     };
 }
 
-ast_form* mk_list_form(source_loc loc,
+ast_form* mk_list_form(const source_loc& loc,
         dyn_array<ast_form*>* lst,
         ast_form* dest) {
     ast_form** data = new ast_form*[lst->size];
@@ -228,20 +235,19 @@ symbol_id ast_form::get_symbol() const {
 
 // on error, returns nullptr and sets err, but DOES NOT
 static ast_form* parse_to_delimiter(scanner* sc,
-        symbol_table* symtab,
+        istate* S,
         dyn_array<ast_form*>* buf,
         token_kind end,
-        bool* resumable,
-        fault* err) {
+        bool* resumable) {
     auto tok = sc->next_token();
     while (tok.tk != end) {
         if (tok.tk == tk_eof) {
-            set_fault(err, tok.loc, "parse",
+            parse_error(S, tok.loc,
                     "Encountered EOF while expecting closing delimiter.");
             *resumable = true;
             return nullptr;
         };
-        auto x = parse_next_form(sc, symtab, tok, resumable, err);
+        auto x = parse_next_form(sc, S, tok, resumable);
         if (!x) {
             return nullptr;
         }
@@ -253,15 +259,14 @@ static ast_form* parse_to_delimiter(scanner* sc,
 }
 
 static ast_form* parse_prefix(scanner* sc,
-        symbol_table* symtab,
+        istate* S,
         const source_loc& loc,
         const string& op,
         token t0,
-        bool* resumable,
-        fault* err) {
+        bool* resumable) {
     dyn_array<ast_form*> buf;
-    buf.push_back(mk_symbol_form(loc, symtab->intern(op)));
-    auto x = parse_next_form(sc, symtab, t0, resumable, err);
+    buf.push_back(mk_symbol_form(loc, intern(S, op)));
+    auto x = parse_next_form(sc, S, t0, resumable);
     if (!x) {
         free_ast_form(buf[0]);
         return nullptr;
@@ -272,27 +277,24 @@ static ast_form* parse_prefix(scanner* sc,
 }
 
 static ast_form* parse_prefix(scanner* sc,
-        symbol_table* symtab,
+        istate* S,
         const source_loc& loc,
         const string& op,
-        bool* resumable,
-        fault* err) {
+        bool* resumable) {
     auto tok = sc->next_token();
-    return parse_prefix(sc, symtab, loc, op, tok, resumable, err);
+    return parse_prefix(sc, S, loc, op, tok, resumable);
 }
 
 ast_form* parse_next_form(scanner* sc,
-        symbol_table* symtab,
-        bool* resumable,
-        fault* err) {
-    return parse_next_form(sc, symtab, sc->next_token(), resumable, err);
+        istate* S,
+        bool* resumable) {
+    return parse_next_form(sc, S, sc->next_token(), resumable);
 }
 
 ast_form* parse_next_form(scanner* sc,
-        symbol_table* symtab,
+        istate* S,
         token t0,
-        bool* resumable,
-        fault* err) {
+        bool* resumable) {
     ast_form* res = nullptr;
     string* str = t0.datum.str;
     dyn_array<ast_form*> buf;
@@ -300,7 +302,7 @@ ast_form* parse_next_form(scanner* sc,
 
     switch (t0.tk) {
     case tk_eof:
-        set_fault(err, loc, "parse", "Unexpected EOF.");
+        parse_error(S, t0.loc, "Unexpected EOF.");
         *resumable = true;
         return nullptr;
 
@@ -311,100 +313,97 @@ ast_form* parse_next_form(scanner* sc,
         res = mk_string_form(loc, string{*str});
         break;
     case tk_symbol:
-        res = mk_symbol_form(loc, symtab->intern(*str));
+        res = mk_symbol_form(loc, intern(S, *str));
         break;
 
     case tk_lparen:
         // this will give res=nullptr and set err if there's an error
-        if (!(res=parse_to_delimiter(sc, symtab, &buf, tk_rparen,
-                                resumable, err))) {
+        if (!(res=parse_to_delimiter(sc, S, &buf, tk_rparen,
+                                resumable))) {
             for (auto x : buf) {
                 free_ast_form(x);
             }
         }
         break;
     case tk_rparen:
-        set_fault(err, loc, "parse","Unmatched delimiter ')'.");
+        parse_error(S, loc, "Unmatched delimiter ')'.");
         *resumable = false;
         res = nullptr;
         break;
     case tk_lbrace:
-        buf.push_back(mk_symbol_form(loc, symtab->intern("Table")));
-        if (!(res=parse_to_delimiter(sc, symtab, &buf, tk_rbrace, resumable,
-                                err))) {
+        buf.push_back(mk_symbol_form(loc, intern(S, "Table")));
+        if (!(res=parse_to_delimiter(sc, S, &buf, tk_rbrace, resumable))) {
             for (auto x : buf) {
                 free_ast_form(x);
             }
         }
         break;
     case tk_rbrace:
-        set_fault(err, loc, "parse","Unmatched delimiter '}'.");
+        parse_error(S, loc, "Unmatched delimiter '}'.");
         *resumable = false;
         res = nullptr;
         break;
     case tk_lbracket:
-        buf.push_back(mk_symbol_form(loc, symtab->intern("List")));
-        if (!(res=parse_to_delimiter(sc, symtab, &buf, tk_rbracket, resumable,
-                                err))) {
+        buf.push_back(mk_symbol_form(loc, intern(S, "List")));
+        if (!(res=parse_to_delimiter(sc, S, &buf, tk_rbracket, resumable))) {
             for (auto x : buf) {
                 free_ast_form(x);
             }
         }
         break;
     case tk_rbracket:
-        set_fault(err, loc, "parse","Unmatched delimiter ']'.");
+        parse_error(S, loc, "Unmatched delimiter ']'.");
         *resumable = false;
         res = nullptr;
         break;
 
     case tk_dot:
-        buf.push_back(mk_symbol_form(loc, symtab->intern("dot")));
+        buf.push_back(mk_symbol_form(loc, intern(S, "dot")));
         for (auto s : *t0.datum.ids) {
-            buf.push_back(mk_symbol_form(loc, symtab->intern(s)));
+            buf.push_back(mk_symbol_form(loc, intern(S, s)));
         }
         res = mk_list_form(loc, &buf);
         break;
 
     case tk_quote:
-        res = parse_prefix(sc, symtab, loc, "quote", resumable, err);
+        res = parse_prefix(sc, S, loc, "quote", resumable);
         break;
     case tk_backtick:
-        res = parse_prefix(sc, symtab, loc, "quasiquote", resumable, err);
+        res = parse_prefix(sc, S, loc, "quasiquote", resumable);
         break;
     case tk_comma:
-        res = parse_prefix(sc, symtab, loc, "unquote", resumable, err);
+        res = parse_prefix(sc, S, loc, "unquote", resumable);
         break;
     case tk_comma_at:
-        res = parse_prefix(sc, symtab, loc, "unquote-splicing", resumable, err);
+        res = parse_prefix(sc, S, loc, "unquote-splicing", resumable);
         break;
     case tk_dollar_backtick:
-        res = parse_prefix(sc, symtab, loc, "dollar-fn", token{tk_backtick,loc},
-                resumable, err);
+        res = parse_prefix(sc, S, loc, "dollar-fn", token{tk_backtick,loc},
+                resumable);
         break;
     case tk_dollar_brace:
-        res = parse_prefix(sc, symtab, loc, "dollar-fn", token{tk_lbrace,loc},
-                resumable, err); 
+        res = parse_prefix(sc, S, loc, "dollar-fn", token{tk_lbrace,loc},
+                resumable); 
         break;
     case tk_dollar_bracket:
-        res = parse_prefix(sc, symtab, loc, "dollar-fn", token{tk_lbracket,loc},
-                resumable, err);
+        res = parse_prefix(sc, S, loc, "dollar-fn", token{tk_lbracket,loc},
+                resumable);
         break;
     case tk_dollar_paren:
-        res = parse_prefix(sc, symtab, loc, "dollar-fn", token{tk_lparen,loc},
-                resumable, err);
+        res = parse_prefix(sc, S, loc, "dollar-fn", token{tk_lparen,loc},
+                resumable);
         break;
     }
     return res;
 }
 
 dyn_array<ast_form*> parse_from_scanner(scanner* sc,
-        symbol_table* symtab,
-        fault* err) {
+        istate* S) {
     dyn_array<ast_form*> res;
     ast_form* a;
     bool resumable;
     while (!sc->eof_skip_ws()
-            && (a = parse_next_form(sc, symtab, &resumable, err))) {
+            && (a = parse_next_form(sc, S, &resumable))) {
         // pos holds the position after last successful read
         res.push_back(a);
     }
@@ -412,21 +411,19 @@ dyn_array<ast_form*> parse_from_scanner(scanner* sc,
 }
 
 dyn_array<ast_form*> parse_string(const string& src,
-        symbol_table* symtab,
-        fault* err) {
+        istate* S) {
     std::istringstream in{src};
-    return parse_input(&in, symtab, err);
+    return parse_input(&in, S);
 }
 
 dyn_array<ast_form*> parse_input(std::istream* in,
-        symbol_table* symtab,
-        fault* err) {
+        istate* S) {
     u32 bytes_used;
     bool resumable;
     scanner sc{in};
-    auto res = partial_parse_input(&sc, symtab, &bytes_used,
-            &resumable, err);
-    if (err->happened) {
+    auto res = partial_parse_input(&sc, S, &bytes_used,
+            &resumable);
+    if (S->err_happened) {
         for (auto x : res) {
             free_ast_form(x);
         }
@@ -436,22 +433,21 @@ dyn_array<ast_form*> parse_input(std::istream* in,
 }
 
 dyn_array<ast_form*> partial_parse_input(scanner* sc,
-        symbol_table* symtab,
+        istate* S,
         u32* bytes_used,
-        bool* resumable,
-        fault* err) {
+        bool* resumable) {
     auto start = sc->tellg();
     auto pos = start;
 
     dyn_array<ast_form*> res;
     ast_form* a;
     while (!sc->eof_skip_ws()
-            && (a = parse_next_form(sc, symtab, resumable, err))) {
+            && (a = parse_next_form(sc, S, resumable))) {
         // pos holds the position after last successful read
         pos = sc->tellg();
         res.push_back(a);
     }
-    if (err->happened) {
+    if (S->err_happened) {
         *bytes_used = pos - start;
     }
     return res;

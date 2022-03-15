@@ -227,13 +227,11 @@ void push_foreign_fun(istate* S,
         void (*foreign)(istate*),
         const string& name,
         const string& params) {
-    fault err;
-    auto forms = fn_parse::parse_string(params, S->symtab, &err);
-    if (err.happened) {
+    auto forms = fn_parse::parse_string(params, S);
+    if (S->err_happened) {
         for (auto f : forms) {
             free_ast_form(f);
         }
-        ierror(S, err.message);
         return;
     }
     auto& p = forms[0];
