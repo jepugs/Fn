@@ -70,6 +70,8 @@ constexpr u8 GC_TYPE_FORWARD    = 0x0f;
 struct alignas (OBJ_ALIGN) gc_header {
     u8 type;
     u32 size;
+    u8 age;
+    u8 mark;
     // used for copying objects
     gc_header* forward;
 };

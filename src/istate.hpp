@@ -44,6 +44,22 @@ struct istate {
     dyn_array<trace_frame> stack_trace;
 };
 
+// Exception thrown when a type check fails. This is caught internally when it
+// occurs in a foreign function.
+class type_error : public std::exception {
+    string expected_type;
+    string actual_type;
+public:
+    type_error(const string& expected, const string& actual) noexcept
+        : expected_type{expected}
+        , actual_type{actual} {
+    }
+    const char* what() const noexcept {
+        return ("Expected type " + expected_type + " but got "
+                + actual_type + ".").c_str();
+    }
+};
+
 istate* init_istate();
 void free_istate(istate*);
 
@@ -58,11 +74,17 @@ void pop(istate* S, u32 n);
 // peek values relative to the top of the stack
 value peek(istate* S);
 value peek(istate* S, u32 offset);
-// get and set values relative to the base pointer
-value get(istate* S, u32 index);
 void set(istate* S, u32 index, value v);
 
-// get symbols
+// pget aka "protected get" functions perform type checking and throw type
+// exceptions where applicable. All these functions are indexed relative to the
+// base pointer, so e.g. 0 corresponds to the first argument.
+f64 pget_number(istate* S, u32 i);
+const char* pget_string(istate* S, u32 i);
+bool pget_bool(istate* S, u32 i);
+symbol_id pget_sym(istate* S, u32 i);
+
+// create symbols
 symbol_id intern(istate* S, const string& str);
 symbol_id gensym(istate* S);
 string symname(istate* S, symbol_id sid);
@@ -73,6 +95,7 @@ void push_number(istate* S, f64 num);
 void push_string(istate* S, u32 size);
 void push_string(istate* S, const string& str);
 void push_sym(istate* S, symbol_id sym);
+void push_symname(istate* S, symbol_id sym);
 void push_nil(istate* S);
 void push_yes(istate* S);
 void push_no(istate* S);
@@ -80,11 +103,6 @@ void push_no(istate* S);
 // hd and tl are positions on the stack
 void push_cons(istate* S, u32 hd, u32 tl);
 void push_table(istate* S);
-
-// returns an array of two values, key followed by value, which should not be
-// freed
-value* table_get(istate* S, fn_table* tab, value k);
-void table_set(istate* S, fn_table* tab, value k, value v);
 
 // create a list from the top n elements of the stack
 void pop_to_list(istate* S, u32 n);
@@ -115,6 +133,11 @@ void print_top(istate* S);
 
 // print out a stack trace to stdout
 void print_stack_trace(istate* S);
+
+// functions to trigger code loading
+bool require_file(istate* S, const string& rel_path);
+bool require_package(istate* S, const string& pkg_path);
+bool require(istate* S, const string& spec);
 
 }
 

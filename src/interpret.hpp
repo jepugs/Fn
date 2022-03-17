@@ -6,10 +6,6 @@
 
 namespace fn {
 
-void require_file(istate* S, const string& path);
-void require_package(istate* S, const string& id);
-void require_string(istate* S);
-
 }
 
 #endif

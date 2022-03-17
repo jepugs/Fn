@@ -9,8 +9,9 @@ void init_gc_header(gc_header* dest, u8 type, u32 size) {
         dest = new gc_header;
     }
     new(dest) gc_header {
-        .type=type,
-            .size = size
+        .type = type,
+        .size = size,
+        .age = 0
     };
 }
 

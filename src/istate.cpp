@@ -26,6 +26,7 @@ istate* init_istate() {
     res->bp = 0;
     res->sp = 0;
     res->callee = nullptr;
+    res->filename = nullptr;
     push_string(res, "<internal>");
     res->filename = vstring(peek(res));
     pop(res);
@@ -133,81 +134,6 @@ void push_cons(istate* S, u32 hd, u32 tl) {
 void push_table(istate* S) {
     push_nil(S);
     alloc_table(S, S->sp - 1);
-}
-
-static value* find_table_slot(fn_table* tab, value k) {
-    auto h = hash(k);
-    auto m = 2 * tab->cap;
-    auto start = 2 * (h % tab->cap);
-    auto data = (value*)tab->data->data;
-    for (u32 i = start; i < m; i += 2) {
-        if (data[i] == V_UNIN
-                || data[i] == k) {
-            return &data[i];
-        }
-    }
-    // restart search from the beginning of the tree
-    for (u32 i = 0; i < start; ++i) {
-        if (data[i] == V_UNIN
-                || data[i] == k) {
-            return &data[i];
-        }
-    }
-    return nullptr;
-}
-
-value* table_get(istate* S, fn_table* tab, value k) {
-    auto h = hash(k);
-    auto m = 2 * tab->cap;
-    auto start = 2 * (h % tab->cap);
-    auto data = (value*)tab->data->data;
-    for (u32 i = start; i < m; i += 2) {
-        if (data[i] == V_UNIN) {
-            return nullptr;
-        } else if (data[i] == k) {
-            return &data[i];
-        }
-    }
-    // restart search from the beginning of the tree
-    for (u32 i = 0; i < start; ++i) {
-        if (data[i] == V_UNIN) {
-            return nullptr;
-        } else if (data[i] == k) {
-            return &data[i];
-        }
-    }
-    return nullptr;
-}
-
-void table_set(istate* S, fn_table* tab, value k, value v) {
-    // grow the table if necessary. This uses a 3/4 threshold
-    if (tab->size >= tab->rehash) {
-        auto old_cap = tab->cap;
-        tab->cap = 2 * tab->cap;
-        tab->rehash = tab->cap * 3 / 4;
-        auto old_arr = (value*)tab->data->data;
-        tab->data = alloc_gc_bytes(S->alloc, 2*tab->cap*sizeof(value));
-        tab->size = 0;
-
-        // initialize new array
-        auto m = 2 * tab->cap;
-        for (u32 i = 0; i < m; i += 2) {
-            ((value*)tab->data->data)[i] = V_UNIN;
-        }
-
-        // insert old elements
-        m = 2 * old_cap;
-        for (u32 i = 0; i < m; i += 2) {
-            if (old_arr[i] != V_UNIN) {
-                auto x = find_table_slot(tab, old_arr[i]);
-                x[0] = old_arr[i];
-                x[1] = old_arr[i+1];
-            }
-        }
-    }
-    auto x = find_table_slot(tab, k);
-    x[0] = k;
-    x[1] = v;
 }
 
 void pop_to_list(istate* S, u32 n) {

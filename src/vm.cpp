@@ -240,7 +240,7 @@ void execute_fun(istate* S) {
             --S->sp;
             break;
         case OP_LOCAL:
-            push(S, get(S, code_byte(S, pc++)));
+            push(S, S->stack[S->bp + code_byte(S, pc++)]);
             break;
         case OP_SET_LOCAL:
             S->stack[S->bp+code_byte(S, pc++)] = peek(S, 0);

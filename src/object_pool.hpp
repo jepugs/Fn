@@ -23,7 +23,7 @@ private:
     // Allocate another block for the pool. This works perfectly fine, but it's
     // absolutely vile.
     T* new_block() {
-        auto res = (T*)malloc((1 + block_size)*sizeof(T));
+        auto res = (T*)aligned_alloc(alignof(T), (1 + block_size)*sizeof(T));
         ((void**)res)[0] = nullptr;
 
         auto objs = &res[1];

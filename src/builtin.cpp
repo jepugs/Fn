@@ -16,6 +16,7 @@ namespace fn {
             fn__ ## name );
 #define fn_for_list(var, lst) \
     for (auto var = lst; var != V_EMPTY; var = vtail(var))
+#define get(S, n) ((S->stack[S->bp + ((n))]))
 
 
 static void def_foreign_fun(istate* S, const string& name, const string& params,

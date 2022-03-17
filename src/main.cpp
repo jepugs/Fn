@@ -19,23 +19,15 @@ using std::endl;
 
 void show_usage() {
     std::cout <<
-        "Usage: fn [options] [--eval string | file | -] ARGS ...\n"
+        "Usage: fn [options] [FILE | -]\n"
         "Description:\n"
         "  Fn programming language interpreter and REPL.\n"
         "Options/Arguments:\n"
-        "  -h           Show this help message and exit.\n"
-        "  -r           Start the REPL (after finishing evaluation).\n"
-        "  -l           Print LLIR (low level intermediate rep) before\n"
-        "                compiling each expression.\n"
-        "  -d           Print disassembled bytecode after compiling.\n"
-        "  -            Take input directly from STDIN.\n"
-        "  --ns namespace   Specify the namespace for evaluation. In\n"
-        "                    the case of file evaluation, this will\n"
-        "                    override the file's package & namespace.\n"
-        "                    The default namespace is fn/user/repl.\n"
-        "  --eval string    Evaluate a string (instead of a file).\n"
-        "  ARGS ...         These are passed to the interpreter as\n"
-        "                    command line arguments.\n"
+        "  -h            Show this help message and exit.\n"
+        "  -r            Start the REPL after finishing evaluation.\n"
+        "  -d            Print disassembled bytecode after compiling.\n"
+        "  -             Take input directly from STDIN.\n"
+        "  FILE          Main file to interpret. Omitting this starts a REPL.\n"
         "Running with no options starts REPL in namespace fn/user/repl.\n"
         "When evaluating a file, the package and namespace are determined\n"
         "by the filename and package declaration, if present. Refer to\n"
@@ -56,12 +48,7 @@ struct interpreter_options {
     eval_mode mode = em_none;
     // holds filename or string to evaluate depending on mode
     string src = "";
-    // namespace if one is set
-    string ns = "fn/user/repl";
-    // the start of program arguments in argv
-    int args_start = 1;
-    // if true, should just show help and exit. In this case, other fields of
-    // the struct are not guaranteed to be initialized
+    // if true, show help and exit
     bool help = false;
     // whether to start a repl
     bool repl = false;
@@ -83,21 +70,10 @@ void process_args(int argc, char** argv, interpreter_options* opt) {
     int i;
     for (i = 1; i < argc; ++i) {
         string s{argv[i]};
-        if (s == string{"-"} || s == string{"--eval"} || s[0] != '-') {
-            break;
-        } else if (s == "--ns") {
-            if (i + 1 == argc) {
-                opt->err = true;
-                opt->message = "--ns must be followed by a namespace name.";
-                return;
-            } else if (opt->message.size() != 0) {
-                opt->err = true;
-                opt->message = "Multiple --ns options.";
-                return;
-            } else {
-                opt->ns = argv[++i];
+        if (s[0] == '-') {
+            if (s[1] == '\0') {
+                break;
             }
-        } else if (s[0] == '-') {
             for (u32 j = 1; j < s.size(); ++j) {
                 switch(s[j]) {
                 case 'r':
@@ -106,13 +82,13 @@ void process_args(int argc, char** argv, interpreter_options* opt) {
                 case 'd':
                     opt->dis = true;
                     break;
-                case 'l':
-                    opt->llir = true;
-                    break;
                 case 'h':
                     opt->help = true;
                     // no sense doing further processing at this point
                     return;
+                case '\0':
+                    opt->mode = em_stdin;
+                    break;
                 default:
                     opt->err = true;
                     opt->message = "Unrecognized option in"
@@ -120,35 +96,25 @@ void process_args(int argc, char** argv, interpreter_options* opt) {
                     return;
                 }
             }
-        } else {
-            break;
         }
     }
 
     if (i == argc) {
-        opt->args_start = i;
         opt->mode = em_none;
         opt->repl = true;
         return;
+    } else if (i == argc - 1) {
+        opt->src = argv[i];
+    } else {
+        opt->err = true;
+        opt->message = "Provide a single filename.";
     }
 
-    // process source
-    string src{argv[i]};
-    if (src == string{"--eval"}) {
-        if(i == argc) {
-            opt->err = true;
-            opt->message = "--eval must be followed by a string to evaluate.";
-            return;
-        }
-        opt->src = argv[++i];
-        opt->mode = em_string;
-    } else if (src == string{"-"}) {
+    if (opt->src == string{"-"}) {
         opt->mode = em_stdin;
     } else {
-        opt->src = src;
         opt->mode = em_file;
     }
-    opt->args_start = i+1;
 }
 
 int main(int argc, char** argv) {
@@ -170,39 +136,35 @@ int main(int argc, char** argv) {
     scanner sc{&std::cin};
     bool resumable;
 
-    auto form = parse_next_form(&sc, S, &resumable);
-    if (S->err_happened) {
-        std::cout << convert_fn_string(S->err_msg) << '\n';
-        free_istate(S);
-        return -1;
-    }
-    while (form != nullptr) {
+    while (!sc.eof_skip_ws()) {
+        auto form = parse_next_form(&sc, S, &resumable);
+        if (S->err_happened) {
+            std::cout << convert_fn_string(S->err_msg) << '\n';
+            free_istate(S);
+            return -1;
+        }
         compile_form(S, form);
         free_ast_form(form);
         if (S->err_happened) {
-            std::cout << "Error: " << string{(char*)S->err_msg->data} << '\n';
+            std::cout << "Error: " << convert_fn_string(S->err_msg) << '\n';
             print_stack_trace(S);
             free_istate(S);
             return -1;
         }
-        // disassemble_top(S, true);
-        // print_top(S);
-        // pop(S);
+        if (opt.dis) {
+            disassemble_top(S, true);
+            print_top(S);
+            pop(S);
+        }
         call(S, 0);
         if (S->err_happened) {
-            std::cout << "Error: " << string{(char*)S->err_msg->data} << '\n';
+            std::cout << "Error: " << convert_fn_string(S->err_msg) << '\n';
             print_stack_trace(S);
             free_istate(S);
             return -1;
         }
         print_top(S);
         pop(S);
-        form = parse_next_form(&sc, S, &resumable);
-        if (S->err_happened) {
-            std::cout << convert_fn_string(S->err_msg) << '\n';
-            free_istate(S);
-            return -1;
-        }
     }
     free_istate(S);
 

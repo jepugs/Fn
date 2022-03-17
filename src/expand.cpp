@@ -612,7 +612,6 @@ llir_fn* expander::expand_sub_fun(const source_loc& loc,
     }
 
     // create a new function stub
-    auto id = handle_stub(ft->stub)->sub_funs.size;
     auto fullname = convert_fn_string(handle_stub(ft->stub)->name) + ":" + name;
     auto sub_tree = add_sub_fun(S, ft, fullname);
 

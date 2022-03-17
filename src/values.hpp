@@ -196,6 +196,13 @@ inline bool vequal(value a, value b) {
     return a == b;
 }
 
+// returns an array of two values, key followed by value, which should not be
+// freed
+value* table_get(istate* S, fn_table* tab, value k);
+void table_set(istate* S, fn_table* tab, value k, value v);
+
+string type_string(value v);
+
 }
 
 #endif
