@@ -224,6 +224,9 @@ void table_set(istate* S, fn_table* tab, value k, value v) {
     auto x = find_table_slot(tab, k);
     x[0] = k;
     x[1] = v;
+    // set the dirty bit
+    auto card = get_gc_card(&tab->h);
+    card->u.h.dirty = true;
 }
 
 string type_string(value v) {

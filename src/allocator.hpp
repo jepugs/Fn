@@ -58,6 +58,8 @@ struct alignas(GC_CARD_SIZE) gc_card {
     } u;
 };
 
+gc_card* get_gc_card(gc_header* h);
+
 class allocator {
 public:
     u64 mem_usage;

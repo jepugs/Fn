@@ -262,6 +262,8 @@ void execute_fun(istate* S) {
             auto u = S->callee->upvals[code_byte(S, pc++)];
             if (u->closed) {
                 u->datum.val = peek(S, 0);
+                auto card = get_gc_card(&u->h);
+                card->u.h.dirty = true;
             } else {
                 S->stack[u->datum.pos] = peek(S, 0);
             }

@@ -40,6 +40,7 @@ static void add_gc_card(allocator* alloc, gc_card** where, u8 level) {
     new_card->u.h.count = 0;
     new_card->u.h.pointer = round_to_align(sizeof(gc_card_header));
     new_card->u.h.level = level;
+    new_card->u.h.dirty = false;
     *where = new_card;
 }
 
@@ -359,9 +360,15 @@ void alloc_fun(istate* S, u32 where, u32 enclosing, constant_id fid) {
     S->alloc->count += 1;
 }
 
+static void set_card_dirty(gc_header* obj) {
+    auto card = get_gc_card(obj);
+    card->u.h.dirty = true;
+}
+
 constant_id push_back_const(istate* S, gc_handle* stub_handle, value v) {
     auto stub = (function_stub*) stub_handle->obj;
     push_back_gc_array(S, &stub->const_arr, v);
+    set_card_dirty(stub_handle->obj);
     return stub->const_arr.size - 1;
 }
 
@@ -627,17 +634,21 @@ static void mark(istate* S, u8 level) {
         update_or_q_header((gc_header**)&f.callee, &hdr_q, level);
     }
 
-    // older generations
+    // scavenge older generations
     if (level < GC_LEVEL_SURVIVOR) {
         for (auto card = S->alloc->survivor; card != nullptr;
              card = (gc_card*)(card->u.h.next)) {
-            trace_card(card, &hdr_q, &val_q, level);
+            if (card->u.h.dirty) {
+                trace_card(card, &hdr_q, &val_q, level);
+            }
         }
     }
     if (level < GC_LEVEL_OLDGEN) {
         for (auto card = S->alloc->oldgen; card != nullptr;
              card = (gc_card*)(card->u.h.next)) {
-            trace_card(card, &hdr_q, &val_q, level);
+            if (card->u.h.dirty) {
+                trace_card(card, &hdr_q, &val_q, level);
+            }
         }
     }
 
@@ -672,6 +683,7 @@ static void mark(istate* S, u8 level) {
         }
     }
 
+    // clean up newly freed gc cards
     for (auto c = from_eden; c != nullptr; ) {
         auto tmp = (gc_card*)c->u.h.next;
         S->alloc->mem_usage -= c->u.h.pointer;
@@ -736,10 +748,19 @@ void collect_now(istate* S) {
               << "(" << S->alloc->mem_usage << " bytes)" << '\n';
 #endif
     if (S->alloc->cycles % GC_MAJOR_MULT == 0) {
+#ifdef GC_VERBOSE
+        std::cout << "[MAJOR GC CYCLE]\n";
+#endif
         mark(S, 2);
     } else if (S->alloc->cycles % GC_MINOR_MULT == 0) {
+#ifdef GC_VERBOSE
+        std::cout << "[MINOR GC CYCLE]\n";
+#endif
         mark(S, 1);
     } else {
+#ifdef GC_VERBOSE
+        std::cout << "[EVACUATION GC CYCLE]\n";
+#endif
         mark(S, 0);
     }
     ++S->alloc->cycles;
