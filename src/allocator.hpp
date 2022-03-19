@@ -17,6 +17,14 @@
 
 namespace fn {
 
+// Collection levels. Collecting at some level will also collect younger
+// generations
+constexpr u8 GC_LEVEL_EDEN = 0;
+constexpr u8 GC_LEVEL_SURVIVOR = 1;
+constexpr u8 GC_LEVEL_OLDGEN = 2;
+// number of collections an object must survive before being moved to oldgen
+constexpr u8 GC_RETIREMENT_AGE = 10;
+
 // a handle provides a way to maintain references to Fn values while still
 // allowing them to be moved by the allocator
 struct gc_handle {
@@ -35,21 +43,12 @@ constexpr u64 GC_CARD_SIZE = 2 << 12;
 
 struct gc_card_header {
     gc_card_header* next;
-    u32 count;
+    u16 count;
     u16 pointer;
+    u8 level;   // the collection level (i.e. generation) of this card
 
-    // following fields are currently unused but will be supported in a future
-    // version of the garbage collector
-
-    // persistent cards are used to store large objects
-    bool persistent;
-    // mark is used to collect persistent cards
-    // This isn't used in non-persistent gc cards. Maybe it shouldn't be here?
-    bool mark;
     // Set to true when an object in this card is written to
     bool dirty;
-    // generation.
-    u8 gen;
 };
 
 struct alignas(GC_CARD_SIZE) gc_card {
@@ -68,7 +67,11 @@ public:
     u64 collect_threshold;
 
     object_pool<gc_card> card_pool;
-    gc_card* active_card;
+    gc_card* eden;
+    gc_card* survivor;
+    gc_card* oldgen;
+    // counts number of GC cycles
+    u64 cycles;
 
     istate* S;
     gc_handle* gc_handles;
@@ -92,13 +95,15 @@ constexpr u64 INIT_GC_ARRAY_SIZE = 8;
 gc_handle* get_handle(allocator* alloc, gc_header* obj);
 void release_handle(gc_handle* handle);
 
-// routine to get bytes from the allocator. Does not trigger collection.
-void* get_bytes(allocator* alloc, u64 size);
+// routines to get bytes from the allocator in the various generations
+void* get_bytes_eden(allocator* alloc, u64 size);
+void* get_bytes_survivor(allocator* alloc, u64 size);
+void* get_bytes_oldgen(allocator* alloc, u64 size);
 
 // gc_bytes are byte arrays used internally by some objects. These routines will
 // not trigger collection, since this could cause the object containing the
 // array to be moved.
-gc_bytes* alloc_gc_bytes(allocator* alloc, u64 nbytes);
+gc_bytes* alloc_gc_bytes(allocator* alloc, u64 nbytes, u8 level=0);
 gc_bytes* realloc_gc_bytes(allocator* alloc, gc_bytes* src, u64 new_size);
 
 // object creation routines. Each of these triggers a collection at the
@@ -131,6 +136,9 @@ void update_code_info(istate* S, function_stub* to, const source_loc& loc);
 // function stub. This doesn't perform mutation, but it's here because it needs
 // the gc_array functions
 code_info* instr_loc(function_stub* stub, u32 pc);
+
+// functions for tables
+void table_insert(istate* S, u32 table_pos, u32 key_pos, u32 val_pos);
 
 void collect(istate* S);
 void collect_now(istate* S);

@@ -26,18 +26,21 @@ static constexpr u64 COLLECT_SCALE_FACTOR = 2;
 // devoted to persistent objects. (It must be less than 100)
 static constexpr u64 RESCALE_TH = 80;
 
+// multipliers for how often to run major and minor gc
+static constexpr u64 GC_MINOR_MULT = 10;
+static constexpr u64 GC_MAJOR_MULT = 100;
+
 static inline constexpr u64 round_to_align(u64 size) {
     return OBJ_ALIGN + ((size - 1) & ~(OBJ_ALIGN - 1));
 }
 
-static void add_gc_card(allocator* alloc) {
+static void add_gc_card(allocator* alloc, gc_card** where, u8 level) {
     auto new_card = alloc->card_pool.new_object();
-    new_card->u.h.next = &alloc->active_card->u.h;
-    new_card->u.h.persistent = false;
-    new_card->u.h.gen = 0;
+    new_card->u.h.next = (gc_card_header*)(*where);
     new_card->u.h.count = 0;
     new_card->u.h.pointer = round_to_align(sizeof(gc_card_header));
-    alloc->active_card = new_card;
+    new_card->u.h.level = level;
+    *where = new_card;
 }
 
 gc_card* get_gc_card(gc_header* h) {
@@ -47,10 +50,15 @@ gc_card* get_gc_card(gc_header* h) {
 allocator::allocator(istate* S)
     : mem_usage{0}
     , collect_threshold{FIRST_COLLECT}
-    , active_card{nullptr}
+    , eden{nullptr}
+    , survivor{nullptr}
+    , oldgen{nullptr}
+    , cycles{0}
     , S{S}
     , gc_handles{nullptr} {
-    add_gc_card(this);
+    add_gc_card(this, &eden, GC_LEVEL_EDEN);
+    add_gc_card(this, &survivor, GC_LEVEL_SURVIVOR);
+    add_gc_card(this, &oldgen, GC_LEVEL_OLDGEN);
 }
 
 allocator::~allocator() {
@@ -83,21 +91,59 @@ void release_handle(gc_handle* handle) {
     handle->alive = false;
 }
 
-void* get_bytes(allocator* alloc, u64 size) {
+void* try_alloc(allocator* alloc, gc_card* card, u64 size) {
+    // TODO: account for very large objects
     alloc->mem_usage += size;
-    if (size + alloc->active_card->u.h.pointer > GC_CARD_SIZE) {
-        // TODO: account for very large objects
-        add_gc_card(alloc);
+    if (size + card->u.h.pointer > GC_CARD_SIZE) {
+        return nullptr;
     }
-    auto res = (void*)&alloc->active_card->u.data[alloc->active_card->u.h.pointer];
-    alloc->active_card->u.h.pointer += size;
-    ++alloc->active_card->u.h.count;
+    auto res = (void*)&card->u.data[card->u.h.pointer];
+    card->u.h.pointer += size;
+    ++card->u.h.count;
     return res;
 }
 
-gc_bytes* alloc_gc_bytes(allocator* alloc, u64 nbytes) {
+void* get_bytes_eden(allocator* alloc, u64 size) {
+    auto ptr = try_alloc(alloc, alloc->eden, size);
+    if (ptr) {
+        return ptr;
+    }
+    add_gc_card(alloc, &alloc->eden, GC_LEVEL_EDEN);
+    return try_alloc(alloc, alloc->eden, size);
+}
+
+void* get_bytes_survivor(allocator* alloc, u64 size) {
+    auto ptr = try_alloc(alloc, alloc->survivor, size);
+    if (ptr) {
+        return ptr;
+    }
+    add_gc_card(alloc, &alloc->survivor, GC_LEVEL_SURVIVOR);
+    return try_alloc(alloc, alloc->survivor, size);
+}
+
+void* get_bytes_oldgen(allocator* alloc, u64 size) {
+    auto ptr = try_alloc(alloc, alloc->oldgen, size);
+    if (ptr) {
+        return ptr;
+    }
+    add_gc_card(alloc, &alloc->oldgen, GC_LEVEL_OLDGEN);
+    return try_alloc(alloc, alloc->oldgen, size);
+}
+
+gc_bytes* alloc_gc_bytes(allocator* alloc, u64 nbytes, u8 level) {
     auto sz = round_to_align(sizeof(gc_bytes) + nbytes);
-    auto res = (gc_bytes*)get_bytes(alloc, sz);
+    gc_bytes* res;
+    switch (level) {
+    case GC_LEVEL_EDEN:
+        res = (gc_bytes*)get_bytes_eden(alloc, sz);
+        break;
+    case GC_LEVEL_SURVIVOR:
+        res = (gc_bytes*)get_bytes_survivor(alloc, sz);
+        break;
+    default:
+        res = (gc_bytes*)get_bytes_oldgen(alloc, sz);
+        break;
+    }
     init_gc_header(&res->h, GC_TYPE_GC_BYTES, sz);
     res->data = (u8*)(sizeof(gc_bytes) + (u64)res);
     return res;
@@ -105,7 +151,8 @@ gc_bytes* alloc_gc_bytes(allocator* alloc, u64 nbytes) {
 
 gc_bytes* realloc_gc_bytes(allocator* alloc, gc_bytes* src, u64 new_size) {
     auto sz = round_to_align(sizeof(gc_bytes) + new_size);
-    auto res = alloc_gc_bytes(alloc, new_size);
+    auto res = alloc_gc_bytes(alloc, new_size,
+            get_gc_card((gc_header*)src)->u.h.level);
     memcpy(res, src, src->h.size);
     // the memcpy overwrites the size
     res->h.size = sz;
@@ -116,7 +163,7 @@ gc_bytes* realloc_gc_bytes(allocator* alloc, gc_bytes* src, u64 new_size) {
 void alloc_string(istate* S, u32 where, u32 len) {
     collect(S);
     auto sz = round_to_align(sizeof(fn_string) + len + 1);
-    auto res = (fn_string*)get_bytes(S->alloc, sz);
+    auto res = (fn_string*)get_bytes_eden(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_STRING, sz);
     res->data = (u8*) (((u8*)res) + sizeof(fn_string));
     res->data[len] = 0;
@@ -128,7 +175,7 @@ void alloc_string(istate* S, u32 where, const string& str) {
     collect(S);
     auto len = str.size();
     auto sz = round_to_align(sizeof(fn_string) + len + 1);
-    auto res = (fn_string*)get_bytes(S->alloc, sz);
+    auto res = (fn_string*)get_bytes_eden(S->alloc, sz);
     res->size = len;
     init_gc_header(&res->h, GC_TYPE_STRING, sz);
     res->data = (u8*) (((u8*)res) + sizeof(fn_string));
@@ -141,7 +188,7 @@ void alloc_string(istate* S, u32 where, const string& str) {
 void alloc_cons(istate* S, u32 where, u32 hd, u32 tl) {
     collect(S);
     auto sz = round_to_align(sizeof(fn_cons));
-    auto res = (fn_cons*)get_bytes(S->alloc, sz);
+    auto res = (fn_cons*)get_bytes_eden(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_CONS, sz);
     res->head = S->stack[hd];
     res->tail = S->stack[tl];
@@ -152,7 +199,7 @@ void alloc_cons(istate* S, u32 where, u32 hd, u32 tl) {
 void alloc_table(istate* S, u32 where) {
     collect(S);
     auto sz =  round_to_align(sizeof(fn_table));
-    auto res = (fn_table*)get_bytes(S->alloc, sz);
+    auto res = (fn_table*)get_bytes_eden(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_TABLE, sz);
     res->size = 0;
     res->cap = FN_TABLE_INIT_CAP;
@@ -169,7 +216,7 @@ void alloc_table(istate* S, u32 where) {
 static function_stub* mk_fun_stub(istate* S, symbol_id ns_id, fn_string* name) {
     auto& alloc = S->alloc;
     auto sz = sizeof(function_stub);
-    auto res = (function_stub*)get_bytes(alloc, sz);
+    auto res = (function_stub*)get_bytes_eden(alloc, sz);
     init_gc_header(&res->h, GC_TYPE_FUN_STUB, sz);
     init_gc_array(S, &res->code);
     init_gc_array(S, &res->const_arr);
@@ -206,7 +253,7 @@ void alloc_empty_fun(istate* S,
     // empty name for the empty function
     push_string(S, symname(S, ns_id));
     auto sz = sizeof(fn_function);
-    auto res = (fn_function*)get_bytes(S->alloc, sz);
+    auto res = (fn_function*)get_bytes_eden(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
     res->init_vals = nullptr;
     res->upvals = nullptr;
@@ -218,7 +265,7 @@ void alloc_empty_fun(istate* S,
 
 static upvalue_cell* alloc_open_upval(istate* S, u32 pos) {
     auto sz = round_to_align(sizeof(upvalue_cell));
-    auto res = (upvalue_cell*)get_bytes(S->alloc, sz);
+    auto res = (upvalue_cell*)get_bytes_eden(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_UPVALUE, sz);
     res->closed = false;
     res->datum.pos = pos;
@@ -228,7 +275,7 @@ static upvalue_cell* alloc_open_upval(istate* S, u32 pos) {
 
 static upvalue_cell* alloc_closed_upval(istate* S) {
     auto sz = sizeof(upvalue_cell);
-    auto res = (upvalue_cell*)get_bytes(S->alloc, sz);
+    auto res = (upvalue_cell*)get_bytes_eden(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_UPVALUE, sz);
     res->closed = true;
     res->datum.val = V_NIL;
@@ -246,7 +293,7 @@ void alloc_foreign_fun(istate* S,
     push_string(S, name);
     auto sz = round_to_align(sizeof(fn_function)
             + num_upvals * sizeof(upvalue_cell*));
-    auto res = (fn_function*)get_bytes(S->alloc, sz);
+    auto res = (fn_function*)get_bytes_eden(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
     res->init_vals = nullptr;
     res->upvals = (upvalue_cell**)((u8*)res + sizeof(fn_function));
@@ -290,7 +337,7 @@ void alloc_fun(istate* S, u32 where, u32 enclosing, constant_id fid) {
     auto sz = round_to_align(sizeof(fn_function)
             + stub->num_opt*sizeof(value)
             + stub->upvals.size*sizeof(upvalue_cell*));
-    auto res = (fn_function*)get_bytes(S->alloc, sz);
+    auto res = (fn_function*)get_bytes_eden(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
     res->init_vals = (value*)((u8*)res + sizeof(fn_function));
     for (u32 i = 0; i < stub->num_opt; ++i) {
@@ -350,21 +397,23 @@ code_info* instr_loc(function_stub* stub, u32 pc) {
 }
 
 
-static void update_or_q_value(value* place, dyn_array<value*>* q) {
+static void update_or_q_value(value* place, dyn_array<value*>* q, u8 level) {
     if (!vhas_header(*place)) {
         return;
     }
     auto ptr = vheader(*place);
     if (ptr->type == GC_TYPE_FORWARD) {
         *place = vbox_header(ptr->forward);
-    } else {
+    } else if (get_gc_card(ptr)->u.h.level <= level) {
         q->push_back(place);
     }
 }
-static void update_or_q_header(gc_header** place, dyn_array<gc_header**>* q) {
+
+static void update_or_q_header(gc_header** place, dyn_array<gc_header**>* q,
+        u8 level) {
     if ((*place)->type == GC_TYPE_FORWARD) {
         *place = (*place)->forward;
-    } else {
+    } else if (get_gc_card(*place)->u.h.level <= level) {
         q->push_back(place);
     }
 }
@@ -372,7 +421,15 @@ static void update_or_q_header(gc_header** place, dyn_array<gc_header**>* q) {
 // copy an object to a new gc_card. THIS DOES NOT UPDATE INTERNAL POINTERS
 static gc_header* copy_and_forward(istate* S, gc_header* obj) {
     auto alloc = S->alloc;
-    auto new_loc = (gc_header*)get_bytes(alloc, obj->size);
+    gc_header* new_loc;
+    if (obj->age >= GC_RETIREMENT_AGE) {
+        new_loc = (gc_header*)get_bytes_oldgen(alloc, obj->size);
+    } else {
+        // increment age before copying
+        ++obj->age;
+        new_loc = (gc_header*)get_bytes_survivor(alloc, obj->size);
+
+    }
     memcpy(new_loc, obj, obj->size);
     obj->type = GC_TYPE_FORWARD;
     obj->forward = new_loc;
@@ -389,53 +446,29 @@ static void copy_gc_array(istate* S, gc_array<T>* arr) {
     copy_gc_bytes(S, &arr->data);
 }
 
-void move_live_object(istate* S, gc_header* obj, dyn_array<gc_header**>* hdr_q,
-        dyn_array<value*>* val_q) {
+static gc_header* move_object(istate* S, gc_header* obj) {
     obj = copy_and_forward(S, obj);
-
     switch (gc_type(*obj)) {
     case GC_TYPE_STRING: {
         auto s = (fn_string*)obj;
         s->data = (sizeof(fn_string) + (u8*)s);
         break;
     }
-    case GC_TYPE_CONS:
-        update_or_q_value(&((fn_cons*)obj)->head, val_q);
-        update_or_q_value(&((fn_cons*)obj)->tail, val_q);
-        break;
     case GC_TYPE_TABLE: {
         auto tab = (fn_table*)obj;
         // move the array
         copy_gc_bytes(S, &tab->data);
-        update_or_q_value(&tab->metatable, val_q);
-        auto data = (value*)tab->data->data;
-        auto m = tab->cap * 2;
-        for (u32 i = 0; i < m; i += 2) {
-            if (data[i].raw != V_UNIN.raw) {
-                update_or_q_value(&data[i], val_q);
-                update_or_q_value(&data[i+1], val_q);
-            }
-        } 
     }
         break;
     case GC_TYPE_FUNCTION: {
         auto f = (fn_function*)obj;
-        // IMPORTANT! We must detect if the stub has moved and update it before
-        // using it. Calling update_or_q_header() first is crucial.
-        update_or_q_header((gc_header**)&f->stub, hdr_q);
-        // FIXME: this should be handled in a subroutine to reduce code
-        // duplication
+        auto stub = f->stub;
+        if (stub->h.type == GC_TYPE_FORWARD) {
+            stub = (function_stub*)stub->h.forward;
+        }
         f->init_vals = (value*)(sizeof(fn_function) + (u8*)f);
         f->upvals = (upvalue_cell**) (sizeof(fn_function)
-                + f->stub->num_opt * sizeof(value) + (u8*)f);
-        // update the location of the upvals and initvals arrays
-        for (local_address i = 0; i < f->stub->upvals.size; ++i) {
-            update_or_q_header((gc_header**)&f->upvals[i], hdr_q);
-        }
-        // init vals
-        for (u32 i = 0; i < f->stub->num_opt; ++i) {
-            update_or_q_value(&f->init_vals[i], val_q);
-        }
+                + stub->num_opt * sizeof(value) + (u8*)f);
     }
         break;
     case GC_TYPE_FUN_STUB: {
@@ -446,22 +479,69 @@ void move_live_object(istate* S, gc_header* obj, dyn_array<gc_header**>* hdr_q,
         copy_gc_array(S, &s->upvals);
         copy_gc_array(S, &s->upvals_direct);
         copy_gc_array(S, &s->ci_arr);
+    }
+        break;
+    }
+    return obj;
+}
+
+// find all the pointers in an object, adding them to the respective queues.
+// Pointers are ignored if they live in a card of a higher level than the one
+// provided. E.g. tracing with level GC_LEVEL_EDEN will only add pointers to
+// eden, ignoring objects in survivor and oldgen.
+static void trace_object(gc_header* obj, dyn_array<gc_header**>* hdr_q,
+        dyn_array<value*>* val_q, u8 level) {
+    switch (gc_type(*obj)) {
+    case GC_TYPE_CONS:
+        update_or_q_value(&((fn_cons*)obj)->head, val_q, level);
+        update_or_q_value(&((fn_cons*)obj)->tail, val_q, level);
+        break;
+    case GC_TYPE_TABLE: {
+        auto tab = (fn_table*)obj;
+        update_or_q_value(&tab->metatable, val_q, level);
+        auto data = (value*)tab->data->data;
+        auto m = tab->cap * 2;
+        for (u32 i = 0; i < m; i += 2) {
+            if (data[i].raw != V_UNIN.raw) {
+                update_or_q_value(&data[i], val_q, level);
+                update_or_q_value(&data[i+1], val_q, level);
+            }
+        }
+    }
+        break;
+    case GC_TYPE_FUNCTION: {
+        auto f = (fn_function*)obj;
+        // IMPORTANT! We must detect if the stub has moved and update it before
+        // using it. Calling update_or_q_header() first is crucial.
+        update_or_q_header((gc_header**)&f->stub, hdr_q, level);
+        // update the location of the upvals and initvals arrays
+        for (local_address i = 0; i < f->stub->upvals.size; ++i) {
+            update_or_q_header((gc_header**)&f->upvals[i], hdr_q, level);
+        }
+        // init vals
+        for (u32 i = 0; i < f->stub->num_opt; ++i) {
+            update_or_q_value(&f->init_vals[i], val_q, level);
+        }
+    }
+        break;
+    case GC_TYPE_FUN_STUB: {
+        auto s = (function_stub*)obj;
         for (u64 i = 0; i < s->sub_funs.size; ++i) {
             update_or_q_header((gc_header**)&gc_array_get(&s->sub_funs, i),
-                    hdr_q);
+                    hdr_q, level);
         }
         for (u64 i = 0; i < s->const_arr.size; ++i) {
-            update_or_q_value(&gc_array_get(&s->const_arr, i), val_q);
+            update_or_q_value(&gc_array_get(&s->const_arr, i), val_q, level);
         }
         // metadata
-        update_or_q_header((gc_header**)&s->name, hdr_q);
-        update_or_q_header((gc_header**)&s->filename, hdr_q);
+        update_or_q_header((gc_header**)&s->name, hdr_q, level);
+        update_or_q_header((gc_header**)&s->filename, hdr_q, level);
     }
         break;
     case GC_TYPE_UPVALUE: {
         auto u = (upvalue_cell*)obj;
         if(u->closed) {
-            update_or_q_value(&u->datum.val, val_q);
+            update_or_q_value(&u->datum.val, val_q, level);
             // open upvalues should be visible from the stack
         }
     }
@@ -469,39 +549,69 @@ void move_live_object(istate* S, gc_header* obj, dyn_array<gc_header**>* hdr_q,
     }
 }
 
-void mark(istate* S) {
-    auto from_space = S->alloc->active_card;
-    S->alloc->active_card = nullptr;
-    add_gc_card(S->alloc);
+// trace all the objects in a card
+static void trace_card(gc_card* card, dyn_array<gc_header**>* hdr_q,
+        dyn_array<value*>* val_q, u8 level) {
+    auto i = round_to_align(sizeof(gc_card_header));
+    while (i < card->u.h.pointer) {
+        auto obj = (gc_header*)&card->u.data[i];
+        trace_object(obj, hdr_q, val_q, level);
+        i += obj->size;
+    }
+}
+
+static gc_header* move_live_object(istate* S, gc_header* obj,
+        dyn_array<gc_header**>* hdr_q, dyn_array<value*>* val_q, u8 level) {
+    if (get_gc_card(obj)->u.h.level <= level) {
+        obj = move_object(S, obj);
+    }
+    trace_object(obj, hdr_q, val_q, level);
+    return obj;
+}
+
+static void mark(istate* S, u8 level) {
+    auto from_eden = S->alloc->eden;
+    S->alloc->eden = nullptr;
+    add_gc_card(S->alloc, &S->alloc->eden, GC_LEVEL_EDEN);
+    auto from_survivor = S->alloc->survivor;
+    if (level >= GC_LEVEL_SURVIVOR) {
+        S->alloc->survivor = nullptr;
+        add_gc_card(S->alloc, &S->alloc->survivor, GC_LEVEL_SURVIVOR);
+    }
+    auto from_oldgen = S->alloc->oldgen;
+    if (level >= GC_LEVEL_OLDGEN) {
+        S->alloc->oldgen = nullptr;
+        add_gc_card(S->alloc, &S->alloc->oldgen, GC_LEVEL_OLDGEN);
+    }
 
     dyn_array<value*> val_q;
     dyn_array<gc_header**> hdr_q;
 
     // istate function
     if (S->callee) {
-        hdr_q.push_back((gc_header**)&S->callee);
+        update_or_q_header((gc_header**)&S->callee, &hdr_q, level);
     }
     // stack
     for (u32 i = 0; i < S->sp; ++i) {
-        val_q.push_back(&S->stack[i]);
+        update_or_q_value(&S->stack[i], &val_q, level);
     }
     // open upvalues
     for (auto& u : S->open_upvals) {
-        hdr_q.push_back((gc_header**)&u);
+        update_or_q_header((gc_header**)&u, &hdr_q, level);
     }
     // globals
     for (auto& v : S->G->def_arr) {
-        val_q.push_back(&v);
+        update_or_q_value(&v, &val_q, level);
     }
     for (auto e : S->G->macro_tab) {
-        hdr_q.push_back((gc_header**)&e->val);
+        update_or_q_header((gc_header**)&e->val, &hdr_q, level);
     }
     // handles
     auto prev = &(S->alloc->gc_handles);
     while (*prev != nullptr) {
         auto next = &(*prev)->next;
         if ((*prev)->alive) {
-            hdr_q.push_back(&(*prev)->obj);
+            update_or_q_header((gc_header**)&(*prev)->obj, &hdr_q, level);
             prev = next;
         } else {
             auto tmp = *prev;
@@ -510,9 +620,25 @@ void mark(istate* S) {
         }
     }
     // debugging info
-    hdr_q.push_back((gc_header**)&S->filename);
+    if (S->filename) {
+        update_or_q_header((gc_header**)&S->filename, &hdr_q, level);
+    }
     for (auto& f : S->stack_trace) {
-        hdr_q.push_back((gc_header**)&f.callee);
+        update_or_q_header((gc_header**)&f.callee, &hdr_q, level);
+    }
+
+    // older generations
+    if (level < GC_LEVEL_SURVIVOR) {
+        for (auto card = S->alloc->survivor; card != nullptr;
+             card = (gc_card*)(card->u.h.next)) {
+            trace_card(card, &hdr_q, &val_q, level);
+        }
+    }
+    if (level < GC_LEVEL_OLDGEN) {
+        for (auto card = S->alloc->oldgen; card != nullptr;
+             card = (gc_card*)(card->u.h.next)) {
+            trace_card(card, &hdr_q, &val_q, level);
+        }
     }
 
     while (true) {
@@ -523,9 +649,10 @@ void mark(istate* S) {
             if (vhas_header(*place)) {
                 auto h = vheader(*place);
                 if (h->type != GC_TYPE_FORWARD) {
-                    move_live_object(S, h, &hdr_q, &val_q);
+                    *place = vbox_header(move_live_object(S, h, &hdr_q, &val_q, level));
+                } else {
+                    *place = vbox_header(h->forward);
                 }
-                *place = vbox_header(h->forward);
             }
         }
 
@@ -534,9 +661,10 @@ void mark(istate* S) {
             auto place = hdr_q[i];
             hdr_q.pop();
             if ((*place)->type != GC_TYPE_FORWARD) {
-                move_live_object(S, *place, &hdr_q, &val_q);
+                *place = move_live_object(S, *place, &hdr_q, &val_q, level);
+            } else {
+                *place = (*place)->forward;
             }
-            *place = (*place)->forward;
         }
 
         if (val_q.size == 0) {
@@ -544,12 +672,29 @@ void mark(istate* S) {
         }
     }
 
-    for (auto c = from_space; c != nullptr; ) {
+    for (auto c = from_eden; c != nullptr; ) {
         auto tmp = (gc_card*)c->u.h.next;
         S->alloc->mem_usage -= c->u.h.pointer;
         S->alloc->card_pool.free_object(c);
         c = tmp;
     }
+    if (level >= GC_LEVEL_SURVIVOR) {
+        for (auto c = from_survivor; c != nullptr; ) {
+            auto tmp = (gc_card*)c->u.h.next;
+            S->alloc->mem_usage -= c->u.h.pointer;
+            S->alloc->card_pool.free_object(c);
+            c = tmp;
+        }
+    }
+    if (level >= GC_LEVEL_OLDGEN) {
+        for (auto c = from_oldgen; c != nullptr; ) {
+            auto tmp = (gc_card*)c->u.h.next;
+            S->alloc->mem_usage -= c->u.h.pointer;
+            S->alloc->card_pool.free_object(c);
+            c = tmp;
+        }
+    }
+
 }
 
 void collect(istate* S) {
@@ -569,20 +714,35 @@ void collect(istate* S) {
 #endif
 }
 
+#ifdef GC_VERBOSE
 static u64 count_objects(istate* S) {
     auto ct = 0;
-    for (auto c = S->alloc->active_card; c != nullptr; c = (gc_card*)c->u.h.next) {
+    for (auto c = S->alloc->eden; c != nullptr; c = (gc_card*)c->u.h.next) {
+        ct += c->u.h.count;
+    }
+    for (auto c = S->alloc->survivor; c != nullptr; c = (gc_card*)c->u.h.next) {
+        ct += c->u.h.count;
+    }
+    for (auto c = S->alloc->oldgen; c != nullptr; c = (gc_card*)c->u.h.next) {
         ct += c->u.h.count;
     }
     return ct;
 }
+#endif
 
 void collect_now(istate* S) {
 #ifdef GC_VERBOSE
     std::cout << ">>GC START: " << count_objects(S) << " objects "
               << "(" << S->alloc->mem_usage << " bytes)" << '\n';
 #endif
-    mark(S);
+    if (S->alloc->cycles % GC_MAJOR_MULT == 0) {
+        mark(S, 2);
+    } else if (S->alloc->cycles % GC_MINOR_MULT == 0) {
+        mark(S, 1);
+    } else {
+        mark(S, 0);
+    }
+    ++S->alloc->cycles;
 #ifdef GC_VERBOSE
     std::cout << "<<GC END: " << count_objects(S) << " objects "
               << "(" << S->alloc->mem_usage << " bytes)" << '\n';
