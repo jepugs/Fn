@@ -23,7 +23,11 @@ constexpr u8 GC_LEVEL_EDEN = 0;
 constexpr u8 GC_LEVEL_SURVIVOR = 1;
 constexpr u8 GC_LEVEL_OLDGEN = 2;
 // number of collections an object must survive before being moved to oldgen
-constexpr u8 GC_RETIREMENT_AGE = 10;
+constexpr u8 GC_RETIREMENT_AGE = 15;
+
+// multipliers for how often to run major and minor gc
+static constexpr u64 GC_MINOR_MULT = 5;
+static constexpr u64 GC_MAJOR_MULT = 50;
 
 // a handle provides a way to maintain references to Fn values while still
 // allowing them to be moved by the allocator
@@ -59,6 +63,7 @@ struct alignas(GC_CARD_SIZE) gc_card {
 };
 
 gc_card* get_gc_card(gc_header* h);
+void write_guard(gc_card* card, gc_header* ref);
 
 class allocator {
 public:

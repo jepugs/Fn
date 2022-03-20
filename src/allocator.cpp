@@ -26,10 +26,6 @@ static constexpr u64 COLLECT_SCALE_FACTOR = 2;
 // devoted to persistent objects. (It must be less than 100)
 static constexpr u64 RESCALE_TH = 80;
 
-// multipliers for how often to run major and minor gc
-static constexpr u64 GC_MINOR_MULT = 10;
-static constexpr u64 GC_MAJOR_MULT = 100;
-
 static inline constexpr u64 round_to_align(u64 size) {
     return OBJ_ALIGN + ((size - 1) & ~(OBJ_ALIGN - 1));
 }
@@ -46,6 +42,13 @@ static void add_gc_card(allocator* alloc, gc_card** where, u8 level) {
 
 gc_card* get_gc_card(gc_header* h) {
     return (gc_card*) ((u64)h & ~(GC_CARD_SIZE-1));
+}
+
+void write_guard(gc_card* card, gc_header* ref) {
+    auto card2 = get_gc_card(ref);
+    if (card2->u.h.level < card->u.h.level) {
+        card->u.h.dirty = true;
+    }
 }
 
 allocator::allocator(istate* S)
@@ -360,15 +363,12 @@ void alloc_fun(istate* S, u32 where, u32 enclosing, constant_id fid) {
     S->alloc->count += 1;
 }
 
-static void set_card_dirty(gc_header* obj) {
-    auto card = get_gc_card(obj);
-    card->u.h.dirty = true;
-}
-
 constant_id push_back_const(istate* S, gc_handle* stub_handle, value v) {
     auto stub = (function_stub*) stub_handle->obj;
     push_back_gc_array(S, &stub->const_arr, v);
-    set_card_dirty(stub_handle->obj);
+    if (vhas_header(v)) {
+        write_guard(get_gc_card(&stub->h), vheader(v));
+    }
     return stub->const_arr.size - 1;
 }
 
@@ -401,28 +401,6 @@ code_info* instr_loc(function_stub* stub, u32 pc) {
     // this is safe since the first location is always added when the function
     // is created.
     return &gc_array_get(&stub->ci_arr, 0);
-}
-
-
-static void update_or_q_value(value* place, dyn_array<value*>* q, u8 level) {
-    if (!vhas_header(*place)) {
-        return;
-    }
-    auto ptr = vheader(*place);
-    if (ptr->type == GC_TYPE_FORWARD) {
-        *place = vbox_header(ptr->forward);
-    } else if (get_gc_card(ptr)->u.h.level <= level) {
-        q->push_back(place);
-    }
-}
-
-static void update_or_q_header(gc_header** place, dyn_array<gc_header**>* q,
-        u8 level) {
-    if ((*place)->type == GC_TYPE_FORWARD) {
-        *place = (*place)->forward;
-    } else if (get_gc_card(*place)->u.h.level <= level) {
-        q->push_back(place);
-    }
 }
 
 // copy an object to a new gc_card. THIS DOES NOT UPDATE INTERNAL POINTERS
@@ -492,26 +470,67 @@ static gc_header* move_object(istate* S, gc_header* obj) {
     return obj;
 }
 
+
+// analyzes a reference contained in another object. This does three things: (1)
+// if the object has already been forwarded, it updates the reference. (2) if
+// the level of the reference is at or below the provided level and the object
+// has not yet been forwarded, it adds it to the provided queue. (3) it
+// determines whether to set the dirty bit of the receiving object's gc card.
+static void trace_obj_ref(gc_header** place, dyn_array<gc_header**>* q,
+        gc_header* receiver, u8 level) {
+    if ((*place)->type == GC_TYPE_FORWARD) {
+        *place = (*place)->forward;
+    } else if (get_gc_card(*place)->u.h.level <= level) {
+        q->push_back(place);
+    }
+    // update the dirty bit
+    auto recv_card = get_gc_card(receiver);
+    if (get_gc_card(*place)->u.h.level < recv_card->u.h.level) {
+        recv_card->u.h.dirty = true;
+    }
+}
+
+// like trace_obj_ref, but works on value pointers. Values without headers are
+// ignored.
+static void trace_value_ref(value* place, dyn_array<value*>* q,
+        gc_header* receiver, u8 level) {
+    if (!vhas_header(*place)) {
+        return;
+    }
+    auto ptr = vheader(*place);
+    if (ptr->type == GC_TYPE_FORWARD) {
+        *place = vbox_header(ptr->forward);
+    } else if (get_gc_card(ptr)->u.h.level <= level) {
+        q->push_back(place);
+    }
+    // update the dirty bit
+    auto recv_card = get_gc_card(receiver);
+    if (get_gc_card(ptr)->u.h.level < recv_card->u.h.level) {
+        recv_card->u.h.dirty = true;
+    }
+}
+
 // find all the pointers in an object, adding them to the respective queues.
 // Pointers are ignored if they live in a card of a higher level than the one
 // provided. E.g. tracing with level GC_LEVEL_EDEN will only add pointers to
-// eden, ignoring objects in survivor and oldgen.
+// eden, ignoring objects in survivor and oldgen. This also updates dirt bits
+// when appropriate.
 static void trace_object(gc_header* obj, dyn_array<gc_header**>* hdr_q,
         dyn_array<value*>* val_q, u8 level) {
     switch (gc_type(*obj)) {
     case GC_TYPE_CONS:
-        update_or_q_value(&((fn_cons*)obj)->head, val_q, level);
-        update_or_q_value(&((fn_cons*)obj)->tail, val_q, level);
+        trace_value_ref(&((fn_cons*)obj)->head, val_q, obj, level);
+        trace_value_ref(&((fn_cons*)obj)->tail, val_q, obj, level);
         break;
     case GC_TYPE_TABLE: {
         auto tab = (fn_table*)obj;
-        update_or_q_value(&tab->metatable, val_q, level);
+        trace_value_ref(&tab->metatable, val_q, obj, level);
         auto data = (value*)tab->data->data;
         auto m = tab->cap * 2;
         for (u32 i = 0; i < m; i += 2) {
             if (data[i].raw != V_UNIN.raw) {
-                update_or_q_value(&data[i], val_q, level);
-                update_or_q_value(&data[i+1], val_q, level);
+                trace_value_ref(&data[i], val_q, obj, level);
+                trace_value_ref(&data[i+1], val_q, obj, level);
             }
         }
     }
@@ -519,36 +538,36 @@ static void trace_object(gc_header* obj, dyn_array<gc_header**>* hdr_q,
     case GC_TYPE_FUNCTION: {
         auto f = (fn_function*)obj;
         // IMPORTANT! We must detect if the stub has moved and update it before
-        // using it. Calling update_or_q_header() first is crucial.
-        update_or_q_header((gc_header**)&f->stub, hdr_q, level);
+        // using it. Calling trace_obj_ref() first is crucial.
+        trace_obj_ref((gc_header**)&f->stub, hdr_q, obj, level);
         // update the location of the upvals and initvals arrays
         for (local_address i = 0; i < f->stub->upvals.size; ++i) {
-            update_or_q_header((gc_header**)&f->upvals[i], hdr_q, level);
+            trace_obj_ref((gc_header**)&f->upvals[i], hdr_q, obj, level);
         }
         // init vals
         for (u32 i = 0; i < f->stub->num_opt; ++i) {
-            update_or_q_value(&f->init_vals[i], val_q, level);
+            trace_value_ref(&f->init_vals[i], val_q, obj, level);
         }
     }
         break;
     case GC_TYPE_FUN_STUB: {
         auto s = (function_stub*)obj;
         for (u64 i = 0; i < s->sub_funs.size; ++i) {
-            update_or_q_header((gc_header**)&gc_array_get(&s->sub_funs, i),
-                    hdr_q, level);
+            trace_obj_ref((gc_header**)&gc_array_get(&s->sub_funs, i),
+                    hdr_q, obj, level);
         }
         for (u64 i = 0; i < s->const_arr.size; ++i) {
-            update_or_q_value(&gc_array_get(&s->const_arr, i), val_q, level);
+            trace_value_ref(&gc_array_get(&s->const_arr, i), val_q, obj, level);
         }
         // metadata
-        update_or_q_header((gc_header**)&s->name, hdr_q, level);
-        update_or_q_header((gc_header**)&s->filename, hdr_q, level);
+        trace_obj_ref((gc_header**)&s->name, hdr_q, obj, level);
+        trace_obj_ref((gc_header**)&s->filename, hdr_q, obj, level);
     }
         break;
     case GC_TYPE_UPVALUE: {
         auto u = (upvalue_cell*)obj;
         if(u->closed) {
-            update_or_q_value(&u->datum.val, val_q, level);
+            trace_value_ref(&u->datum.val, val_q, obj, level);
             // open upvalues should be visible from the stack
         }
     }
@@ -556,9 +575,10 @@ static void trace_object(gc_header* obj, dyn_array<gc_header**>* hdr_q,
     }
 }
 
-// trace all the objects in a card
+// trace all the objects in a card. This also updates the dirty bit.
 static void trace_card(gc_card* card, dyn_array<gc_header**>* hdr_q,
         dyn_array<value*>* val_q, u8 level) {
+    card->u.h.dirty = false;
     auto i = round_to_align(sizeof(gc_card_header));
     while (i < card->u.h.pointer) {
         auto obj = (gc_header*)&card->u.data[i];
@@ -567,7 +587,7 @@ static void trace_card(gc_card* card, dyn_array<gc_header**>* hdr_q,
     }
 }
 
-static gc_header* move_live_object(istate* S, gc_header* obj,
+static gc_header* update_live_object(istate* S, gc_header* obj,
         dyn_array<gc_header**>* hdr_q, dyn_array<value*>* val_q, u8 level) {
     if (get_gc_card(obj)->u.h.level <= level) {
         obj = move_object(S, obj);
@@ -594,31 +614,34 @@ static void mark(istate* S, u8 level) {
     dyn_array<value*> val_q;
     dyn_array<gc_header**> hdr_q;
 
+    // roots are queued at level OLDGEN so that they are always added to the
+    // list.
+
     // istate function
     if (S->callee) {
-        update_or_q_header((gc_header**)&S->callee, &hdr_q, level);
+        hdr_q.push_back((gc_header**)&S->callee);
     }
     // stack
     for (u32 i = 0; i < S->sp; ++i) {
-        update_or_q_value(&S->stack[i], &val_q, level);
+        val_q.push_back(&S->stack[i]);
     }
     // open upvalues
     for (auto& u : S->open_upvals) {
-        update_or_q_header((gc_header**)&u, &hdr_q, level);
+        hdr_q.push_back((gc_header**)&u);
     }
     // globals
     for (auto& v : S->G->def_arr) {
-        update_or_q_value(&v, &val_q, level);
+        val_q.push_back(&v);
     }
     for (auto e : S->G->macro_tab) {
-        update_or_q_header((gc_header**)&e->val, &hdr_q, level);
+        hdr_q.push_back((gc_header**)&e->val);
     }
     // handles
     auto prev = &(S->alloc->gc_handles);
     while (*prev != nullptr) {
         auto next = &(*prev)->next;
         if ((*prev)->alive) {
-            update_or_q_header((gc_header**)&(*prev)->obj, &hdr_q, level);
+            hdr_q.push_back((gc_header**)&(*prev)->obj);
             prev = next;
         } else {
             auto tmp = *prev;
@@ -628,10 +651,10 @@ static void mark(istate* S, u8 level) {
     }
     // debugging info
     if (S->filename) {
-        update_or_q_header((gc_header**)&S->filename, &hdr_q, level);
+        hdr_q.push_back((gc_header**)&S->filename);
     }
     for (auto& f : S->stack_trace) {
-        update_or_q_header((gc_header**)&f.callee, &hdr_q, level);
+        hdr_q.push_back((gc_header**)&f.callee);
     }
 
     // scavenge older generations
@@ -660,7 +683,8 @@ static void mark(istate* S, u8 level) {
             if (vhas_header(*place)) {
                 auto h = vheader(*place);
                 if (h->type != GC_TYPE_FORWARD) {
-                    *place = vbox_header(move_live_object(S, h, &hdr_q, &val_q, level));
+                    *place = vbox_header(update_live_object(S, h, &hdr_q,
+                                    &val_q, level));
                 } else {
                     *place = vbox_header(h->forward);
                 }
@@ -672,7 +696,7 @@ static void mark(istate* S, u8 level) {
             auto place = hdr_q[i];
             hdr_q.pop();
             if ((*place)->type != GC_TYPE_FORWARD) {
-                *place = move_live_object(S, *place, &hdr_q, &val_q, level);
+                *place = update_live_object(S, *place, &hdr_q, &val_q, level);
             } else {
                 *place = (*place)->forward;
             }

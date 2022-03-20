@@ -226,7 +226,12 @@ void table_set(istate* S, fn_table* tab, value k, value v) {
     x[1] = v;
     // set the dirty bit
     auto card = get_gc_card(&tab->h);
-    card->u.h.dirty = true;
+    if (vhas_header(k)) {
+        write_guard(card, vheader(k));
+    }
+    if (vhas_header(v)) {
+        write_guard(card, vheader(v));
+    }
 }
 
 string type_string(value v) {
