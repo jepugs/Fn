@@ -64,21 +64,6 @@ static inline void test_sym_token(const char* str, const char* cmp, int nth=0) {
     delete sc;
 }
 
-static inline void test_dot_token(const char* str, const char* cmp, int nth=0) {
-    std::istringstream in(str);
-    auto sc = new scanner(&in);
-    auto tok = sc->next_token();
-    while (nth > 0) {
-        tok = sc->next_token();
-        --nth;
-    }
-    BOOST_TEST(tok.tk == tk_dot);
-    // TODO: actually do a comparison
-    //BOOST_TEST(*tok.datum.str == cmp);
-
-    delete sc;
-}
-
 
 BOOST_AUTO_TEST_CASE( token_test ) {
     test_token("{", tk_lbrace);
@@ -138,13 +123,6 @@ BOOST_AUTO_TEST_CASE( sym_token_test ) {
     test_sym_token("with\\ space", "with space");
     test_sym_token("\\e\\s\\c\\a\\p\\e\\!", "escape!");
 }
-
-BOOST_AUTO_TEST_CASE( dot_token_test ) {
-    test_dot_token("ns.fn.core", "ns.fn.core");
-    test_dot_token("pk\\.g.m\\.od", "pk\\.g.m\\.od");
-    test_dot_token("\\+2.0", "\\+2.0");
-}
-
 
 BOOST_AUTO_TEST_CASE( displaced_token_test1 ) {
     test_token("(def x 2) {", tk_lbrace, 5);

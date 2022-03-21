@@ -19,8 +19,6 @@ enum llir_tag {
     lt_def,
     // macro definition
     lt_defmacro,
-    // dot form
-    lt_dot,
     // function call
     lt_call,
     // conditional
@@ -105,16 +103,6 @@ llir_defmacro* mk_llir_defmacro(const source_loc& origin,
         symbol_id name,
         llir_form* macro_fun);
 void free_llir_defmacro(llir_defmacro* obj);
-
-struct llir_dot {
-    llir_form header;
-    llir_form* obj;
-    symbol_id key;
-};
-llir_dot* mk_llir_dot(const source_loc& origin,
-        llir_form* obj,
-        symbol_id key);
-void free_llir_dot(llir_dot* obj);
 
 struct llir_if {
     llir_form header;

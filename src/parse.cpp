@@ -357,14 +357,6 @@ ast_form* parse_next_form(scanner* sc,
         res = nullptr;
         break;
 
-    case tk_dot:
-        buf.push_back(mk_symbol_form(loc, intern(S, "dot")));
-        for (auto s : *t0.datum.ids) {
-            buf.push_back(mk_symbol_form(loc, intern(S, s)));
-        }
-        res = mk_list_form(loc, &buf);
-        break;
-
     case tk_quote:
         res = parse_prefix(sc, S, loc, "quote", resumable);
         break;

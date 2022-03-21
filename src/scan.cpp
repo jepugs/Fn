@@ -104,9 +104,6 @@ token scanner::make_token(token_kind tk, const string& str) const {
 token scanner::make_token(token_kind tk, double num) const {
     return token{tk, source_loc{line, col}, num};
 }
-token scanner::make_token(token_kind tk, const dyn_array<string>& ids) const {
-    return token{tk, source_loc{line, col}, ids};
-}
 
 // this is the main scanning function
 token scanner::next_token() {
@@ -195,36 +192,6 @@ token scanner::next_token() {
     return make_token(tk_eof);
 }
 
-void scanner::scan_to_dot(dyn_array<char>& buf) {
-    if (eof()) {
-        return;
-    }
-
-    // check if the last character was an escape
-    if (buf.size > 0 && buf[buf.size-1] == '\\') {
-        buf.resize(buf.size-1); // get rid of the escape char
-        buf.push_back(get_char());
-        if (eof()) {
-            return;
-        }
-    }
-    char ch = peek_char();
-
-    while (is_sym_char(ch)) {
-        if (ch == '.') {
-            return;
-        } else if (ch == '\\') {
-            // escape character
-            get_char();
-        }
-        buf.push_back(get_char());
-        if (eof()) {
-            return;
-        }
-        ch = peek_char();
-    }
-}
-
 token scanner::scan_atom(char first) {
     dyn_array<char> buf;
     buf.push_back(first);
@@ -232,40 +199,29 @@ token scanner::scan_atom(char first) {
     auto num = try_scan_num(buf, first);
     if (num.has_value()) {
         return make_token(tk_number, *num);
-    } else if (eof() || !is_sym_char(peek_char())) {
-        return make_token(tk_symbol, string{buf.data, buf.size});
     }
-
-    dyn_array<string> ids;
-    scan_to_dot(buf);
-
-    while (true) {
-        ids.push_back(string{buf.data, buf.size});
-        buf.resize(0);
-        if (eof()) {
-            break;
+    bool escaped = false;
+    while (!eof()) {
+        if (escaped) {
+            buf.push_back(get_char());
+            escaped = false;
+        } else {
+            char c = peek_char();
+            if (c == '\\') {
+                get_char();
+                escaped = true;
+            } else if (is_sym_char(c)) {
+                get_char();
+                buf.push_back(c);
+            } else {
+                break;
+            }
         }
-
-        char ch = peek_char();
-        if (ch != '.') {
-            // terminated on non-symbol character
-            break;
-        }
-        get_char();
-        if (eof()) {
-            error("Illegal dot syntax.");
-        }
-
-        scan_to_dot(buf);
     }
-
-    // we don't actually want to delete these
-    if (ids.size == 1) {
-        auto res = make_token(tk_symbol, ids[0]);
-        return res;
-    } else {
-        return make_token(tk_dot, ids);
+    if (escaped) {
+        error("Unexpected EOF after escape character.");
     }
+    return make_token(tk_symbol, string{buf.data, buf.size});
 }
 
 optional<f64> scanner::try_scan_num(dyn_array<char>& buf, char first) {
@@ -321,11 +277,22 @@ optional<f64> scanner::try_scan_num(dyn_array<char>& buf, char first) {
         } else {
             return try_scan_digits(buf, ch, sign, 10);
         }
-    } else if (is_digit(first) || first == '.') {
+    } else if (is_digit(first)) {
         return try_scan_digits(buf, first, sign, 10);
+    } else if (first == '.') {
+        // the extra code here accounts for when the dot character comes by
+        // itself, in which case it should be read as a symbol.
+        auto start = buf.size;
+        auto res = try_scan_digits(buf, first, sign, 10);
+        if (start == buf.size) {
+            // no characters read
+            return std::nullopt;
+        } else {
+            return res;
+        }
     }
 
-        return std::nullopt;
+    return std::nullopt;
 }
 
 // apply scientific notation exponent to num
@@ -359,7 +326,7 @@ optional<f64> scanner::try_scan_digits(dyn_array<char>& buf,
         if (f.has_value()) {
             return apply_exp(sign*(*f), exp);
         } else {
-            error("Illegal dot syntax.");
+            return std::nullopt;
         }
     } else {
         return std::nullopt;

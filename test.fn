@@ -1,12 +1,12 @@
 (def Lazy-List-Meta
   {'force (fn (self)
-            ((get self 'force) self))
+            ((. self 'force) self))
    'empty? (fn (self)
-             (= ((get self 'force) self) nil))
+             (= ((. self 'force) self) nil))
    'head (fn (self)
-           (head ((get self 'force) self)))
+           (head ((. self 'force) self)))
    'tail (fn (self)
-           (head (tail ((get self 'force) self))))
+           (head (tail ((. self 'force) self))))
    'map (fn (self fun)
           (lmap fun self))
    'filter (fn (self fun)
@@ -20,17 +20,17 @@
 ;   (defn head (x)
 ;     (if (list? x)
 ;         (old-head x)
-;         (x.head)))
+;         (.head x)))
 ;   (defn tail (x)
 ;     (if (list? x)
 ;         (old-tail x)
-;         (x.tail))))
+;         ('tail x))))
 
 (defn Lazy-List (fun)
   (with-metatable Lazy-List-Meta
     {'force (fn (self)
               (let val (fun))
-              (set! (get self 'force)
+              (set! (. self 'force)
                     (fn (self) val))
               val)}))
 
@@ -49,10 +49,10 @@
 
 (defn lazy->list (lazy)
   (letfn iter (acc rem)
-    (if (rem.empty?)
+    (if (.empty? rem)
         (reverse acc)
-        (iter (cons (rem.head) acc)
-              (rem.tail))))
+        (iter (cons (.head rem) acc)
+              (.tail rem))))
   (iter [] lazy))
 
 (defn lcons (hd lazy)
@@ -60,40 +60,40 @@
                [hd lazy])))
 
 (defn lconcat (l1 l2)
-  (if (l1.empty?)
+  (if (.empty? l1)
       l2
       (Lazy-List
-       $[(l1.head)
-         (lconcat (l1.tail) l2)])))
+       $[(.head l1)
+         (lconcat (.tail l1) l2)])))
 
 (defn ltake (n lazy)
   (letfn iter (acc m rem)
-    (if (or (rem.empty?) (<= m 0))
+    (if (or (.empty? rem) (<= m 0))
         (reverse acc)
-        (iter (cons (rem.head) acc)
+        (iter (cons (.head rem) acc)
               (- m 1)
-              (rem.tail))))
+              (.tail rem))))
   (iter [] n lazy))
 
 
 (defn lmap (fun lazy)
-  (if (lazy.empty?)
+  (if (.empty? lazy)
       (list->lazy [])
     (Lazy-List
-     $[(fun (lazy.head))
-       (lmap fun (lazy.tail))])))
+     $[(fun (.head lazy))
+       (lmap fun (.tail lazy))])))
 
 (defn unbox-lazy (lazy)
-  [(lazy.head) (lazy.tail)])
+  [(.head lazy) (.tail lazy)])
 
 (defn lfilter (pred lazy)
   (letfn next (rem)
          (cond
-           (rem.empty?) rem
-           (pred (rem.head))
-           (lcons (rem.head)
-                  (Lazy-List $(unbox-lazy (next (rem.tail)))))
-           yes (next (rem.tail))))
+           (.empty? rem) rem
+           (pred (.head rem))
+           (lcons (.head rem)
+                  (Lazy-List $(unbox-lazy (next (.tail rem)))))
+           yes (next (.tail rem))))
   (next lazy))
 
 (def N>=0
@@ -117,21 +117,21 @@
   (letfn prime-test? (x)
     (let max (ceil (** x 0.5)))
     (letfn iter (rem)
-      (let n (rem.head))
+      (let n (.head rem))
       (cond
         (= (mod x n) 0) no
         (>= n max) yes
-        yes (iter (rem.tail))))
+        yes (iter (.tail rem))))
     (iter primes))
   (def primes
     (lconcat init-primes
              (Lazy-List (fn ()
-                          (let next (candidates.filter prime-test?))
-                          [(next.head) (next.tail)])))))
+                          (let next (.filter candidates prime-test?))
+                          [(.head next) (.tail next)])))))
 
 (defn lnth (n l)
   (if (<= n 0)
-      (l.head)
-      (lnth (- n 1) (l.tail))))
+      (.head l)
+      (lnth (- n 1) (.tail l))))
 
-(lnth 999 primes)
+(lnth 99999 primes)

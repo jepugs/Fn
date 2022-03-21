@@ -263,23 +263,27 @@ void compiler::compile_get(llir_call* form) {
 void compiler::compile_call(llir_call* form, bool tail) {
     // TODO: first should check for functions like get, which we can optimize
     auto start_sp = sp;
-    if (form->callee->tag == lt_dot) {
-        // method call
-        auto dot = (llir_dot*)form->callee;
-        compile_sym(dot->key);
-        compile_llir(dot->obj);
-        for(u32 i = 0; i < form->num_args; ++i) {
-            compile_llir(form->args[i]);
-        }
-        update_code_info(S, handle_stub(ft->stub), form->header.origin);
-        write_byte(tail ? OP_TCALLM : OP_CALLM);
-        write_byte(form->num_args);
-        sp = start_sp + 1;
-        return;
-    } else if (form->callee->tag == lt_var) {
+    if (form->callee->tag == lt_var) {
         auto x = (llir_var*)form->callee;
-        if (x->name == intern(S, "get")) {
+        auto name = symname(S, x->name);
+        if (name == ".") {
             compile_get(form);
+            return;
+        } else if (name.at(0) == '.') {
+            // the above line is ok because there's no way to make an empty
+            // symbol name.
+
+            // method call
+            compile_sym(intern(S, name.substr(1)));
+            for(u32 i = 0; i < form->num_args; ++i) {
+                compile_llir(form->args[i]);
+            }
+            // put code info back after processing arguments
+            update_code_info(S, handle_stub(ft->stub), form->header.origin);
+            // DEBUG
+            write_byte(tail ? OP_TCALLM : OP_CALLM);
+            write_byte(form->num_args);
+            sp = start_sp + 1;
             return;
         }
     }
@@ -366,7 +370,7 @@ void compiler::compile_set(llir_set* form) {
         // make sure it's a get call
         auto target = (llir_call*)form->target;
         if (target->callee->tag != lt_var
-                || ((llir_var*)target->callee)->name != intern(S, "get")
+                || ((llir_var*)target->callee)->name != intern(S, ".")
                 || target->num_args < 2) {
             compile_error("Malformed set! target.");
         }
@@ -430,11 +434,6 @@ void compiler::compile_var(llir_var* form) {
 void compiler::compile_with(llir_with* form, bool tail) {
     auto old_head = var_head;
     auto old_sp = sp;
-    // return place
-    write_byte(OP_NIL);
-    ++sp;
-
-    // FIXME: check that there's enough stack space for the variables
 
     // prepend new vars
     for (u32 i = 0; i < form->num_vars; ++i) {
@@ -451,7 +450,7 @@ void compiler::compile_with(llir_with* form, bool tail) {
         compile_llir(form->values[i]);
         update_code_info(S, handle_stub(ft->stub), form->header.origin);
         write_byte(OP_SET_LOCAL);
-        write_byte(old_sp + i + 1);
+        write_byte(old_sp + i);
         --sp;
     }
     if (form->body_length == 0) {
@@ -472,8 +471,8 @@ void compiler::compile_with(llir_with* form, bool tail) {
     if (!tail) {
         write_byte(OP_CLOSE);
         write_byte(sp - old_sp);
+        sp = old_sp + 1;
     }
-    sp = old_sp + 1;
     // clean up the lexical environment
     while (var_head != old_head) {
         auto tmp = var_head;

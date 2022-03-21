@@ -398,19 +398,19 @@ void execute_fun(istate* S) {
             break;
         case OP_CALLM: {
             auto num_args = code_byte(S, pc++);
-            auto sym = peek(S, num_args+1);
-            auto tab = peek(S, num_args);
+            auto sym = peek(S, num_args);
+            auto tab = peek(S, num_args-1);
             if (!vis_table(tab)) {
                 add_trace_frame(S, S->callee, pc - 2);
                 ierror(S, "Method call operand not a table.");
                 return;
             }
-            if (!get_method(S, vtable(tab), sym, S->sp - num_args - 2)) {
+            if (!get_method(S, vtable(tab), sym, S->sp - num_args - 1)) {
                 add_trace_frame(S, S->callee, pc - 2);
                 ierror(S, "Method lookup failed.");
                 return;
             }
-            icall(S, num_args+1, pc - 2);
+            icall(S, num_args, pc - 2);
             if (S->err_happened) {
                 return;
             }
@@ -418,20 +418,20 @@ void execute_fun(istate* S) {
             break;
         case OP_TCALLM: {
             auto num_args = code_byte(S, pc++);
-            auto sym = peek(S, num_args+1);
-            auto tab = peek(S, num_args);
+            auto sym = peek(S, num_args);
+            auto tab = peek(S, num_args-1);
             if (!vis_table(tab)) {
-                add_trace_frame(S, S->callee, pc - 1);
+                add_trace_frame(S, S->callee, pc - 2);
                 ierror(S, "Method call operand not a table.");
                 return;
             }
-            if (!get_method(S, vtable(tab), sym, S->sp - num_args - 2)) {
-                add_trace_frame(S, S->callee, pc - 1);
+            if (!get_method(S, vtable(tab), sym, S->sp - num_args - 1)) {
+                add_trace_frame(S, S->callee, pc - 2);
                 ierror(S, "Method lookup failed.");
                 return;
             }
-            if (!tail_call(S, num_args+1, &pc)) {
-                add_trace_frame(S, S->callee, pc - 1);
+            if (!tail_call(S, num_args, &pc)) {
+                add_trace_frame(S, S->callee, pc - 2);
                 return;
             }
         }
@@ -466,7 +466,7 @@ void execute_fun(istate* S) {
             return;
 
         case OP_RETURN:
-            // close upvalues and exit the loop. The call() function will handle
+            // close upvalues and exit the loop. The icall() function will handle
             // moving the return value.
             close_upvals(S, S->bp);
             return;

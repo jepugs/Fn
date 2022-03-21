@@ -39,9 +39,7 @@ enum token_kind {
     tk_number,
     tk_string,
     // note: symbols may include dot characters
-    tk_symbol,
-    // obj.key dot form
-    tk_dot
+    tk_symbol
 };
 
 union token_datum {
@@ -49,8 +47,6 @@ union token_datum {
     f64 num;
     // used for string literals and symbol names
     string* str;
-    // used for dots
-    dyn_array<string>* ids;
     // placeholder null pointer for other token types
     void *nothing;
 };
@@ -76,19 +72,12 @@ struct token {
         , loc{loc}
         , datum{.str = new string{str}} {
     }
-    token(token_kind tk, source_loc loc, const dyn_array<string>& ids)
-        : tk{tk}
-        , loc{loc}
-        , datum{.ids = new dyn_array<string>{ids}} {
-    }
 
     token(const token& tok)
         : tk{tok.tk}
         , loc{tok.loc} {
         if (tk == tk_string || tk == tk_symbol) {
             datum.str = new string{*tok.datum.str};
-        } else if (tk == tk_dot) {
-            datum.ids = new dyn_array<string>{*tok.datum.ids};
         } else {
             datum = tok.datum;
         }
@@ -99,19 +88,12 @@ struct token {
         // free old string if necessary
         if (tk == tk_string || tk == tk_symbol) {
             delete datum.str;
-        } else if (tk == tk_dot) {
-            delete datum.ids;
         }
 
         this->tk = tok.tk;
         // copy new string if necessary
         if (tk == tk_string || tk == tk_symbol) {
             datum.str = new string{*tok.datum.str};
-        } else if (tk == tk_dot) {
-            datum.ids = new dyn_array<string>;
-            for (auto x : *tok.datum.ids) {
-                datum.ids->push_back(x);
-            }
         } else {
             this->datum = tok.datum;
         }
@@ -133,8 +115,6 @@ struct token {
         // must free the string used by symbols and string literals
         if (tk == tk_string || tk == tk_symbol) {
             delete datum.str;
-        } else if (tk == tk_dot) {
-            delete datum.ids;
         }
     }
 
@@ -177,18 +157,6 @@ struct token {
             return "\"" + *(this->datum.str) + "\"";
         case tk_symbol:
             return *(this->datum.str);
-        case tk_dot:
-            {
-                auto res = (*(this->datum.ids))[0];
-
-                u32 u;
-                for (u = 1; u < res.size(); ++u) {
-                    auto s = (*(this->datum.ids))[u];
-                    res = res + "." + s;
-                }
-
-                return res;
-            }
         }
         // this is unreachable code to silence a compiler warning
         return "";
@@ -253,14 +221,13 @@ private:
     void hex_digits_to_bytes(dyn_array<char>& buf, u32 num_bytes);
     void octal_to_byte(dyn_array<char>& buf, u8 first);
 
-    // this method scans number, symbol, and dot tokens
+    // this method scans number and symbol tokens
     token scan_atom(char first); // needs first character of the token
 
     // Helper methods for scanning atoms. The algorithm is inspired by a state
     // machine, but written by hand. To avoid backtracking, there are pretty
     // strict restrictions on the conditions under which each method below may
     // be called. Refer to the source in src/scan.cpp for more information.
-    void scan_to_dot(dyn_array<char>& buf);
     optional<f64> try_scan_num(dyn_array<char>& buf, char first);
     optional<f64> try_scan_digits(dyn_array<char>& buf,
                                   char first,

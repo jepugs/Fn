@@ -81,20 +81,6 @@ void free_llir_defmacro(llir_defmacro* obj) {
     delete obj;
 }
 
-llir_dot* mk_llir_dot(const source_loc& origin,
-        llir_form* obj,
-        symbol_id key) {
-    return new llir_dot {
-        .header={.origin=origin, .tag=lt_dot},
-        .obj=obj,
-        .key=key
-    };
-}
-void free_llir_dot(llir_dot* obj) {
-    free_llir_form(obj->obj);
-    delete obj;
-}
-
 llir_if* mk_llir_if(const source_loc& origin,
         llir_form* test,
         llir_form* then,
@@ -210,9 +196,6 @@ void free_llir_form(llir_form* obj) {
     case lt_defmacro:
         free_llir_defmacro((llir_defmacro*)obj);
         break;
-    case lt_dot:
-        free_llir_dot((llir_dot*)obj);
-        break;
     case lt_fn:
         free_llir_fn((llir_fn*)obj);
         break;
@@ -271,16 +254,6 @@ static string print_llir_offset(llir_form* form,
             print_llir_offset(xdefm->macro_fun, st, const_arr, offset + 2,
                     true);
             out << ')';
-        }
-        break;
-    case lt_dot:
-        {
-            auto xdot = (llir_dot*) form;
-            out << "(DOT ";
-            print_llir_offset(xdot->obj, st, const_arr, offset + 5, false);
-            out << '\n';
-            write_indent(out, offset+4);
-            out << ' ' << st[xdot->key] << ')';
         }
         break;
     case lt_call:

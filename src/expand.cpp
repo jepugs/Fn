@@ -579,27 +579,6 @@ llir_form* expander::expand_dollar_fn(const source_loc& loc,
     return (llir_form*) res;
 }
 
-llir_form* expander::expand_dot(const source_loc& loc,
-        u32 length,
-        ast_form** lst,
-        expander_meta* meta) {
-    if (length != 3) {
-        e_fault(loc, "dot requires exactly 2 arguments.");
-        return nullptr;
-    } else if (!lst[2]->is_symbol()) {
-        e_fault(loc, "dot keys must be symbols.");
-        return nullptr;
-    }
-
-    auto x = expand_meta(lst[1], meta);
-    if (!x) {
-        return nullptr;
-    }
-    auto res = mk_llir_dot(loc, x, lst[2]->datum.sym);
-
-    return (llir_form*) res;
-}
-
 llir_fn* expander::expand_sub_fun(const source_loc& loc,
         const string& name,
         const ast_form* params,
@@ -1164,8 +1143,6 @@ llir_form* expander::expand_symbol_list(ast_form* lst, expander_meta* meta) {
         return expand_do(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "do-inline") {
         return expand_do_inline(loc, lst->list_length, lst->datum.list, meta);
-    } else if (name == "dot") {
-        return expand_dot(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "dollar-fn") {
         return expand_dollar_fn(loc, lst->list_length, lst->datum.list, meta);
     } else if (name == "if") {
