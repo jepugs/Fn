@@ -988,6 +988,11 @@ llir_form* expander::expand_quasiquote(const source_loc& loc,
     }
     if (lst[1]->kind != ak_list) {
         return expand_quote(loc, length, lst, meta);
+    } else if (is_unquote(lst[1])) {
+        return expand_meta(lst[1]->datum.list[1], meta);
+    } else if (is_unquote_splicing(lst[1])) {
+        e_fault(loc, "unquote-splicing at top level of quasiquote.");
+        return nullptr;
     } else {
         return expand_quasiquote_list(loc, lst[1]->list_length,
                 lst[1]->datum.list, meta);
