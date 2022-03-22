@@ -19,15 +19,16 @@ using std::endl;
 
 void show_usage() {
     std::cout <<
-        "Usage: fn [options] [FILE | -]\n"
+        "Usage: fn [options] [PATH | -]\n"
         "Description:\n"
         "  Fn programming language interpreter and REPL.\n"
         "Options/Arguments:\n"
         "  -h            Show this help message and exit.\n"
-        "  -r            Start the REPL after finishing evaluation.\n"
-        "  -d            Print disassembled bytecode after compiling.\n"
-        "  -             Take input directly from STDIN.\n"
-        "  FILE          Main file to interpret. Omitting this starts a REPL.\n"
+        "  -i            Start the REPL after finishing evaluation.\n"
+        "  -D dir        Set working directory.\n"
+        "  -I dir        Add a package search directory. Can occur multiple times.\n"
+        "  -             Take file input directly from STDIN.\n"
+        "  FILE          File or package to interpret. Omitting this starts a REPL.\n"
         "Running with no options starts REPL in namespace fn/user/repl.\n"
         "When evaluating a file, the package and namespace are determined\n"
         "by the filename and package declaration, if present. Refer to\n"
@@ -35,27 +36,19 @@ void show_usage() {
         ;
 }
 
-// specifies where the Fn source code comes from
-enum eval_mode {
-    em_file,
-    em_string,
-    em_stdin,
-    em_none
-};
-
 struct interpreter_options {
-    // where to get source code
-    eval_mode mode = em_none;
-    // holds filename or string to evaluate depending on mode
+    // holds filename to evaluate depending on mode. An empty filename is
+    // treated as stdin.
     string src = "";
+    // interpreter working directory
+    string dir = "";
     // if true, show help and exit
     bool help = false;
-    // whether to start a repl
+    // whether to start a REPL. If src is nonempty, the file will be evaluated
+    // before starting the REPL
     bool repl = false;
-    // whether to print bytecode
-    bool dis = false;
-    // whether to print llir
-    bool llir = false;
+    // package include directories
+    dyn_array<string> include;
 
     // if true, the argument list was malformed and the other fields are not
     // guaranteed to be properly initialized
@@ -68,52 +61,74 @@ struct interpreter_options {
 void process_args(int argc, char** argv, interpreter_options* opt) {
     // process options first
     int i;
+    bool stdin_flag = false;
     for (i = 1; i < argc; ++i) {
         string s{argv[i]};
         if (s[0] == '-') {
-            if (s[1] == '\0') {
-                break;
-            }
-            for (u32 j = 1; j < s.size(); ++j) {
-                switch(s[j]) {
-                case 'r':
-                    opt->repl = true;
-                    break;
-                case 'd':
-                    opt->dis = true;
-                    break;
-                case 'h':
-                    opt->help = true;
-                    // no sense doing further processing at this point
-                    return;
-                case '\0':
-                    opt->mode = em_stdin;
-                    break;
-                default:
+            switch(s[1]) {
+            case 'i':
+                opt->repl = true;
+                if (s[2] != '\0') {
                     opt->err = true;
-                    opt->message = "Unrecognized option in"
-                        + string{s[j]} + ".";
+                    opt->message = "Unrecognized option: " + s;
                     return;
                 }
+                break;
+            case 'h':
+                opt->help = true;
+                if (s[2] != '\0') {
+                    opt->err = true;
+                    opt->message = "Unrecognized option: " + s;
+                }
+                // no sense doing further processing at this point
+                return;
+            case 'D':
+                if (opt->dir != "") {
+                    opt->err = true;
+                    opt->message = "Multiple -D options.";
+                    return;
+                }
+                // can have -D my/dir or -Dmy/dir syntax
+                if (s[2] == '\0') {
+                    if (i == argc - 1) {
+                        opt->err = true;
+                        opt->message = "Option -D requires an argument.";
+                        return;
+                    }
+                    opt->dir = argv[++i];
+                } else {
+                    opt->dir = s.substr(1);
+                }
+                break;
+            case 'I':
+                if (i == argc - 1) {
+                    opt->err = true;
+                    opt->message = "Option -I requires an argument.";
+                    return;
+                }
+                opt->include.push_back(argv[++i]);
+                break;
+            case '\0':
+                stdin_flag = true;
+                break;
+            default:
+                opt->err = true;
+                opt->message = "Unrecognized option: " + s;
+                break;
             }
+        } else {
+            // filename
+            if (stdin_flag || opt->src != "") {
+                opt->err = true;
+                opt->message = "Multiple input sources provided.";
+                return;
+            }
+            opt->src = s;
         }
     }
-
-    if (i == argc) {
-        opt->mode = em_none;
+    // enable repl if no file was provided
+    if (opt->src == "" && !stdin_flag) {
         opt->repl = true;
-        return;
-    } else if (i == argc - 1) {
-        opt->src = argv[i];
-    } else {
-        opt->err = true;
-        opt->message = "Provide a single filename.";
-    }
-
-    if (opt->src == string{"-"}) {
-        opt->mode = em_stdin;
-    } else {
-        opt->mode = em_file;
     }
 }
 
@@ -124,7 +139,7 @@ int main(int argc, char** argv) {
         show_usage();
         return 0;
     } else if (opt.err) {
-        std::cout << "Error processing command line arguments:\n"
+        std::cout << "Error processing command line arguments:\n  "
                   << opt.message << '\n';
         return -1;
     }
@@ -132,39 +147,21 @@ int main(int argc, char** argv) {
     auto S = init_istate();
     install_builtin(S);
 
-    set_filename(S, "<stdin>");
-    scanner sc{&std::cin};
-    bool resumable;
-
-    while (!sc.eof_skip_ws()) {
-        auto form = parse_next_form(&sc, S, &resumable);
-        if (S->err_happened) {
-            std::cout << convert_fn_string(S->err_msg) << '\n';
-            free_istate(S);
-            return -1;
-        }
-        compile_form(S, form);
-        free_ast_form(form);
-        if (S->err_happened) {
-            std::cout << "Error: " << convert_fn_string(S->err_msg) << '\n';
-            print_stack_trace(S);
-            free_istate(S);
-            return -1;
-        }
-        if (opt.dis) {
-            disassemble_top(S, true);
-            print_top(S);
-            pop(S);
-        }
-        call(S, 0);
-        if (S->err_happened) {
-            std::cout << "Error: " << convert_fn_string(S->err_msg) << '\n';
-            print_stack_trace(S);
-            free_istate(S);
-            return -1;
-        }
+    set_directory(S, opt.dir);
+    if (opt.src != "") {
+        require_file(S, opt.src);
         print_top(S);
         pop(S);
+    } else if (opt.repl) {
+        // TODO: implement REPL :)
+        std::cout << "Sorry, REPL isn't implemented :'(\n";
+    } else {
+        set_filename(S, "<stdin>");
+        interpret_stream(S, &std::cin);
+    }
+    if (S->err_happened) {
+        std::cout << "Error: " << convert_fn_string(S->err_msg) << '\n';
+        print_stack_trace(S);
     }
     free_istate(S);
 

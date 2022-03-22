@@ -1,40 +1,18 @@
 #include "allocator.hpp"
+#include "compile.hpp"
 #include "istate.hpp"
 #include "namespace.hpp"
 #include "parse.hpp"
 #include "vm.hpp"
-#include <cstring>
+
+#include <filesystem>
 
 namespace fn {
 
-static void setup_symcache(istate* S) {
-    for (u32 i = 0; i < SYMCACHE_SIZE; ++i) {
-        S->symcache->syms[i] = intern(S, sc_names[i]);
-    }
-}
+namespace fs = std::filesystem;
 
 istate* init_istate() {
-    auto res = new istate;
-    res->alloc = new allocator{res};
-    // TODO: allocate this through the allocator instead
-    res->symtab = new symbol_table;
-    res->symcache = new symbol_cache;
-    setup_symcache(res);
-    res->G = new global_env;
-    res->ns_id = intern(res, "fn/user");
-    res->pc = 0;
-    res->bp = 0;
-    res->sp = 0;
-    res->callee = nullptr;
-    res->filename = nullptr;
-    push_string(res, "<internal>");
-    res->filename = vstring(peek(res));
-    pop(res);
-    res->err_happened = false;
-    res->err_msg = nullptr;
-    // set up namespace
-    add_ns(res, res->ns_id);
-    return res;
+    return alloc_istate("<internal>", fs::current_path().string());
 }
 
 void free_istate(istate* S) {
@@ -48,6 +26,12 @@ void free_istate(istate* S) {
 void set_filename(istate* S, const string& name) {
     push_string(S, name);
     S->filename = vstring(peek(S));
+    pop(S);
+}
+
+void set_directory(istate* S, const string& pathname) {
+    push_string(S, pathname);
+    S->wd = vstring(peek(S));
     pop(S);
 }
 
@@ -206,6 +190,66 @@ void print_stack_trace(istate* S) {
         }
     }
     std::cout << os.str();
+}
+
+void interpret_stream(istate* S, std::istream* in) {
+    // nil for empty files
+    push_nil(S);
+    fn_scan::scanner sc{in};
+    bool resumable;
+    while (!sc.eof_skip_ws()) {
+        pop(S);
+        auto form = fn_parse::parse_next_form(&sc, S, &resumable);
+        if (S->err_happened) {
+            break;
+        }
+        compile_form(S, form);
+        free_ast_form(form);
+        if (S->err_happened) {
+            break;
+        }
+        // TODO: add a hook here to disassemble code
+        call(S, 0);
+        if (S->err_happened) {
+            break;
+        }
+    }
+}
+
+bool require_file(istate* S, const string& pathname) {
+    fs::path p = fs::path{convert_fn_string(S->wd)} / pathname;
+    if (!fs::exists(p)) {
+        ierror(S, "require_file() failed. File doesn't exist: " + p.string());
+        return false;
+    } else if (fs::is_directory(p)) {
+        ierror(S, "require_file() failed. Provided file is a directory: "
+                + p.string());
+        return false;
+    }
+
+    std::ifstream in{p};
+    if (in.bad()) {
+        ierror(S, "require_file() failed. Could not open file: " + p.string());
+    }
+    auto old_filename = convert_fn_string(S->filename);
+    set_filename(S, p.string());
+    interpret_stream(S, &in);
+    set_filename(S, old_filename);
+    return !S->err_happened;
+}
+
+bool require_package(istate* S, const string& pathname) {
+    fs::path p{fs::absolute(fs::path{pathname})};
+    if (!fs::is_directory(p)) {
+        ierror(S, "require_file failed. Provided path is not a directory: "
+                + p.string());
+        return false;
+    }
+    fs::path init_path = p / "__init.fn";
+    auto old_wd = convert_fn_string(S->wd);
+    auto res = require_file(S, p.string());
+    set_directory(S, old_wd);
+    return res;
 }
 
 }

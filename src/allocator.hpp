@@ -68,7 +68,6 @@ void write_guard(gc_card* card, gc_header* ref);
 class allocator {
 public:
     u64 mem_usage;
-    u64 count;
     // gc is invoked when mem_usage > collect_threshold. collect_threshold is
     // increased if mem_usage > 0.5*collect_threshold after a collection.
     u64 collect_threshold;
@@ -131,6 +130,9 @@ void alloc_foreign_fun(istate* S,
         u32 num_upvals,
         const string& name);
 void alloc_fun(istate* S, u32 where, u32 enclosing, constant_id fid);
+
+// create the istate object
+istate* alloc_istate(const string& filename, const string& wd);
 
 // functions for mutating function stubs. These are used by the compiler. These
 // DO NOT trigger collection. (As such they could theoretically cause an out of

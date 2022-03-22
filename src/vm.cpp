@@ -124,6 +124,7 @@ static inline bool arrange_call_stack(istate* S, u32 n) {
 
 static inline void foreign_call(istate* S, fn_function* fun, u32 n, u32 pc) {
     auto save_bp = S->bp;
+    bool restore_callee = S->callee;
     S->bp = S->sp - n;
     fun->stub->foreign(S);
     if (S->err_happened) {
@@ -135,6 +136,7 @@ static inline void foreign_call(istate* S, fn_function* fun, u32 n, u32 pc) {
     S->stack[S->bp-1] = peek(S, 0);
     S->sp = S->bp;  // with the return value, this is the new stack pointer
     S->bp = save_bp;
+    S->callee = restore_callee ? vfunction(S->stack[save_bp - 1]) : nullptr;
 }
 
 // unroll a list on top of the stack (i.e. place its elements in order on the

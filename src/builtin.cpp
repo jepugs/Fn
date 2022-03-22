@@ -27,10 +27,27 @@ static void def_foreign_fun(istate* S, const string& name, const string& params,
     pop(S);
 }
 
+fn_fun(require, "require", "(spec)") {
+    if (!vis_string(peek(S))) {
+        ierror(S, "require spec must be a string.");
+        return;
+    }
+    require_file(S, convert_fn_string(vstring(peek(S))));
+}
+
 fn_fun(eq, "=", "(x0 & args)") {
-    for (u32 i = S->bp; i < S->sp; ++i) {
-        // FIXME: check type
+    for (u32 i = S->bp+1; i < S->sp; ++i) {
         if (S->stack[i] != get(S,0)) {
+            push(S, V_NO);
+            return;
+        }
+    }
+    push(S, V_YES);
+}
+
+fn_fun(same_q, "same?", "(x0 & args)") {
+    for (u32 i = S->bp+1; i < S->sp; ++i) {
+        if (!vsame(S->stack[i], get(S,0))) {
             push(S, V_NO);
             return;
         }
@@ -95,6 +112,22 @@ fn_fun(ceil, "ceil", "(x)") {
         return;
     }
     push_number(S, ceil(vnumber(x0)));
+}
+
+fn_fun(intern, "intern", "(str)") {
+    if (!vis_string(peek(S))) {
+        ierror(S, "Argument to intern not a string.");
+        return;
+    }
+    push_sym(S, intern(S, convert_fn_string(vstring(peek(S)))));
+}
+
+fn_fun(symname, "symname", "(sym)") {
+    if (!vis_symbol(peek(S))) {
+        ierror(S, "Argument to symname not a symbol.");
+        return;
+    }
+    push_string(S, symname(S, vsymbol(peek(S))));
 }
 
 fn_fun(gensym, "gensym", "()") {
@@ -197,7 +230,9 @@ fn_fun(pow, "**", "(base expt)") {
     push_number(S, pow(vnumber(base), vnumber(expt)));
 }
 
-
+fn_fun(fn_not, "not", "(arg)") {
+    push(S, vtruth(peek(S)) ? V_NO : V_YES);
+}
 
 fn_fun(List, "List", "(& args)") {
     pop_to_list(S, S->sp - S->bp);
@@ -275,9 +310,9 @@ fn_fun(get, "get", "(obj & keys)") {
     }
 }
 
-fn_fun(with_metatable, "with-metatable", "(meta tbl)") {
+fn_fun(set_metatable, "set-metatable", "(meta tbl)") {
     if(!vis_table(get(S,0)) || !vis_table(get(S,1))) {
-        ierror(S, "with-metatable arguments must be tables.");
+        ierror(S, "set-metatable arguments must be tables.");
         return;
     }
     vtable(get(S,1))->metatable = get(S,0);
@@ -294,8 +329,9 @@ fn_fun(metatable, "metatable", "(table)") {
 void install_builtin(istate* S) {
     auto save_ns = S->ns_id;
     switch_ns(S, cached_sym(S, SC_FN_BUILTIN));
+    fn_add_builtin(S, require);
     fn_add_builtin(S, eq);
-    // fn_add_builtin(S, same_q);
+    fn_add_builtin(S, same_q);
 
     // fn_add_builtin(S, number_q);
     // fn_add_builtin(S, string_q);
@@ -305,8 +341,8 @@ void install_builtin(istate* S) {
     // fn_add_builtin(S, symbol_q);
     // fn_add_builtin(S, bool_q);
 
-    // fn_add_builtin(S, intern);
-    // fn_add_builtin(S, symname);
+    fn_add_builtin(S, intern);
+    fn_add_builtin(S, symname);
     fn_add_builtin(S, gensym);
 
     fn_add_builtin(S, add);
@@ -328,7 +364,7 @@ void install_builtin(istate* S) {
     // fn_add_builtin(S, String);
     // fn_add_builtin(S, substring);
 
-    // fn_add_builtin(S, fn_not);
+    fn_add_builtin(S, fn_not);
 
     fn_add_builtin(S, List);
     fn_add_builtin(S, cons);
@@ -352,7 +388,7 @@ void install_builtin(istate* S) {
     // fn_add_builtin(S, get_keys);
 
     fn_add_builtin(S, metatable);
-    fn_add_builtin(S, with_metatable);
+    fn_add_builtin(S, set_metatable);
 
     // fn_add_builtin(S, error);
 

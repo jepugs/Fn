@@ -73,14 +73,6 @@ allocator::~allocator() {
     }
 }
 
-void allocator::print_status() {
-    std::cout << "allocator information\n";
-    std::cout << "=====================\n";
-    std::cout << "memory used (bytes): " << mem_usage << '\n';
-    std::cout << "number of objects: " << count << '\n';
-    // descend into values
-}
-
 gc_handle* get_handle(allocator* alloc, gc_header* obj) {
     auto res = new gc_handle{
         .obj = obj,
@@ -164,15 +156,26 @@ gc_bytes* realloc_gc_bytes(allocator* alloc, gc_bytes* src, u64 new_size) {
     return res;
 }
 
-void alloc_string(istate* S, u32 where, u32 len) {
-    collect(S);
+fn_string* create_string(istate* S, u32 len) {
     auto sz = round_to_align(sizeof(fn_string) + len + 1);
     auto res = (fn_string*)get_bytes_eden(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_STRING, sz);
     res->data = (u8*) (((u8*)res) + sizeof(fn_string));
     res->data[len] = 0;
-    S->stack[where] = vbox_string(res);
-    ++S->alloc->count;
+    return res;
+}
+
+void alloc_string(istate* S, u32 where, u32 len) {
+    collect(S);
+    S->stack[where] = vbox_string(create_string(S, len));
+}
+
+// create a string without doing collection first
+fn_string* create_string(istate* S, const string& str) {
+    auto len = str.size();
+    auto res = create_string(S, len);
+    memcpy(res->data, str.c_str(), len);
+    return res;
 }
 
 void alloc_string(istate* S, u32 where, const string& str) {
@@ -186,7 +189,6 @@ void alloc_string(istate* S, u32 where, const string& str) {
     memcpy(res->data, str.c_str(), len);
     res->data[len] = 0;
     S->stack[where] = vbox_string(res);
-    ++S->alloc->count;
 }
 
 void alloc_cons(istate* S, u32 where, u32 hd, u32 tl) {
@@ -197,7 +199,6 @@ void alloc_cons(istate* S, u32 where, u32 hd, u32 tl) {
     res->head = S->stack[hd];
     res->tail = S->stack[tl];
     S->stack[where] = vbox_cons(res);
-    ++S->alloc->count;
 }
 
 void alloc_table(istate* S, u32 where) {
@@ -214,7 +215,6 @@ void alloc_table(istate* S, u32 where) {
     }
     res->metatable = V_NIL;
     S->stack[where] = vbox_table(res);
-    ++S->alloc->count;
 }
 
 static function_stub* mk_fun_stub(istate* S, symbol_id ns_id, fn_string* name) {
@@ -234,7 +234,6 @@ static function_stub* mk_fun_stub(istate* S, symbol_id ns_id, fn_string* name) {
     res->vari = false;
     res->foreign = nullptr;
     res->ns_id = ns_id;
-    // we can't actually set up the ns info here, so we leave it uninitialized
     res->name = name;
     res->filename = S->filename;
     return res;
@@ -248,7 +247,6 @@ void alloc_sub_stub(istate* S, gc_handle* stub_handle, const string& name) {
     auto res = mk_fun_stub(S, stub->ns_id, vstring(peek(S)));
     pop(S); // get rid of the name
     push_back_gc_array(S, &stub->sub_funs, res);
-    ++S->alloc->count;
 }
 
 void alloc_empty_fun(istate* S,
@@ -264,7 +262,6 @@ void alloc_empty_fun(istate* S,
     res->stub = mk_fun_stub(S, ns_id, vstring(peek(S)));
     pop(S); // name
     S->stack[where] = vbox_function(res);
-    S->alloc->count += 2;
 }
 
 static upvalue_cell* alloc_open_upval(istate* S, u32 pos) {
@@ -273,7 +270,6 @@ static upvalue_cell* alloc_open_upval(istate* S, u32 pos) {
     init_gc_header(&res->h, GC_TYPE_UPVALUE, sz);
     res->closed = false;
     res->datum.pos = pos;
-    S->alloc->count += 1;
     return res;
 }
 
@@ -283,7 +279,6 @@ static upvalue_cell* alloc_closed_upval(istate* S) {
     init_gc_header(&res->h, GC_TYPE_UPVALUE, sz);
     res->closed = true;
     res->datum.val = V_NIL;
-    S->alloc->count += 1;
     return res;
 }
 
@@ -312,7 +307,6 @@ void alloc_foreign_fun(istate* S,
     res->stub->vari = vari;
     // FIXME: allocate foreign fun upvals
     S->stack[where] = vbox_function(res);
-    S->alloc->count += 2;
 }
 
 static upvalue_cell* open_upval(istate* S, u32 pos) {
@@ -360,7 +354,34 @@ void alloc_fun(istate* S, u32 where, u32 enclosing, constant_id fid) {
     }
 
     S->stack[where] = vbox_function(res);
-    S->alloc->count += 1;
+}
+
+static void setup_symcache(istate* S) {
+    for (u32 i = 0; i < SYMCACHE_SIZE; ++i) {
+        S->symcache->syms[i] = intern(S, sc_names[i]);
+    }
+}
+
+istate* alloc_istate(const string& filename, const string& wd) {
+    auto res = new istate;
+    res->alloc = new allocator{res};
+    // TODO: allocate this through the allocator instead
+    res->symtab = new symbol_table;
+    res->symcache = new symbol_cache;
+    setup_symcache(res);
+    res->G = new global_env;
+    res->ns_id = intern(res, "fn/user");
+    res->pc = 0;
+    res->bp = 0;
+    res->sp = 0;
+    res->callee = nullptr;
+    res->filename = create_string(res, filename);
+    res->wd = create_string(res, wd);
+    res->err_happened = false;
+    res->err_msg = nullptr;
+    // set up namespace
+    add_ns(res, res->ns_id);
+    return res;
 }
 
 constant_id push_back_const(istate* S, gc_handle* stub_handle, value v) {
@@ -650,9 +671,8 @@ static void mark(istate* S, u8 level) {
         }
     }
     // debugging info
-    if (S->filename) {
-        hdr_q.push_back((gc_header**)&S->filename);
-    }
+    hdr_q.push_back((gc_header**)&S->filename);
+    hdr_q.push_back((gc_header**)&S->wd);
     for (auto& f : S->stack_trace) {
         hdr_q.push_back((gc_header**)&f.callee);
     }

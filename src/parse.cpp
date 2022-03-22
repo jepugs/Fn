@@ -10,7 +10,7 @@ using namespace fn_scan;
 
 static void parse_error(istate* S, const source_loc& loc, const string& msg) {
     std::ostringstream os;
-    os << "File " << convert_fn_string(S->filename) << ", line " << loc.line
+    os << "File " << S->filename << ", line " << loc.line
        << ", col " << loc.col << ":\n  " << msg;
     ierror(S, os.str());
 }

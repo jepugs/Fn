@@ -33,7 +33,8 @@ struct istate {
     fn_function* callee;                     // current function
     dyn_array<upvalue_cell*> open_upvals;    // open upvalues on the stack
     value stack[STACK_SIZE];
-    fn_string* filename;                     // used for function metadata
+    fn_string* filename;                     // for function metadata
+    fn_string* wd;                           // working directory
 
     // error handling
     bool err_happened;
@@ -65,6 +66,7 @@ void free_istate(istate*);
 
 void set_ns(istate* S, symbol_id ns_id);
 void set_filename(istate* S, const string& name);
+void set_directory(istate* S, const string& pathname);
 
 void ierror(istate* S, const string& message);
 
@@ -135,8 +137,9 @@ void print_top(istate* S);
 void print_stack_trace(istate* S);
 
 // functions to trigger code loading
-bool require_file(istate* S, const string& rel_path);
-bool require_package(istate* S, const string& pkg_path);
+void interpret_stream(istate* S, std::istream* in);
+bool require_file(istate* S, const string& pathname);
+bool require_package(istate* S, const string& pathname);
 bool require(istate* S, const string& spec);
 
 }
