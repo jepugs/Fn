@@ -134,10 +134,11 @@ struct llir_import {
     symbol_id target;
     bool has_alias;
     symbol_id alias;
-    bool unqualified;
 };
 llir_import* mk_llir_import(const source_loc& origin,
         symbol_id target);
+llir_import* mk_llir_import(const source_loc& origin,
+        symbol_id target, symbol_id alias);
 void free_llir_import(llir_import* obj);
 
 struct llir_set {

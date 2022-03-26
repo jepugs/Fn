@@ -121,9 +121,21 @@ llir_import* mk_llir_import(const source_loc& origin,
         symbol_id target) {
     return new llir_import {
         .header={.origin=origin, .tag=lt_import},
-        .target=target
+        .target=target,
+        .has_alias=false
     };
 }
+
+llir_import* mk_llir_import(const source_loc& origin,
+        symbol_id target, symbol_id alias) {
+    return new llir_import {
+        .header={.origin=origin, .tag=lt_import},
+        .target=target,
+        .has_alias=true,
+        .alias=alias
+    };
+}
+
 void free_llir_import(llir_import* obj) {
     delete obj;
 }

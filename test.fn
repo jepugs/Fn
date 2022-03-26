@@ -1,16 +1,93 @@
-(def Lazy-List-Meta
-  {'force (fn (self)
-            ((. self 'force) self))
-   'empty? (fn (self)
-             (= ((. self 'force) self) nil))
-   'head (fn (self)
-           (head ((. self 'force) self)))
-   'tail (fn (self)
-           (head (tail ((. self 'force) self))))
-   'map (fn (self fun)
-          (lmap fun self))
-   'filter (fn (self fun)
-             (lfilter fun self))})
+(def Lazy-List
+     {'__call
+      ; constructor
+      (fn (self value-fun)
+        (set-metatable Lazy-List
+                       {'force
+                        (fn (self)
+                          ; evaluate the value function
+                          (let v (value-fun))
+                          ; replace the force method
+                          (set! (. self 'force) (fn (self) v))
+                          v)
+                        }))
+      })
+
+(defn foldl (f init list)
+  (letfn iter (acc rem)
+    (if (empty? rem)
+        acc
+        (iter (f acc (head rem))
+              (tail rem))))
+  (iter init list))
+
+(defn reverse (list)
+  (letfn iter (acc rem)
+    (if (empty? rem)
+        acc
+        (iter (cons (head rem) acc) (tail rem))))
+  (iter [] list))
+
+(defn concat2 (l r)
+  (letfn iter (acc rem)
+    (if (empty? rem)
+        acc
+        (iter (cons (head rem) acc) (tail rem))))
+  (iter r (reverse l)))
+
+(defn concat (& lists)
+  (foldl concat2 [] lists))
+
+(defn length (list)
+  (foldl (fn (l r) (+ l 1)) 0 list))
+
+(defn nth (n list)
+  (if (<= n 0)
+      (head list)
+      (nth (- n 1) (tail list))))
+
+(defmacro defn (name args & body)
+  (letfn valid-list? ()         ; validate a list name
+    (and (= (length name) 2)
+         (symbol? (nth 1 name))
+         (list? (nth 0 name))
+         (= (length (nth 0 name)) 2)
+         (= (head (head name)) 'quote)))
+  (cond
+    (list? name)
+    (if (valid-list?)
+        `(set! (. ,(nth 1 name) ,(nth 0 name))
+               (fn ,args ,@body))
+        (error "Invalid name in defn"))
+
+    (symbol? name)
+    `(def ,name
+          (fn ,args ,@body))
+
+    yes
+    (error "Invalid name in defn")))
+
+(defn ('empty? Lazy-List) (self)
+  (= ('force self) nil))
+
+(defn ('head Lazy-List) (self)
+  (head ('force self)))
+
+(defn ('tail Lazy-List) (self)
+  (head (tail ('force self))))
+
+(defn ('map Lazy-List) (self fun)
+  (if ('empty? lazy)
+      (list->lazy [])
+      (Lazy-List
+       $[(fun ('head lazy))
+         (lmap fun ('tail lazy))])))
+
+(defn ('filter Lazy-List) (self fun)
+  (lfilter fun self))
+
+(def List
+     {'__call (fn (self & args) args)})
 
 ; (defn List (& args)
 ;   args)
@@ -20,19 +97,19 @@
 ;   (defn head (x)
 ;     (if (list? x)
 ;         (old-head x)
-;         (.head x)))
+;         ('head x)))
 ;   (defn tail (x)
 ;     (if (list? x)
 ;         (old-tail x)
 ;         ('tail x))))
 
-(defn Lazy-List (fun)
-  (with-metatable Lazy-List-Meta
-    {'force (fn (self)
-              (let val (fun))
-              (set! (. self 'force)
-                    (fn (self) val))
-              val)}))
+; (defn Lazy-List (fun)
+;   (set-metatable Lazy-List-Meta
+;     {'force (fn (self)
+;               (let val (fun))
+;               (set! (. self 'force)
+;                     (fn (self) val))
+;               val)}))
 
 (defn list->lazy (list)
   (if (empty? list)
@@ -49,10 +126,10 @@
 
 (defn lazy->list (lazy)
   (letfn iter (acc rem)
-    (if (.empty? rem)
+    (if ('empty? rem)
         (reverse acc)
-        (iter (cons (.head rem) acc)
-              (.tail rem))))
+        (iter (cons ('head rem) acc)
+              ('tail rem))))
   (iter [] lazy))
 
 (defn lcons (hd lazy)
@@ -60,40 +137,40 @@
                [hd lazy])))
 
 (defn lconcat (l1 l2)
-  (if (.empty? l1)
+  (if ('empty? l1)
       l2
       (Lazy-List
-       $[(.head l1)
-         (lconcat (.tail l1) l2)])))
+       $[('head l1)
+         (lconcat ('tail l1) l2)])))
 
 (defn ltake (n lazy)
   (letfn iter (acc m rem)
-    (if (or (.empty? rem) (<= m 0))
+    (if (or ('empty? rem) (<= m 0))
         (reverse acc)
-        (iter (cons (.head rem) acc)
+        (iter (cons ('head rem) acc)
               (- m 1)
-              (.tail rem))))
+              ('tail rem))))
   (iter [] n lazy))
 
 
 (defn lmap (fun lazy)
-  (if (.empty? lazy)
+  (if ('empty? lazy)
       (list->lazy [])
     (Lazy-List
-     $[(fun (.head lazy))
-       (lmap fun (.tail lazy))])))
+     $[(fun ('head lazy))
+       (lmap fun ('tail lazy))])))
 
 (defn unbox-lazy (lazy)
-  [(.head lazy) (.tail lazy)])
+  [('head lazy) ('tail lazy)])
 
 (defn lfilter (pred lazy)
   (letfn next (rem)
          (cond
-           (.empty? rem) rem
-           (pred (.head rem))
-           (lcons (.head rem)
-                  (Lazy-List $(unbox-lazy (next (.tail rem)))))
-           yes (next (.tail rem))))
+           ('empty? rem) rem
+           (pred ('head rem))
+           (lcons ('head rem)
+                  (Lazy-List $(unbox-lazy (next ('tail rem)))))
+           yes (next ('tail rem))))
   (next lazy))
 
 (def N>=0
@@ -117,21 +194,21 @@
   (letfn prime-test? (x)
     (let max (ceil (** x 0.5)))
     (letfn iter (rem)
-      (let n (.head rem))
+      (let n ('head rem))
       (cond
         (= (mod x n) 0) no
         (>= n max) yes
-        yes (iter (.tail rem))))
+        yes (iter ('tail rem))))
     (iter primes))
   (def primes
     (lconcat init-primes
              (Lazy-List (fn ()
                           (let next (.filter candidates prime-test?))
-                          [(.head next) (.tail next)])))))
+                          [('head next) ('tail next)])))))
 
 (defn lnth (n l)
   (if (<= n 0)
-      (.head l)
-      (lnth (- n 1) (.tail l))))
+      ('head l)
+      (lnth (- n 1) ('tail l))))
 
 (lnth 99999 primes)

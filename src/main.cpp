@@ -146,18 +146,28 @@ int main(int argc, char** argv) {
 
     auto S = init_istate();
     install_builtin(S);
+    if (S->err_happened) {
+        std::cout << "Error: " << convert_fn_string(S->err_msg) << '\n';
+        print_stack_trace(S);
+        return -1;
+    }
 
     set_directory(S, opt.dir);
     if (opt.src != "") {
-        require_file(S, opt.src);
-        print_top(S);
-        pop(S);
+        if (load_file_or_package(S, opt.src)) {
+            print_top(S);
+            pop(S);
+        }
     } else if (opt.repl) {
         // TODO: implement REPL :)
         std::cout << "Sorry, REPL isn't implemented :'(\n";
     } else {
         set_filename(S, "<stdin>");
         interpret_stream(S, &std::cin);
+        if (!S->err_happened) {
+            print_top(S);
+            pop(S);
+        }
     }
     if (S->err_happened) {
         std::cout << "Error: " << convert_fn_string(S->err_msg) << '\n';

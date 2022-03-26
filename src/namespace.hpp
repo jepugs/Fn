@@ -18,6 +18,8 @@ struct global_env {
     table<symbol_id,u32> def_tab;
     // actual global definitions
     dyn_array<value> def_arr;
+    // reverse lookup of def_tab
+    dyn_array<symbol_id> def_ids;
     // macros indexed by FQN
     table<symbol_id,fn_function*> macro_tab;
     // table of namespaces by name

@@ -70,6 +70,7 @@ private:
     void compile_def(llir_def* form);
     void compile_defmacro(llir_defmacro* form);
     void compile_fn(llir_fn* form);
+    void compile_import(llir_import* form);
     void compile_set(llir_set* form);
     void compile_var(llir_var* form);
     void compile_with(llir_with* form, bool tail);

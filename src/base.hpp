@@ -13,6 +13,8 @@
 #include <string>
 #include <iostream>
 
+#include "config.h"
+
 namespace fn {
 
 /// aliases imported from std

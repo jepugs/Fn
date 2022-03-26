@@ -197,6 +197,31 @@ void interpret_stream(istate* S, std::istream* in) {
     push_nil(S);
     fn_scan::scanner sc{in};
     bool resumable;
+    if (!sc.eof_skip_ws()) {
+        auto form0 = fn_parse::parse_next_form(&sc, S, &resumable);
+        if (form0->kind == fn_parse::ak_list
+                && form0->list_length == 2
+                && form0->datum.list[0]->kind == fn_parse::ak_symbol_atom
+                && form0->datum.list[1]->kind == fn_parse::ak_symbol_atom
+                && form0->datum.list[0]->datum.sym
+                == cached_sym(S, SC_NAMESPACE)) {
+            switch_ns(S, form0->datum.list[1]->datum.sym);
+        } else {
+            if (S->err_happened) {
+                return;
+            }
+            compile_form(S, form0);
+            free_ast_form(form0);
+            if (S->err_happened) {
+                return;
+            }
+            // TODO: add a hook here to disassemble code
+            call(S, 0);
+            if (S->err_happened) {
+                return;
+            }
+        }
+    }
     while (!sc.eof_skip_ws()) {
         pop(S);
         auto form = fn_parse::parse_next_form(&sc, S, &resumable);
@@ -216,20 +241,21 @@ void interpret_stream(istate* S, std::istream* in) {
     }
 }
 
-bool require_file(istate* S, const string& pathname) {
+bool load_file(istate* S, const string& pathname) {
     fs::path p = fs::path{convert_fn_string(S->wd)} / pathname;
     if (!fs::exists(p)) {
-        ierror(S, "require_file() failed. File doesn't exist: " + p.string());
+        ierror(S, "load_file() failed. File doesn't exist: " + p.string());
         return false;
     } else if (fs::is_directory(p)) {
-        ierror(S, "require_file() failed. Provided file is a directory: "
+        ierror(S, "load_file() failed. Provided file is a directory: "
                 + p.string());
         return false;
     }
 
     std::ifstream in{p};
     if (in.bad()) {
-        ierror(S, "require_file() failed. Could not open file: " + p.string());
+        ierror(S, "load_file() failed. Could not open file: " + p.string());
+        return false;
     }
     auto old_filename = convert_fn_string(S->filename);
     set_filename(S, p.string());
@@ -238,18 +264,25 @@ bool require_file(istate* S, const string& pathname) {
     return !S->err_happened;
 }
 
-bool require_package(istate* S, const string& pathname) {
-    fs::path p{fs::absolute(fs::path{pathname})};
-    if (!fs::is_directory(p)) {
-        ierror(S, "require_file failed. Provided path is not a directory: "
-                + p.string());
+bool load_file_or_package(istate* S, const string& pathname) {
+    fs::path p = fs::path{convert_fn_string(S->wd)} / pathname;
+    if (!fs::exists(p)) {
+        ierror(S, "load_package_or_file() failed. File doesn't exist: " + p.string());
         return false;
     }
-    fs::path init_path = p / "__init.fn";
-    auto old_wd = convert_fn_string(S->wd);
-    auto res = require_file(S, p.string());
-    set_directory(S, old_wd);
-    return res;
+    if (fs::is_directory(p)) {
+        fs::path init_path = p / "__init.fn";
+        auto old_wd = convert_fn_string(S->wd);
+        auto res = load_file(S, init_path);
+        set_directory(S, old_wd);
+        return res;
+    } else {
+        return load_file(S, pathname);
+    }
+}
+
+string find_package(istate* S, const string& spec) {
+    return "";
 }
 
 }

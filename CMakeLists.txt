@@ -29,7 +29,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 add_subdirectory(src)
 
 # install the standard library
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/packages
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/pkg
   DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/fn)
 
 # this if also prevents tests from building when this project is included

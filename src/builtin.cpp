@@ -32,7 +32,7 @@ fn_fun(require, "require", "(spec)") {
         ierror(S, "require spec must be a string.");
         return;
     }
-    require_file(S, convert_fn_string(vstring(peek(S))));
+    load_file_or_package(S, convert_fn_string(vstring(peek(S))));
 }
 
 fn_fun(eq, "=", "(x0 & args)") {
@@ -57,6 +57,10 @@ fn_fun(same_q, "same?", "(x0 & args)") {
 
 fn_fun(list_q, "list?", "(x)") {
     push(S, vis_cons(peek(S)) || peek(S) == V_EMPTY ? V_YES : V_NO);
+}
+
+fn_fun(symbol_q, "symbol?", "(x)") {
+    push(S, vis_symbol(peek(S)) ? V_YES : V_NO);
 }
 
 fn_fun(le, "<=", "(x0 & args)") {
@@ -256,6 +260,7 @@ fn_fun(head, "head", "(x)") {
 fn_fun(tail, "tail", "(x)") {
     if (!vis_cons(peek(S))) {
         ierror(S, "tail argument must be a list");
+        return;
     }
     push(S, vcons(peek(S))->tail);
 }
@@ -263,6 +268,13 @@ fn_fun(tail, "tail", "(x)") {
 fn_fun(empty_q, "empty?", "(x)") {
     push(S, peek(S) == V_EMPTY ? V_YES : V_NO);
 }
+
+// fn_fun(concat2, "concat2", "(l r)") {
+//     if (!vis_list(get(S,0)) || !vis_list(get(S, 1))) {
+//         ierror(S, "concat2 arguments must be lists.");
+//         return;
+//     }
+// }
 
 fn_fun(mod, "mod", "(x modulus)") {
     auto x = get(S,0);
@@ -326,9 +338,17 @@ fn_fun(metatable, "metatable", "(table)") {
     push(S, vtable(get(S,0))->metatable);
 }
 
-void install_builtin(istate* S) {
+fn_fun(error, "error", "(msg)") {
+    ierror(S, v_to_string(peek(S), S->symtab));
+}
+
+fn_fun(println, "println", "(str)") {
+    print_top(S);
+}
+
+void install_internal(istate* S) {
     auto save_ns = S->ns_id;
-    switch_ns(S, cached_sym(S, SC_FN_BUILTIN));
+    switch_ns(S, cached_sym(S, SC_FN_INTERNAL));
     fn_add_builtin(S, require);
     fn_add_builtin(S, eq);
     fn_add_builtin(S, same_q);
@@ -338,7 +358,7 @@ void install_builtin(istate* S) {
     fn_add_builtin(S, list_q);
     // fn_add_builtin(S, table_q);
     // fn_add_builtin(S, function_q);
-    // fn_add_builtin(S, symbol_q);
+    fn_add_builtin(S, symbol_q);
     // fn_add_builtin(S, bool_q);
 
     fn_add_builtin(S, intern);
@@ -373,7 +393,7 @@ void install_builtin(istate* S) {
     // fn_add_builtin(S, nth);
 
     // fn_add_builtin(S, length);
-    // fn_add_builtin(S, concat);
+    // fn_add_builtin(S, concat2);
     fn_add_builtin(S, empty_q);
 
     // fn_add_builtin(S, abs);
@@ -390,15 +410,20 @@ void install_builtin(istate* S) {
     fn_add_builtin(S, metatable);
     fn_add_builtin(S, set_metatable);
 
-    // fn_add_builtin(S, error);
+    fn_add_builtin(S, error);
 
     // these should be replaced with proper I/O facilities
     // fn_add_builtin(S, print);
-    // fn_add_builtin(S, println);
+    fn_add_builtin(S, println);
 
     S->ns_id = save_ns;
     copy_defs(S, get_ns(S, save_ns),
             get_ns(S, cached_sym(S, SC_FN_BUILTIN)), "");
+}
+
+void install_builtin(istate* S) {
+    install_internal(S);
+    load_file_or_package(S, string{DEFAULT_PKG_ROOT} + "/fn.builtin");
 }
 
 }

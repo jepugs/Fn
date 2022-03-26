@@ -5,8 +5,10 @@
 
 namespace fn {
 
+// TODO: add source location here
 void compiler::compile_error(const string& msg) {
     ierror(S, msg);
+    std::cout << msg << '\n';
     throw compile_exception{};
 }
 
@@ -54,6 +56,7 @@ u32 compiler::get_global_id(symbol_id fqn) {
         return x->val;
     }
     S->G->def_arr.push_back(V_UNIN);
+    S->G->def_ids.push_back(fqn);
     auto id = S->G->def_arr.size - 1;
     S->G->def_tab.insert(fqn, id);
     return id;
@@ -225,6 +228,9 @@ void compiler::compile_llir(llir_form* form, bool tail) {
         patch_jump(end_then, handle_stub(ft->stub)->code.size);
     }
         break;
+    case lt_import:
+        compile_import((llir_import*)form);
+        break;
     case lt_fn:
         compile_fn((llir_fn*)form);
         break;
@@ -321,6 +327,22 @@ void compiler::compile_defmacro(llir_defmacro* form) {
     compile_llir(form->macro_fun);
     write_byte(OP_SET_MACRO);
     write_short(add_const(S, ft, vbox_symbol(fqn)));
+}
+
+void compiler::compile_import(llir_import* form) {
+    compile_sym(form->target);
+    if (form->has_alias) {
+        compile_sym(form->alias);
+    } else {
+        string prefix;
+        string stem;
+        ns_id_destruct(symname(S, form->target), &prefix, &stem);
+        compile_sym(intern(S, stem));
+    }
+    write_byte(OP_IMPORT);
+    write_byte(OP_NIL);
+    sp -= 1;
+    
 }
 
 void compiler::compile_fn(llir_fn* form) {
@@ -426,6 +448,9 @@ void compiler::compile_var(llir_var* form) {
             return;
         }
         auto fqn = resolve_sym(S, S->ns_id, form->name);
+        if (S->err_happened) {
+            return;
+        }
         write_byte(OP_GLOBAL);
         write_u32(get_global_id(fqn));
     }

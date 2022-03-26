@@ -68,14 +68,36 @@ static inline void create_fun(istate* S, u32 enclosing, constant_id fid) {
     S->sp = S->sp - num_opt;
 }
 
+static inline bool do_import(istate* S, symbol_id name, symbol_id alias) {
+    auto src = get_ns(S, name);
+    auto dest = get_ns(S, S->ns_id);
+    if (src == nullptr) {
+        ierror(S, "do_import() failed: can't find namespace to import\n");
+        return false;
+    }
+    if (dest == nullptr) {
+        ierror(S, "do_import() failed: current namespace doesn't exist\n");
+        return false;
+    }
+    copy_defs(S, dest, src, symname(S, alias) + ":");
+    return true;
+}
+
 // on success returns true and sets place on stack to the method. On failure
 // returns false.
 static inline bool get_method(istate* S, fn_table* tab, value key, u32 place) {
+    // check the table itself first
+    auto x = table_get(S, tab, key);
+    if (x) {
+        S->stack[place] = x[1];
+        return true;
+    }
+
     auto m = tab->metatable;
     if (!vis_table(m)) {
         return false;
     }
-    auto x = table_get(S, vtable(m), key);
+    x = table_get(S, vtable(m), key);
     if (!x) {
         return false;
     }
@@ -155,11 +177,46 @@ static inline u32 unroll_list(istate* S) {
 static void icall(istate* S, u32 n, u32 pc) {
     // update the call frame
     auto callee = peek(S, n);
-    if (!vis_function(callee)) {
-        add_trace_frame(S, S->callee, pc);
-        ierror(S, "Attempt to call non-function value.");
-        return;
+    while (!vis_function(callee)) {
+        if (vis_symbol(callee)) {
+            // method call
+            if (n == 0) {
+                add_trace_frame(S, S->callee, pc);
+                ierror(S, "Method call requires a self argument.");
+                return;
+            }
+            if (!vis_table(peek(S, n-1))) {
+                add_trace_frame(S, S->callee, pc);
+                ierror(S, "Method call object must be a table.");
+                return;
+            }
+            if (!get_method(S, vtable(peek(S, n-1)), callee, S->sp - n - 1)) {
+                add_trace_frame(S, S->callee, pc);
+                ierror(S, "Method lookup failed.");
+                return;
+            }
+        } else if (vis_table(callee)) {
+            u32 i;
+            for (i = 0; i < n; ++i) {
+                S->stack[S->sp - i] = S->stack[S->sp - i - 1];
+            }
+            ++S->sp;
+            ++n;
+            if (!get_method(S, vtable(callee),
+                            vbox_symbol(cached_sym(S, SC___CALL)),
+                            S->sp - n - 1)) {
+                add_trace_frame(S, S->callee, pc);
+                ierror(S, "Method lookup failed.");
+                return;
+            }
+        } else {
+            add_trace_frame(S, S->callee, pc);
+            ierror(S, "Cannot call value.");
+            return;
+        }
+        callee = peek(S, n);
     }
+
     auto fun = vfunction(callee);
     // FIXME: ensure minimum stack space available
     if (fun->stub->foreign) {
@@ -206,10 +263,46 @@ void call(istate* S, u32 n) {
 
 static inline bool tail_call(istate* S, u8 n, u32* pc) {
     auto callee = peek(S, n);
-    if (!vis_function(callee)) {
-        ierror(S, "Attempt to call non-function value.");
-        return false;
+    while (!vis_function(callee)) {
+        if (vis_symbol(callee)) {
+            // method call
+            if (n == 0) {
+                add_trace_frame(S, S->callee, *pc);
+                ierror(S, "Method call requires a self argument.");
+                return false;
+            }
+            if (!vis_table(peek(S, n-1))) {
+                add_trace_frame(S, S->callee, *pc);
+                ierror(S, "Method call object must be a table.");
+                return false;
+            }
+            if (!get_method(S, vtable(peek(S, n-1)), callee, S->sp - n - 1)) {
+                add_trace_frame(S, S->callee, *pc);
+                ierror(S, "Method lookup failed.");
+                return false;
+            }
+        } else if (vis_table(callee)) {
+            u32 i;
+            for (i = 0; i < n; ++i) {
+                S->stack[S->sp - i] = S->stack[S->sp - i - 1];
+            }
+            ++S->sp;
+            ++n;
+            if (!get_method(S, vtable(callee),
+                            vbox_symbol(cached_sym(S, SC___CALL)),
+                            S->sp - n - 1)) {
+                add_trace_frame(S, S->callee, *pc);
+                ierror(S, "Method lookup failed.");
+                return false;
+            }
+        } else {
+            add_trace_frame(S, S->callee, *pc);
+            ierror(S, "Cannot call value.");
+            return false;
+        }
+        callee = peek(S, n);
     }
+
     auto fun = vfunction(callee);
     if (fun->stub->foreign) {
         foreign_call(S, fun, n, *pc);
@@ -294,7 +387,12 @@ void execute_fun(istate* S) {
             auto v = S->G->def_arr[id];
             if (v == V_UNIN) {
                 add_trace_frame(S, S->callee, pc - 5);
-                ierror(S, "Failed to find global variable.");
+                if (id >= S->G->def_ids.size) {
+                    ierror(S, "Global variable with invalid ID.\n");
+                } else {
+                    ierror(S, "Failed to find global variable " +
+                            symname(S, S->G->def_ids[id]));
+                }
                 return;
             }
             push(S, v);
@@ -472,6 +570,19 @@ void execute_fun(istate* S) {
             // moving the return value.
             close_upvals(S, S->bp);
             return;
+            break;
+
+        case OP_IMPORT:
+            if (!vis_symbol(peek(S, 1)) || !vis_symbol(peek(S, 0))) {
+                add_trace_frame(S, S->callee, pc - 1);
+                ierror(S, "import arguments must be symbols\n");
+                return;
+            }
+            if (!do_import(S, vsymbol(peek(S, 1)), vsymbol(peek(S, 0)))) {
+                add_trace_frame(S, S->callee, pc - 1);
+                return;
+            }
+            pop(S, 2);
             break;
         }
     }

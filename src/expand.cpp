@@ -750,14 +750,24 @@ llir_form* expander::expand_import(const source_loc& loc,
         u32 length,
         ast_form** lst,
         expander_meta* meta) {
-    if (length != 2) {
-        e_fault(loc, "import requires exactly 1 argument.");
-        return nullptr;
-    } else if (lst[1]->kind != ak_symbol_atom) {
-        e_fault(loc, "import argument must be a symbol.");
+    if (length == 2) {
+        if (lst[1]->kind != ak_symbol_atom) {
+            e_fault(loc, "import arguments must be symbols.");
+            return nullptr;
+        }
+        return (llir_form*)mk_llir_import(loc, lst[1]->datum.sym);
+    } else if (length == 3) {
+        if (lst[1]->kind != ak_symbol_atom
+                || lst[2]->kind != ak_symbol_atom) {
+            e_fault(loc, "import arguments must be symbols.");
+            return nullptr;
+        }
+        return (llir_form*)mk_llir_import(loc, lst[1]->datum.sym,
+                lst[2]->datum.sym);
+    } else {
+        e_fault(loc, "import requires 2 or 3 arguments.");
         return nullptr;
     }
-    return (llir_form*)mk_llir_import(loc, lst[1]->datum.sym);
 }
 
 llir_form* expander::expand_let(const source_loc& loc,
@@ -1304,7 +1314,7 @@ bool expander::is_keyword(symbol_id sym) const {
 void expander::e_fault(const source_loc& loc, const string& msg) {
     // FIXME: incorporate source location here
     std::ostringstream os;
-    os << "File " << S->filename << ", line "
+    os << "File " << convert_fn_string(S->filename) << ", line "
        << loc.line << ", col " << loc.col << ":\n  " << msg;
     ierror(S, os.str());
 }

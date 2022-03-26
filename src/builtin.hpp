@@ -6,6 +6,7 @@
 
 namespace fn {
 
+void install_internal(istate* S);
 void install_builtin(istate* S);
 
 }

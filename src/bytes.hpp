@@ -97,7 +97,7 @@ enum OPCODES : u8 {
     OP_RETURN,
 
 
-    // import, stack arguments ->[ns_id], perform an import using the given
+    // import, stack arguments ->[alias] ns_id, perform an import using the given
     // namespace id (symbol).
     OP_IMPORT,
 

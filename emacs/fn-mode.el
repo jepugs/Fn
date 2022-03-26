@@ -177,10 +177,10 @@ given context."
 (let ((fn-symbol-regexp "\\([[:word:]/?*&^%$#@!~:_=+<>\\.-]\\|\\\\.\\)"))
   (defvar fn-mode-font-lock-defaults
     `(;; quoted symbols
-      (,(concat "'\\("
-                fn-symbol-regexp
-                "\\)+\\_>")
-       0 font-lock-constant-face)
+      ;; (,(concat "'\\("
+      ;;           fn-symbol-regexp
+      ;;           "\\)+\\_>")
+      ;;  0 font-lock-constant-face)
       ;; type names
       (,(concat "\\_<[[:upper:]]" fn-symbol-regexp "+\\_>")
        0 font-lock-type-face)

@@ -11,7 +11,8 @@ global_env::~global_env() {
 symbol_id resolve_sym(istate* S, symbol_id ns_id, symbol_id name) {
     auto ns = S->G->ns_tab.get(ns_id);
     if (!ns.has_value()) {
-        ierror(S, "Failed to resolve symbol name. No such namespace.");
+        ierror(S, "Failed to resolve symbol name. No such namespace: "
+                + symname(S, ns_id));
         return 0;
     }
     auto x = (*ns)->resolve.get(name);
@@ -42,6 +43,7 @@ void set_global(istate* S, symbol_id fqn, value new_val) {
     } else {
         auto id = S->G->def_arr.size;
         S->G->def_arr.push_back(new_val);
+        S->G->def_ids.push_back(fqn);
         S->G->def_tab.insert(fqn, id);
     }
 }

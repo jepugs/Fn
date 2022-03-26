@@ -12,6 +12,8 @@ namespace fn {
 constexpr u32 STACK_SIZE = 512;
 // the minimum amount of spare stack space for foreign functions
 constexpr u32 FOREIGN_MIN_STACK = 20;
+// default root search directory
+constexpr const char* DEFAULT_PKG_ROOT = PREFIX "/lib/fn/pkg";
 
 struct allocator;
 struct global_env;
@@ -35,6 +37,10 @@ struct istate {
     value stack[STACK_SIZE];
     fn_string* filename;                     // for function metadata
     fn_string* wd;                           // working directory
+
+    // package search
+    dyn_array<string> include_paths;
+    dyn_array<string> loaded_packages;
 
     // error handling
     bool err_happened;
@@ -78,9 +84,16 @@ value peek(istate* S);
 value peek(istate* S, u32 offset);
 void set(istate* S, u32 index, value v);
 
-// pget aka "protected get" functions perform type checking and throw type
+// eget aka "exception get" functions perform type checking and throw type
 // exceptions where applicable. All these functions are indexed relative to the
 // base pointer, so e.g. 0 corresponds to the first argument.
+f64 eget_number(istate* S, u32 i);
+const char* eget_string(istate* S, u32 i);
+bool eget_bool(istate* S, u32 i);
+symbol_id eget_sym(istate* S, u32 i);
+
+// pget = "protected get". These don't throw exceptions, and do set an
+// appropriate istate error on failure.
 f64 pget_number(istate* S, u32 i);
 const char* pget_string(istate* S, u32 i);
 bool pget_bool(istate* S, u32 i);
@@ -136,10 +149,17 @@ void print_top(istate* S);
 // print out a stack trace to stdout
 void print_stack_trace(istate* S);
 
-// functions to trigger code loading
+// functions to trigger code loading. These leave the value of the last
+// expression on the stack (or nil for files with no expressions).
 void interpret_stream(istate* S, std::istream* in);
-bool require_file(istate* S, const string& pathname);
-bool require_package(istate* S, const string& pathname);
+bool load_file(istate* S, const string& pathname);
+// search for a package. This will check include directories, then directories
+// in FN_PKG_PATH, then the root package directory.
+string find_package(istate* S, const string& spec);
+// like require(), but always treats the specifier as a path
+bool load_file_or_package(istate* S, const string& pathname);
+// perform a full require operation. This decides whether spec is a string or a
+// path and loads the associated package/file.
 bool require(istate* S, const string& spec);
 
 }
