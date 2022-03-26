@@ -25,6 +25,10 @@ struct global_env {
     // table of namespaces by name
     table<symbol_id,fn_namespace*> ns_tab;
 
+    // metatables for builtin types
+    value list_meta = V_NIL;
+    value string_meta = V_NIL;
+
     ~global_env();
 };
 

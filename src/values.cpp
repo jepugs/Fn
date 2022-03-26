@@ -234,6 +234,19 @@ void table_set(istate* S, fn_table* tab, value k, value v) {
     }
 }
 
+value get_metatable(istate* S, value obj) {
+    if (vis_list(obj)) {
+        return S->G->list_meta;
+    } else if (vis_string(obj)) {
+        return S->G->string_meta;
+    } else if (vis_table(obj)) {
+        return vtable(obj)->metatable;
+    } else {
+        return V_NIL;
+    }
+}
+
+
 string type_string(value v) {
     switch (vtag(v)) {
     case TAG_STRING:

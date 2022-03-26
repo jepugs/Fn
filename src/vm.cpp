@@ -85,19 +85,21 @@ static inline bool do_import(istate* S, symbol_id name, symbol_id alias) {
 
 // on success returns true and sets place on stack to the method. On failure
 // returns false.
-static inline bool get_method(istate* S, fn_table* tab, value key, u32 place) {
+static inline bool get_method(istate* S, value obj, value key, u32 place) {
     // check the table itself first
-    auto x = table_get(S, tab, key);
-    if (x) {
-        S->stack[place] = x[1];
-        return true;
+    if (vis_table(obj)) {
+        auto x = table_get(S, vtable(obj), key);
+        if (x) {
+            S->stack[place] = x[1];
+            return true;
+        }
     }
 
-    auto m = tab->metatable;
+    auto m = get_metatable(S, obj);
     if (!vis_table(m)) {
         return false;
     }
-    x = table_get(S, vtable(m), key);
+    auto x = table_get(S, vtable(m), key);
     if (!x) {
         return false;
     }
@@ -185,12 +187,7 @@ static void icall(istate* S, u32 n, u32 pc) {
                 ierror(S, "Method call requires a self argument.");
                 return;
             }
-            if (!vis_table(peek(S, n-1))) {
-                add_trace_frame(S, S->callee, pc);
-                ierror(S, "Method call object must be a table.");
-                return;
-            }
-            if (!get_method(S, vtable(peek(S, n-1)), callee, S->sp - n - 1)) {
+            if (!get_method(S, peek(S, n-1), callee, S->sp - n - 1)) {
                 add_trace_frame(S, S->callee, pc);
                 ierror(S, "Method lookup failed.");
                 return;
@@ -202,7 +199,7 @@ static void icall(istate* S, u32 n, u32 pc) {
             }
             ++S->sp;
             ++n;
-            if (!get_method(S, vtable(callee),
+            if (!get_method(S, callee,
                             vbox_symbol(cached_sym(S, SC___CALL)),
                             S->sp - n - 1)) {
                 add_trace_frame(S, S->callee, pc);
@@ -271,12 +268,7 @@ static inline bool tail_call(istate* S, u8 n, u32* pc) {
                 ierror(S, "Method call requires a self argument.");
                 return false;
             }
-            if (!vis_table(peek(S, n-1))) {
-                add_trace_frame(S, S->callee, *pc);
-                ierror(S, "Method call object must be a table.");
-                return false;
-            }
-            if (!get_method(S, vtable(peek(S, n-1)), callee, S->sp - n - 1)) {
+            if (!get_method(S, peek(S, n-1), callee, S->sp - n - 1)) {
                 add_trace_frame(S, S->callee, *pc);
                 ierror(S, "Method lookup failed.");
                 return false;
@@ -288,7 +280,7 @@ static inline bool tail_call(istate* S, u8 n, u32* pc) {
             }
             ++S->sp;
             ++n;
-            if (!get_method(S, vtable(callee),
+            if (!get_method(S, callee,
                             vbox_symbol(cached_sym(S, SC___CALL)),
                             S->sp - n - 1)) {
                 add_trace_frame(S, S->callee, *pc);
@@ -500,12 +492,7 @@ void execute_fun(istate* S) {
             auto num_args = code_byte(S, pc++);
             auto sym = peek(S, num_args);
             auto tab = peek(S, num_args-1);
-            if (!vis_table(tab)) {
-                add_trace_frame(S, S->callee, pc - 2);
-                ierror(S, "Method call operand not a table.");
-                return;
-            }
-            if (!get_method(S, vtable(tab), sym, S->sp - num_args - 1)) {
+            if (!get_method(S, tab, sym, S->sp - num_args - 1)) {
                 add_trace_frame(S, S->callee, pc - 2);
                 ierror(S, "Method lookup failed.");
                 return;
@@ -520,12 +507,7 @@ void execute_fun(istate* S) {
             auto num_args = code_byte(S, pc++);
             auto sym = peek(S, num_args);
             auto tab = peek(S, num_args-1);
-            if (!vis_table(tab)) {
-                add_trace_frame(S, S->callee, pc - 2);
-                ierror(S, "Method call operand not a table.");
-                return;
-            }
-            if (!get_method(S, vtable(tab), sym, S->sp - num_args - 1)) {
+            if (!get_method(S, tab, sym, S->sp - num_args - 1)) {
                 add_trace_frame(S, S->callee, pc - 2);
                 ierror(S, "Method lookup failed.");
                 return;

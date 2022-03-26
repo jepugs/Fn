@@ -370,6 +370,8 @@ istate* alloc_istate(const string& filename, const string& wd) {
     res->symcache = new symbol_cache;
     setup_symcache(res);
     res->G = new global_env;
+    res->G->list_meta = V_NIL;
+    res->G->string_meta = V_NIL;
     res->ns_id = intern(res, "fn/user");
     res->pc = 0;
     res->bp = 0;
@@ -676,6 +678,9 @@ static void mark(istate* S, u8 level) {
     for (auto& f : S->stack_trace) {
         hdr_q.push_back((gc_header**)&f.callee);
     }
+    // builtin metatables
+    val_q.push_back(&S->G->list_meta);
+    val_q.push_back(&S->G->string_meta);
 
     // scavenge older generations
     if (level < GC_LEVEL_SURVIVOR) {

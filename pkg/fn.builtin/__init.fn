@@ -23,6 +23,7 @@
 (def cons int:cons)
 
 (def set-metatable int:set-metatable)
+(def metatable int:metatable)
 (def Table int:Table)
 
 (def println int:println)
@@ -48,6 +49,8 @@
       {'length
         (fn (self)
           (foldl (fn (l r) (+ l 1)) 0 self))}))
+
+(int:def-list-meta List)
 
 (defn concat (& lists)
   (letfn concat2 (l r)

@@ -331,11 +331,7 @@ fn_fun(set_metatable, "set-metatable", "(meta tbl)") {
 }
 
 fn_fun(metatable, "metatable", "(table)") {
-    if(!vis_table(get(S,0))) {
-        ierror(S, "metatable argument must be a table.");
-        return;
-    }
-    push(S, vtable(get(S,0))->metatable);
+    push(S, get_metatable(S, peek(S)));
 }
 
 fn_fun(error, "error", "(msg)") {
@@ -344,6 +340,14 @@ fn_fun(error, "error", "(msg)") {
 
 fn_fun(println, "println", "(str)") {
     print_top(S);
+}
+
+fn_fun(def_list_meta, "def-list-meta", "(x)") {
+    S->G->list_meta = peek(S);
+}
+
+fn_fun(def_string_meta, "def-string-meta", "(x)") {
+    S->G->string_meta = peek(S);
 }
 
 void install_internal(istate* S) {
@@ -415,6 +419,10 @@ void install_internal(istate* S) {
     // these should be replaced with proper I/O facilities
     // fn_add_builtin(S, print);
     fn_add_builtin(S, println);
+
+    // set up builtin metatables
+    fn_add_builtin(S, def_list_meta);
+    fn_add_builtin(S, def_string_meta);
 
     S->ns_id = save_ns;
     copy_defs(S, get_ns(S, save_ns),

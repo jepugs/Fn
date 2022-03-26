@@ -201,6 +201,7 @@ inline bool vequal(value a, value b) {
 value* table_get(istate* S, fn_table* tab, value k);
 void table_set(istate* S, fn_table* tab, value k, value v);
 
+value get_metatable(istate* S, value obj);
 string type_string(value v);
 
 }
