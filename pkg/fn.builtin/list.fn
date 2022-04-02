@@ -1,0 +1,92 @@
+(namespace fn/builtin)
+; foldl is needed early to bootstrap some other functions
+(defn foldl (f init list)
+  (letfn iter (acc rem)
+    (if (empty? rem)
+        acc
+        (iter (f acc (head rem))
+              (tail rem))))
+  (iter init list))
+
+(defn reverse (list)
+  (foldl $(cons $1 $0) [] list))
+
+(defn length (list)
+  (foldl (fn (l r) (+ l 1)) 0 list))
+
+(def List
+     (set-metatable
+      {'__call (fn (self & args) args)}
+      {'length
+        (fn (self)
+          (foldl (fn (l r) (+ l 1)) 0 self))}))
+
+(int:def-list-meta List)
+
+(defn concat (& lists)
+  (letfn concat2 (l r)
+    (foldl $(cons $1 $0) r (reverse l)))
+  (foldl $(concat2 $1 $0) [] (reverse lists)))
+
+(defmacro defn (name args & body)
+  (letfn valid-list? ()         ; validate a list name
+    (and (= (length name) 2)
+         (symbol? (head (tail name)))
+         (list? (head name))
+         (= (length (head name)) 2)
+         (= (head (head name)) 'quote)))
+  (cond
+    (list? name)
+    (if (valid-list?)
+        `(set! (. ,(head (tail name)) ,(head name))
+               (fn ,args ,@body))
+        (error "Invalid name in defn"))
+
+    (symbol? name)
+    `(def ,name
+          (fn ,args ,@body))
+
+    yes
+    (error "Invalid name in defn")))
+
+
+(defn nth (n list)
+  (if (<= n 0)
+      (head list)
+      (nth (- n 1) (tail list))))
+
+(defn ('empty? List) (self)
+  (= self []))
+
+(defn ('head List) (self)
+  (int:head self))
+
+(defn ('tail List) (self)
+  (int:tail self))
+
+(defn any (test? list)
+  (letfn iter (rem)
+    (cond
+      (empty? rem) no
+      (test? (head rem)) yes
+      yes (iter (tail rem))))
+  (iter list))
+
+(defn map-reverse (f & lists)
+  (letfn iter (acc tails)
+    (if (any empty? tails)
+        acc
+        (do
+          (let v
+               (apply f
+                      (reverse (foldl $(cons (head $1) $0)
+                                      []
+                                      tails))))
+          (iter (cons v acc)
+                (reverse (foldl $(cons (tail $1) $0)
+                                []
+                                tails))))))
+  (iter [] lists))
+
+(defn map (f & lists)
+  (reverse (apply map-reverse f lists)))
