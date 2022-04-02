@@ -43,7 +43,7 @@ symbol_id symbol_table::intern(const string& str) {
         return v->val.id;
     } else {
         u32 id = by_id.size;
-        symtab_entry s{id, new string{str}};
+        symtab_entry s{id, new string{str}, hash(vbox_symbol(id))};
         by_id.push_back(s);
         by_name.insert(str,s);
         return id;
@@ -59,6 +59,14 @@ string symbol_table::symbol_name(symbol_id sym) const {
         return "";
     } else {
         return *by_id[sym].name;
+    }
+}
+
+u64 symbol_table::get_hash(symbol_id sym) const {
+    if (sym >= by_id.size) {
+        return hash(vbox_symbol(sym));
+    } else {
+        return by_id[sym].hash_val;
     }
 }
 

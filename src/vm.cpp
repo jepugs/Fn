@@ -86,15 +86,6 @@ static inline bool do_import(istate* S, symbol_id name, symbol_id alias) {
 // on success returns true and sets place on stack to the method. On failure
 // returns false.
 static inline bool get_method(istate* S, value obj, value key, u32 place) {
-    // check the table itself first
-    if (vis_table(obj)) {
-        auto x = table_get(S, vtable(obj), key);
-        if (x) {
-            S->stack[place] = x[1];
-            return true;
-        }
-    }
-
     auto m = get_metatable(S, obj);
     if (!vis_table(m)) {
         return false;
@@ -208,7 +199,7 @@ static void icall(istate* S, u32 n, u32 pc) {
             }
         } else {
             add_trace_frame(S, S->callee, pc);
-            ierror(S, "Cannot call value.");
+            ierror(S, "Cannot call provided value.");
             return;
         }
         callee = peek(S, n);
@@ -289,7 +280,7 @@ static inline bool tail_call(istate* S, u8 n, u32* pc) {
             }
         } else {
             add_trace_frame(S, S->callee, *pc);
-            ierror(S, "Cannot call value.");
+            ierror(S, "Cannot call provided value.");
             return false;
         }
         callee = peek(S, n);
@@ -531,7 +522,7 @@ void execute_fun(istate* S) {
                 return;
             }
         }
-            return;
+            break;
         case OP_TAPPLY: {
             // unroll the list on top of the stack
             if (!vis_list(peek(S, 0))) {
@@ -545,7 +536,7 @@ void execute_fun(istate* S) {
                 return;
             }
         }
-            return;
+            break;
 
         case OP_RETURN:
             // close upvalues and exit the loop. The icall() function will handle

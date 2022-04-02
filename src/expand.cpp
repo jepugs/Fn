@@ -940,9 +940,9 @@ llir_form* expander::expand_quasiquote_list(const source_loc& loc,
     dyn_array<llir_form*> conc_args;
     u32 i = 0;
     while (i < length) {
-        u32 stopped_at;
+        u32 forms_used;
         auto x = quasiquote_next_conc_arg(loc, length-i, &lst[i],
-                &stopped_at, meta);
+                &forms_used, meta);
         if (!x) {
             for (auto y : conc_args) {
                 free_llir_form(y);
@@ -950,7 +950,7 @@ llir_form* expander::expand_quasiquote_list(const source_loc& loc,
             return nullptr;
         }
         conc_args.push_back(x);
-        i += stopped_at;
+        i += forms_used;
     }
 
     if (conc_args.size == 1) {
@@ -958,7 +958,7 @@ llir_form* expander::expand_quasiquote_list(const source_loc& loc,
         return (llir_form*) res;
     } else {
         auto res = mk_llir_call(loc,
-                (llir_form*)mk_llir_var(loc, intern("concat")),
+                (llir_form*)mk_llir_var(loc, intern("#fn/builtin:concat")),
                 conc_args.size);
         for (u32 i = 0; i < conc_args.size; ++i) {
             res->args[i] = conc_args[i];

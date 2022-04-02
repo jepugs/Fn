@@ -273,6 +273,7 @@ bool load_file_or_package(istate* S, const string& pathname) {
     if (fs::is_directory(p)) {
         fs::path init_path = p / "__init.fn";
         auto old_wd = convert_fn_string(S->wd);
+        set_directory(S, p.string());
         auto res = load_file(S, init_path);
         set_directory(S, old_wd);
         return res;

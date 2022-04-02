@@ -313,6 +313,7 @@ void compiler::compile_apply(llir_apply* form, bool tail) {
     }
     write_byte(tail ? OP_TAPPLY : OP_APPLY);
     write_byte(form->num_args - 1);
+    sp = sp - form->num_args;
 }
 
 void compiler::compile_def(llir_def* form) {

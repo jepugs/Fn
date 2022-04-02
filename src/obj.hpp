@@ -204,6 +204,7 @@ struct symtab_entry {
     // pointer here b/c string itself is not trivially copyable, hence not
     // appropriate for a dynamic array.
     string* name;
+    u64 hash_val;
 };
 
 // the point of the symbol table is to have fast two-way lookup going from a symbol's name to its id
@@ -222,6 +223,8 @@ public:
     bool is_internal(const string& str) const;
     // if symbol_id does not name a valid symbol, returns the empty string
     string symbol_name(symbol_id sym) const;
+    // get a precomputed hash
+    u64 get_hash(symbol_id sym) const;
 
     symbol_id gensym();
     bool is_gensym(symbol_id id) const;
