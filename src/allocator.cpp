@@ -16,7 +16,7 @@
 // uncomment to have the GC print information to STDOUT on every collection
 //#define GC_VERBOSE
 
-#define raw_ptr_add(ptr, offset) (((u8*)ptr + offset))
+#define raw_ptr_add(ptr, offset) ((((u8*)ptr) + offset))
 
 namespace fn {
 
@@ -168,7 +168,6 @@ fn_string* create_string(istate* S, const string& str) {
 }
 
 void alloc_string(istate* S, u32 where, const string& str) {
-    collect(S);
     auto len = str.size();
     auto sz = round_to_align(sizeof(fn_string) + len + 1);
     auto res = (fn_string*)get_bytes_eden(S->alloc, sz);
@@ -287,7 +286,8 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
         auto name = intern(S, scanner_name(sst, g.raw_name));
         auto fqn = resolve_sym(S, S->ns_id, name);
         // FIXME: also use a function to insert the u32
-        *(u32*)&h->obj->code[g.patch_addr] = get_global_id(S, fqn);
+        // TODO: uncomment
+        // *(u32*)&h->obj->code[g.patch_addr] = get_global_id(S, fqn);
     }
     for (u32 i = 0; i < compiled.const_table.size; ++i) {
         reify_bc_const(S, sst, compiled.const_table[i]);
@@ -305,7 +305,7 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
     memcpy(h->obj->upvals_direct, compiled.upvals_direct.data,
             compiled.num_upvals * sizeof(bool));
     memcpy(h->obj->ci_arr, compiled.ci_arr.data,
-            compiled.code.size * sizeof(code_info));
+            compiled.ci_arr.size * sizeof(code_info));
 
     return h;
 }
@@ -318,6 +318,8 @@ bool reify_function(istate* S, const scanner_string_table& sst,
 
     auto sz = sizeof(fn_function);
     auto res = (fn_function*)get_bytes_eden(S->alloc, sz);
+    init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
+    res->stub = stub_handle->obj;
     push(S, vbox_function(res));
     release_handle(stub_handle);
     return true;

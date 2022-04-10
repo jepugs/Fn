@@ -129,41 +129,41 @@ void pop_to_list(istate* S, u32 n) {
     S->sp -= n;
 }
 
-void push_foreign_fun(istate* S,
-        void (*foreign)(istate*),
-        const string& name,
-        const string& params) {
-    scanner_string_table sst;
-    auto forms = parse_string(S, sst, params);
-    if (has_error(S)) {
-        for (auto f : forms) {
-            ast::free_graph(f);
-        }
-        return;
-    }
-    auto& p = forms[0];
-    if (p->kind != ast::ak_list) {
+// void push_foreign_fun(istate* S,
+//         void (*foreign)(istate*),
+//         const string& name,
+//         const string& params) {
+//     scanner_string_table sst;
+//     auto forms = parse_string(S, sst, params);
+//     if (has_error(S)) {
+//         for (auto f : forms) {
+//             ast::free_graph(f);
+//         }
+//         return;
+//     }
+//     auto& p = forms[0];
+//     if (p->kind != ast::ak_list) {
 
-        ierror(S, "Malformed parameter list for foreign function.");
-        return;
-    }
-    u8 num_args = p->list_length;
-    bool vari = false;
-    // check for var arg
-    if (num_args >= 2) {
-        auto x = p->datum.list[num_args - 2];
-        if (x->kind == ast::ak_symbol
-                && scanner_name(sst, x->datum.str_id) == "&") {
-            vari = true;
-            num_args -= 2;
-        }
-    }
-    for (auto f : forms) {
-        ast::free_graph(f);
-    }
-    push_nil(S);
-    alloc_foreign_fun(S, S->sp - 1, foreign, num_args, vari, 0, name);
-}
+//         ierror(S, "Malformed parameter list for foreign function.");
+//         return;
+//     }
+//     u8 num_args = p->list_length;
+//     bool vari = false;
+//     // check for var arg
+//     if (num_args >= 2) {
+//         auto x = p->datum.list[num_args - 2];
+//         if (x->kind == ast::ak_symbol
+//                 && scanner_name(sst, x->datum.str_id) == "&") {
+//             vari = true;
+//             num_args -= 2;
+//         }
+//     }
+//     for (auto f : forms) {
+//         ast::free_graph(f);
+//     }
+//     push_nil(S);
+//     alloc_foreign_fun(S, S->sp - 1, foreign, num_args, vari, 0, name);
+// }
 
 void print_top(istate* S) {
     std::cout << v_to_string(peek(S), S->symtab, true) << '\n';
@@ -191,10 +191,10 @@ void print_stack_trace(istate* S) {
 
 void interpret_stream(istate* S, std::istream* in) {
     // nil for empty files
-    push_nil(S);
     scanner_string_table sst;
     scanner sc{sst, *in};
     bool resumable;
+    push_nil(S);
     if (!sc.eof_skip_ws()) {
         auto form0 = parse_next_node(S, sc, &resumable);
         if (form0->kind == ast::ak_list
@@ -211,7 +211,10 @@ void interpret_stream(istate* S, std::istream* in) {
             }
             bc_compiler_output bco;
             bool resumable; // we won't actually use this
-            auto root = parse_next_node(S, sc, &resumable);
+            auto root = form0;
+            if (root == nullptr) {
+                return;
+            }
             compile_to_bytecode(bco, S, sst, root);
             reify_function(S, sst, bco);
             ast::free_graph(root);
@@ -219,13 +222,19 @@ void interpret_stream(istate* S, std::istream* in) {
                 return;
             }
             // TODO: add a hook here to disassemble code
+            // disassemble_top(S);
+            // pop(S);
             call(S, 0);
             if (has_error(S)) {
                 return;
             }
+            // S->stack[S->sp - 2] = peek(S);
+            // pop(S);
         }
     }
     while (!sc.eof_skip_ws()) {
+        // pop prev return value
+        pop(S);
         if (!compile_next_function(S, sc)) {
             return;
         }
@@ -234,6 +243,7 @@ void interpret_stream(istate* S, std::istream* in) {
         if (has_error(S)) {
             return;
         }
+        S->stack[S->sp - 2] = peek(S);
     }
 }
 

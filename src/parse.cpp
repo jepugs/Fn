@@ -42,6 +42,52 @@ node* mk_list(const source_loc& loc, const dyn_array<ast::node*>& lst) {
     return mk_list(loc, len, new_lst);
 }
 
+node::node(const source_loc& loc, ast_kind k, f64 num)
+    : loc{loc}
+    , kind{k} {
+    datum.num = num;
+}
+node::node(const source_loc& loc, ast_kind k, u32 str_id)
+    : loc{loc}
+    , kind{k} {
+    datum.str_id = str_id;
+}
+// this takes ownership of list. It will be freed using delete[]
+node::node(const source_loc& loc, ast_kind k, u32 list_length,
+        node** list)
+    : loc{loc}
+    , kind{k}
+    , list_length{list_length} {
+    datum.list = new node*[list_length];
+    for (u32 i = 0; i < list_length; ++i) {
+        datum.list[i] = copy_graph(list[i]);
+    }
+}
+
+node* copy_graph(const node* root) {
+    node* res = nullptr;
+    switch (root->kind) {
+    case ak_list: {
+        auto new_list = new node*[root->list_length];
+        for (u32 i = 0; i < root->list_length; ++i) {
+            new_list[i] = copy_graph(root->datum.list[i]);
+        }
+        res = mk_list(root->loc, root->list_length, new_list);
+    }
+        break;
+    case ak_number:
+        res = mk_number(root->loc, root->datum.num);
+        break;
+    case ak_string:
+        res = mk_string(root->loc, root->datum.str_id);
+        break;
+    case ak_symbol:
+        res = mk_symbol(root->loc, root->datum.str_id);
+        break;
+    }
+    return res;
+}
+
 void free_graph(node* root) {
     if (root->kind == ak_list) {
         for (u32 i = 0; i < root->list_length; ++i) {
@@ -49,9 +95,18 @@ void free_graph(node* root) {
         }
         delete[] root->datum.list;
     }
+    delete root;
 }
 
+
 } // end namespace fn::ast
+
+parser::parser(istate* S, scanner& sc)
+    : S{S}
+    , sst{&sc.get_sst()}
+    , sc{&sc}
+    , err_resumable{false} {
+}
 
 ast::node* parser::parse() {
     return parse_la(sc->next_token());

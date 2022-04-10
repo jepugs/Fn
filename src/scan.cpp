@@ -5,6 +5,22 @@
 
 namespace fn {
 
+sst_id scanner_intern(scanner_string_table& sst, const string& str) {
+    auto e = sst.by_name.get2(str);
+    if (e != nullptr) {
+        return e->val;
+    } else {
+        auto id = sst.by_id.size;
+        sst.by_name.insert(str, id);
+        sst.by_id.push_back(str);
+        return id;
+    }
+}
+
+const string& scanner_name(const scanner_string_table& sst, sst_id id) {
+    return sst.by_id[id];
+}
+
 // is whitespace
 static inline bool is_ws(char c) {
     switch (c) {
@@ -75,6 +91,10 @@ static inline i32 digit_val(char c) {
 }
 
 scanner::~scanner() {
+}
+
+scanner_string_table& scanner::get_sst() {
+    return *sst;
 }
 
 source_loc scanner::get_loc() {

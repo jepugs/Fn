@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
     auto S = init_istate();
     // install_builtin(S);
     if (has_error(S)) {
-        std::cout << "Error: " << S->err.message << '\n';
+        std::cout << "Error: " << *S->err.message << '\n';
         print_stack_trace(S);
         return -1;
     }
@@ -168,7 +168,7 @@ int main(int argc, char** argv) {
         }
     }
     if (has_error(S)) {
-        std::cout << "Error: " << S->err.message << '\n';
+        std::cout << "Error: " << *S->err.message << '\n';
         print_stack_trace(S);
     }
     free_istate(S);

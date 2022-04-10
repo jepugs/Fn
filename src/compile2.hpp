@@ -105,7 +105,8 @@ struct local_upvalue {
 
 class bc_compiler {
 private:
-    friend void compile(ast::node* ast);
+    friend bool compile_to_bytecode(bc_compiler_output& out, istate* S,
+            scanner_string_table& sst, const ast::node* root);
 
     // when compiling a function within a function, this is set to the compiler
     // for the enclosing function. It is used for lexical variable search.
@@ -120,11 +121,11 @@ private:
 
     // output from the compiler
     bc_compiler_output* output;
-    error_info* err;
 
     // if parent is non-nil, this assumes that the top of the stack is holding
     // the parent function
-    bc_compiler(bc_compiler* parent, scanner_string_table& sst);
+    bc_compiler(bc_compiler* parent, istate* S, scanner_string_table& sst,
+            bc_compiler_output& output);
 
     // get the function_stub from the top of the stack
     function_stub* get_stub() const;
@@ -170,21 +171,26 @@ private:
 
     bool compile_const(const ast::node* root);
     bool compile_number(const ast::node* root);
+    bool compile_string(const ast::node* root);
     bool compile_sym(const ast::node* root);
 
     bool compile_call(const ast::node* ast, bool tail);
 
+    bool compile(const ast::node* exprs, bool tail);
     bool compile_body(ast::node* const* exprs, u32 len);
-    bool compile(const ast::node* root, bool tail);
+    bool compile_toplevel(const ast::node* root);
 
     // set an error
-    bool compile_error(const source_loc& loc, const string& message);
+    void compile_error(const source_loc& loc, const string& message);
 };
 
 // generate bc_compiler_output from the given ast. The generated object might
 // contain weak references to the ast::node passed in, so take care about that.
 bool compile_to_bytecode(bc_compiler_output& out, istate* S,
-        const scanner_string_table& sst, const ast::node* root);
+        scanner_string_table& sst, const ast::node* root);
+// peek at the top of the stack, disassemble it, and push the result as a
+// string. Decompiles subfunctions recursively if recur=true.
+void disassemble_top(istate* S, bool recur=false);
 
 }
 

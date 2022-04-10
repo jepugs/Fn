@@ -14,7 +14,7 @@ endfunction()
 
 if (BOOST_FOUND)
   # build tests
-  add_fn_test("scan.test.cpp")
+  # add_fn_test("scan.test.cpp")
 else()
   message("Boost not found. Skipping building tests.")
 endif()

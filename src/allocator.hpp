@@ -107,7 +107,7 @@ gc_handle<T>* get_handle(allocator* alloc, T* obj) {
     res->alive = true;
     res->next = (gc_handle<T>*)alloc->gc_handles;
     alloc->gc_handles = (gc_handle<gc_header>*)res;
-    return nullptr;
+    return res;
 }
 
 template<typename T>

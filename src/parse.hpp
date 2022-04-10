@@ -52,6 +52,8 @@ node* mk_list(const source_loc& loc, u32 list_length, node** lst);
 // This creates a new array by copying the contents of lst
 node* mk_list(const source_loc& loc, const dyn_array<node*>& lst);
 
+// make a deep copy of an AST
+node* copy_graph(const node* root);
 // free up a node allocated by one of the mk_*() functions
 void free_graph(node* root);
 
