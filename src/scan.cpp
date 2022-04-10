@@ -3,7 +3,7 @@
 #include <cmath>
 #include <sstream>
 
-namespace fn_scan {
+namespace fn {
 
 // is whitespace
 static inline bool is_ws(char c) {
@@ -75,10 +75,6 @@ static inline i32 digit_val(char c) {
 }
 
 scanner::~scanner() {
-    if (close_stream) {
-        std::ifstream* ptr = dynamic_cast<std::ifstream*>(input);
-        ptr->close();
-    }
 }
 
 source_loc scanner::get_loc() {
@@ -95,14 +91,18 @@ void scanner::advance(char ch) {
     }
 }
 
-token scanner::make_token(token_kind tk) const {
-    return token{tk, source_loc{line, col}};
+token scanner::make_token(token_kind kind) const {
+    return token{source_loc{line, col}, kind};
 }
-token scanner::make_token(token_kind tk, const string& str) const {
-    return token{tk, source_loc{line, col}, str};
+token scanner::make_token(token_kind kind, const string& str) const {
+    token res{source_loc{line, col}, kind};
+    res.d.str_id = scanner_intern(*sst, str);
+    return res;
 }
-token scanner::make_token(token_kind tk, double num) const {
-    return token{tk, source_loc{line, col}, num};
+token scanner::make_token(token_kind kind, double num) const {
+    token res{source_loc{line, col}, kind};
+    res.d.num = num;
+    return res;
 }
 
 // this is the main scanning function
@@ -424,6 +424,7 @@ optional<i32> scanner::try_scan_exp(dyn_array<char>& buf) {
         if (eof()) {
             return std::nullopt;
         }
+        buf.push_back(ch);
         get_char();
         ch = peek_char();
     } else if (ch == '-') {
@@ -431,12 +432,14 @@ optional<i32> scanner::try_scan_exp(dyn_array<char>& buf) {
             return std::nullopt;
         }
         sign = -1;
+        buf.push_back(ch);
         get_char();
         ch = peek_char();
     }
 
 
     while (is_digit(ch)) {
+        buf.push_back(ch);
         get_char();
         res = (res*10) + digit_val(ch);
         if (eof()) {

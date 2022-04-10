@@ -30,15 +30,17 @@ static constexpr u64 GC_MINOR_MULT = 5;
 static constexpr u64 GC_MAJOR_MULT = 50;
 
 // a handle provides a way to maintain references to Fn values while still
-// allowing them to be moved by the allocator
+// allowing them to be moved by the allocator. This can be templated over any of
+// the objects beginning with a gc_header
+template <typename T>
 struct gc_handle {
     // the object being held by this handle. The allocator will update this
     // pointer during collection, if necessary.
-    gc_header* obj;
+    T* obj;
     // if false, this gc_handle will be cleaned up by the allocator
     bool alive;
     // linked list maintained by the allocator
-    gc_handle* next;
+    gc_handle<T>* next;
 };
 
 // TODO: write a value_handle struct that does something similar
@@ -51,8 +53,8 @@ struct gc_card_header {
     u16 pointer;
     u8 level;   // the collection level (i.e. generation) of this card
 
-    // Set to true when an object in this card is written to
-    bool dirty;
+    // lowest generation referenced by this card
+    u8 lowest_ref;
 };
 
 struct alignas(GC_CARD_SIZE) gc_card {
@@ -80,7 +82,7 @@ public:
     u64 cycles;
 
     istate* S;
-    gc_handle* gc_handles;
+    gc_handle<gc_header>* gc_handles;
 
     // deallocate an object, rendering all references to it meaningless
     void dealloc(gc_header* o);
@@ -98,8 +100,20 @@ public:
 
 constexpr u64 INIT_GC_ARRAY_SIZE = 8;
 
-gc_handle* get_handle(allocator* alloc, gc_header* obj);
-void release_handle(gc_handle* handle);
+template<typename T>
+gc_handle<T>* get_handle(allocator* alloc, T* obj) {
+    auto res = new gc_handle<T>;
+    res->obj = obj;
+    res->alive = true;
+    res->next = (gc_handle<T>*)alloc->gc_handles;
+    alloc->gc_handles = (gc_handle<gc_header>*)res;
+    return nullptr;
+}
+
+template<typename T>
+void release_handle(gc_handle<T>* handle) {
+    handle->alive = false;
+}
 
 // routines to get bytes from the allocator in the various generations
 void* get_bytes_eden(allocator* alloc, u64 size);
@@ -112,16 +126,22 @@ void* get_bytes_oldgen(allocator* alloc, u64 size);
 gc_bytes* alloc_gc_bytes(allocator* alloc, u64 nbytes, u8 level=0);
 gc_bytes* realloc_gc_bytes(allocator* alloc, gc_bytes* src, u64 new_size);
 
-// object creation routines. Each of these triggers a collection at the
-// beginning.
+// object creation routines. Each of these may trigger a collection at the
+// beginning. The "where" argument is a stack address that must be < sp;
+// allocation routines without a where argument push their result to the top of
+// the stack.
 void alloc_string(istate* S, u32 where, u32 size);
 void alloc_string(istate* S, u32 where, const string& str);
 void alloc_cons(istate* S, u32 where, u32 hd, u32 tl);
 void alloc_table(istate* S, u32 where);
-void alloc_sub_stub(istate* S, gc_handle* stub_handle, const string& name);
-void alloc_empty_fun(istate* S,
-        u32 where,
-        symbol_id ns_id);
+
+struct bc_compiler_output;
+// create a toplevel function from bytecode compiler output
+bool reify_function(istate* S, const scanner_string_table& sst,
+        const bc_compiler_output& compiled);
+// create a function
+void alloc_fun(istate* S, u32 enclosing, constant_id fid);
+// create a foreign function
 void alloc_foreign_fun(istate* S,
         u32 where,
         void (*foreign)(istate*),
@@ -129,18 +149,18 @@ void alloc_foreign_fun(istate* S,
         bool vari,
         u32 num_upvals,
         const string& name);
-void alloc_fun(istate* S, u32 where, u32 enclosing, constant_id fid);
+
+// allocate a function stub with a handle. Technically, we could avoid creating
+// any handles here by attaching the stub directly to a function on the stack,
+// but this is more straightforward, and stub creation DOES NOT need to be fast,
+// since it's only invoked by the compiler.
+gc_handle<function_stub>* gen_function_stub(istate* S,
+        const scanner_string_table& sst, const bc_compiler_output& compiled);
 
 // create the istate object
 istate* alloc_istate(const string& filename, const string& wd);
 
-// functions for mutating function stubs. These are used by the compiler. These
-// DO NOT trigger collection. (As such they could theoretically cause an out of
-// memory error).
-constant_id push_back_const(istate* S, gc_handle* stub_handle, value v);
-void push_back_code(istate* S, gc_handle* stub_handle, u8 b);
-void push_back_upval(istate* S, gc_handle* stub_handle, bool direct, u8 index);
-void update_code_info(istate* S, function_stub* to, const source_loc& loc);
+// FIXME: this no longer needs gc_array. Move it.
 // get the location of an instruction based on the code_info array in the
 // function stub. This doesn't perform mutation, but it's here because it needs
 // the gc_array functions

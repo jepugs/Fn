@@ -5,7 +5,6 @@
 #include "allocator.hpp"
 #include "bytes.hpp"
 #include "namespace.hpp"
-#include "ffi/fn_handle.hpp"
 #include "values.hpp"
 
 #include <cstdlib>
@@ -20,9 +19,9 @@ namespace fn {
 // must have the istate variable passed in directly or it could be computed
 // multiple times.
 #define cur_fun() (vfunction(S->stack[S->bp-1]))
-#define code_byte(S, where) (S->callee->stub->code.data->data[where])
-#define code_short(S, where) (*((u16*)&S->callee->stub->code.data->data[where]))
-#define code_u32(S, where) (*((u32*)&S->callee->stub->code.data->data[where]))
+#define code_byte(S, where) (S->callee->stub->code[where])
+#define code_short(S, where) (*((u16*)&S->callee->stub->code[where]))
+#define code_u32(S, where) (*((u32*)&S->callee->stub->code[where]))
 #define push(S, v) S->stack[S->sp] = v;++S->sp;
 #define peek(S, i) (S->stack[S->sp-((i))-1])
 
@@ -54,9 +53,8 @@ static inline void close_upvals(istate* S, u32 min_addr) {
 // initvals, the new function is pushed to the top of the stack. Upvalues are
 // opened or copied from the enclosing function as needed.
 static inline void create_fun(istate* S, u32 enclosing, constant_id fid) {
-    push(S, V_NIL);
     // this sets up upvalues, and initializes initvals to nil
-    alloc_fun(S, S->sp - 1, enclosing, fid);
+    alloc_fun(S, enclosing, fid);
     auto fun = vfunction(S->stack[S->sp - 1]);
     // set up initvals
     auto num_opt = fun->stub->num_opt;
@@ -142,7 +140,7 @@ static inline void foreign_call(istate* S, fn_function* fun, u32 n, u32 pc) {
     bool restore_callee = S->callee;
     S->bp = S->sp - n;
     fun->stub->foreign(S);
-    if (S->err_happened) {
+    if (has_error(S)) {
         // add the foreign function frame as well as the caller frame
         add_trace_frame(S, vfunction(S->stack[S->bp - 1]), 0);
         add_trace_frame(S, S->callee, pc);
@@ -229,7 +227,7 @@ static void icall(istate* S, u32 n, u32 pc) {
             return;
         }
         execute_fun(S);
-        if (S->err_happened) {
+        if (has_error(S)) {
             if (restore_callee) {
                 // notice we add the stack trace for the calling function, not
                 // the callee. The callee is added at the error origin
@@ -418,7 +416,7 @@ void execute_fun(istate* S) {
         case OP_MACRO: {
             auto id = code_short(S, pc);
             pc += 2;
-            auto fqn = vsymbol(gc_array_get(&S->callee->stub->const_arr, id));
+            auto fqn = vsymbol(S->callee->stub->const_arr[id]);
             auto x = S->G->macro_tab.get2(fqn);
             if (!x) {
                 add_trace_frame(S, S->callee, pc - 3);
@@ -433,13 +431,13 @@ void execute_fun(istate* S) {
             // a symbol.
             auto id = code_short(S, pc);
             pc += 2;
-            auto fqn = gc_array_get(&S->callee->stub->const_arr, id);
+            auto fqn = S->callee->stub->const_arr[id];
             set_macro(S, vsymbol(fqn), vfunction(peek(S, 0)));
             S->stack[S->sp-1] = fqn;
         }
             break;
         case OP_CONST:
-            push(S, gc_array_get(&S->callee->stub->const_arr, code_short(S, pc)));
+            push(S, S->callee->stub->const_arr[code_short(S, pc)]);
             pc += 2;
             break;
         case OP_NIL:
@@ -469,7 +467,7 @@ void execute_fun(istate* S) {
         case OP_CALL:
             icall(S, code_byte(S, pc), pc - 1);
             pc++;
-            if (S->err_happened) {
+            if (has_error(S)) {
                 return;
             }
             break;
@@ -489,7 +487,7 @@ void execute_fun(istate* S) {
                 return;
             }
             icall(S, num_args, pc - 2);
-            if (S->err_happened) {
+            if (has_error(S)) {
                 return;
             }
         }
@@ -518,7 +516,7 @@ void execute_fun(istate* S) {
             }
             auto n = code_byte(S, pc++) + unroll_list(S);
             icall(S, n, pc - 2);
-            if (S->err_happened) {
+            if (has_error(S)) {
                 return;
             }
         }

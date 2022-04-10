@@ -65,8 +65,6 @@ typedef u32 symbol_id;
 // used to identify namespaces in the global environment
 typedef u16 namespace_id;
 
-constexpr u64 max_local_address = 255;
-
 // Used to track debugging information. An empty string for the filename
 // indicates that the bytecode was either internally generated or came from a
 // REPL.
@@ -77,28 +75,13 @@ struct source_loc {
     bool operator!=(const source_loc& other);
 };
 
-struct fault {
+struct error_info {
     bool happened = false;
-    source_loc origin;
-    string subsystem;
-    string message;
+    string* message = nullptr;
 };
-inline void set_fault(fault* f,
-        const source_loc& origin,
-        const string& subsystem,
-        const string& message) {
-    f->happened = true;
-    f->origin = origin;
-    f->subsystem = subsystem;
-    f->message = message;
-}
 
-inline void emit_error(std::ostream* out, const fault& err) {
-    auto& origin = err.origin;
-    (*out) << "[" + err.subsystem + "] Error at line " << origin.line
-           << ", col " << origin.col << ":\n\t"
-           << err.message << '\n';
-}
+void set_error(error_info& err, const string& message);
+void clear_error(error_info& err);
 
 // The virtual machine's internal methods and foreign functions throw this
 // exception. It gets handled within the VM to prevent it from travelling up the

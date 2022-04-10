@@ -1,11 +1,9 @@
 add_library(fn_lib OBJECT
   allocator.cpp
   base.cpp
-  builtin.cpp
-  compile.cpp
-  expand.cpp
+#  builtin.cpp
+  compile2.cpp
   istate.cpp
-  llir.cpp
   obj.cpp
   namespace.cpp
   parse.cpp

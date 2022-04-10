@@ -139,7 +139,7 @@ struct dyn_array {
     struct iterator {
         u32 i;
         dyn_array<t>* arr;
-        t& operator*() {
+        t& operator*() const {
             return (*arr)[i];
         }
         iterator& operator++() {
@@ -235,7 +235,7 @@ struct static_array {
     struct iterator {
         u32 i;
         static_array<t>* arr;
-        t& operator*() {
+        t& operator*() const {
             return (*arr)[i];
         }
         iterator& operator++() {
@@ -246,9 +246,11 @@ struct static_array {
             return i != other.i;
         }
     };
-    iterator begin() {
+
+    iterator begin() const {
         return iterator {.i = 0, .arr=this};
     }
+
     iterator end() {
         return iterator {.i = size, .arr=this};
     }

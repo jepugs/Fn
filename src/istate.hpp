@@ -3,6 +3,8 @@
 
 #include "base.hpp"
 #include "obj.hpp"
+#include "parse.hpp"
+#include "scan.hpp"
 #include "symbols.hpp"
 #include "values.hpp"
 
@@ -43,10 +45,7 @@ struct istate {
     dyn_array<string> loaded_packages;
 
     // error handling
-    bool err_happened;
-    // this is nullptr unless err_happened == true, in which case it must be
-    // freed after processing the error.
-    fn_string* err_msg;
+    error_info err;
     // used to generate stack traces on error
     dyn_array<trace_frame> stack_trace;
 };
@@ -62,8 +61,7 @@ public:
         , actual_type{actual} {
     }
     const char* what() const noexcept {
-        return ("Expected type " + expected_type + " but got "
-                + actual_type + ".").c_str();
+        return "Actual type does not match expected type";
     }
 };
 
@@ -75,6 +73,7 @@ void set_filename(istate* S, const string& name);
 void set_directory(istate* S, const string& pathname);
 
 void ierror(istate* S, const string& message);
+bool has_error(istate* S);
 
 void push(istate* S, value v);
 void pop(istate* S);
@@ -128,10 +127,6 @@ void pop_to_list(istate* S, u32 n);
 void call(istate* S);
 void call(istate* S, u32 n);
 
-// push a function with an newly-created, empty function stub. This is used
-// during function compilation to ensure the function stub is visible to the
-// compiler while the function is being created.
-void push_empty_fun(istate* S);
 // push a foreign function by that wraps the provided function pointer
 void push_foreign_fun(istate* S,
         void (*foreign)(istate*),
@@ -161,6 +156,9 @@ bool load_file_or_package(istate* S, const string& pathname);
 // perform a full require operation. This decides whether spec is a string or a
 // path and loads the associated package/file.
 bool require(istate* S, const string& spec);
+
+// compile a function and push the result to the stack
+bool compile_next_function(istate* S, scanner& sc);
 
 }
 

@@ -94,12 +94,12 @@ private:
     void compile_error(const string& msg);
 
 public:
-    friend void compile_form(istate*, ast_form*);
+    friend void compile_form(istate*, ast::node*);
 };
 
 // compile an ast form and push it as a function (of no arguments) on top of the
 // vm stack
-void compile_form(istate* S, ast_form* ast);
+void compile_form(istate* S, ast::node* ast);
 // pop a function off the top of the stack, disassemble it, and push the result
 // as a string. Decompiles subfunctions recursively if recur=true.
 void disassemble_top(istate* S, bool recur=false);

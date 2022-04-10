@@ -111,7 +111,7 @@ local_upvalue* compiler::lookup_upval(symbol_id sid) {
     return u;
 }
 
-void compile_form(istate* S, ast_form* ast) {
+void compile_form(istate* S, ast::node* ast) {
     push_empty_fun(S);
     auto ft = init_function_tree(S, vfunction(peek(S))->stub);
     expand(S, ft, ast);

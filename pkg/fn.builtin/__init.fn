@@ -30,6 +30,9 @@
 
 (def println int:println)
 
-(require "./list.fn")
+(defn not (p)
+  (if p no yes))
 
+(require "./list.fn")
+(require "./quasiquote.fn")
 

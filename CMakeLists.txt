@@ -1,6 +1,6 @@
 # I'm using the version from the current Debian stable. I figure that's old
 # enough to run on pretty much anything.
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.23)
 
 # Adding this LANGUAGES option ensures that CMake searches for c++, not cc. This
 # fixes a problem I discovered on a MacBook that had g++ for c++, but an old
@@ -10,13 +10,7 @@ project(Fn VERSION 0.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(CMAKE_CXX_FLAGS "-O0 -Wall -Wpedantic -std=c++20")
-elseif(CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
-  set(CMAKE_CXX_FLAGS "-Os -Wall -Wpedantic -std=c++20")
-else()
-  set(CMAKE_CXX_FLAGS "-O2 -Wall -Wpedantic -std=c++20")
-endif()
+string(CONCAT CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-std=c++20 -Wall -Wpedantic")
 
 # set(CMAKE_CXX_FLAGS_DEBUG "-fsanitize=address ${CMAKE_CXX_FLAGS_DEBUG}")
 # set(CMAKE_LINKER_FLAGS_DEBUG "-fsanitize=address ${CMAKE_LINKER_FLAGS_DEBUG}")

@@ -1,5 +1,5 @@
 #include "allocator.hpp"
-#include "compile.hpp"
+#include "compile2.hpp"
 #include "istate.hpp"
 #include "namespace.hpp"
 #include "parse.hpp"
@@ -36,10 +36,11 @@ void set_directory(istate* S, const string& pathname) {
 }
 
 void ierror(istate* S, const string& message) {
-    push_string(S, message);
-    S->err_msg = vstring(peek(S));
-    pop(S);
-    S->err_happened = true;
+    set_error(S->err, message);
+}
+
+bool has_error(istate* S) {
+    return S->err.happened;
 }
 
 void push(istate* S, value v) {
@@ -128,24 +129,20 @@ void pop_to_list(istate* S, u32 n) {
     S->sp -= n;
 }
 
-void push_empty_fun(istate* S) {
-    push_nil(S);
-    alloc_empty_fun(S, S->sp - 1, S->ns_id);
-}
-
 void push_foreign_fun(istate* S,
         void (*foreign)(istate*),
         const string& name,
         const string& params) {
-    auto forms = fn_parse::parse_string(params, S);
-    if (S->err_happened) {
+    scanner_string_table sst;
+    auto forms = parse_string(S, sst, params);
+    if (has_error(S)) {
         for (auto f : forms) {
-            free_ast_form(f);
+            ast::free_graph(f);
         }
         return;
     }
     auto& p = forms[0];
-    if (p->kind != fn_parse::ak_list) {
+    if (p->kind != ast::ak_list) {
 
         ierror(S, "Malformed parameter list for foreign function.");
         return;
@@ -155,14 +152,14 @@ void push_foreign_fun(istate* S,
     // check for var arg
     if (num_args >= 2) {
         auto x = p->datum.list[num_args - 2];
-        if (x->kind == fn_parse::ak_symbol_atom
-                && x->datum.sym == intern(S, "&")) {
+        if (x->kind == ast::ak_symbol
+                && scanner_name(sst, x->datum.str_id) == "&") {
             vari = true;
             num_args -= 2;
         }
     }
     for (auto f : forms) {
-        free_ast_form(f);
+        ast::free_graph(f);
     }
     push_nil(S);
     alloc_foreign_fun(S, S->sp - 1, foreign, num_args, vari, 0, name);
@@ -195,48 +192,47 @@ void print_stack_trace(istate* S) {
 void interpret_stream(istate* S, std::istream* in) {
     // nil for empty files
     push_nil(S);
-    fn_scan::scanner sc{in};
+    scanner_string_table sst;
+    scanner sc{sst, *in};
     bool resumable;
     if (!sc.eof_skip_ws()) {
-        auto form0 = fn_parse::parse_next_form(&sc, S, &resumable);
-        if (form0->kind == fn_parse::ak_list
+        auto form0 = parse_next_node(S, sc, &resumable);
+        if (form0->kind == ast::ak_list
                 && form0->list_length == 2
-                && form0->datum.list[0]->kind == fn_parse::ak_symbol_atom
-                && form0->datum.list[1]->kind == fn_parse::ak_symbol_atom
-                && form0->datum.list[0]->datum.sym
+                && form0->datum.list[0]->kind == ast::ak_symbol
+                && form0->datum.list[1]->kind == ast::ak_symbol
+                && intern(S, scanner_name(sst, form0->datum.list[0]->datum.str_id))
                 == cached_sym(S, SC_NAMESPACE)) {
-            switch_ns(S, form0->datum.list[1]->datum.sym);
+            switch_ns(S, intern(S, scanner_name(sst,
+                                    form0->datum.list[1]->datum.str_id)));
         } else {
-            if (S->err_happened) {
+            if (has_error(S)) {
                 return;
             }
-            compile_form(S, form0);
-            free_ast_form(form0);
-            if (S->err_happened) {
+            bc_compiler_output bco;
+            bool resumable; // we won't actually use this
+            auto root = parse_next_node(S, sc, &resumable);
+            compile_to_bytecode(bco, S, sst, root);
+            reify_function(S, sst, bco);
+            ast::free_graph(root);
+            if (has_error(S)) {
                 return;
             }
             // TODO: add a hook here to disassemble code
             call(S, 0);
-            if (S->err_happened) {
+            if (has_error(S)) {
                 return;
             }
         }
     }
     while (!sc.eof_skip_ws()) {
-        pop(S);
-        auto form = fn_parse::parse_next_form(&sc, S, &resumable);
-        if (S->err_happened) {
-            break;
-        }
-        compile_form(S, form);
-        free_ast_form(form);
-        if (S->err_happened) {
-            break;
+        if (!compile_next_function(S, sc)) {
+            return;
         }
         // TODO: add a hook here to disassemble code
         call(S, 0);
-        if (S->err_happened) {
-            break;
+        if (has_error(S)) {
+            return;
         }
     }
 }
@@ -261,7 +257,7 @@ bool load_file(istate* S, const string& pathname) {
     set_filename(S, p.string());
     interpret_stream(S, &in);
     set_filename(S, old_filename);
-    return !S->err_happened;
+    return !has_error(S);
 }
 
 bool load_file_or_package(istate* S, const string& pathname) {
@@ -285,5 +281,20 @@ bool load_file_or_package(istate* S, const string& pathname) {
 string find_package(istate* S, const string& spec) {
     return "";
 }
+
+// compile a function and push the result to the stack
+bool compile_next_function(istate* S, scanner& sc) {
+    bool resumable;
+    auto root = parse_next_node(S, sc, &resumable);
+    bc_compiler_output bco;
+    if (!compile_to_bytecode(bco, S, sc.get_sst(), root)) {
+        ast::free_graph(root);
+        return false;
+    }
+    reify_function(S, sc.get_sst(), bco);
+    ast::free_graph(root);
+    return !has_error(S);
+}
+
 
 }

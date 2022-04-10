@@ -1,5 +1,5 @@
-#ifndef __FN_LLIR_HPP
-#define __FN_LLIR_HPP
+#ifndef __FN_HIR_HPP
+#define __FN_HIR_HPP
 
 #include "array.hpp"
 #include "base.hpp"
@@ -10,174 +10,242 @@
 
 namespace fn {
 
-enum llir_tag {
-    // apply operation
-    lt_apply,
+namespace hir {
+
+enum hir_kind {
     // constant
-    lt_const,
+    hk_const,
     // global definition
-    lt_def,
+    hk_def,
     // macro definition
-    lt_defmacro,
-    // function call
-    lt_call,
-    // conditional
-    lt_if,
-    // function creation
-    lt_fn,
-    // namespace import
-    lt_import,
-    // mutation
-    lt_set,
-    // variable lookup
-    lt_var,
+    hk_defmacro,
     // sequence of expressions in a new lexical environment, returning last
     // result
-    lt_with
+    hk_do,
+    // function call
+    hk_call,
+    // conditional
+    hk_if,
+    // function creation
+    hk_fn,
+    // namespace import
+    hk_import,
+    // mutation
+    hk_set,
+    // unquoted symbol
+    hk_symbol
 };
+
+// hir::node is a header class present in all HIR data structures.
+struct node {
+    hir_kind kind;
+    source_loc loc;
+};
+
+struct hconst {
+    node h;
+    constant_id id;
+};
+
+struct hdef {
+    node h;
+    symbol_id name;
+    node* value;
+};
+
+struct hdefmacro {
+    node h;
+    symbol_id name;
+    hfn* value;
+};
+
+struct hdo {
+    node h;
+    dyn_array<node*> body;
+};
+
+struct hcall {
+    node h;
+    node* op;
+    dyn_array<node*> args;
+};
+
+struct hif {
+    node h;
+    node* test;
+    node* then;
+    node* elce;
+};
+
+struct hfn {
+    node h;
+    constant_id fid;
+};
+
+struct himport {
+    node h;
+    symbol_id ns_name;
+    symbol_id alias;
+};
+
+struct hset {
+    node h;
+    node* target;
+    node* alias;
+};
+
+struct hsymbol {
+    node h;
+    symbol_id id;
+};
+
+// free an entire hir graph
+void free_graph(node* root);
+
+} // end namespace fn::hir
 
 // NOTE: (on the mk_/clear_/free_ functions below):
 // - mk_* functions will allocate new memory if dest=nullptr, otherwise
 //   they'll initialize a structure at the place provided.
 // - clear_* functions delete all the fields of a structure (but not
 //   the structure itself). If recursive=true, this also frees (not just
-//   clears) all subordinate llir_form* instances.
+//   clears) all subordinate hir_form* instances.
 // - free_* functions clear a structure and also delete the pointer. If
-//   recursive=true, then this frees all subordinate llir_form* instances.
+//   recursive=true, then this frees all subordinate hir_form* instances.
 
 // Upon further inspection, I appear to have independently reinvented
-// inheritance below, (llir_* is essentially a subclass of llir_form). This
+// inheritance below, (hir_* is essentially a subclass of hir_form). This
 // approach is slightly more flexible and doesn't use virtual methods, so I'll
 // leave it for now.
 
-struct llir_form {
+struct hir_form {
     source_loc origin;
-    llir_tag tag;
+    hir_tag tag;
 };
 
-struct llir_apply {
-    llir_form header;
-    llir_form* callee;
+struct hir_apply {
+    hir_form header;
+    hir_form* callee;
     // number of arguments includes the required list and table
     local_address num_args;
-    llir_form** args;
+    hir_form** args;
 };
-llir_apply* mk_llir_apply(const source_loc& origin,
-        llir_form* callee,
+hir_apply* mk_hir_apply(const source_loc& origin,
+        hir_form* callee,
         local_address num_args);
-void free_llir_apply(llir_apply* obj);
+void free_hir_apply(hir_apply* obj);
 
-struct llir_call {
-    llir_form header;
-    llir_form* callee;
+struct hir_call {
+    hir_form header;
+    hir_form* callee;
     local_address num_args;
-    llir_form** args;
+    hir_form** args;
 };
-llir_call* mk_llir_call(const source_loc& origin,
-        llir_form* callee,
+hir_call* mk_hir_call(const source_loc& origin,
+        hir_form* callee,
         local_address num_args);
-void free_llir_call(llir_call* obj);
+void free_hir_call(hir_call* obj);
 
-struct llir_const {
-    llir_form header;
+struct hir_const {
+    hir_form header;
     constant_id id;
 };
-llir_const* mk_llir_const(const source_loc& origin, constant_id id);
-void free_llir_const(llir_const* obj);
+hir_const* mk_hir_const(const source_loc& origin, constant_id id);
+void free_hir_const(hir_const* obj);
 
-struct llir_def {
-    llir_form header;
+struct hir_def {
+    hir_form header;
     symbol_id name;
-    llir_form* value;
+    hir_form* value;
 };
-llir_def* mk_llir_def(const source_loc& origin, symbol_id name,
-        llir_form* value);
-void free_llir_def(llir_def* obj);
+hir_def* mk_hir_def(const source_loc& origin, symbol_id name,
+        hir_form* value);
+void free_hir_def(hir_def* obj);
 
-struct llir_defmacro {
-    llir_form header;
+struct hir_defmacro {
+    hir_form header;
     symbol_id name;
-    llir_form* macro_fun;
+    hir_form* macro_fun;
 };
-llir_defmacro* mk_llir_defmacro(const source_loc& origin,
+hir_defmacro* mk_hir_defmacro(const source_loc& origin,
         symbol_id name,
-        llir_form* macro_fun);
-void free_llir_defmacro(llir_defmacro* obj);
+        hir_form* macro_fun);
+void free_hir_defmacro(hir_defmacro* obj);
 
-struct llir_if {
-    llir_form header;
-    llir_form* test;
-    llir_form* then;
-    llir_form* elce;
+struct hir_if {
+    hir_form header;
+    hir_form* test;
+    hir_form* then;
+    hir_form* elce;
 };
-llir_if* mk_llir_if(const source_loc& origin,
-        llir_form* test,
-        llir_form* then,
-        llir_form* elce);
-void free_llir_if(llir_if* obj);
+hir_if* mk_hir_if(const source_loc& origin,
+        hir_form* test,
+        hir_form* then,
+        hir_form* elce);
+void free_hir_if(hir_if* obj);
 
-struct llir_fn {
-    llir_form header;
+struct hir_fn {
+    hir_form header;
     constant_id fun_id;
     // number of optional args
     local_address num_opt;
     // init forms for the optional args
-    llir_form** inits;
+    hir_form** inits;
 };
-llir_fn* mk_llir_fn(const source_loc& origin,
+hir_fn* mk_hir_fn(const source_loc& origin,
         constant_id fun_id,
         local_address num_opt);
-void free_llir_fn(llir_fn* obj);
+void free_hir_fn(hir_fn* obj);
 
-struct llir_import {
-    llir_form header;
+struct hir_import {
+    hir_form header;
     symbol_id target;
     bool has_alias;
     symbol_id alias;
 };
-llir_import* mk_llir_import(const source_loc& origin,
+hir_import* mk_hir_import(const source_loc& origin,
         symbol_id target);
-llir_import* mk_llir_import(const source_loc& origin,
+hir_import* mk_hir_import(const source_loc& origin,
         symbol_id target, symbol_id alias);
-void free_llir_import(llir_import* obj);
+void free_hir_import(hir_import* obj);
 
-struct llir_set {
-    llir_form header;
-    llir_form* target;
-    llir_form* value;
+struct hir_set {
+    hir_form header;
+    hir_form* target;
+    hir_form* value;
 };
-llir_set* mk_llir_set(const source_loc& origin,
-        llir_form* target,
-        llir_form* value);
-void free_llir_set(llir_set* obj);
+hir_set* mk_hir_set(const source_loc& origin,
+        hir_form* target,
+        hir_form* value);
+void free_hir_set(hir_set* obj);
 
-struct llir_var {
-    llir_form header;
+struct hir_var {
+    hir_form header;
     symbol_id name;
 };
-llir_var* mk_llir_var(const source_loc& origin,
+hir_var* mk_hir_var(const source_loc& origin,
         symbol_id name);
-void free_llir_var(llir_var* obj);
+void free_hir_var(hir_var* obj);
 
-struct llir_with {
-    llir_form header;
+struct hir_with {
+    hir_form header;
     local_address num_vars;
     symbol_id* vars;
-    llir_form** values;
+    hir_form** values;
     u32 body_length;
-    llir_form** body;
+    hir_form** body;
 };
-llir_with* mk_llir_with(const source_loc& origin,
+hir_with* mk_hir_with(const source_loc& origin,
         local_address num_vars,
         u32 body_length);
-void free_llir_with(llir_with* obj);
+void free_hir_with(hir_with* obj);
 
-void free_llir_form(llir_form* obj);
+void free_hir_form(hir_form* obj);
 
-llir_form* copy_llir_form(llir_form* src);
+hir_form* copy_hir_form(hir_form* src);
 
 // for debugging/testing
-string print_llir(llir_form* f, symbol_table& st, dyn_array<value>* const_arr);
+string print_hir(hir_form* f, symbol_table& st, dyn_array<value>* const_arr);
 
 }
 

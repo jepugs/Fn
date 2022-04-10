@@ -162,32 +162,38 @@ struct alignas(OBJ_ALIGN) function_stub {
     // function stubs are managed by the garbage collector
     gc_header h;
 
+    // if foreign != nullptr, then this is a foreign function
+    void (*foreign)(istate*);
+
     u8 num_params;      // # of parameters
     u8 num_opt;         // # of optional params (i.e. of initforms)
     bool vari;          // variadic parameter
     u8 space;           // stack space required
 
-    // if foreign != nullptr, then this is a foreign function
-    void (*foreign)(istate*);
-
-    gc_array<u8> code;                 // bytecode
-    gc_array<value> const_arr;         // constants
-    gc_array<function_stub*> sub_funs; // contained functions
     symbol_id ns_id;                   // namespace ID
-    fn_namespace* ns;                  // function namespace
-
-    // Array of upvalue addresses. These are stack addresses for direct upvalues
-    // and upvalue IDs for indirect upvalues.
-    gc_array<u8> upvals;
-    // Corresponding array telling whether each upvalue is direct or not
-    gc_array<bool> upvals_direct;
-    // An upval is considered direct if it is from the immediately surrounding
-    // call frame. Otherwise, it is indirect.
 
     // metadata
     fn_string* name;
     fn_string* filename;
-    gc_array<code_info> ci_arr;
+
+    // arrays
+    u32 code_length;
+    u8* code;                          // bytecode
+    u32 num_const;                     // constants
+    value* const_arr;
+    u32 num_sub_funs;                  // contained functions
+    function_stub** sub_funs;
+    u32 num_upvals;                    // upvals
+    // Array of upvalue addresses. These are stack addresses for direct upvalues
+    // and upvalue IDs for indirect upvalues.
+    u8* upvals;
+    // Corresponding array telling whether each upvalue is direct or not. An
+    // upval is considered direct if it is from the immediately surrounding call
+    // frame. Otherwise, it is indirect.
+    bool* upvals_direct;
+    // source code locations
+    u32 ci_length;
+    code_info* ci_arr;
 };
 
 // represents a function value

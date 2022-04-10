@@ -1,11 +1,14 @@
 (namespace fn/builtin)
+
 ; foldl is needed early to bootstrap some other functions
-(defn foldl (f init list)
-  (letfn iter (acc rem)
-    (if (empty? rem)
-        acc
-        (iter (f acc (head rem))
-              (tail rem))))
+(def foldl
+  (fn (f init list)
+    (let iter
+         (fn (acc rem)
+           (if (empty? rem)
+               acc
+               (iter (f acc (head rem))
+                     (tail rem))))))
   (iter init list))
 
 (defn reverse (list)
@@ -27,6 +30,12 @@
   (letfn concat2 (l r)
     (foldl $(cons $1 $0) r (reverse l)))
   (foldl $(concat2 $1 $0) [] (reverse lists)))
+
+(defmacro letfn (name args & body)
+  (List 'do-inline
+        (List 'let
+              name
+              (concat (List 'fn args) body))))
 
 (defmacro defn (name args & body)
   (letfn valid-list? ()         ; validate a list name

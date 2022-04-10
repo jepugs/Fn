@@ -3,17 +3,26 @@
 
 #include "array.hpp"
 #include "base.hpp"
+#include "table.hpp"
 
 #include <iostream>
 #include <fstream>
 #include <memory>
 
-namespace fn_scan {
+namespace fn {
 
-using namespace fn;
+using sst_id = u32;
 
-// utility function used to remove backslashes from symbols (this happens after escape code parsing)
-string strip_escape_chars(const string& s);
+// holds all the strings needed by the scanner/parser. Keeping a separate table
+// simplifies other data structures, while still keeping parsing independent of
+// the garbage collector.
+struct scanner_string_table {
+    dyn_array<string> by_id;
+    table<string,sst_id> by_name;
+};
+
+sst_id scanner_intern(scanner_string_table& pt, const string& str);
+const string& scanner_name(const scanner_string_table& pt, sst_id id);
 
 enum token_kind {
     // eof
@@ -38,144 +47,31 @@ enum token_kind {
     // atoms
     tk_number,
     tk_string,
-    // note: symbols may include dot characters
     tk_symbol
 };
 
-union token_datum {
-    // used for numbers. this better be 64 bits.
-    f64 num;
-    // used for string literals and symbol names
-    string* str;
-    // placeholder null pointer for other token types
-    void *nothing;
-};
-
 struct token {
-    token_kind tk;
     source_loc loc;
-    token_datum datum;
-
-    token() : tk{tk_eof}, loc{}, datum{.nothing = nullptr} { }
-    token(token_kind tk, source_loc loc)
-        : tk{tk}
-        , loc{loc}
-        , datum{.nothing = nullptr} {
-    }
-    token(token_kind tk, source_loc loc, double num)
-        : tk{tk}
-        , loc{loc}
-        , datum{.num = num} {
-    }
-    token(token_kind tk, source_loc loc, const string& str)
-        : tk{tk}
-        , loc{loc}
-        , datum{.str = new string{str}} {
-    }
-
-    token(const token& tok)
-        : tk{tok.tk}
-        , loc{tok.loc} {
-        if (tk == tk_string || tk == tk_symbol) {
-            datum.str = new string{*tok.datum.str};
-        } else {
-            datum = tok.datum;
-        }
-    }
-    token& operator=(const token& tok) {
-        if (this == &tok) return *this;
-
-        // free old string if necessary
-        if (tk == tk_string || tk == tk_symbol) {
-            delete datum.str;
-        }
-
-        this->tk = tok.tk;
-        // copy new string if necessary
-        if (tk == tk_string || tk == tk_symbol) {
-            datum.str = new string{*tok.datum.str};
-        } else {
-            this->datum = tok.datum;
-        }
-        this->loc = tok.loc;
-        return *this;
-    }
-    token& operator=(token&& other) {
-        auto tmptk = tk;
-        auto tmpd = datum;
-        tk = other.tk;
-        datum = other.datum;
-        loc = other.loc;
-        other.tk = tmptk;
-        other.datum = tmpd;
-        return *this;
-    }
-
-    ~token() {
-        // must free the string used by symbols and string literals
-        if (tk == tk_string || tk == tk_symbol) {
-            delete datum.str;
-        }
-    }
-
-    string to_string() const {
-        switch (tk) {
-        case tk_eof:
-            return "EOF";
-        case tk_lbrace:
-            return "{";
-        case tk_rbrace:
-            return "}";
-        case tk_lbracket:
-            return "[";
-        case tk_rbracket:
-            return "]";
-        case tk_lparen:
-            return "(";
-        case tk_rparen:
-            return ")";
-        case tk_dollar_backtick:
-            return "$`";
-        case tk_dollar_brace:
-            return "${";
-        case tk_dollar_bracket:
-            return "$[";
-        case tk_dollar_paren:
-            return "$(";
-        case tk_quote:
-            return "'";
-        case tk_backtick:
-            return "`";
-        case tk_comma:
-            return ",";
-        case tk_comma_at:
-            return ",@";
-        case tk_number:
-            return std::to_string(this->datum.num);
-        case tk_string:
-            // FIXME: this should probably have escapes
-            return "\"" + *(this->datum.str) + "\"";
-        case tk_symbol:
-            return *(this->datum.str);
-        }
-        // this is unreachable code to silence a compiler warning
-        return "";
+    token_kind kind;
+    union {
+        f64 num;
+        u32 str_id;
+        void* nothing;
+    } d;
+    token(const source_loc& loc, token_kind kind)
+        : loc{loc}
+        , kind{kind} {
+        d.nothing = nullptr;
     }
 };
-
 
 class scanner {
 public:
-    scanner(std::istream* in, int line=1, int col=0)
-        : input{in}
+    scanner(scanner_string_table& sst, std::istream& in, int line=1, int col=0)
+        : sst{&sst}
+        , input{&in}
         , line{line}
         , col{col} {
-    }
-    scanner(const string& filename)
-        : line(1)
-        , col(0) {
-        input = new std::ifstream(filename, std::ios_base::in);
-        close_stream = true;
     }
     ~scanner();
 
@@ -188,12 +84,13 @@ public:
     // get stream position from running tellg on the input stream
     size_t tellg();
 
+    scanner_string_table& get_sst();
+
     source_loc get_loc();
 
 private:
-    std::istream *input;
-    // if true, the stream is closed when the scanner ends
-    bool close_stream = false;
+    scanner_string_table* sst;
+    std::istream* input;
 
     // these track location in input (used for generating error messages)
     int line;
@@ -209,7 +106,6 @@ private:
     token make_token(token_kind tk) const;
     token make_token(token_kind tk, const string& str) const;
     token make_token(token_kind tk, double num) const;
-    token make_token(token_kind tk, const dyn_array<string>& ids) const;
 
     // methods to scan variable-length tokens
 
@@ -241,6 +137,7 @@ private:
         throw fn_exception{"scanner", msg, source_loc{line, col-1}};
     }
 };
+
 
 }
 

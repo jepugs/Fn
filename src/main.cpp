@@ -1,12 +1,10 @@
 #include "base.hpp"
-#include "builtin.hpp"
+//#include "builtin.hpp"
 #include "bytes.hpp"
-#include "compile.hpp"
+#include "compile2.hpp"
 #include "table.hpp"
 #include "values.hpp"
 #include "vm.hpp"
-
-#include "expand.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -145,9 +143,9 @@ int main(int argc, char** argv) {
     }
 
     auto S = init_istate();
-    install_builtin(S);
-    if (S->err_happened) {
-        std::cout << "Error: " << convert_fn_string(S->err_msg) << '\n';
+    // install_builtin(S);
+    if (has_error(S)) {
+        std::cout << "Error: " << S->err.message << '\n';
         print_stack_trace(S);
         return -1;
     }
@@ -164,13 +162,13 @@ int main(int argc, char** argv) {
     } else {
         set_filename(S, "<stdin>");
         interpret_stream(S, &std::cin);
-        if (!S->err_happened) {
+        if (!has_error(S)) {
             print_top(S);
             pop(S);
         }
     }
-    if (S->err_happened) {
-        std::cout << "Error: " << convert_fn_string(S->err_msg) << '\n';
+    if (has_error(S)) {
+        std::cout << "Error: " << S->err.message << '\n';
         print_stack_trace(S);
     }
     free_istate(S);

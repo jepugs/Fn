@@ -2,111 +2,108 @@
 #define __FN_PARSE_HPP
 
 #include "base.hpp"
-#include "istate.hpp"
 #include "scan.hpp"
 #include "values.hpp"
 
-namespace fn_parse {
+namespace fn {
+
+namespace ast {
 
 using namespace fn;
-using namespace fn_scan;
 
-// note: ak_error currently unused. In the future it will be associated with a
-// string
 enum ast_kind {
-    ak_number_atom,
-    ak_string_atom,
-    ak_symbol_atom,
+    ak_number,
+    ak_string,
+    ak_symbol,
     ak_list
 };
 
-struct ast_form {
+// a node in the abstract syntax tree
+struct node {
     source_loc loc;
     ast_kind kind;
     u32 list_length; // only used for list nodes
     union {
         f64 num;
-        string* str;
-        symbol_id sym;
-        ast_form** list;
+        // this is w/r/t to an associated scanner_string_table
+        symbol_id str_id;
+        // node structure does not take
+        node** list;
     } datum;
 
-    // make a deep copy. The copy must be deleted separately
-    ast_form* copy() const;
+    explicit node(const source_loc& loc, ast_kind k, f64 num);
+    explicit node(const source_loc& loc, ast_kind k, u32 str_id);
+    // this takes ownership of list. It will be freed using delete[]
+    explicit node(const source_loc& loc, ast_kind k, u32 list_length,
+            node** list);
 
-    string as_string(const symbol_table* symtab) const;
-
-    bool is_symbol() const;
-    bool is_keyword(const symbol_table* symtab) const;
-    symbol_id get_symbol() const;
+    node& operator=(const node& other) = delete;
+    node(const node& other) = delete;
 };
 
-ast_form* mk_number_form(const source_loc& loc, f64 num, ast_form* dest=nullptr);
-ast_form* mk_string_form(const source_loc& loc,
-        const string& str,
-        ast_form* dest=nullptr);
-ast_form* mk_string_form(const source_loc& loc,
-        string&& str,
-        ast_form* dest=nullptr);
-ast_form* mk_symbol_form(const source_loc& loc,
-        symbol_id sym,
-        ast_form* dest=nullptr);
-ast_form* mk_list_form(const source_loc& loc,
-        u32 list_length,
-        ast_form** list,
-        ast_form* dest=nullptr);
-// make a list form by copying the contents of a vector
-ast_form* mk_list_form(const source_loc& loc,
-        dyn_array<ast_form*>* lst,
-        ast_form* dest=nullptr);
+// functions to create ast nodes. These do allocation with new and must be
+// freed later
+node* mk_number(const source_loc& loc, f64 num);
+node* mk_string(const source_loc& loc, u32 str_id);
+node* mk_symbol(const source_loc& loc, u32 str_id);
+// This will take ownership of the argument lst (i.e. it will be freed when
+// free_node() is called)
+node* mk_list(const source_loc& loc, u32 list_length, node** lst);
+// This creates a new array by copying the contents of lst
+node* mk_list(const source_loc& loc, const dyn_array<node*>& lst);
 
-void clear_ast_form(ast_form* form, bool recursive=true);
-void free_ast_form(ast_form* form, bool recursive=true);
+// free up a node allocated by one of the mk_*() functions
+void free_graph(node* root);
 
+} // end namespace fn::ast
 
-// get the next form by reading tokens one at a time from the scanner. Return a
-// null pointer on EOF. It is the responsibility of the caller to delete the
-// returned object. Returns null and sets err on failure.
+struct istate;
 
-// If the parse failed irrecoverably, sets *resumable = false. If the parse
-// could succeed by adding additional characters to the end of the input, sets
-// *resumable = true and *bytes_used to the number of bytes used after the last
-// successful parse. This is mainly for the REPL.
-ast_form* parse_next_form(scanner* sc,
-        istate* S,
-        bool* resumable);
+// The parser class encapsulates all the logic used to parse a single ast node
+class parser {
+private:
+    friend ast::node* parse_next_node(istate* S, scanner& sc, bool* resumable);
 
-// This is the same as above, but we pass in the first token directly (as
-// opposed to getting it from the scanner). Used for prefix operators.
-ast_form* parse_next_form(scanner* sc,
-        istate* S,
-        token t0,
-        bool* resumable);
+    // the istate is used for error generation only
+    istate* S;
+    scanner_string_table* sst;
+    scanner* sc;
+    // set when an error occurs
+    bool err_resumable;
 
-// Attempt to parse as many ast_forms as possible from the given scanner.
-dyn_array<ast_form*> parse_from_scanner(scanner* sc,
-        istate* S);
+    parser(istate* S, scanner& sc);
+    ast::node* parse();
 
-// Attempt to parse as many ast_forms as possible from the given string. The
-// parse_error* structure is set to the first error encountered.
-dyn_array<ast_form*> parse_string(const string& src,
-        istate* S);
+    // parse until a token of the specified kind is encountered, adding forms to
+    // the buffer along the way.
+    bool parse_to_delimiter(dyn_array<ast::node*>& buf, token_kind delim);
+    // parse with one lookahead token
+    ast::node* parse_la(const token& t0);
+    // create a list of length two whose first expression is the symbol
+    // described by op and whose second expression is the next node. Takes a
+    // lookahead token
+    ast::node* parse_prefix(const source_loc& loc, const string& op,
+            const token& t0);
+};
 
-// Parse AST forms from in until an error is encountered
-dyn_array<ast_form*> parse_input(std::istream* in,
-        istate* S);
+// Create an ast::node by parsing input from a scanner. On failure, returns
+// nullptr, sets an istate error, and also sets the value of *resumable. A true
+// value indicates that the error was caused by EOF. (This allows the REPL to
+// detect unfinished expressions). A false value is for an unrecoverable error.
+ast::node* parse_next_node(istate* S, scanner& sc, bool* resumable);
 
-// This sets *resumable the same way as in parse_next_form. In addition, on
-// error, it sets *bytes_used to be the number of bytes consumed after the last
-// successful parse. This is used for detecting the ends of expressions at the
-// REPL to enable multi-line input and multiple expressions per line.
-dyn_array<ast_form*> partial_parse_input(scanner* sc,
-        istate* S,
-        u32* bytes_used,
-        bool* resumable);
+// parse all available expressions from a string
+dyn_array<ast::node*> parse_string(istate* S, scanner_string_table& sst,
+        const string& str);
 
-// create an ast_form* from the top of the stack
-ast_form* pop_syntax(istate* S, const source_loc& loc);
+// parse all available expressions from a stream
+dyn_array<ast::node*> parse_stream(istate* S, scanner_string_table& sst,
+        std::istream& in); 
+
+// pop a value from the top of the stack and convert it into an ast::node*. Sets
+// istate error on failure. The created value must be freed manually.
+ast::node* pop_syntax(istate* S, scanner_string_table& sst,
+        const source_loc& loc);
 
 }
 #endif

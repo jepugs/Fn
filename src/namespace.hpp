@@ -37,6 +37,11 @@ struct global_env {
 // not already present in the namespace, a new entry in the resolution table is
 // made.
 symbol_id resolve_sym(istate* S, symbol_id ns_id, symbol_id name);
+// get the unique 32-bit identifier for a global variable. The variable will be
+// created and set to V_UNIN if necessary.
+u32 get_global_id(istate* S, symbol_id fqn);
+// get the FQN of a symbol based on its numerical id
+symbol_id global_name_by_id(istate* S, u32 id);
 // get a global variable by its FQN. Returns false on failed lookup
 bool push_global(istate* S, symbol_id fqn);
 // set by FQN, creating a new definition if necessary

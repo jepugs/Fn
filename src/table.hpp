@@ -7,11 +7,8 @@ namespace fn {
 
 static const float REHASH_THRESHOLD = 0.75;
 
-class allocator;
-
 /// hash table with string keys. uses linear probing.
 template <typename K, typename T> class table {
-    friend class allocator;
 public:
     // hash table entry
     struct entry {

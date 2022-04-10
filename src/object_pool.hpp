@@ -1,6 +1,8 @@
 #ifndef __FN_OBJECT_POOL_HPP
 #define __FN_OBJECT_POOL_HPP
 
+#include "base.hpp"
+
 namespace fn {
 
 // NOTE: we require that T occupies at least as much space as void*. This is not
