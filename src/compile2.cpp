@@ -193,6 +193,82 @@ bool bc_compiler::compile_def(const ast::node* ast) {
     return true;
 }
 
+bool bc_compiler::compile_sub_fun(const ast::node* params,
+        ast::node* const* body, u32 body_len, const string& name) {
+    dyn_array<sst_id> pos_params;
+    dyn_array<ast::node*> init_vals;
+    bool has_vari;
+    sst_id vari;
+    if (!process_params(params, pos_params, init_vals,
+                    has_vari, vari)) {
+        return false;
+    }
+    // compile the child function
+    bc_compiler_output child_out;
+    bc_compiler child{this, S, *sst, child_out};
+    // FIXME: incorporate function name into compiler output
+
+    // set up arguments as local variables
+    for (auto p : pos_params) {
+        child_out.params.push_back(p);
+        child.push_var(p);
+        ++child.sp;
+    }
+    if (has_vari) {
+        child_out.has_vari = true;
+        child_out.vari_param = vari;
+        child.push_var(vari);
+        ++child.sp;
+    }
+    if (!child.compile_function_body(body, body_len)) {
+        return false;
+    }
+
+    // code to create the function object
+    auto save_sp = sp;
+    for (auto x : init_vals) {
+        if (!compile(x, false)) {
+            return false;
+        }
+    }
+    auto child_id = output->sub_funs.size;
+    output->sub_funs.push_back(child_out);
+    emit8(OP_CLOSURE);
+    emit16(child_id);
+    sp = save_sp + 1;
+    return true;
+}
+
+bool bc_compiler::compile_defmacro(const ast::node* ast) {
+    if (ast->list_length < 3) {
+        compile_error(ast->loc, "defmacro requires a name and parameter list.");
+        return false;
+    }
+    if (ast->datum.list[1]->kind != ast::ak_symbol) {
+        compile_error(ast->loc, "defmacro name must be a symbol.");
+        return false;
+    }
+    auto name_id = ast->datum.list[1]->datum.str_id;
+    // TODO: check name legality
+    if (!compile_sub_fun(ast->datum.list[2], &ast->datum.list[3],
+                    ast->list_length - 3, scanner_name(*sst, name_id))) {
+        return false;
+    }
+
+    bc_output_const k;
+    k.kind = bck_symbol;
+    k.d.str_id = name_id;
+    auto cid = output->const_table.size;
+    output->const_table.push_back(k);
+    emit8(OP_SET_MACRO);
+    emit16(cid);
+
+    // defmacro returns nil
+    emit8(OP_NIL);
+
+    return true;
+}
+
 bool bc_compiler::compile_do(const ast::node* ast, bool tail) {
     return compile_body(&ast->datum.list[1], ast->list_length-1, tail);
 }
@@ -234,6 +310,10 @@ bool bc_compiler::compile_fn(const ast::node* ast) {
         compile_error(ast->loc, "fn requires a parameter list.");
         return false;
     }
+
+    // TODO: generate a meaningful name
+    compile_sub_fun(ast->datum.list[1], &ast->datum.list[2],
+            ast->list_length - 2, "");
 
     dyn_array<sst_id> pos_params;
     dyn_array<ast::node*> init_vals;
@@ -284,8 +364,8 @@ bool bc_compiler::compile_symbol_list(const ast::node* root, bool tail) {
                     root->datum.list[0]->datum.str_id));
     if (sym_id == cached_sym(S, SC_DEF)) {
         return compile_def(root);
-    // } else if (sym_id == cached_sym(S, SC_DEFMACRO)) {
-    //     return compile_defmacro(root);
+    } else if (sym_id == cached_sym(S, SC_DEFMACRO)) {
+        return compile_defmacro(root);
     } else if (sym_id == cached_sym(S, SC_DO)) {
         return compile_do(root, tail);
     } else if (sym_id == cached_sym(S, SC_IF)) {
@@ -412,7 +492,8 @@ bool bc_compiler::compile_within_body(const ast::node* expr, bool tail) {
 bool bc_compiler::compile_number(const ast::node* root) {
     // FIXME: technically we should check for constant ID overflow here
     auto cid = output->const_table.size;
-    output->const_table.push_back(bc_output_const{bck_number, root->datum.num});
+    output->const_table.push_back(bc_output_const{bck_number,
+                                                  {.num = root->datum.num}});
     emit8(OP_CONST);
     emit16(cid);
     ++sp;

@@ -6,6 +6,7 @@
 #include "base.hpp"
 #include "bytes.hpp"
 #include "istate.hpp"
+#include "namespace.hpp"
 #include "obj.hpp"
 #include "scan.hpp"
 #include "table.hpp"
@@ -171,6 +172,8 @@ private:
     bool compile_quote(const ast::node* root);
     bool compile_set(const ast::node* root);
 
+    bool compile_sub_fun(const ast::node* params, ast::node* const* body,
+            u32 body_len, const string& name);
     bool compile_symbol_list(const ast::node* root, bool tail);
     bool compile_call(const ast::node* root, bool tail);
     bool validate_let_form(const ast::node* expr);
