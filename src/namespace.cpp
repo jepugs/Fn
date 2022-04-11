@@ -33,7 +33,7 @@ u32 get_global_id(istate* S, symbol_id fqn) {
         return e->val;
     } else {
         auto id = S->G->def_ids.size;
-        S->G->def_ids.push_back(id);
+        S->G->def_ids.push_back(fqn);
         S->G->def_tab.insert(fqn, id);
         S->G->def_arr.push_back(V_UNIN);
         return id;
