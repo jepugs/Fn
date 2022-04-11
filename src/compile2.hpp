@@ -116,7 +116,8 @@ private:
     scanner_string_table* sst;
     // this is ordered by stack address
     dyn_array<lexical_var> vars;
-    table<symbol_id, local_upvalue> upvals;
+    // values here are the upvalue IDs in the function
+    table<sst_id, u8> upvals;
     u8 sp;
 
     // output from the compiler
@@ -162,6 +163,7 @@ private:
     bool compile_def(const ast::node* root);
     bool compile_defmacro(const ast::node* root);
     bool compile_do(const ast::node* root, bool tail);
+    bool compile_do_inline(const ast::node* root, bool tail);
     bool compile_if(const ast::node* root, bool tail);
     bool compile_fn(const ast::node* root);
     bool compile_import(const ast::node* root);
@@ -172,6 +174,7 @@ private:
     bool compile_symbol_list(const ast::node* root, bool tail);
     bool compile_call(const ast::node* root, bool tail);
     bool validate_let_form(const ast::node* expr);
+    bool is_do_inline_form(const ast::node* node);
     bool is_let_form(const ast::node* node);
     bool compile_body(ast::node* const* exprs, u32 len, bool tail);
     bool compile_within_body(const ast::node* expr, bool tail);

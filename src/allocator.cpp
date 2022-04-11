@@ -248,7 +248,7 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
     o->space = compiled.stack_required;
     o->ns_id = S->ns_id;
     // TODO: sort this out
-    // o->name = nullptr;
+    o->name = nullptr;
     o->filename = S->filename;
 
     // we have to take care when setting up the arrays, as the garbage collector
@@ -261,18 +261,17 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
     o->code_length = compiled.code.size;
     o->code = (u8*)raw_ptr_add(o, sizeof(function_stub));
     o->num_const = 0;
-    o->const_arr = (value*)raw_ptr_add(o, sizeof(function_stub)
-            + code_sz);
+    o->const_arr = (value*)raw_ptr_add(o, sizeof(function_stub) + code_sz);
     o->num_sub_funs = 0;
-    o->sub_funs = (function_stub**)raw_ptr_add(o, sizeof(function_stub*)
+    o->sub_funs = (function_stub**)raw_ptr_add(o, sizeof(function_stub)
             + code_sz + const_sz);
     o->num_upvals = compiled.num_upvals;
-    o->upvals = (u8*)raw_ptr_add(o, sizeof(u8)
-            + code_sz + const_sz + sub_funs_sz);
-    o->upvals_direct = (bool*)raw_ptr_add(o, sizeof(bool) + code_sz + const_sz
-            + sub_funs_sz + upvals_sz);
+    o->upvals = (u8*)raw_ptr_add(o, sizeof(function_stub) + code_sz + const_sz
+            + sub_funs_sz);
+    o->upvals_direct = (bool*)raw_ptr_add(o, sizeof(function_stub) + code_sz
+            + const_sz + sub_funs_sz + upvals_sz);
     o->ci_length = compiled.ci_arr.size;
-    o->ci_arr = (code_info*)raw_ptr_add(o, sizeof(code_info) + code_sz
+    o->ci_arr = (code_info*)raw_ptr_add(o, sizeof(function_stub) + code_sz
             + const_sz + sub_funs_sz + upvals_sz + upvals_direct_sz);
 
     // fill out the arrays. Now we need to make a handle since we might trigger
@@ -324,99 +323,105 @@ bool reify_function(istate* S, const scanner_string_table& sst,
     return true;
 }
 
-// static upvalue_cell* alloc_open_upval(istate* S, u32 pos) {
-//     auto sz = round_to_align(sizeof(upvalue_cell));
-//     auto res = (upvalue_cell*)get_bytes_eden(S->alloc, sz);
-//     init_gc_header(&res->h, GC_TYPE_UPVALUE, sz);
-//     res->closed = false;
-//     res->datum.pos = pos;
-//     return res;
-// }
+static upvalue_cell* alloc_open_upval(istate* S, u32 pos) {
+    auto sz = round_to_align(sizeof(upvalue_cell));
+    auto res = (upvalue_cell*)get_bytes_eden(S->alloc, sz);
+    init_gc_header(&res->h, GC_TYPE_UPVALUE, sz);
+    res->closed = false;
+    res->datum.pos = pos;
+    return res;
+}
 
-// static upvalue_cell* alloc_closed_upval(istate* S) {
-//     auto sz = sizeof(upvalue_cell);
-//     auto res = (upvalue_cell*)get_bytes_eden(S->alloc, sz);
-//     init_gc_header(&res->h, GC_TYPE_UPVALUE, sz);
-//     res->closed = true;
-//     res->datum.val = V_NIL;
-//     return res;
-// }
+static upvalue_cell* alloc_closed_upval(istate* S) {
+    auto sz = sizeof(upvalue_cell);
+    auto res = (upvalue_cell*)get_bytes_eden(S->alloc, sz);
+    init_gc_header(&res->h, GC_TYPE_UPVALUE, sz);
+    res->closed = true;
+    res->datum.val = V_NIL;
+    return res;
+}
 
-// void alloc_foreign_fun(istate* S,
-//         u32 where,
-//         void (*foreign)(istate*),
-//         u32 num_params,
-//         bool vari,
-//         u32 num_upvals,
-//         const string& name) {
-//     push_string(S, name);
-//     auto sz = round_to_align(sizeof(fn_function)
-//             + num_upvals * sizeof(upvalue_cell*));
-//     auto res = (fn_function*)get_bytes_eden(S->alloc, sz);
-//     init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
-//     res->init_vals = nullptr;
-//     res->upvals = (upvalue_cell**)((u8*)res + sizeof(fn_function));
-//     for (u32 i = 0; i < num_upvals; ++i) {
-//         res->upvals[i] = alloc_closed_upval(S);
-//         res->upvals[i]->closed = true;
-//     }
-//     res->stub = (function_stub*)get_bytes_eden(S->alloc, sizeof(function_stub));
-//     res->stub->num_upvals = num_upvals;
-//     res->stub->name = peek(S);
-//     pop(S);
-//     res->stub->foreign = foreign;
-//     res->stub->num_params = num_params;
-//     res->stub->vari = vari;
-//     // FIXME: allocate foreign fun upvals
-//     S->stack[where] = vbox_function(res);
-// }
+void alloc_foreign_fun(istate* S,
+        u32 where,
+        void (*foreign)(istate*),
+        u32 num_params,
+        bool vari,
+        u32 num_upvals,
+        const string& name) {
+    push_string(S, name);
+    auto sz = round_to_align(sizeof(fn_function)
+            + num_upvals * sizeof(upvalue_cell*));
+    auto res = (fn_function*)get_bytes_eden(S->alloc, sz);
+    init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
+    res->init_vals = nullptr;
+    res->upvals = (upvalue_cell**)((u8*)res + sizeof(fn_function));
+    for (u32 i = 0; i < num_upvals; ++i) {
+        res->upvals[i] = alloc_closed_upval(S);
+        res->upvals[i]->closed = true;
+    }
+    res->stub = (function_stub*)get_bytes_eden(S->alloc, sizeof(function_stub));
+    res->stub->num_upvals = num_upvals;
+    res->stub->name = nullptr;
+    res->stub->name = vstring(peek(S));
+    pop(S);
+    res->stub->foreign = foreign;
+    res->stub->num_params = num_params;
+    res->stub->vari = vari;
+    // FIXME: allocate foreign fun upvals
+    S->stack[where] = vbox_function(res);
+}
 
-// static upvalue_cell* open_upval(istate* S, u32 pos) {
-//     for (u32 i = 0; i < S->open_upvals.size; ++i) {
-//         if (S->open_upvals[i]->datum.pos == pos) {
-//             return S->open_upvals[i];
-//         } else if (S->open_upvals[i]->datum.pos > pos) {
-//             // insert a new upvalue cell
-//             S->open_upvals.push_back(S->open_upvals[S->open_upvals.size - 1]);
-//             for (u32 j = S->open_upvals.size - 2; j > i; --j) {
-//                 S->open_upvals[j] = S->open_upvals[j - 1];
-//             }
-//             S->open_upvals[i] = alloc_open_upval(S, pos);
-//             return S->open_upvals[i];
-//         }
-//     }
-//     S->open_upvals.push_back(alloc_open_upval(S, pos));
-//     return S->open_upvals[S->open_upvals.size - 1];
-// }
+static upvalue_cell* open_upval(istate* S, u32 pos) {
+    for (u32 i = 0; i < S->open_upvals.size; ++i) {
+        if (S->open_upvals[i]->datum.pos == pos) {
+            return S->open_upvals[i];
+        } else if (S->open_upvals[i]->datum.pos > pos) {
+            // insert a new upvalue cell
+            S->open_upvals.push_back(S->open_upvals[S->open_upvals.size - 1]);
+            for (u32 j = S->open_upvals.size - 2; j > i; --j) {
+                S->open_upvals[j] = S->open_upvals[j - 1];
+            }
+            S->open_upvals[i] = alloc_open_upval(S, pos);
+            return S->open_upvals[i];
+        }
+    }
+    S->open_upvals.push_back(alloc_open_upval(S, pos));
+    return S->open_upvals[S->open_upvals.size - 1];
+}
 
-// void alloc_fun(istate* S, u32 where, u32 enclosing, constant_id fid) {
-//     collect(S);
-//     auto enc_fun = vfunction(S->stack[enclosing]);
-//     auto stub = gc_array_get(&enc_fun->stub->sub_funs, fid);
-//     // size of upvals + initvals arrays
-//     auto sz = round_to_align(sizeof(fn_function)
-//             + stub->num_opt*sizeof(value)
-//             + stub->upvals.size*sizeof(upvalue_cell*));
-//     auto res = (fn_function*)get_bytes_eden(S->alloc, sz);
-//     init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
-//     res->init_vals = (value*)((u8*)res + sizeof(fn_function));
-//     for (u32 i = 0; i < stub->num_opt; ++i) {
-//         res->init_vals[i] = V_NIL;
-//     }
-//     res->upvals = (upvalue_cell**)(stub->num_opt*sizeof(value) + (u8*)res->init_vals);
-//     res->stub = stub;
+void alloc_fun(istate* S, u32 enclosing, constant_id fid) {
+    collect(S);
+    // size of upvals + initvals arrays
+    auto enc_fun = vfunction(S->stack[enclosing]);
+    auto stub = enc_fun->stub->sub_funs[fid];
+    auto sz = round_to_align(sizeof(fn_function)
+            + stub->num_opt*sizeof(value)
+            + stub->num_upvals*sizeof(upvalue_cell*));
+    auto res = (fn_function*)get_bytes_eden(S->alloc, sz);
+    init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
 
-//     // set up upvalues
-//     for (u32 i = 0; i < stub->upvals.size; ++i) {
-//         if (gc_array_get(&stub->upvals_direct, i)) {
-//             res->upvals[i] = open_upval(S, S->bp + gc_array_get(&stub->upvals, i));
-//         } else {
-//             res->upvals[i] = enc_fun->upvals[gc_array_get(&stub->upvals, i)];
-//         }
-//     }
+    // in case the gc moved the function or stub
+    enc_fun = vfunction(S->stack[enclosing]);
+    stub = enc_fun->stub->sub_funs[fid];
 
-//     S->stack[where] = vbox_function(res);
-// }
+    res->init_vals = (value*)((u8*)res + sizeof(fn_function));
+    for (u32 i = 0; i < stub->num_opt; ++i) {
+        res->init_vals[i] = V_NIL;
+    }
+    res->upvals = (upvalue_cell**)(stub->num_opt*sizeof(value) + (u8*)res->init_vals);
+    res->stub = stub;
+
+    // set up upvalues
+    for (u32 i = 0; i < stub->num_upvals; ++i) {
+        if (stub->upvals_direct[i]) {
+            res->upvals[i] = open_upval(S, S->bp + stub->upvals[i]);
+        } else {
+            res->upvals[i] = enc_fun->upvals[stub->upvals[i]];
+        }
+    }
+
+    push(S, vbox_function(res));
+}
 
 static void setup_symcache(istate* S) {
     for (u32 i = 0; i < SYMCACHE_SIZE; ++i) {
@@ -451,8 +456,8 @@ istate* alloc_istate(const string& filename, const string& wd) {
 // FIXME: move this
 code_info* instr_loc(function_stub* stub, u32 pc) {
     for (u64 i = stub->ci_length; i > 0; --i) {
-        if (stub->ci_arr[i].start_addr <= pc) {
-            return &stub->ci_arr[i];
+        if (stub->ci_arr[i-1].start_addr <= pc) {
+            return &stub->ci_arr[i-1];
         }
     }
     // this is safe since the first location is always added when the function

@@ -55,7 +55,7 @@ static inline void close_upvals(istate* S, u32 min_addr) {
 static inline void create_fun(istate* S, u32 enclosing, constant_id fid) {
     // this sets up upvalues, and initializes initvals to nil
     // TODO: uncomment this
-    // alloc_fun(S, enclosing, fid);
+    alloc_fun(S, enclosing, fid);
     auto fun = vfunction(S->stack[S->sp - 1]);
     // set up initvals
     auto num_opt = fun->stub->num_opt;

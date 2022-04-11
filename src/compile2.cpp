@@ -36,6 +36,8 @@ bc_compiler::bc_compiler(bc_compiler* parent, istate* S,
     output.num_opt = 0;
     output.has_vari = false;
     output.num_upvals = 0;
+
+    output.ci_arr.push_back(code_info{0, source_loc{0,0}});
 }
 
 void bc_compiler::pop_vars(u8 sp) {
@@ -65,15 +67,21 @@ bool bc_compiler::find_local_var(u8& index, sst_id name) {
 bool bc_compiler::find_upvalue_var(u8& index, sst_id name) {
     auto x = upvals.get(name);
     if (x.has_value()) {
-        index = x->index;
+        index = *x;
         return true;
     }
 
     // look in the enclosing function
     if (parent) {
         u8 upval_index;
-        if (parent->find_local_var(upval_index, name)) {
-            // TODO:
+        bool direct = parent->find_local_var(upval_index, name);
+        if (direct || parent->find_upvalue_var(upval_index, name)) {
+            index = output->num_upvals;
+            upvals.insert(name, index);
+            output->upvals.push_back(upval_index);
+            output->upvals_direct.push_back(direct);
+            ++output->num_upvals;
+            return true;
         }
     }
 
@@ -212,10 +220,13 @@ bool bc_compiler::compile_fn(const ast::node* ast) {
 
     // set up arguments as local variables
     for (auto p : pos_params) {
+        child_out.params.push_back(p);
         child.push_var(p);
         ++child.sp;
     }
     if (has_vari) {
+        child_out.has_vari = true;
+        child_out.vari_param = vari;
         child.push_var(vari);
         ++child.sp;
     }
@@ -260,9 +271,22 @@ bool bc_compiler::compile_symbol_list(const ast::node* root, bool tail) {
     //     return compile_quote(root);
     // } else if (sym_id == cached_sym(S, SC_SET)) {
     //     return compile_set(root);
-    // } else {
-    //     return compile_call(root, tail);
+    } else {
+        return compile_call(root, tail);
     }
+    return true;
+}
+
+bool bc_compiler::compile_call(const ast::node* root, bool tail) {
+    auto save_sp = sp;
+    for (u32 i = 0; i < root->list_length; ++i) {
+        if (!compile(root->datum.list[i], false)) {
+            return false;
+        }
+    }
+    emit8(tail ? OP_TCALL : OP_CALL);
+    emit8(root->list_length - 1);
+    sp = save_sp + 1;
     return true;
 }
 
@@ -271,6 +295,7 @@ bool bc_compiler::compile_body(ast::node* const* exprs, u32 len, bool tail) {
         emit8(OP_NIL);
         return true;
     }
+    u32 save_sp = sp;
     u32 i;
     for (i = 0; i < len - 1; ++i) {
         if (!compile_within_body(exprs[i], false)) {
@@ -280,6 +305,11 @@ bool bc_compiler::compile_body(ast::node* const* exprs, u32 len, bool tail) {
         --sp;
     }
     compile_within_body(exprs[i], tail);
+    if (!tail) {
+        emit8(OP_CLOSE);
+        emit8(sp - save_sp);
+    }
+    sp = save_sp + 1;
     return true;
 }
 
@@ -288,6 +318,13 @@ bool bc_compiler::is_let_form(const ast::node* expr) {
         && expr->datum.list[0]->kind == ast::ak_symbol
         && intern(S, scanner_name(*sst, expr->datum.list[0]->datum.str_id))
         == cached_sym(S, SC_LET);
+}
+
+bool bc_compiler::is_do_inline_form(const ast::node* expr) {
+    return expr->kind == ast::ak_list && expr->list_length >= 2
+        && expr->datum.list[0]->kind == ast::ak_symbol
+        && intern(S, scanner_name(*sst, expr->datum.list[0]->datum.str_id))
+        == cached_sym(S, SC_DO_INLINE);
 }
 
 bool bc_compiler::validate_let_form(const ast::node* expr) {
@@ -312,7 +349,7 @@ bool bc_compiler::compile_within_body(const ast::node* expr, bool tail) {
         auto base_sp = sp;
         for (u32 i = 1; i < expr->list_length; i+=2) {
             auto str_id = expr->datum.list[i]->datum.str_id;
-            vars.push_back(lexical_var{str_id, sp});
+            push_var(str_id);
             emit8(OP_NIL);
             ++sp;
         }
@@ -324,6 +361,17 @@ bool bc_compiler::compile_within_body(const ast::node* expr, bool tail) {
         }
         emit8(OP_NIL);
         ++sp;
+    } else if (is_do_inline_form(expr)) {
+        if (expr->list_length == 1) {
+            emit8(OP_NIL);
+        } else {
+            u32 i;
+            for (i = 1; i < expr->list_length-1; ++i) {
+                compile_within_body(expr->datum.list[i], false);
+                emit8(OP_POP);
+            }
+            compile_within_body(expr->datum.list[i], tail);
+        }
     } else {
         if (!compile(expr, tail)) {
             return false;
@@ -338,6 +386,7 @@ bool bc_compiler::compile_number(const ast::node* root) {
     output->const_table.push_back(bc_output_const{bck_number, root->datum.num});
     emit8(OP_CONST);
     emit16(cid);
+    ++sp;
     return true;
 }
 
@@ -350,6 +399,7 @@ bool bc_compiler::compile_string(const ast::node* root) {
     output->const_table.push_back(k);
     emit8(OP_CONST);
     emit16(cid);
+    ++sp;
     return true;
 }
 
@@ -396,6 +446,8 @@ bool bc_compiler::compile_list(const ast::node* root, bool tail) {
     }
     if (root->datum.list[0]->kind == ast::ak_symbol) {
         return compile_symbol_list(root, tail);
+    } else {
+        return compile_call(root, tail);
     }
     return true;
 }
@@ -556,7 +608,6 @@ static void disassemble_instr(u8* code_start, std::ostream& out) {
 }
 
 static void disassemble_stub(std::ostringstream& os, istate* S, function_stub* stub) {
-    // FIXME: stop accessing gc arrays directly you dumbass
     for (u32 i = 0; i < stub->code_length; i += instr_width(stub->code[i])) {
         disassemble_instr(&stub->code[i], os);
         if (stub->code[i] == OP_CONST) {

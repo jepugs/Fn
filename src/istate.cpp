@@ -184,8 +184,13 @@ void print_stack_trace(istate* S) {
             } else {
                 auto c = instr_loc(f.callee->stub, f.pc);
                 os << "  File " << string{(char*)f.callee->stub->filename->data}
-                   << ", line " << c->loc.line << ", col " << c->loc.col << " in "
-                   << string{(char*)f.callee->stub->name->data} << '\n';
+                   << ", line " << c->loc.line << ", col " << c->loc.col;
+                // FIXME: make it so this is never null
+                if (f.callee->stub->name) {
+                    os << " in "
+                       << string{(char*)f.callee->stub->name->data};
+                }
+                os << '\n';
             }
         }
     }
@@ -196,9 +201,11 @@ void interpret_stream(istate* S, std::istream* in) {
     // nil for empty files
     scanner_string_table sst;
     scanner sc{sst, *in};
-    bool resumable;
     push_nil(S);
     if (!sc.eof_skip_ws()) {
+        // the first expression has to be parsed manually because it may be a
+        // namespace declaration.
+        bool resumable;
         auto form0 = parse_next_node(S, sc, &resumable);
         if (form0->kind == ast::ak_list
                 && form0->list_length == 2
@@ -212,8 +219,8 @@ void interpret_stream(istate* S, std::istream* in) {
             if (has_error(S)) {
                 return;
             }
+            pop(S);
             bc_compiler_output bco;
-            bool resumable; // we won't actually use this
             auto root = form0;
             if (root == nullptr) {
                 return;
@@ -225,15 +232,13 @@ void interpret_stream(istate* S, std::istream* in) {
                 return;
             }
             // TODO: add a hook here to disassemble code
-            disassemble_top(S);
+            disassemble_top(S, true);
             print_top(S);
             pop(S);
             call(S, 0);
             if (has_error(S)) {
                 return;
             }
-            // S->stack[S->sp - 2] = peek(S);
-            // pop(S);
         }
     }
     while (!sc.eof_skip_ws()) {
@@ -243,14 +248,13 @@ void interpret_stream(istate* S, std::istream* in) {
             return;
         }
         // TODO: add a hook here to disassemble code
-        disassemble_top(S);
+        disassemble_top(S, true);
         print_top(S);
         pop(S);
         call(S, 0);
         if (has_error(S)) {
             return;
         }
-        S->stack[S->sp - 2] = peek(S);
     }
 }
 
