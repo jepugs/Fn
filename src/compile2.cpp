@@ -2,12 +2,6 @@
 
 namespace fn {
 
-static void add_upvalue(bc_compiler_output& bco, u8 index, u8 direct) {
-    bco.upvals.push_back(index);
-    bco.upvals_direct.push_back(direct);
-    ++bco.num_upvals;
-}
-
 static bool is_legal_local_name(const string& str) {
     // name cannot be empty, begin with a hash or contain a colon
     if (str.empty()) {
@@ -96,6 +90,10 @@ void bc_compiler:: emit32(u32 u) {
     output->code.push_back(0);
     output->code.push_back(0);
     *(u32*)&output->code[output->code.size - 4] = u;
+}
+
+void bc_compiler::patch16(u16 u, u32 where) {
+    *(u16*)&output->code[where] = u;
 }
 
 bool bc_compiler::process_params(const ast::node* params,
@@ -191,6 +189,37 @@ bool bc_compiler::compile_do(const ast::node* ast, bool tail) {
     return compile_body(&ast->datum.list[1], ast->list_length-1, tail);
 }
 
+bool bc_compiler::compile_if(const ast::node* ast, bool tail) {
+    // validate the if form
+    if (ast->list_length != 4) {
+        compile_error(ast->loc, "if requires exactly 3 arguments.");
+        return false;
+    }
+    if (!compile(ast->datum.list[1], false)) {
+        return false;
+    }
+    emit8(OP_CJUMP);
+    auto patch_addr1 = output->code.size;
+    emit16(0);
+    --sp;
+
+    if (!compile(ast->datum.list[2], tail)) {
+        return false;
+    }
+    emit8(OP_JUMP);
+    auto patch_addr2 = output->code.size;
+    emit16(0);
+
+    patch16(output->code.size - patch_addr1 - 2, patch_addr1);
+    --sp;
+    if (!compile(ast->datum.list[3], tail)) {
+        return false;
+    }
+
+    patch16(output->code.size - patch_addr2 - 2, patch_addr2);
+    return true;
+}
+
 bool bc_compiler::compile_fn(const ast::node* ast) {
     // validate the arity of the fn form
     if (ast->list_length < 2) {
@@ -248,8 +277,8 @@ bool bc_compiler::compile_symbol_list(const ast::node* root, bool tail) {
     //     return compile_defmacro(root);
     } else if (sym_id == cached_sym(S, SC_DO)) {
         return compile_do(root, tail);
-    // } else if (sym_id == cached_sym(S, SC_IF)) {
-    //     return compile_if(root, tail);
+    } else if (sym_id == cached_sym(S, SC_IF)) {
+        return compile_if(root, tail);
     // } else if (sym_id == cached_sym(S, SC_IMPORT)) {
     //     return compile_import(root);
     } else if (sym_id == cached_sym(S, SC_FN)) {
@@ -260,8 +289,8 @@ bool bc_compiler::compile_symbol_list(const ast::node* root, bool tail) {
     //     return compile_quote(root);
     // } else if (sym_id == cached_sym(S, SC_SET)) {
     //     return compile_set(root);
-    // } else {
-    //     return compile_call(root, tail);
+    } else {
+        return compile_call(root, tail);
     }
     return true;
 }
