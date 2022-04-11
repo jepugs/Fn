@@ -58,10 +58,7 @@ node::node(const source_loc& loc, ast_kind k, u32 list_length,
     : loc{loc}
     , kind{k}
     , list_length{list_length} {
-    datum.list = new node*[list_length];
-    for (u32 i = 0; i < list_length; ++i) {
-        datum.list[i] = copy_graph(list[i]);
-    }
+    datum.list = list;
 }
 
 node* copy_graph(const node* root) {

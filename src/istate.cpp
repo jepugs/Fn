@@ -16,6 +16,9 @@ istate* init_istate() {
 }
 
 void free_istate(istate* S) {
+    if (has_error(S)) {
+        clear_error(S->err);
+    }
     delete S->G;
     delete S->alloc;
     delete S->symtab;
@@ -222,8 +225,9 @@ void interpret_stream(istate* S, std::istream* in) {
                 return;
             }
             // TODO: add a hook here to disassemble code
-            // disassemble_top(S);
-            // pop(S);
+            disassemble_top(S);
+            print_top(S);
+            pop(S);
             call(S, 0);
             if (has_error(S)) {
                 return;
@@ -239,6 +243,9 @@ void interpret_stream(istate* S, std::istream* in) {
             return;
         }
         // TODO: add a hook here to disassemble code
+        disassemble_top(S);
+        print_top(S);
+        pop(S);
         call(S, 0);
         if (has_error(S)) {
             return;

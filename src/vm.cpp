@@ -384,7 +384,7 @@ void execute_fun(istate* S) {
         case OP_SET_GLOBAL: {
             auto id = code_u32(S, pc);
             pc += 4;
-            S->G->def_arr[id] = peek(S,0);
+            S->G->def_arr[id] = peek(S, 0);
             S->stack[S->sp-1] = V_NIL;
         }
             break;

@@ -286,8 +286,7 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
         auto name = intern(S, scanner_name(sst, g.raw_name));
         auto fqn = resolve_sym(S, S->ns_id, name);
         // FIXME: also use a function to insert the u32
-        // TODO: uncomment
-        // *(u32*)&h->obj->code[g.patch_addr] = get_global_id(S, fqn);
+        *(u32*)&h->obj->code[g.patch_addr] = get_global_id(S, fqn);
     }
     for (u32 i = 0; i < compiled.const_table.size; ++i) {
         reify_bc_const(S, sst, compiled.const_table[i]);

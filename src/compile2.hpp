@@ -169,15 +169,20 @@ private:
     bool compile_quote(const ast::node* root);
     bool compile_set(const ast::node* root);
 
-    bool compile_const(const ast::node* root);
+    bool compile_symbol_list(const ast::node* root, bool tail);
+    bool compile_call(const ast::node* root, bool tail);
+    bool validate_let_form(const ast::node* expr);
+    bool is_let_form(const ast::node* node);
+    bool compile_body(ast::node* const* exprs, u32 len, bool tail);
+    bool compile_within_body(const ast::node* expr, bool tail);
+
     bool compile_number(const ast::node* root);
     bool compile_string(const ast::node* root);
-    bool compile_sym(const ast::node* root);
-
-    bool compile_call(const ast::node* ast, bool tail);
+    bool compile_symbol(const ast::node* root);
+    bool compile_list(const ast::node* root, bool tail);
 
     bool compile(const ast::node* exprs, bool tail);
-    bool compile_body(ast::node* const* exprs, u32 len);
+    bool compile_function_body(ast::node* const* exprs, u32 len);
     bool compile_toplevel(const ast::node* root);
 
     // set an error

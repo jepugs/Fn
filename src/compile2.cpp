@@ -173,6 +173,9 @@ bool bc_compiler::compile_def(const ast::node* ast) {
         return false;
     }
     auto val = ast->datum.list[2];
+    if (!compile(val, false)) {
+        return false;
+    }
     emit8(OP_SET_GLOBAL);
     output->globals.push_back(bc_output_global{
                 .raw_name = name->datum.str_id,
@@ -180,55 +183,154 @@ bool bc_compiler::compile_def(const ast::node* ast) {
             });
     // placeholder for the global ID which will be patched by the interpreter.
     emit32(0);
+    --sp;
     return true;
 }
 
-// bool bc_compiler::compile_fn(const ast::node* ast) {
-//     // validate the arity of the fn form
-//     if (ast->list_length < 2) {
-//         compile_error(ast->loc, "fn requires a parameter list.");
-//         return false;
-//     }
+bool bc_compiler::compile_do(const ast::node* ast, bool tail) {
+    return compile_body(&ast->datum.list[1], ast->list_length-1, tail);
+}
 
-//     dyn_array<sst_id> pos_params;
-//     dyn_array<ast::node*> init_vals;
-//     bool has_vari;
-//     sst_id vari;
-//     if (!process_params(ast->datum.list[1], pos_params, init_vals,
-//                     has_vari, vari)) {
-//         return false;
-//     }
-//     // compile the child function
-//     bc_compiler_output child_out;
-//     bc_compiler child{child_out, this, *sst};
+bool bc_compiler::compile_fn(const ast::node* ast) {
+    // validate the arity of the fn form
+    if (ast->list_length < 2) {
+        compile_error(ast->loc, "fn requires a parameter list.");
+        return false;
+    }
 
-//     // set up arguments as local variables
-//     for (auto p : pos_params) {
-//         child.push_var(p);
-//         ++child.sp;
-//     }
-//     if (has_vari) {
-//         child.push_var(vari);
-//         ++child.sp;
-//     }
-//     // if (!child.compile_body(&ast->datum.list[2], ast->list_length - 2)) {
-//     //     return false;
-//     // }
+    dyn_array<sst_id> pos_params;
+    dyn_array<ast::node*> init_vals;
+    bool has_vari;
+    sst_id vari;
+    if (!process_params(ast->datum.list[1], pos_params, init_vals,
+                    has_vari, vari)) {
+        return false;
+    }
+    // compile the child function
+    bc_compiler_output child_out;
+    bc_compiler child{this, S, *sst, child_out};
 
-//     // code to create the function object
-//     auto save_sp = sp;
-//     for (auto x : init_vals) {
-//         if (!compile(x, false)) {
-//             return false;
-//         }
-//     }
-//     auto child_id = output->sub_funs.size;
-//     output->sub_funs.push_back(*child.output);
-//     emit8(OP_CLOSURE);
-//     emit16(child_id);
-//     sp = save_sp + 1;
-//     return true;
-// }
+    // set up arguments as local variables
+    for (auto p : pos_params) {
+        child.push_var(p);
+        ++child.sp;
+    }
+    if (has_vari) {
+        child.push_var(vari);
+        ++child.sp;
+    }
+    if (!child.compile_function_body(&ast->datum.list[2], ast->list_length - 2)) {
+        return false;
+    }
+
+    // code to create the function object
+    auto save_sp = sp;
+    for (auto x : init_vals) {
+        if (!compile(x, false)) {
+            return false;
+        }
+    }
+    auto child_id = output->sub_funs.size;
+    output->sub_funs.push_back(child_out);
+    emit8(OP_CLOSURE);
+    emit16(child_id);
+    sp = save_sp + 1;
+    return true;
+}
+
+bool bc_compiler::compile_symbol_list(const ast::node* root, bool tail) {
+    // if this is called, we're guaranteed that the list begins with a symbol
+    auto sym_id = intern(S, scanner_name(*sst,
+                    root->datum.list[0]->datum.str_id));
+    if (sym_id == cached_sym(S, SC_DEF)) {
+        return compile_def(root);
+    // } else if (sym_id == cached_sym(S, SC_DEFMACRO)) {
+    //     return compile_defmacro(root);
+    } else if (sym_id == cached_sym(S, SC_DO)) {
+        return compile_do(root, tail);
+    // } else if (sym_id == cached_sym(S, SC_IF)) {
+    //     return compile_if(root, tail);
+    // } else if (sym_id == cached_sym(S, SC_IMPORT)) {
+    //     return compile_import(root);
+    } else if (sym_id == cached_sym(S, SC_FN)) {
+        return compile_fn(root);
+    // } else if (sym_id == cached_sym(S, SC_LET)) {
+    //     return compile_let(root);
+    // } else if (sym_id == cached_sym(S, SC_QUOTE)) {
+    //     return compile_quote(root);
+    // } else if (sym_id == cached_sym(S, SC_SET)) {
+    //     return compile_set(root);
+    // } else {
+    //     return compile_call(root, tail);
+    }
+    return true;
+}
+
+bool bc_compiler::compile_body(ast::node* const* exprs, u32 len, bool tail) {
+    if (len == 0) {
+        emit8(OP_NIL);
+        return true;
+    }
+    u32 i;
+    for (i = 0; i < len - 1; ++i) {
+        if (!compile_within_body(exprs[i], false)) {
+            return false;
+        }
+        emit8(OP_POP);
+        --sp;
+    }
+    compile_within_body(exprs[i], tail);
+    return true;
+}
+
+bool bc_compiler::is_let_form(const ast::node* expr) {
+    return expr->kind == ast::ak_list && expr->list_length >= 2
+        && expr->datum.list[0]->kind == ast::ak_symbol
+        && intern(S, scanner_name(*sst, expr->datum.list[0]->datum.str_id))
+        == cached_sym(S, SC_LET);
+}
+
+bool bc_compiler::validate_let_form(const ast::node* expr) {
+    if ((expr->list_length & 1) != 1) {
+        compile_error(expr->loc, "let requires an even number of arguments.");
+        return false;
+    }
+    for (u32 i = 1; i < expr->list_length; i += 2) {
+        if (expr->datum.list[i]->kind != ast::ak_symbol) {
+            compile_error(expr->loc, "let names must be symbols.");
+            return false;
+        }
+    }
+    return true;
+}
+
+bool bc_compiler::compile_within_body(const ast::node* expr, bool tail) {
+    if (is_let_form(expr)) {
+        if (!validate_let_form(expr)) {
+            return false;
+        }
+        auto base_sp = sp;
+        for (u32 i = 1; i < expr->list_length; i+=2) {
+            auto str_id = expr->datum.list[i]->datum.str_id;
+            vars.push_back(lexical_var{str_id, sp});
+            emit8(OP_NIL);
+            ++sp;
+        }
+        for (u32 i = 2; i < expr->list_length; i+=2) {
+            compile(expr->datum.list[i], false);
+            emit8(OP_SET_LOCAL);
+            emit8(base_sp + (i / 2) - 1);
+            --sp;
+        }
+        emit8(OP_NIL);
+        ++sp;
+    } else {
+        if (!compile(expr, tail)) {
+            return false;
+        }
+    }
+    return true;
+}
 
 bool bc_compiler::compile_number(const ast::node* root) {
     // FIXME: technically we should check for constant ID overflow here
@@ -251,16 +353,80 @@ bool bc_compiler::compile_string(const ast::node* root) {
     return true;
 }
 
+bool bc_compiler::compile_symbol(const ast::node* root) {
+    auto sid = intern(S, scanner_name(*sst, root->datum.str_id));
+    if (sid == cached_sym(S, SC_YES)) {
+        emit8(OP_YES);
+        ++sp;
+    } else if (sid == cached_sym(S, SC_NO)) {
+        emit8(OP_NO);
+        ++sp;
+    } else if (sid == cached_sym(S, SC_NIL)) {
+        emit8(OP_NIL);
+        ++sp;
+    } else {
+        // variable lookup
+        u8 index;
+        if (find_local_var(index, root->datum.str_id)) {
+            emit8(OP_LOCAL);
+            emit8(index);
+            ++sp;
+        } else if (find_upvalue_var(index, root->datum.str_id)) {
+            emit8(OP_UPVALUE);
+            emit8(index);
+            ++sp;
+        } else {
+            emit8(OP_GLOBAL);
+            output->globals.push_back(bc_output_global{
+                        .raw_name = root->datum.str_id,
+                        .patch_addr = output->code.size
+                    });
+            // placeholder for global ID
+            emit32(0);
+            ++sp;
+        }
+    }
+    return true;
+}
+
+bool bc_compiler::compile_list(const ast::node* root, bool tail) {
+    if (root->list_length == 0) {
+        compile_error(root->loc, "Empty list is not a legal expression.");
+        return false;
+    }
+    if (root->datum.list[0]->kind == ast::ak_symbol) {
+        return compile_symbol_list(root, tail);
+    }
+    return true;
+}
+
+// TODO: track stack space required by each function
 bool bc_compiler::compile(const ast::node* root, bool tail) {
     switch (root->kind) {
     case ast::ak_number:
         return compile_number(root);
     case ast::ak_string:
         return compile_string(root);
+    case ast::ak_symbol:
+        return compile_symbol(root);
+    case ast::ak_list:
+        return compile_list(root, tail);
     default:
         compile_error(root->loc, "Unsupported form sorry\n");
         return false;
     }
+    return true;
+}
+
+bool bc_compiler::compile_function_body(ast::node* const* exprs, u32 len) {
+    if (len == 0) {
+        emit8(OP_NIL);
+        ++sp;
+    }
+    if (!compile_body(exprs, len, true)) {
+        return false;
+    }
+    emit8(OP_RETURN);
     return true;
 }
 

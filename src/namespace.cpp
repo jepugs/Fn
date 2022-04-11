@@ -27,6 +27,19 @@ symbol_id resolve_sym(istate* S, symbol_id ns_id, symbol_id name) {
     }
 }
 
+u32 get_global_id(istate* S, symbol_id fqn) {
+    auto e = S->G->def_tab.get2(fqn);
+    if (e) {
+        return e->val;
+    } else {
+        auto id = S->G->def_ids.size;
+        S->G->def_ids.push_back(id);
+        S->G->def_tab.insert(fqn, id);
+        S->G->def_arr.push_back(V_UNIN);
+        return id;
+    }
+}
+
 bool push_global(istate* S, symbol_id fqn) {
     auto res = S->G->def_tab.get2(fqn);
     if (!res) {
