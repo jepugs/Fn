@@ -26,6 +26,7 @@ bc_compiler::bc_compiler(bc_compiler* parent, istate* S,
     , sp{0}
     , output{&output} {
     output.sst = &sst;
+    output.name_id = scanner_intern(sst, "<toplevel>");
     output.stack_required = 0;
     output.num_opt = 0;
     output.has_vari = false;
@@ -167,6 +168,58 @@ bool bc_compiler::process_params(const ast::node* params,
     return true;
 }
 
+ast::node* bc_compiler::macroexpand(const ast::node* macro_form) {
+    if (macro_form->kind != ast::ak_list) {
+        return nullptr;
+    } else if (macro_form->list_length == 0) {
+        return nullptr;
+    } else if (macro_form->datum.list[0]->kind != ast::ak_symbol) {
+        return nullptr;
+    }
+
+    auto name = scanner_name(*sst, macro_form->datum.list[0]->datum.str_id);
+    auto fqn = resolve_sym(S, S->ns_id, intern(S, name));
+    if (push_macro(S, fqn)) {
+        for (u32 i = 1; i < macro_form->list_length; ++i) {
+            push_quoted(S, *sst, macro_form->datum.list[i]);
+        }
+        call(S, macro_form->list_length - 1);
+        if (has_error(S)) {
+            return nullptr;
+        }
+    } else {
+        return nullptr;
+    }
+    ast::node* form;
+    pop_syntax(form, S, *sst);
+    while (true) {
+        if (form->kind != ast::ak_list) {
+            break;
+        } else if (form->list_length == 0) {
+            break;
+        } else if (form->datum.list[0]->kind != ast::ak_symbol) {
+            break;
+        }
+        name = scanner_name(*sst, form->datum.list[0]->datum.str_id);
+        fqn = resolve_sym(S, S->ns_id, intern(S, name));
+        if (push_macro(S, fqn)) {
+            for (u32 i = 1; i < form->list_length; ++i) {
+                push_quoted(S, *sst, form->datum.list[i]);
+            }
+            call(S, form->list_length - 1);
+            ast::free_graph(form);
+            if (has_error(S)) {
+                return nullptr;
+            }
+            pop_syntax(form, S, *sst);
+        } else {
+            break;
+        }
+    }
+
+    return form;
+}
+
 bool bc_compiler::compile_def(const ast::node* ast) {
     // validate the def form
     if (ast->list_length != 3) {
@@ -208,6 +261,7 @@ bool bc_compiler::compile_sub_fun(const ast::node* params,
     bc_compiler child{this, S, *sst, child_out};
     // FIXME: incorporate function name into compiler output
 
+    child_out.name_id = scanner_intern(*sst, name);
     // set up arguments as local variables
     for (auto p : pos_params) {
         child_out.params.push_back(p);
@@ -249,15 +303,18 @@ bool bc_compiler::compile_defmacro(const ast::node* ast) {
         return false;
     }
     auto name_id = ast->datum.list[1]->datum.str_id;
+    // resolve the full symbol name
+    auto sid = intern(S, scanner_name(*sst, name_id));
+    auto fqn = resolve_sym(S, S->ns_id, sid);
     // TODO: check name legality
     if (!compile_sub_fun(ast->datum.list[2], &ast->datum.list[3],
-                    ast->list_length - 3, scanner_name(*sst, name_id))) {
+                    ast->list_length - 3, "#macro:" + symname(S, fqn))) {
         return false;
     }
 
     bc_output_const k;
     k.kind = bck_symbol;
-    k.d.str_id = name_id;
+    k.d.str_id = scanner_intern(*sst, symname(S, fqn));
     auto cid = output->const_table.size;
     output->const_table.push_back(k);
     emit8(OP_SET_MACRO);
@@ -358,8 +415,27 @@ bool bc_compiler::compile_fn(const ast::node* ast) {
     return true;
 }
 
+bool bc_compiler::compile_quote(const ast::node* root) {
+    if (root->list_length != 2) {
+        compile_error(root->loc, "quote requires exactly one argument.");
+        return false;
+    }
+
+    auto cid = output->const_table.size;
+    output->const_table.push_back(
+            bc_output_const{
+                bck_quoted,
+                {.quoted = root->datum.list[1]}
+            });
+    emit8(OP_CONST);
+    emit16(cid);
+    ++sp;
+    return true;
+}
+
 bool bc_compiler::compile_symbol_list(const ast::node* root, bool tail) {
     // if this is called, we're guaranteed that the list begins with a symbol
+
     auto sym_id = intern(S, scanner_name(*sst,
                     root->datum.list[0]->datum.str_id));
     if (sym_id == cached_sym(S, SC_DEF)) {
@@ -376,8 +452,8 @@ bool bc_compiler::compile_symbol_list(const ast::node* root, bool tail) {
         return compile_fn(root);
     // } else if (sym_id == cached_sym(S, SC_LET)) {
     //     return compile_let(root);
-    // } else if (sym_id == cached_sym(S, SC_QUOTE)) {
-    //     return compile_quote(root);
+    } else if (sym_id == cached_sym(S, SC_QUOTE)) {
+        return compile_quote(root);
     // } else if (sym_id == cached_sym(S, SC_SET)) {
     //     return compile_set(root);
     } else {
@@ -451,8 +527,17 @@ bool bc_compiler::validate_let_form(const ast::node* expr) {
 }
 
 bool bc_compiler::compile_within_body(const ast::node* expr, bool tail) {
+    bool did_expand = false;
+    auto expanded = macroexpand(expr);
+    if (expanded) {
+        did_expand = true;
+        expr = expanded;
+    }
     if (is_let_form(expr)) {
         if (!validate_let_form(expr)) {
+            if (did_expand) {
+                ast::free_graph(expanded);
+            }
             return false;
         }
         auto base_sp = sp;
@@ -483,8 +568,14 @@ bool bc_compiler::compile_within_body(const ast::node* expr, bool tail) {
         }
     } else {
         if (!compile(expr, tail)) {
+            if (did_expand) {
+                ast::free_graph(expanded);
+            }
             return false;
         }
+    }
+    if (did_expand) {
+        ast::free_graph(expanded);
     }
     return true;
 }
@@ -564,6 +655,10 @@ bool bc_compiler::compile_list(const ast::node* root, bool tail) {
 
 // TODO: track stack space required by each function
 bool bc_compiler::compile(const ast::node* root, bool tail) {
+    auto expanded = macroexpand(root);
+    if (expanded) {
+        root = expanded;
+    }
     switch (root->kind) {
     case ast::ak_number:
         return compile_number(root);
@@ -576,6 +671,9 @@ bool bc_compiler::compile(const ast::node* root, bool tail) {
     default:
         compile_error(root->loc, "Unsupported form sorry\n");
         return false;
+    }
+    if (expanded) {
+        ast::free_graph(expanded);
     }
     return true;
 }

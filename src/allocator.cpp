@@ -218,7 +218,7 @@ static void reify_bc_const(istate* S, const scanner_string_table& sst,
         push_sym(S, intern(S, scanner_name(sst, k.d.str_id)));
         break;
     case bck_quoted:
-        // TODO:
+        push_quoted(S, sst, k.d.quoted);
         return;
     }
 }
@@ -304,6 +304,11 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
             compiled.num_upvals * sizeof(bool));
     memcpy(h->obj->ci_arr, compiled.ci_arr.data,
             compiled.ci_arr.size * sizeof(code_info));
+
+    // set the function name
+    push_string(S, scanner_name(sst, compiled.name_id));
+    h->obj->name = vstring(peek(S));
+    pop(S);
 
     return h;
 }

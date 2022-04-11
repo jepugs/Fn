@@ -61,6 +61,7 @@ struct bc_output_global {
 struct bc_compiler_output {
     // the string table used to build this object (weak reference)
     scanner_string_table* sst;
+    sst_id name_id;
 
     // code and constants
     dyn_array<u8> code;
@@ -155,12 +156,14 @@ private:
     bool process_params(const ast::node* params, dyn_array<sst_id>& pos_params,
             dyn_array<ast::node*>& init_vals, bool& has_vari, sst_id& vari);
 
-    // expand macros
-    ast::node* macroexpand(const ast::node* macro_form, bool tail);
+    // expand macros. macro_form must be a list of length >= 1
+    ast::node* macroexpand(const ast::node* macro_form);
 
     // Compile special forms. Note that cond, defn, dollar-fn, letfn, and
     // quasiquote are not compiled directly here. These are implemented as
-    // macros.
+    // macros. Each root argument must be a symbol list of length >= 1
+    // representing the relevant special form (although the operator is not
+    // checked, as it is presumed to have been checked previously).
     bool compile_def(const ast::node* root);
     bool compile_defmacro(const ast::node* root);
     bool compile_do(const ast::node* root, bool tail);

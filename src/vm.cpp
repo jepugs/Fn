@@ -103,7 +103,13 @@ static inline bool arrange_call_stack(istate* S, u32 n) {
     auto vari = S->callee->stub->vari;
     u32 min_args = num_params - num_opt;
     if (n < min_args) {
-        ierror(S, "Too few arguments in function call.");
+        std::ostringstream os;
+        os << "Too few arguments in call to function";
+        if (S->callee && S->callee->stub->name) {
+            os << " " << convert_fn_string(S->callee->stub->name);
+        }
+        os << ".";
+        ierror(S, os.str());
         return false;
     } else if (n > num_params) {
         // handle variadic parameter

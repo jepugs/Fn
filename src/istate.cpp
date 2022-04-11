@@ -132,6 +132,64 @@ void pop_to_list(istate* S, u32 n) {
     S->sp -= n;
 }
 
+void push_quoted(istate* S, const scanner_string_table& sst,
+        const ast::node* root) {
+    switch (root->kind) {
+    case ast::ak_number:
+        push_number(S, root->datum.num);
+        break;
+    case ast::ak_string:
+        push_string(S, scanner_name(sst, root->datum.str_id));
+        break;
+    case ast::ak_symbol:
+        push_sym(S, intern(S, scanner_name(sst, root->datum.str_id)));
+        break;
+    case ast::ak_list:
+        for (u32 i = 0; i < root->list_length; ++i) {
+            push_quoted(S, sst, root->datum.list[i]);
+        }
+        pop_to_list(S, root->list_length);
+        break;
+    }
+}
+
+bool pop_syntax(ast::node*& result, istate* S, scanner_string_table& sst) {
+    auto v = peek(S);
+    // FIXME: get the source loc from the person asking to pop syntax
+    source_loc loc{0, 0};
+    if (vis_number(v)) {
+        result = ast::mk_number(loc, vnumber(peek(S)));
+    } else if (vis_string(v)) {
+        result = ast::mk_string(loc,
+                scanner_intern(sst, convert_fn_string(vstring(v))));
+    } else if (vis_symbol(v)) {
+        result = ast::mk_symbol(loc,
+                scanner_intern(sst, symname(S, vsymbol(v))));
+    } else if (vis_emptyl(v)) {
+        result = ast::mk_list(loc, 0, nullptr);
+    } else if (vis_cons(v)) {
+        dyn_array<ast::node*> buf;
+        auto lst = v;
+        while(!vis_emptyl(lst)) {
+            push(S, vhead(lst));
+            ast::node* sub;
+            if (!pop_syntax(sub, S, sst)) {
+                for (auto n : buf) {
+                    ast::free_graph(n);
+                }
+                return false;
+            }
+            buf.push_back(sub);
+            lst = vtail(lst);
+        }
+        result = ast::mk_list(loc, buf);
+    } else {
+        return false;
+    }
+    pop(S);
+    return true;
+}
+
 // void push_foreign_fun(istate* S,
 //         void (*foreign)(istate*),
 //         const string& name,

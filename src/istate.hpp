@@ -121,6 +121,12 @@ void push_table(istate* S);
 // create a list from the top n elements of the stack
 void pop_to_list(istate* S, u32 n);
 
+// convert an AST to an fn value
+void push_quoted(istate* S, const scanner_string_table& sst,
+        const ast::node* root);
+// convert an Fn value to an ast form
+bool pop_syntax(ast::node*& result, istate* S, scanner_string_table& sst);
+
 // perform a function call of n arguments, (default 0). The calling convention
 // is to put the function on the bottom followed by the arguments in order, so
 // the last argument is on top of the stack.
