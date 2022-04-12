@@ -32,29 +32,29 @@
 
 (defn lhead (l)
   (head ((. l 'force))))
-(defn ('head Lazy-List) (self)
-  (lhead self))
+; (defn ('head Lazy-List) (self)
+;   (lhead self))
 
 (defn ltail (l)
   (nth 1 ((. l 'force))))
-(defn ('tail Lazy-List) (self)
-  (ltail self))
+; (defn ('tail Lazy-List) (self)
+;   (ltail self))
 
-(defn ('map Lazy-List) (self fun)
-  (if (lempty? lazy)
-      (list->lazy [])
-      (Lazy-List
-       $[(fun (lhead lazy))
-         (lmap fun (ltail lazy))])))
+; (defn ('map Lazy-List) (self fun)
+;   (if (lempty? lazy)
+;       (list->lazy [])
+;       (Lazy-List
+;        (fn () [(fun (lhead lazy))
+;                (lmap fun (ltail lazy))]))))
 
-(defn ('filter Lazy-List) (self fun)
-  (lfilter fun self))
+; (defn ('filter Lazy-List) (self fun)
+;   (lfilter fun self))
 
 (defn list->lazy (list)
   (if (empty? list)
       (Lazy-List (fn () nil))
-      (Lazy-List $[(head list)
-                   (list->lazy (tail list))])))
+      (Lazy-List (fn () [(head list)
+                         (list->lazy (tail list))]))))
 
 (defn reverse (list)
   (letfn iter (acc l)
@@ -79,8 +79,8 @@
   (if (lempty? l1)
       l2
       (Lazy-List
-       $[(lhead l1)
-         (lconcat (ltail l1) l2)])))
+       (fn () [(lhead l1)
+               (lconcat (ltail l1) l2)]))))
 
 (defn ltake (n lazy)
   (letfn iter (acc m rem)
@@ -108,28 +108,28 @@
            (lempty? rem) rem
            (pred (lhead rem))
            (lcons (lhead rem)
-                  (Lazy-List $(unbox-lazy (next (ltail rem)))))
+                  (Lazy-List (fn () (unbox-lazy (next (ltail rem))))))
            yes (next (ltail rem))))
   (next lazy))
 
 (def N>=0
-  (with (next-int
-         $(Lazy-List (fn ()
-                       [$0 (next-int (+ $0 1))])))
+  (do 
+    (let next-int
+         (fn (x) (Lazy-List
+                  (fn () [x (next-int (+ x 1))]))))
     (next-int 0)))
 
 ; (list->lazy [1 2 3 4])
 
 (do
   (let init-primes (list->lazy [2 3 5 7])
-       candidates
-       (with (next-pair
-              (fn (x)
-                (Lazy-List
-                 $[(- (* 6 x) 1)
-                   (lcons (+ (* 6 x) 1)
-                          (next-pair (+ x 1)))])))
-         (next-pair 2)))
+       next-pair
+       (fn (x)
+         (Lazy-List
+          (fn () [(- (* 6 x) 1)
+                  (lcons (+ (* 6 x) 1)
+                         (next-pair (+ x 1)))])))
+       candidates (next-pair 2))
   (letfn prime-test? (x)
     (let max (ceil (** x 0.5)))
     (letfn iter (rem)
@@ -150,4 +150,6 @@
       (lhead l)
       (lnth (- n 1) (ltail l))))
 
+; (lnth 9 primes)
 (lnth 99999 primes)
+; (lnth 5 N>=0)

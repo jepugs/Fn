@@ -295,13 +295,12 @@ fn_fun(mod, "mod", "(x modulus)") {
 
 fn_fun(Table, "Table", "(& args)") {
     push_table(S);
-    auto res = vtable(peek(S));
     for (u32 i = S->bp; i+1 < S->sp; i += 2) {
         if (i + 2 == S->sp) {
             ierror(S, "Table requires an even number of arguments.");
             return;
         }
-        table_set(S, res, S->stack[i], S->stack[i+1]);
+        table_set(S, vtable(peek(S)), S->stack[i], S->stack[i+1]);
     }
 }
 

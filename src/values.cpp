@@ -112,23 +112,20 @@ string v_to_string(value v, const symbol_table* symbols, bool code_format) {
         }
     case TAG_TABLE:
         {   // TODO: recursively print objects
-            //t = vtable(v);
-            // auto keys = t->contents.keys();
-            // if (keys.empty()) {
-            //     return "{}";
-            // }
-            // res = "{";
-            // auto k = keys.front();
-            // res += v_to_string(k,symbols,code_format) + " "
-            //     + v_to_string(*t->contents.get(k),symbols,code_format);
-            // keys.pop_front();
-            // for (auto k : keys) {
-            //     res += " " + v_to_string(k,symbols) + " "
-            //         + v_to_string(*t->contents.get(k),symbols,code_format);
-            // }
-            // return res + "}";
-            return "{}";
+            t = vtable(v);
+            res += "{";
+            auto arr = (value*)t->data->data;
+            for (u32 i = 0; i < t->cap; ++i) {
+                if (arr[2*i] != V_UNIN) {
+                    res += v_to_string(arr[2*i], symbols, code_format);
+                    res += " ";
+                    res += v_to_string(arr[2*i+1], symbols, code_format);
+                    res += " ";
+                }
+            }
+            res += "}";
         }
+        return res;
     case TAG_FUNC:
         return "<function>";
     case TAG_NIL:

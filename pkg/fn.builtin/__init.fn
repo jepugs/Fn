@@ -30,9 +30,44 @@
 
 (def println int:println)
 
-(defn not (p)
-  (if p no yes))
+(def not
+     (fn (p)
+       (if p no yes)))
 
+; foldl is needed early to bootstrap some other functions
+(def foldl
+  (fn (f init list)
+    (let iter
+         (fn (acc rem)
+           (if (empty? rem)
+               acc
+               (iter (f acc (head rem))
+                     (tail rem)))))
+    (iter init list)))
+
+(def List
+     (set-metatable
+      {'__call (fn (self & args) args)}
+      {}))
+
+(int:def-list-meta List)
+
+(def reverse
+  (fn (list)
+    (foldl (fn (x y) (cons y x)) [] list)))
+
+(def length
+  (fn (list)
+    (foldl (fn (l r) (+ l 1)) 0 list)))
+
+(def concat
+  (fn (& lists)
+    (let concat2
+         (fn (l r)
+           (foldl (fn (x y) (cons y x)) r (reverse l))))
+    (foldl (fn (x y) (concat2 y x)) [] (reverse lists))))
+
+(require "./special.fn")
 (require "./list.fn")
-(require "./quasiquote.fn")
+; (require "./quasiquote.fn")
 

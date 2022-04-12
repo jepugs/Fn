@@ -36,14 +36,25 @@ enum bc_constant_kind {
     bck_quoted
 };
 
-// used by the bytecode compiler to represent an entry in the constant table
+// used by the bytecode compiler to represent an entry in the constant table.
+// These manage the lifetime of the associated ast::node* object
 struct bc_output_const {
     bc_constant_kind kind;
-    union {
+    using datum = union {
         f64 num;
         sst_id str_id;
         ast::node* quoted;      // danger! this is a weak reference
-    } d;
+    };
+    datum d;
+
+    bc_output_const(bc_constant_kind kind, datum d);
+    bc_output_const(const bc_output_const& other);
+    // explicit copy constructor is needed here since we have to drop ownership
+    // of the ast::node
+    bc_output_const(bc_output_const&& other) noexcept;
+    bc_output_const& operator=(const bc_output_const&) = delete;
+    bc_output_const& operator=(bc_output_const&&) = delete;
+    ~bc_output_const();
 };
 
 // used by the bytecode compiler to represent a global variable
@@ -175,6 +186,11 @@ private:
     bool compile_quote(const ast::node* root);
     bool compile_set(const ast::node* root);
 
+    // these are technically functions, but we provide special compiler
+    // optimizations for them
+    bool compile_apply(const ast::node* apply, bool tail);
+    bool compile_dot(const ast::node* root);
+
     // compile a constant symbol
     bool compile_const_symbol(sst_id str_id);
     // compile a subordinate function. This involves creating a child
@@ -186,6 +202,7 @@ private:
     bool compile_call(const ast::node* root, bool tail);
     bool validate_let_form(const ast::node* expr);
     bool is_do_inline_form(const ast::node* node);
+    bool is_dot_form(const ast::node* node);
     bool is_let_form(const ast::node* node);
     bool compile_body(const ast::node** exprs, u32 len, bool tail);
     // compile a form within a body. This accounts for let and do-inline forms.

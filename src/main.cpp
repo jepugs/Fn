@@ -1,5 +1,5 @@
 #include "base.hpp"
-//#include "builtin.hpp"
+#include "builtin.hpp"
 #include "bytes.hpp"
 #include "compile2.hpp"
 #include "table.hpp"
@@ -143,10 +143,11 @@ int main(int argc, char** argv) {
     }
 
     auto S = init_istate();
-    // install_builtin(S);
+    install_builtin(S);
     if (has_error(S)) {
         std::cout << "Error: " << *S->err.message << '\n';
         print_stack_trace(S);
+        free_istate(S);
         return -1;
     }
 

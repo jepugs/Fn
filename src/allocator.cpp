@@ -168,6 +168,7 @@ fn_string* create_string(istate* S, const string& str) {
 }
 
 void alloc_string(istate* S, u32 where, const string& str) {
+    // collect(S);
     auto len = str.size();
     auto sz = round_to_align(sizeof(fn_string) + len + 1);
     auto res = (fn_string*)get_bytes_eden(S->alloc, sz);
@@ -291,7 +292,7 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
         reify_bc_const(S, sst, compiled.const_table[i]);
         h->obj->const_arr[i] = peek(S);
         pop(S);
-        ++h->obj->ci_length;
+        ++h->obj->num_const;
     }
     for (u32 i = 0; i < compiled.sub_funs.size; ++i) {
         auto h2 = gen_function_stub(S, sst, compiled.sub_funs[i]);
@@ -364,14 +365,29 @@ void alloc_foreign_fun(istate* S,
         res->upvals[i] = alloc_closed_upval(S);
         res->upvals[i]->closed = true;
     }
-    res->stub = (function_stub*)get_bytes_eden(S->alloc, sizeof(function_stub));
+    auto stub_sz = round_to_align(sizeof(function_stub) + sizeof(code_info));
+    res->stub = (function_stub*)get_bytes_eden(S->alloc, stub_sz);
+    init_gc_header(&res->stub->h, GC_TYPE_FUN_STUB, stub_sz);
     res->stub->num_upvals = num_upvals;
-    res->stub->name = nullptr;
     res->stub->name = vstring(peek(S));
     pop(S);
+    res->stub->filename = S->filename;
     res->stub->foreign = foreign;
     res->stub->num_params = num_params;
     res->stub->vari = vari;
+
+    res->stub->code_length = 0;
+    res->stub->num_const = 0;
+    res->stub->num_opt = 0;
+    res->stub->num_sub_funs = 0;
+    res->stub->ci_length = 1;
+    res->stub->ci_arr = (code_info*)raw_ptr_add(res->stub,
+            sizeof(function_stub));
+    res->stub->ci_arr[0] = code_info{
+        0,
+        source_loc{0, 0}
+    };
+
     // FIXME: allocate foreign fun upvals
     S->stack[where] = vbox_function(res);
 }
@@ -524,7 +540,26 @@ static gc_header* move_object(istate* S, gc_header* obj) {
                 + stub->num_opt * sizeof(value) + (u8*)f);
     }
         break;
-    case GC_TYPE_FUN_STUB:
+    case GC_TYPE_FUN_STUB: {
+        // FIXME: lotsa pointers to update here...
+        auto s = (function_stub*)obj;
+        auto code_sz = round_to_align(s->code_length);
+        auto const_sz = sizeof(value) * s->num_const;
+        auto sub_funs_sz = sizeof(function_stub*) * s->num_sub_funs;
+        auto upvals_sz = sizeof(upvalue_cell*) * s->num_upvals;
+        auto upvals_direct_sz = round_to_align(sizeof(bool) * s->num_upvals);
+        s->code = (u8*)raw_ptr_add(s, sizeof(function_stub));
+        s->const_arr = (value*)raw_ptr_add(s, sizeof(function_stub) + code_sz);
+        s->sub_funs = (function_stub**)raw_ptr_add(s, sizeof(function_stub)
+                + code_sz + const_sz);
+        s->upvals = (u8*)raw_ptr_add(s, sizeof(function_stub) + code_sz + const_sz
+                + sub_funs_sz);
+        s->upvals_direct = (bool*)raw_ptr_add(s, sizeof(function_stub) + code_sz
+                + const_sz + sub_funs_sz + upvals_sz);
+        s->ci_arr = (code_info*)raw_ptr_add(s, sizeof(function_stub) + code_sz
+                + const_sz + sub_funs_sz + upvals_sz + upvals_direct_sz);
+    }
+        
         break;
     }
     return obj;
@@ -620,8 +655,12 @@ static void trace_object(gc_header* obj, dyn_array<gc_header**>* hdr_q,
             trace_value_ref(&s->const_arr[i], val_q, obj, level);
         }
         // metadata
-        trace_obj_ref((gc_header**)&s->name, hdr_q, obj, level);
-        trace_obj_ref((gc_header**)&s->filename, hdr_q, obj, level);
+        if (s->name) {
+            trace_obj_ref((gc_header**)&s->name, hdr_q, obj, level);
+        }
+        if (s->filename) {
+            trace_obj_ref((gc_header**)&s->filename, hdr_q, obj, level);
+        }
     }
         break;
     case GC_TYPE_UPVALUE: {

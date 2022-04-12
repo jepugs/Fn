@@ -246,6 +246,23 @@ ast::node* parse_next_node(istate* S, scanner& sc, bool* resumable) {
     return res;
 }
 
+dyn_array<ast::node*> parse_string(istate* S, scanner_string_table& sst,
+        const string& str) {
+    std::istringstream is{str};
+    scanner sc{sst, is};
+    bool resumable;
+    dyn_array<ast::node*> res;
+    while (!sc.eof_skip_ws()) {
+        auto form = parse_next_node(S, sc, &resumable);
+        if (form) {
+            res.push_back(form);
+        } else {
+            break;
+        }
+    }
+    return res;
+}
+
 ast::node* pop_syntax(istate* S, scanner_string_table& sst,
         const source_loc& loc) {
     auto v = peek(S);

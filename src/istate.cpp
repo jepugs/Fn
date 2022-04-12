@@ -197,41 +197,41 @@ bool pop_syntax(ast::node*& result, istate* S, scanner_string_table& sst) {
     return true;
 }
 
-// void push_foreign_fun(istate* S,
-//         void (*foreign)(istate*),
-//         const string& name,
-//         const string& params) {
-//     scanner_string_table sst;
-//     auto forms = parse_string(S, sst, params);
-//     if (has_error(S)) {
-//         for (auto f : forms) {
-//             ast::free_graph(f);
-//         }
-//         return;
-//     }
-//     auto& p = forms[0];
-//     if (p->kind != ast::ak_list) {
+void push_foreign_fun(istate* S,
+        void (*foreign)(istate*),
+        const string& name,
+        const string& params) {
+    scanner_string_table sst;
+    auto forms = parse_string(S, sst, params);
+    if (has_error(S)) {
+        for (auto f : forms) {
+            ast::free_graph(f);
+        }
+        return;
+    }
+    auto& p = forms[0];
+    if (p->kind != ast::ak_list) {
 
-//         ierror(S, "Malformed parameter list for foreign function.");
-//         return;
-//     }
-//     u8 num_args = p->list_length;
-//     bool vari = false;
-//     // check for var arg
-//     if (num_args >= 2) {
-//         auto x = p->datum.list[num_args - 2];
-//         if (x->kind == ast::ak_symbol
-//                 && scanner_name(sst, x->datum.str_id) == "&") {
-//             vari = true;
-//             num_args -= 2;
-//         }
-//     }
-//     for (auto f : forms) {
-//         ast::free_graph(f);
-//     }
-//     push_nil(S);
-//     alloc_foreign_fun(S, S->sp - 1, foreign, num_args, vari, 0, name);
-// }
+        ierror(S, "Malformed parameter list for foreign function.");
+        return;
+    }
+    u8 num_args = p->list_length;
+    bool vari = false;
+    // check for var arg
+    if (num_args >= 2) {
+        auto x = p->datum.list[num_args - 2];
+        if (x->kind == ast::ak_symbol
+                && scanner_name(sst, x->datum.str_id) == "&") {
+            vari = true;
+            num_args -= 2;
+        }
+    }
+    for (auto f : forms) {
+        ast::free_graph(f);
+    }
+    push_nil(S);
+    alloc_foreign_fun(S, S->sp - 1, foreign, num_args, vari, 0, name);
+}
 
 void print_top(istate* S) {
     std::cout << v_to_string(peek(S), S->symtab, true) << '\n';
@@ -243,8 +243,8 @@ void print_stack_trace(istate* S) {
     for (auto& f : S->stack_trace) {
         if (f.callee) {
             if (f.callee->stub->foreign) {
-                os << "  File " << convert_fn_string(f.callee->stub->filename)
-                   << " in foreign function "
+                os //<< "  File " << convert_fn_string(f.callee->stub->filename)
+                   << "  In foreign function "
                    << convert_fn_string(f.callee->stub->name) << '\n';
             } else {
                 auto c = instr_loc(f.callee->stub, f.pc);
@@ -280,26 +280,28 @@ void interpret_stream(istate* S, std::istream* in) {
                 == cached_sym(S, SC_NAMESPACE)) {
             switch_ns(S, intern(S, scanner_name(sst,
                                     form0->datum.list[1]->datum.str_id)));
+            ast::free_graph(form0);
         } else {
             if (has_error(S)) {
+                ast::free_graph(form0);
                 return;
             }
             pop(S);
             bc_compiler_output bco;
-            auto root = form0;
-            if (root == nullptr) {
+            if (form0 == nullptr) {
+                ast::free_graph(form0);
                 return;
             }
-            compile_to_bytecode(bco, S, sst, root);
+            compile_to_bytecode(bco, S, sst, form0);
             reify_function(S, sst, bco);
-            ast::free_graph(root);
+            ast::free_graph(form0);
             if (has_error(S)) {
                 return;
             }
             // TODO: add a hook here to disassemble code
-            disassemble_top(S, true);
-            print_top(S);
-            pop(S);
+            // disassemble_top(S, true);
+            // print_top(S);
+            // pop(S);
             call(S, 0);
             if (has_error(S)) {
                 return;
@@ -313,9 +315,9 @@ void interpret_stream(istate* S, std::istream* in) {
             return;
         }
         // TODO: add a hook here to disassemble code
-        disassemble_top(S, true);
-        print_top(S);
-        pop(S);
+        // disassemble_top(S, true);
+        // print_top(S);
+        // pop(S);
         call(S, 0);
         if (has_error(S)) {
             return;
@@ -349,7 +351,7 @@ bool load_file(istate* S, const string& pathname) {
 bool load_file_or_package(istate* S, const string& pathname) {
     fs::path p = fs::path{convert_fn_string(S->wd)} / pathname;
     if (!fs::exists(p)) {
-        ierror(S, "load_package_or_file() failed. File doesn't exist: " + p.string());
+        ierror(S, "load_file_or_package() failed. File doesn't exist: " + p.string());
         return false;
     }
     if (fs::is_directory(p)) {

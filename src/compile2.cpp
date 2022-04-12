@@ -2,6 +2,33 @@
 
 namespace fn {
 
+bc_output_const::bc_output_const(bc_constant_kind kind, bc_output_const::datum d)
+    : kind{kind}
+    , d{d} {
+}
+
+bc_output_const::bc_output_const(const bc_output_const& other)
+    : kind{other.kind} {
+    if (kind == bck_quoted) {
+        d.quoted = ast::copy_graph(other.d.quoted);
+    } else {
+        d = other.d;
+    }
+}
+
+bc_output_const::bc_output_const(bc_output_const&& other) noexcept
+    : kind{other.kind}
+    , d{other.d} {
+    // this ensures no deallocation is done
+    other.kind = bck_number;
+}
+
+bc_output_const::~bc_output_const() {
+    if (kind == bck_quoted) {
+        ast::free_graph(d.quoted);
+    }
+}
+
 static bool is_legal_local_name(const string& str) {
     // name cannot be empty, begin with a hash or contain a colon
     if (str.empty()) {
@@ -249,8 +276,8 @@ bool bc_compiler::compile_def(const ast::node* ast) {
 bool bc_compiler::compile_const_symbol(sst_id str_id) {
     auto cid = output->const_table.size;
     output->const_table.push_back(bc_output_const{
-                .kind = bck_symbol,
-                .d = { .str_id = str_id }
+                bck_symbol,
+                { .str_id = str_id }
             });
     emit8(OP_CONST);
     emit16(cid);
@@ -324,11 +351,11 @@ bool bc_compiler::compile_defmacro(const ast::node* root) {
         return false;
     }
 
-    bc_output_const k;
-    k.kind = bck_symbol;
-    k.d.str_id = scanner_intern(*sst, symname(S, fqn));
     auto cid = output->const_table.size;
-    output->const_table.push_back(k);
+    output->const_table.push_back(bc_output_const{
+                bck_symbol,
+                { .str_id = scanner_intern(*sst, symname(S, fqn))}
+            });
     emit8(OP_SET_MACRO);
     emit16(cid);
 
@@ -415,47 +442,6 @@ bool bc_compiler::compile_fn(const ast::node* root) {
     compile_sub_fun(root->datum.list[1],
             (const ast::node**)&root->datum.list[2], root->list_length - 2, "");
 
-    dyn_array<sst_id> pos_params;
-    dyn_array<ast::node*> init_vals;
-    bool has_vari;
-    sst_id vari;
-    if (!process_params(root->datum.list[1], pos_params, init_vals,
-                    has_vari, vari)) {
-        return false;
-    }
-    // compile the child function
-    bc_compiler_output child_out;
-    bc_compiler child{this, S, *sst, child_out};
-
-    // set up arguments as local variables
-    for (auto p : pos_params) {
-        child_out.params.push_back(p);
-        child.push_var(p);
-        ++child.sp;
-    }
-    if (has_vari) {
-        child_out.has_vari = true;
-        child_out.vari_param = vari;
-        child.push_var(vari);
-        ++child.sp;
-    }
-    if (!child.compile_function_body((const ast::node**)&root->datum.list[2],
-                    root->list_length - 2)) {
-        return false;
-    }
-
-    // code to create the function object
-    auto save_sp = sp;
-    for (auto x : init_vals) {
-        if (!compile(x, false)) {
-            return false;
-        }
-    }
-    auto child_id = output->sub_funs.size;
-    output->sub_funs.push_back(child_out);
-    emit8(OP_CLOSURE);
-    emit16(child_id);
-    sp = save_sp + 1;
     return true;
 }
 
@@ -473,7 +459,7 @@ bool bc_compiler::compile_quote(const ast::node* root) {
     output->const_table.push_back(
             bc_output_const{
                 bck_quoted,
-                {.quoted = root->datum.list[1]}
+                {.quoted = ast::copy_graph(root->datum.list[1])}
             });
     emit8(OP_CONST);
     emit16(cid);
@@ -506,17 +492,68 @@ bool bc_compiler::compile_set(const ast::node* root) {
             compile_error(root->loc, "Illegal symbol name in set!");
             return false;
         }
+    } else if (is_dot_form(target)) {
+        // compile the key
+        if (!compile(target->datum.list[1], false)) {
+            return false;
+        }
+        u32 i;
+        for (i = 2; i < target->list_length - 1; ++i) {
+            if (!compile(target->datum.list[i], false)) {
+                return false;
+            }
+            emit8(OP_OBJ_GET);
+            --sp;
+        }
+        if (!compile(target->datum.list[i], false)
+                || !compile(val, false)) {
+            return false;
+        }
+        emit8(OP_OBJ_SET);
+        emit8(OP_NIL);
+        --sp;
     }
     // TODO: check for . forms
     emit8(OP_NIL);
     return true;
 }
 
+bool bc_compiler::compile_apply(const ast::node* root, bool tail) {
+    if (root->list_length < 3) {
+        compile_error(root->loc, "apply requires at least two arguments.");
+        return false;
+    }
+    auto save_sp = sp;
+    for (u32 i = 1; i < root->list_length; ++i) {
+        if (!compile(root->datum.list[i], false)) {
+            return false;
+        }
+    }
+    emit8(tail ? OP_TAPPLY : OP_APPLY);
+    emit8(root->list_length - 3);
+    sp = save_sp + 1;
+    return true;
+}
+
+bool bc_compiler::compile_dot(const ast::node* root) {
+    if (root->list_length < 3) {
+        compile_error(root->loc, ". requires at least 3 arguments.");
+        return false;
+    }
+    if (!compile(root->datum.list[1], false)
+            || !compile(root->datum.list[2], false)) {
+        return false;
+    }
+    emit8(OP_OBJ_GET);
+    --sp;
+    return true;
+}
+
 bool bc_compiler::compile_symbol_list(const ast::node* root, bool tail) {
     // if this is called, we're guaranteed that the list begins with a symbol
 
-    auto sym_id = intern(S, scanner_name(*sst,
-                    root->datum.list[0]->datum.str_id));
+    auto name = scanner_name(*sst, root->datum.list[0]->datum.str_id);
+    auto sym_id = intern(S, name);
     if (sym_id == cached_sym(S, SC_DEF)) {
         return compile_def(root);
     } else if (sym_id == cached_sym(S, SC_DEFMACRO)) {
@@ -535,6 +572,10 @@ bool bc_compiler::compile_symbol_list(const ast::node* root, bool tail) {
         return compile_quote(root);
     } else if (sym_id == cached_sym(S, SC_SET)) {
         return compile_set(root);
+    } else if (sym_id == cached_sym(S, SC_APPLY)) {
+        return compile_apply(root, tail);
+    } else if (name == ".") {
+        return compile_dot(root);
     } else {
         return compile_call(root, tail);
     }
@@ -568,7 +609,9 @@ bool bc_compiler::compile_body(const ast::node** exprs, u32 len, bool tail) {
         emit8(OP_POP);
         --sp;
     }
-    compile_within_body(exprs[i], tail);
+    if (!compile_within_body(exprs[i], tail)) {
+        return false;
+    }
     if (!tail) {
         emit8(OP_CLOSE);
         emit8(sp - save_sp);
@@ -578,10 +621,11 @@ bool bc_compiler::compile_body(const ast::node** exprs, u32 len, bool tail) {
 }
 
 bool bc_compiler::is_let_form(const ast::node* expr) {
-    return expr->kind == ast::ak_list && expr->list_length >= 2
+    return expr->kind == ast::ak_list && expr->list_length >= 1
         && expr->datum.list[0]->kind == ast::ak_symbol
         && intern(S, scanner_name(*sst, expr->datum.list[0]->datum.str_id))
-        == cached_sym(S, SC_LET);
+        == cached_sym(S, SC_LET)
+        && (expr->list_length & 1) == 1;
 }
 
 bool bc_compiler::is_do_inline_form(const ast::node* expr) {
@@ -589,6 +633,13 @@ bool bc_compiler::is_do_inline_form(const ast::node* expr) {
         && expr->datum.list[0]->kind == ast::ak_symbol
         && intern(S, scanner_name(*sst, expr->datum.list[0]->datum.str_id))
         == cached_sym(S, SC_DO_INLINE);
+}
+
+bool bc_compiler::is_dot_form(const ast::node* expr) {
+    return expr->kind == ast::ak_list && expr->list_length >= 3
+        && expr->datum.list[0]->kind == ast::ak_symbol
+        && scanner_name(*sst, expr->datum.list[0]->datum.str_id)
+        == ".";
 }
 
 bool bc_compiler::validate_let_form(const ast::node* expr) {
@@ -645,11 +696,13 @@ bool bc_compiler::compile_within_body(const ast::node* expr, bool tail) {
     } else if (is_do_inline_form(expr)) {
         if (expr->list_length == 1) {
             emit8(OP_NIL);
+            ++sp;
         } else {
             u32 i;
             for (i = 1; i < expr->list_length-1; ++i) {
                 compile_within_body(expr->datum.list[i], false);
                 emit8(OP_POP);
+                --sp;
             }
             compile_within_body(expr->datum.list[i], tail);
         }
@@ -670,8 +723,10 @@ bool bc_compiler::compile_within_body(const ast::node* expr, bool tail) {
 bool bc_compiler::compile_number(const ast::node* root) {
     // FIXME: technically we should check for constant ID overflow here
     auto cid = output->const_table.size;
-    output->const_table.push_back(bc_output_const{bck_number,
-                                                  {.num = root->datum.num}});
+    output->const_table.push_back(bc_output_const{
+                bck_number,
+                {.num = root->datum.num}
+            });
     emit8(OP_CONST);
     emit16(cid);
     ++sp;
@@ -681,10 +736,10 @@ bool bc_compiler::compile_number(const ast::node* root) {
 bool bc_compiler::compile_string(const ast::node* root) {
     // FIXME: technically we should check for constant ID overflow here
     auto cid = output->const_table.size;
-    bc_output_const k;
-    k.kind = bck_string;
-    k.d.str_id = root->datum.str_id;
-    output->const_table.push_back(k);
+    output->const_table.push_back(bc_output_const{
+                bck_string, 
+                {.str_id = root->datum.str_id}
+            });
     emit8(OP_CONST);
     emit16(cid);
     ++sp;
@@ -767,23 +822,30 @@ bool bc_compiler::compile(const ast::node* root, bool tail) {
     if (expanded) {
         root = expanded;
     }
+    bool res;
     switch (root->kind) {
     case ast::ak_number:
-        return compile_number(root);
+        res = compile_number(root);
+        break;
     case ast::ak_string:
-        return compile_string(root);
+        res = compile_string(root);
+        break;
     case ast::ak_symbol:
-        return compile_symbol(root);
+        res = compile_symbol(root);
+        break;
     case ast::ak_list:
-        return compile_list(root, tail);
+        res = compile_list(root, tail);
+        break;
     default:
-        compile_error(root->loc, "Unsupported form sorry\n");
-        return false;
+        compile_error(root->loc,
+                "Invalid AST object. This is like a bug.\n");
+        res = false;
+        break;
     }
     if (expanded) {
         ast::free_graph(expanded);
     }
-    return true;
+    return res;
 }
 
 bool bc_compiler::compile_function_body(const ast::node** exprs, u32 len) {
@@ -809,7 +871,7 @@ bool bc_compiler::compile_toplevel(const ast::node* root) {
 void bc_compiler::compile_error(const source_loc& loc, const string& message) {
     std::ostringstream os;
     os << "Line " << loc.line << ", col " << loc.col << ":\n  " << message;
-    set_error(S->err, message);
+    set_error(S->err, os.str());
 }
 
 bool compile_to_bytecode(bc_compiler_output& out, istate* S,
