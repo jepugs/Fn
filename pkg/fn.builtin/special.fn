@@ -1,0 +1,25 @@
+(namespace fn/builtin)
+
+
+
+(defmacro cond (& clauses)
+  (let group2-rev
+       (fn (acc list)
+         (if (empty? list)
+             acc
+             (if (empty? (tail list))
+                 (error "cond requires an even number of arguments.")
+                 (group2-rev (cons [(head list) (head (tail list))]
+                                   acc)
+                             (tail (tail list)))))))
+  (let next-clause
+       (fn (acc clause)
+         ['if (head clause)
+          (head (tail clause))
+          acc]))
+  (foldl next-clause 'nil (group2-rev [] clauses)))
+
+(defmacro defn (name args & body)
+  ['def name (cons 'fn (cons args body))])
+
+
