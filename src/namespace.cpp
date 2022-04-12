@@ -15,15 +15,20 @@ symbol_id resolve_sym(istate* S, symbol_id ns_id, symbol_id name) {
                 + symname(S, ns_id));
         return 0;
     }
-    auto x = (*ns)->resolve.get(name);
-    if (x.has_value()) {
-        return *x;
+    auto name_str = symname(S, name);
+    if (name_str.size() >= 2 && name_str[0] == '#' && name_str[1] == ':') {
+        return intern(S, name_str.substr(2));
     } else {
-        // unrecognized symbol => treat it as a global variable in namespace
-        auto fqn = intern(S, symname(S, (*ns)->id) + ":" + symname(S, name));
-        // add to resolution table
-        (*ns)->resolve.insert(name, fqn);
-        return fqn;
+        auto x = (*ns)->resolve.get(name);
+        if (x.has_value()) {
+            return *x;
+        } else {
+            // unrecognized symbol => treat it as a global variable in namespace
+            auto fqn = intern(S, symname(S, (*ns)->id) + ":" + name_str);
+            // add to resolution table
+            (*ns)->resolve.insert(name, fqn);
+            return fqn;
+        }
     }
 }
 

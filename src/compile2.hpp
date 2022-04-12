@@ -175,14 +175,20 @@ private:
     bool compile_quote(const ast::node* root);
     bool compile_set(const ast::node* root);
 
-    bool compile_sub_fun(const ast::node* params, ast::node* const* body,
+    // compile a constant symbol
+    bool compile_const_symbol(sst_id str_id);
+    // compile a subordinate function. This involves creating a child
+    // bc_compiler_output object
+    bool compile_sub_fun(const ast::node* params, const ast::node** body,
             u32 body_len, const string& name);
+    // compile a list whose operator is a symbol
     bool compile_symbol_list(const ast::node* root, bool tail);
     bool compile_call(const ast::node* root, bool tail);
     bool validate_let_form(const ast::node* expr);
     bool is_do_inline_form(const ast::node* node);
     bool is_let_form(const ast::node* node);
-    bool compile_body(ast::node* const* exprs, u32 len, bool tail);
+    bool compile_body(const ast::node** exprs, u32 len, bool tail);
+    // compile a form within a body. This accounts for let and do-inline forms.
     bool compile_within_body(const ast::node* expr, bool tail);
 
     bool compile_number(const ast::node* root);
@@ -191,7 +197,7 @@ private:
     bool compile_list(const ast::node* root, bool tail);
 
     bool compile(const ast::node* exprs, bool tail);
-    bool compile_function_body(ast::node* const* exprs, u32 len);
+    bool compile_function_body(const ast::node** exprs, u32 len);
     bool compile_toplevel(const ast::node* root);
 
     // set an error

@@ -246,8 +246,19 @@ bool bc_compiler::compile_def(const ast::node* ast) {
     return true;
 }
 
+bool bc_compiler::compile_const_symbol(sst_id str_id) {
+    auto cid = output->const_table.size;
+    output->const_table.push_back(bc_output_const{
+                .kind = bck_symbol,
+                .d = { .str_id = str_id }
+            });
+    emit8(OP_CONST);
+    emit16(cid);
+    return true;
+}
+
 bool bc_compiler::compile_sub_fun(const ast::node* params,
-        ast::node* const* body, u32 body_len, const string& name) {
+        const ast::node** body, u32 body_len, const string& name) {
     dyn_array<sst_id> pos_params;
     dyn_array<ast::node*> init_vals;
     bool has_vari;
@@ -293,22 +304,23 @@ bool bc_compiler::compile_sub_fun(const ast::node* params,
     return true;
 }
 
-bool bc_compiler::compile_defmacro(const ast::node* ast) {
-    if (ast->list_length < 3) {
-        compile_error(ast->loc, "defmacro requires a name and parameter list.");
+bool bc_compiler::compile_defmacro(const ast::node* root) {
+    if (root->list_length < 3) {
+        compile_error(root->loc, "defmacro requires a name and parameter list.");
         return false;
     }
-    if (ast->datum.list[1]->kind != ast::ak_symbol) {
-        compile_error(ast->loc, "defmacro name must be a symbol.");
+    if (root->datum.list[1]->kind != ast::ak_symbol) {
+        compile_error(root->loc, "defmacro name must be a symbol.");
         return false;
     }
-    auto name_id = ast->datum.list[1]->datum.str_id;
+    auto name_id = root->datum.list[1]->datum.str_id;
     // resolve the full symbol name
     auto sid = intern(S, scanner_name(*sst, name_id));
     auto fqn = resolve_sym(S, S->ns_id, sid);
     // TODO: check name legality
-    if (!compile_sub_fun(ast->datum.list[2], &ast->datum.list[3],
-                    ast->list_length - 3, "#macro:" + symname(S, fqn))) {
+    if (!compile_sub_fun(root->datum.list[2],
+                    (const ast::node**)&root->datum.list[3],
+                    root->list_length - 3, "#macro:" + symname(S, fqn))) {
         return false;
     }
 
@@ -326,17 +338,18 @@ bool bc_compiler::compile_defmacro(const ast::node* ast) {
     return true;
 }
 
-bool bc_compiler::compile_do(const ast::node* ast, bool tail) {
-    return compile_body(&ast->datum.list[1], ast->list_length-1, tail);
+bool bc_compiler::compile_do(const ast::node* root, bool tail) {
+    return compile_body((const ast::node**)&root->datum.list[1],
+            root->list_length-1, tail);
 }
 
-bool bc_compiler::compile_if(const ast::node* ast, bool tail) {
+bool bc_compiler::compile_if(const ast::node* root, bool tail) {
     // validate the if form
-    if (ast->list_length != 4) {
-        compile_error(ast->loc, "if requires exactly 3 arguments.");
+    if (root->list_length != 4) {
+        compile_error(root->loc, "if requires exactly 3 arguments.");
         return false;
     }
-    if (!compile(ast->datum.list[1], false)) {
+    if (!compile(root->datum.list[1], false)) {
         return false;
     }
     emit8(OP_CJUMP);
@@ -344,7 +357,7 @@ bool bc_compiler::compile_if(const ast::node* ast, bool tail) {
     emit16(0);
     --sp;
 
-    if (!compile(ast->datum.list[2], tail)) {
+    if (!compile(root->datum.list[2], tail)) {
         return false;
     }
     emit8(OP_JUMP);
@@ -353,7 +366,7 @@ bool bc_compiler::compile_if(const ast::node* ast, bool tail) {
 
     patch16(output->code.size - patch_addr1 - 2, patch_addr1);
     --sp;
-    if (!compile(ast->datum.list[3], tail)) {
+    if (!compile(root->datum.list[3], tail)) {
         return false;
     }
 
@@ -361,22 +374,52 @@ bool bc_compiler::compile_if(const ast::node* ast, bool tail) {
     return true;
 }
 
-bool bc_compiler::compile_fn(const ast::node* ast) {
+bool bc_compiler::compile_import(const ast::node* root) {
+    auto arity = root->list_length;
+    if (arity == 2) {
+        if (root->datum.list[1]->kind != ast::ak_symbol) {
+            compile_error(root->loc, "import arguments must be symbols.");
+        }
+        compile_const_symbol(root->datum.list[1]->datum.str_id);
+        string prefix;
+        string stem;
+        ns_id_destruct(scanner_name(*sst, root->datum.list[1]->datum.str_id),
+                &prefix, &stem);
+        compile_const_symbol(scanner_intern(*sst, stem));
+    } else if (arity == 3) {
+        if (root->datum.list[1]->kind != ast::ak_symbol) {
+            compile_error(root->loc, "import arguments must be symbols.");
+        } else if (root->datum.list[2]->kind != ast::ak_symbol) {
+            compile_error(root->loc, "import arguments must be symbols.");
+        }
+        compile_const_symbol(root->datum.list[1]->datum.str_id);
+        compile_const_symbol(root->datum.list[2]->datum.str_id);
+    } else {
+        compile_error(root->loc, "import takes 1 or 2 arguments.");
+        return false;
+    }
+    emit8(OP_IMPORT);
+    emit8(OP_NIL);
+    --sp;
+    return true;
+}
+
+bool bc_compiler::compile_fn(const ast::node* root) {
     // validate the arity of the fn form
-    if (ast->list_length < 2) {
-        compile_error(ast->loc, "fn requires a parameter list.");
+    if (root->list_length < 2) {
+        compile_error(root->loc, "fn requires a parameter list.");
         return false;
     }
 
     // TODO: generate a meaningful name
-    compile_sub_fun(ast->datum.list[1], &ast->datum.list[2],
-            ast->list_length - 2, "");
+    compile_sub_fun(root->datum.list[1],
+            (const ast::node**)&root->datum.list[2], root->list_length - 2, "");
 
     dyn_array<sst_id> pos_params;
     dyn_array<ast::node*> init_vals;
     bool has_vari;
     sst_id vari;
-    if (!process_params(ast->datum.list[1], pos_params, init_vals,
+    if (!process_params(root->datum.list[1], pos_params, init_vals,
                     has_vari, vari)) {
         return false;
     }
@@ -396,7 +439,8 @@ bool bc_compiler::compile_fn(const ast::node* ast) {
         child.push_var(vari);
         ++child.sp;
     }
-    if (!child.compile_function_body(&ast->datum.list[2], ast->list_length - 2)) {
+    if (!child.compile_function_body((const ast::node**)&root->datum.list[2],
+                    root->list_length - 2)) {
         return false;
     }
 
@@ -413,6 +457,10 @@ bool bc_compiler::compile_fn(const ast::node* ast) {
     emit16(child_id);
     sp = save_sp + 1;
     return true;
+}
+
+bool bc_compiler::compile_let(const ast::node* root) {
+    return compile_body(&root, 1, false);
 }
 
 bool bc_compiler::compile_quote(const ast::node* root) {
@@ -433,6 +481,37 @@ bool bc_compiler::compile_quote(const ast::node* root) {
     return true;
 }
 
+bool bc_compiler::compile_set(const ast::node* root) {
+    if (root->list_length != 3) {
+        compile_error(root->loc, "set! requires exactly two arguments.");
+        return false;
+    }
+    auto target = root->datum.list[1];
+    auto val = root->datum.list[2];
+    if (target->kind == ast::ak_symbol) {
+        u8 index;
+        if (find_local_var(index, target->datum.str_id)) {
+            if (!compile(val, false)) {
+                return false;
+            }
+            emit8(OP_SET_LOCAL);
+            emit8(index);
+        } else if (find_upvalue_var(index, target->datum.str_id)) {
+            if (!compile(val, false)) {
+                return false;
+            }
+            emit8(OP_SET_UPVALUE);
+            emit8(index);
+        } else {
+            compile_error(root->loc, "Illegal symbol name in set!");
+            return false;
+        }
+    }
+    // TODO: check for . forms
+    emit8(OP_NIL);
+    return true;
+}
+
 bool bc_compiler::compile_symbol_list(const ast::node* root, bool tail) {
     // if this is called, we're guaranteed that the list begins with a symbol
 
@@ -446,16 +525,16 @@ bool bc_compiler::compile_symbol_list(const ast::node* root, bool tail) {
         return compile_do(root, tail);
     } else if (sym_id == cached_sym(S, SC_IF)) {
         return compile_if(root, tail);
-    // } else if (sym_id == cached_sym(S, SC_IMPORT)) {
-    //     return compile_import(root);
+    } else if (sym_id == cached_sym(S, SC_IMPORT)) {
+        return compile_import(root);
     } else if (sym_id == cached_sym(S, SC_FN)) {
         return compile_fn(root);
-    // } else if (sym_id == cached_sym(S, SC_LET)) {
-    //     return compile_let(root);
+    } else if (sym_id == cached_sym(S, SC_LET)) {
+        return compile_let(root);
     } else if (sym_id == cached_sym(S, SC_QUOTE)) {
         return compile_quote(root);
-    // } else if (sym_id == cached_sym(S, SC_SET)) {
-    //     return compile_set(root);
+    } else if (sym_id == cached_sym(S, SC_SET)) {
+        return compile_set(root);
     } else {
         return compile_call(root, tail);
     }
@@ -475,7 +554,7 @@ bool bc_compiler::compile_call(const ast::node* root, bool tail) {
     return true;
 }
 
-bool bc_compiler::compile_body(ast::node* const* exprs, u32 len, bool tail) {
+bool bc_compiler::compile_body(const ast::node** exprs, u32 len, bool tail) {
     if (len == 0) {
         emit8(OP_NIL);
         return true;
@@ -518,9 +597,17 @@ bool bc_compiler::validate_let_form(const ast::node* expr) {
         return false;
     }
     for (u32 i = 1; i < expr->list_length; i += 2) {
-        if (expr->datum.list[i]->kind != ast::ak_symbol) {
-            compile_error(expr->loc, "let names must be symbols.");
+        auto x = expr->datum.list[i];
+        if (x->kind != ast::ak_symbol) {
+            compile_error(x->loc, "let names must be symbols.");
             return false;
+        } else {
+            auto name = scanner_name(*sst, x->datum.str_id);
+            if (!is_legal_local_name(name)) {
+                compile_error(x->loc,
+                        "Illegal name in let: " + name);
+                return false;
+            }
         }
     }
     return true;
@@ -618,7 +705,28 @@ bool bc_compiler::compile_symbol(const ast::node* root) {
     } else {
         // variable lookup
         u8 index;
-        if (find_local_var(index, root->datum.str_id)) {
+        auto name = scanner_name(*sst, root->datum.str_id);
+        if (name.size() >= 2 && name[0] == '#' && name[1] == ':') {
+            // #: symbols contain fully qualified names
+            emit8(OP_GLOBAL);
+            output->globals.push_back(bc_output_global{
+                        .raw_name = root->datum.str_id,
+                        .patch_addr = output->code.size
+                    });
+            emit32(0);
+            ++sp;
+        } else if (name.size() >= 1 && name[0] == ':') {
+            // symbols beginning with colons are resolved globally after
+            // dropping the colon
+            auto str_id = scanner_intern(*sst, name.substr(1));
+            emit8(OP_GLOBAL);
+            output->globals.push_back(bc_output_global{
+                        .raw_name = str_id,
+                        .patch_addr = output->code.size
+                    });
+            emit32(0);
+            ++sp;            
+        } else if (find_local_var(index, root->datum.str_id)) {
             emit8(OP_LOCAL);
             emit8(index);
             ++sp;
@@ -678,7 +786,7 @@ bool bc_compiler::compile(const ast::node* root, bool tail) {
     return true;
 }
 
-bool bc_compiler::compile_function_body(ast::node* const* exprs, u32 len) {
+bool bc_compiler::compile_function_body(const ast::node** exprs, u32 len) {
     if (len == 0) {
         emit8(OP_NIL);
         ++sp;

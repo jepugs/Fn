@@ -141,8 +141,15 @@ void push_quoted(istate* S, const scanner_string_table& sst,
     case ast::ak_string:
         push_string(S, scanner_name(sst, root->datum.str_id));
         break;
-    case ast::ak_symbol:
-        push_sym(S, intern(S, scanner_name(sst, root->datum.str_id)));
+    case ast::ak_symbol: {
+        auto name = scanner_name(sst, root->datum.str_id);
+        if (!name.empty() && name[0] == ':') {
+            auto fqn = resolve_sym(S, S->ns_id, intern(S, name.substr(1)));
+            push_sym(S, fqn);
+        } else {
+            push_sym(S, intern(S, name));
+        }
+    }
         break;
     case ast::ak_list:
         for (u32 i = 0; i < root->list_length; ++i) {
