@@ -1,4 +1,5 @@
 add_library(fn_lib OBJECT
+  api.cpp
   allocator.cpp
   base.cpp
   builtin.cpp

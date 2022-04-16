@@ -45,6 +45,7 @@ struct gc_handle {
 
 // TODO: write a value_handle struct that does something similar
 
+// this must be a power of two
 constexpr u64 GC_CARD_SIZE = 2 << 12;
 
 struct gc_card_header {
@@ -133,7 +134,7 @@ gc_bytes* realloc_gc_bytes(allocator* alloc, gc_bytes* src, u64 new_size);
 void alloc_string(istate* S, u32 where, u32 size);
 void alloc_string(istate* S, u32 where, const string& str);
 void alloc_cons(istate* S, u32 where, u32 hd, u32 tl);
-void alloc_table(istate* S, u32 where);
+void alloc_table(istate* S, u32 where, u32 init_cap=FN_TABLE_INIT_CAP);
 
 struct bc_compiler_output;
 // create a toplevel function from bytecode compiler output

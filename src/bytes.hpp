@@ -101,6 +101,8 @@ enum OPCODES : u8 {
     // namespace id (symbol).
     OP_IMPORT,
 
+    // list BYTE, pop top BYTE arguments off stack to a list
+    OP_LIST,
     OP_TABLE
 };
 

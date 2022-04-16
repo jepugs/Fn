@@ -1,6 +1,7 @@
 #ifndef __FN_NAMESPACE_HPP
 #define __FN_NAMESPACE_HPP
 
+#include "api.hpp"
 #include "base.hpp"
 #include "istate.hpp"
 #include "values.hpp"
@@ -32,22 +33,17 @@ struct global_env {
     ~global_env();
 };
 
-// resolve a symbol to an FQN in the given namespace. The given namespace must
-// exist when the call is made, or an error is generated. If the given symbol is
-// not already present in the namespace, a new entry in the resolution table is
-// made.
-symbol_id resolve_sym(istate* S, symbol_id ns_id, symbol_id name);
 // get the unique 32-bit identifier for a global variable. The variable will be
 // created and set to V_UNIN if necessary.
 u32 get_global_id(istate* S, symbol_id fqn);
 // get the FQN of a symbol based on its numerical id
 symbol_id global_name_by_id(istate* S, u32 id);
 // get a global variable by its FQN. Returns false on failed lookup
-bool push_global(istate* S, symbol_id fqn);
+bool get_global(value& out, istate* S, symbol_id fqn);
 // set by FQN, creating a new definition if necessary
 void set_global(istate* S, symbol_id fqn, value new_val);
 // get a macro by its FQN. Returns false on failed lookup
-bool push_macro(istate* S, symbol_id fqn);
+bool get_macro(value& out, istate* S, symbol_id fqn);
 // set a macro, creating a new definition if necessary
 void set_macro(istate* S, symbol_id fqn, fn_function* fun);
 // add a new namespace. If the namespace already exists, this returns the

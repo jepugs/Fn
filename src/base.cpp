@@ -66,12 +66,12 @@ template<> u64 hash<u8>(const u8& u) {
     return res;
 }
 
-void set_error(error_info& err, const string& message) {
+void set_error_info(error_info& err, const string& message) {
     err.happened = true;
     err.message = new string{message};
 }
 
-void clear_error(error_info& err) {
+void clear_error_info(error_info& err) {
     err.happened = false;
     delete err.message;
 }

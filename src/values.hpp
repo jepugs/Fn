@@ -160,7 +160,11 @@ inline value vhead(value v) {
 }
 // works on V_EMPTY
 inline value vtail(value v) {
-    return vcons(v)->tail;
+    if (vis_emptyl(v)) {
+        return V_EMPTY;
+    } else {
+        return vcons(v)->tail;
+    }
 }
 inline u32 vlength(value v) {
     u32 ct = 0;
@@ -198,8 +202,8 @@ inline bool vequal(value a, value b) {
 
 // returns an array of two values, key followed by value, which should not be
 // freed
-value* table_get(istate* S, fn_table* tab, value k);
-void table_set(istate* S, fn_table* tab, value k, value v);
+value* table_get(fn_table* tab, value k);
+void table_insert(istate* S, u32 table_pos, u32 key_pos, u32 val_pos);
 
 value get_metatable(istate* S, value obj);
 string type_string(value v);

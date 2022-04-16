@@ -1,6 +1,7 @@
 #ifndef __FN_ISTATE_HPP
 #define __FN_ISTATE_HPP
 
+#include "api.hpp"
 #include "base.hpp"
 #include "obj.hpp"
 #include "parse.hpp"
@@ -35,6 +36,7 @@ struct istate {
     u32 bp;                                  // base ptr
     u32 sp;                                  // stack ptr (rel to stack bottom)
     fn_function* callee;                     // current function
+    u8* code;                                // function code
     dyn_array<upvalue_cell*> open_upvals;    // open upvalues on the stack
     value stack[STACK_SIZE];
     fn_string* filename;                     // for function metadata
@@ -76,8 +78,6 @@ void ierror(istate* S, const string& message);
 bool has_error(istate* S);
 
 void push(istate* S, value v);
-void pop(istate* S);
-void pop(istate* S, u32 n);
 // peek values relative to the top of the stack
 value peek(istate* S);
 value peek(istate* S, u32 offset);
@@ -99,39 +99,14 @@ bool pget_bool(istate* S, u32 i);
 symbol_id pget_sym(istate* S, u32 i);
 
 // create symbols
-symbol_id intern(istate* S, const string& str);
-symbol_id gensym(istate* S);
-string symname(istate* S, symbol_id sid);
 symbol_id cached_sym(istate* S, sc_index i);
 
 // create values on top of the stack
-void push_number(istate* S, f64 num);
-void push_string(istate* S, u32 size);
-void push_string(istate* S, const string& str);
-void push_sym(istate* S, symbol_id sym);
-void push_symname(istate* S, symbol_id sym);
-void push_nil(istate* S);
-void push_yes(istate* S);
-void push_no(istate* S);
-
-// hd and tl are positions on the stack
-void push_cons(istate* S, u32 hd, u32 tl);
-void push_table(istate* S);
-
-// create a list from the top n elements of the stack
-void pop_to_list(istate* S, u32 n);
-
 // convert an AST to an fn value
 void push_quoted(istate* S, const scanner_string_table& sst,
         const ast::node* root);
 // convert an Fn value to an ast form
 bool pop_syntax(ast::node*& result, istate* S, scanner_string_table& sst);
-
-// perform a function call of n arguments, (default 0). The calling convention
-// is to put the function on the bottom followed by the arguments in order, so
-// the last argument is on top of the stack.
-void call(istate* S);
-void call(istate* S, u32 n);
 
 // push a foreign function by that wraps the provided function pointer
 void push_foreign_fun(istate* S,

@@ -19,9 +19,14 @@ namespace fn {
 // must have the istate variable passed in directly or it could be computed
 // multiple times.
 #define cur_fun() (vfunction(S->stack[S->bp-1]))
+
 #define code_byte(S, where) (S->callee->stub->code[where])
 #define code_short(S, where) (*((u16*)&S->callee->stub->code[where]))
 #define code_u32(S, where) (*((u32*)&S->callee->stub->code[where]))
+// #define code_byte(S, where) (S->code[where])
+// #define code_short(S, where) (*((u16*)&S->code[where]))
+// #define code_u32(S, where) (*((u32*)&S->code[where]))
+
 #define push(S, v) S->stack[S->sp] = v;++S->sp;
 #define peek(S, i) (S->stack[S->sp-((i))-1])
 
@@ -89,7 +94,7 @@ static inline bool get_method(istate* S, value obj, value key, u32 place) {
     if (!vis_table(m)) {
         return false;
     }
-    auto x = table_get(S, vtable(m), key);
+    auto x = table_get(vtable(m), key);
     if (!x) {
         return false;
     }
@@ -250,7 +255,7 @@ static void icall(istate* S, u32 n, u32 pc) {
     }
 }
 
-void call(istate* S, u32 n) {
+void call(istate* S, u8 n) {
     icall(S, n, 0);
 }
 
@@ -400,7 +405,7 @@ void execute_fun(istate* S) {
                 ierror(S, "obj-get target is not a table.");
                 return;
             }
-            auto x = table_get(S, vtable(peek(S, 1)), peek(S, 0));
+            auto x = table_get(vtable(peek(S, 1)), peek(S, 0));
             S->sp -= 2;
             if (x) {
                 push(S, x[1]);
@@ -415,7 +420,7 @@ void execute_fun(istate* S) {
                 ierror(S, "obj-set target is not a table.");
                 return;
             }
-            table_set(S, vtable(peek(S, 2)), peek(S, 1), peek(S, 0));
+            table_insert(S, S->sp - 3, S->sp - 2, S->sp - 1);
             S->stack[S->sp - 3] = peek(S, 0);
             S->sp -= 2;
         }
@@ -561,6 +566,10 @@ void execute_fun(istate* S) {
                 return;
             }
             pop(S, 2);
+            break;
+
+        case OP_LIST:
+            pop_to_list(S, code_byte(S, pc++));
             break;
         }
     }

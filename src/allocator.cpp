@@ -190,16 +190,17 @@ void alloc_cons(istate* S, u32 stack_pos, u32 hd, u32 tl) {
     S->stack[stack_pos] = vbox_cons(res);
 }
 
-void alloc_table(istate* S, u32 stack_pos) {
+void alloc_table(istate* S, u32 stack_pos, u32 init_cap) {
+    init_cap = init_cap == 0 ? FN_TABLE_INIT_CAP : init_cap;
     collect(S);
     auto sz =  round_to_align(sizeof(fn_table));
     auto res = (fn_table*)get_bytes_eden(S->alloc, sz);
     init_gc_header(&res->h, GC_TYPE_TABLE, sz);
     res->size = 0;
-    res->cap = FN_TABLE_INIT_CAP;
-    res->rehash = 3 * FN_TABLE_INIT_CAP / 4;
-    res->data = alloc_gc_bytes(S->alloc, 2*FN_TABLE_INIT_CAP*sizeof(value));
-    for (u32 i = 0; i < 2*FN_TABLE_INIT_CAP; i += 2) {
+    res->cap = init_cap;
+    res->rehash = 3 * init_cap / 4;
+    res->data = alloc_gc_bytes(S->alloc, 2*init_cap*sizeof(value));
+    for (u32 i = 0; i < 2*init_cap; i += 2) {
         ((value*)(res->data->data))[i] = V_UNIN;
     }
     res->metatable = V_NIL;
@@ -216,7 +217,7 @@ static void reify_bc_const(istate* S, const scanner_string_table& sst,
         push_string(S, scanner_name(sst, k.d.str_id));
         break;
     case bck_symbol:
-        push_sym(S, intern(S, scanner_name(sst, k.d.str_id)));
+        push_symbol(S, intern_id(S, scanner_name(sst, k.d.str_id)));
         break;
     case bck_quoted:
         push_quoted(S, sst, k.d.quoted);
@@ -283,8 +284,8 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
     for (u32 i = 0; i < compiled.globals.size; ++i) {
         auto g = compiled.globals[i];
         // FIXME: use a function for this
-        auto name = intern(S, scanner_name(sst, g.raw_name));
-        auto fqn = resolve_sym(S, S->ns_id, name);
+        auto name = intern_id(S, scanner_name(sst, g.raw_name));
+        auto fqn = resolve_symbol(S, name);
         // FIXME: also use a function to insert the u32
         *(u32*)&h->obj->code[g.patch_addr] = get_global_id(S, fqn);
     }
@@ -446,7 +447,7 @@ void alloc_fun(istate* S, u32 enclosing, constant_id fid) {
 
 static void setup_symcache(istate* S) {
     for (u32 i = 0; i < SYMCACHE_SIZE; ++i) {
-        S->symcache->syms[i] = intern(S, sc_names[i]);
+        S->symcache->syms[i] = intern_id(S, sc_names[i]);
     }
 }
 
@@ -460,7 +461,7 @@ istate* alloc_istate(const string& filename, const string& wd) {
     res->G = new global_env;
     res->G->list_meta = V_NIL;
     res->G->string_meta = V_NIL;
-    res->ns_id = intern(res, "fn/user");
+    res->ns_id = intern_id(res, "fn/user");
     res->pc = 0;
     res->bp = 0;
     res->sp = 0;

@@ -8,7 +8,11 @@ global_env::~global_env() {
     }
 }
 
-symbol_id resolve_sym(istate* S, symbol_id ns_id, symbol_id name) {
+symbol_id resolve_symbol(istate* S, symbol_id name) {
+    return resolve_in_ns(S, name, S->ns_id);
+}
+
+symbol_id resolve_in_ns(istate* S, symbol_id name, symbol_id ns_id) {
     auto ns = S->G->ns_tab.get(ns_id);
     if (!ns.has_value()) {
         ierror(S, "Failed to resolve symbol name. No such namespace: "
@@ -16,15 +20,16 @@ symbol_id resolve_sym(istate* S, symbol_id ns_id, symbol_id name) {
         return 0;
     }
     auto name_str = symname(S, name);
+    // check for FQN
     if (name_str.size() >= 2 && name_str[0] == '#' && name_str[1] == ':') {
-        return intern(S, name_str.substr(2));
+        return intern_id(S, name_str.substr(2));
     } else {
         auto x = (*ns)->resolve.get(name);
         if (x.has_value()) {
             return *x;
         } else {
             // unrecognized symbol => treat it as a global variable in namespace
-            auto fqn = intern(S, symname(S, (*ns)->id) + ":" + name_str);
+            auto fqn = intern_id(S, symname(S, (*ns)->id) + ":" + name_str);
             // add to resolution table
             (*ns)->resolve.insert(name, fqn);
             return fqn;
@@ -45,12 +50,12 @@ u32 get_global_id(istate* S, symbol_id fqn) {
     }
 }
 
-bool push_global(istate* S, symbol_id fqn) {
+bool get_global(value& out, istate* S, symbol_id fqn) {
     auto res = S->G->def_tab.get2(fqn);
     if (!res) {
         return false;
     }
-    push(S, S->G->def_arr[res->val]);
+    out = S->G->def_arr[res->val];
     return true;
 }
 
@@ -66,12 +71,12 @@ void set_global(istate* S, symbol_id fqn, value new_val) {
     }
 }
 
-bool push_macro(istate* S, symbol_id fqn) {
+bool get_macro(value& out, istate* S, symbol_id fqn) {
     auto res = S->G->macro_tab.get(fqn);
     if (!res.has_value()) {
         return false;
     }
-    push(S, vbox_function(*res));
+    out = vbox_function(*res);
     return true;
 }
 
@@ -104,7 +109,7 @@ bool copy_defs(istate* S, fn_namespace* dest, fn_namespace* src,
         return true;
     }
     for (auto e : src->resolve) {
-        auto name = intern(S, prefix + symname(S, e->key));
+        auto name = intern_id(S, prefix + symname(S, e->key));
         if (!overwrite && dest->resolve.has_key(name)) {
             ierror(S, "Name collision while copying definitions.");
             return false;

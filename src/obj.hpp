@@ -93,8 +93,6 @@ void init_gc_header(gc_header* dest, u8 type, u32 size);
 // set a header to designate that its object has been moved to ptr
 void set_gc_forward(gc_header* dest, gc_header* ptr);
 
-constexpr u8 FN_TABLE_INIT_CAP = 16;
-
 // a string of fixed size
 struct alignas (OBJ_ALIGN) fn_string {
     gc_header h;

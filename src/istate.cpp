@@ -1,3 +1,4 @@
+#include "api.hpp"
 #include "allocator.hpp"
 #include "compile2.hpp"
 #include "istate.hpp"
@@ -17,7 +18,7 @@ istate* init_istate() {
 
 void free_istate(istate* S) {
     if (has_error(S)) {
-        clear_error(S->err);
+        clear_error_info(S->err);
     }
     delete S->G;
     delete S->alloc;
@@ -39,7 +40,7 @@ void set_directory(istate* S, const string& pathname) {
 }
 
 void ierror(istate* S, const string& message) {
-    set_error(S->err, message);
+    set_error_info(S->err, message);
 }
 
 bool has_error(istate* S) {
@@ -48,14 +49,6 @@ bool has_error(istate* S) {
 
 void push(istate* S, value v) {
     S->stack[S->sp++] = v;
-}
-
-void pop(istate* S) {
-    --S->sp;
-}
-
-void pop(istate* S, u32 n) {
-    S->sp -= n;
 }
 
 value peek(istate* S) {
@@ -74,63 +67,10 @@ void set(istate* S, u32 index, value v) {
     S->stack[S->bp + index] = v;
 }
 
-symbol_id intern(istate* S, const string& str) {
-    return S->symtab->intern(str);
-}
-
-symbol_id gensym(istate* S) {
-    return S->symtab->gensym();
-}
-
-string symname(istate* S, symbol_id sym) {
-    return S->symtab->symbol_name(sym);
-}
-
 symbol_id cached_sym(istate* S, sc_index i) {
     return S->symcache->syms[i];
 }
 
-void push_number(istate* S, f64 num) {
-    push(S, vbox_number(num));
-}
-void push_string(istate* S, u32 size) {
-    push_nil(S);
-    alloc_string(S, S->sp - 1, size);
-}
-void push_string(istate* S, const string& str)  {
-    push_nil(S);
-    alloc_string(S, S->sp - 1, str);
-}
-void push_sym(istate* S, symbol_id sym) {
-    push(S, vbox_symbol(sym));
-}
-void push_nil(istate* S) {
-    push(S, V_NIL);
-}
-void push_yes(istate* S) {
-    push(S, V_YES);
-}
-void push_no(istate* S) {
-    push(S, V_NO);
-}
-
-void push_cons(istate* S, u32 hd, u32 tl) {
-    push_nil(S);
-    alloc_cons(S, S->sp - 1, hd, tl);
-}
-
-void push_table(istate* S) {
-    push_nil(S);
-    alloc_table(S, S->sp - 1);
-}
-
-void pop_to_list(istate* S, u32 n) {
-    push(S, V_EMPTY);
-    for (u32 i = 0; i < n; ++i) {
-        alloc_cons(S, S->sp - 2 - i, S->sp - 2 - i, S->sp - 1 - i);
-    }
-    S->sp -= n;
-}
 
 void push_quoted(istate* S, const scanner_string_table& sst,
         const ast::node* root) {
@@ -144,10 +84,10 @@ void push_quoted(istate* S, const scanner_string_table& sst,
     case ast::ak_symbol: {
         auto name = scanner_name(sst, root->datum.str_id);
         if (!name.empty() && name[0] == ':') {
-            auto fqn = resolve_sym(S, S->ns_id, intern(S, name.substr(1)));
-            push_sym(S, fqn);
+            auto fqn = resolve_symbol(S, intern_id(S, name.substr(1)));
+            push_symbol(S, fqn);
         } else {
-            push_sym(S, intern(S, name));
+            push_symbol(S, intern_id(S, name));
         }
     }
         break;
@@ -276,9 +216,9 @@ void interpret_stream(istate* S, std::istream* in) {
                 && form0->list_length == 2
                 && form0->datum.list[0]->kind == ast::ak_symbol
                 && form0->datum.list[1]->kind == ast::ak_symbol
-                && intern(S, scanner_name(sst, form0->datum.list[0]->datum.str_id))
+                && intern_id(S, scanner_name(sst, form0->datum.list[0]->datum.str_id))
                 == cached_sym(S, SC_NAMESPACE)) {
-            switch_ns(S, intern(S, scanner_name(sst,
+            switch_ns(S, intern_id(S, scanner_name(sst,
                                     form0->datum.list[1]->datum.str_id)));
             ast::free_graph(form0);
         } else {

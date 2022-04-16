@@ -205,8 +205,7 @@ ast::node* bc_compiler::macroexpand(const ast::node* macro_form) {
     }
 
     auto name = scanner_name(*sst, macro_form->datum.list[0]->datum.str_id);
-    auto fqn = resolve_sym(S, S->ns_id, intern(S, name));
-    if (push_macro(S, fqn)) {
+    if (push_macro(S, intern_id(S, name))) {
         for (u32 i = 1; i < macro_form->list_length; ++i) {
             push_quoted(S, *sst, macro_form->datum.list[i]);
         }
@@ -228,8 +227,7 @@ ast::node* bc_compiler::macroexpand(const ast::node* macro_form) {
             break;
         }
         name = scanner_name(*sst, form->datum.list[0]->datum.str_id);
-        fqn = resolve_sym(S, S->ns_id, intern(S, name));
-        if (push_macro(S, fqn)) {
+        if (push_macro(S, intern_id(S, name))) {
             for (u32 i = 1; i < form->list_length; ++i) {
                 push_quoted(S, *sst, form->datum.list[i]);
             }
@@ -342,8 +340,8 @@ bool bc_compiler::compile_defmacro(const ast::node* root) {
     }
     auto name_id = root->datum.list[1]->datum.str_id;
     // resolve the full symbol name
-    auto sid = intern(S, scanner_name(*sst, name_id));
-    auto fqn = resolve_sym(S, S->ns_id, sid);
+    auto sid = intern_id(S, scanner_name(*sst, name_id));
+    auto fqn = resolve_symbol(S, sid);
     // TODO: check name legality
     if (!compile_sub_fun(root->datum.list[2],
                     (const ast::node**)&root->datum.list[3],
@@ -549,11 +547,25 @@ bool bc_compiler::compile_dot(const ast::node* root) {
     return true;
 }
 
+bool bc_compiler::compile_List(const ast::node* root) {
+    // FIXME: check list_length is < 255
+    auto start_sp = sp;
+    for (u32 i = 1; i < root->list_length; ++i) {
+        if (!compile(root->datum.list[i], false)) {
+            return false;
+        }
+    }
+    emit8(OP_LIST);
+    emit8(root->list_length - 1);
+    sp = start_sp + 1;
+    return true;
+}
+
 bool bc_compiler::compile_symbol_list(const ast::node* root, bool tail) {
     // if this is called, we're guaranteed that the list begins with a symbol
 
     auto name = scanner_name(*sst, root->datum.list[0]->datum.str_id);
-    auto sym_id = intern(S, name);
+    auto sym_id = intern_id(S, name);
     if (sym_id == cached_sym(S, SC_DEF)) {
         return compile_def(root);
     } else if (sym_id == cached_sym(S, SC_DEFMACRO)) {
@@ -576,6 +588,8 @@ bool bc_compiler::compile_symbol_list(const ast::node* root, bool tail) {
         return compile_apply(root, tail);
     } else if (name == ".") {
         return compile_dot(root);
+    } else if (name == "List") {
+        return compile_List(root);
     } else {
         return compile_call(root, tail);
     }
@@ -623,7 +637,7 @@ bool bc_compiler::compile_body(const ast::node** exprs, u32 len, bool tail) {
 bool bc_compiler::is_let_form(const ast::node* expr) {
     return expr->kind == ast::ak_list && expr->list_length >= 1
         && expr->datum.list[0]->kind == ast::ak_symbol
-        && intern(S, scanner_name(*sst, expr->datum.list[0]->datum.str_id))
+        && intern_id(S, scanner_name(*sst, expr->datum.list[0]->datum.str_id))
         == cached_sym(S, SC_LET)
         && (expr->list_length & 1) == 1;
 }
@@ -631,7 +645,7 @@ bool bc_compiler::is_let_form(const ast::node* expr) {
 bool bc_compiler::is_do_inline_form(const ast::node* expr) {
     return expr->kind == ast::ak_list && expr->list_length >= 2
         && expr->datum.list[0]->kind == ast::ak_symbol
-        && intern(S, scanner_name(*sst, expr->datum.list[0]->datum.str_id))
+        && intern_id(S, scanner_name(*sst, expr->datum.list[0]->datum.str_id))
         == cached_sym(S, SC_DO_INLINE);
 }
 
@@ -747,7 +761,7 @@ bool bc_compiler::compile_string(const ast::node* root) {
 }
 
 bool bc_compiler::compile_symbol(const ast::node* root) {
-    auto sid = intern(S, scanner_name(*sst, root->datum.str_id));
+    auto sid = intern_id(S, scanner_name(*sst, root->datum.str_id));
     if (sid == cached_sym(S, SC_YES)) {
         emit8(OP_YES);
         ++sp;
@@ -871,7 +885,7 @@ bool bc_compiler::compile_toplevel(const ast::node* root) {
 void bc_compiler::compile_error(const source_loc& loc, const string& message) {
     std::ostringstream os;
     os << "Line " << loc.line << ", col " << loc.col << ":\n  " << message;
-    set_error(S->err, os.str());
+    set_error_info(S->err, os.str());
 }
 
 bool compile_to_bytecode(bc_compiler_output& out, istate* S,

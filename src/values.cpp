@@ -148,6 +148,7 @@ string v_to_string(value v, const symbol_table* symbols, bool code_format) {
     return "<unprintable-object>";
 }
 
+
 static value* find_table_slot(fn_table* tab, value k) {
     auto h = hash(k);
     auto m = 2 * tab->cap;
@@ -169,7 +170,7 @@ static value* find_table_slot(fn_table* tab, value k) {
     return nullptr;
 }
 
-value* table_get(istate* S, fn_table* tab, value k) {
+value* table_get(fn_table* tab, value k) {
     auto h = hash(k);
     auto m = 2 * tab->cap;
     auto start = 2 * (h % tab->cap);
@@ -192,14 +193,19 @@ value* table_get(istate* S, fn_table* tab, value k) {
     return nullptr;
 }
 
-void table_set(istate* S, fn_table* tab, value k, value v) {
+void table_insert(istate* S, u32 table_pos, u32 key_pos, u32 val_pos) {
+    auto tab = vtable(S->stack[table_pos]);
     // grow the table if necessary. This uses a 3/4 threshold
     if (tab->size >= tab->rehash) {
         auto old_cap = tab->cap;
         tab->cap = 2 * tab->cap;
         tab->rehash = tab->cap * 3 / 4;
         auto old_arr = (value*)tab->data->data;
-        tab->data = alloc_gc_bytes(S->alloc, 2*tab->cap*sizeof(value));
+        auto new_data = alloc_gc_bytes(S->alloc, 2*tab->cap*sizeof(value));
+        // allocation may trigger garbage collection and move the table we were
+        // just working on
+        tab = vtable(S->stack[table_pos]);
+        tab->data = new_data;
         tab->size = 0;
 
         // initialize new array
@@ -218,6 +224,8 @@ void table_set(istate* S, fn_table* tab, value k, value v) {
             }
         }
     }
+    auto k = S->stack[key_pos];
+    auto v = S->stack[val_pos];
     auto x = find_table_slot(tab, k);
     x[0] = k;
     x[1] = v;
@@ -228,8 +236,9 @@ void table_set(istate* S, fn_table* tab, value k, value v) {
     }
     if (vhas_header(v)) {
         write_guard(card, vheader(v));
-    }
+    }    
 }
+
 
 value get_metatable(istate* S, value obj) {
     if (vis_list(obj)) {

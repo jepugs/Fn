@@ -1,7 +1,5 @@
 (namespace fn/builtin)
 
-
-
 (defmacro cond (& clauses)
   (let group2-rev
        (fn (acc list)

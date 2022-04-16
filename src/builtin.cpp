@@ -23,7 +23,7 @@ static void def_foreign_fun(istate* S, const string& name, const string& params,
         void (*foreign)(istate*)) {
     auto fullname = symname(S, S->ns_id) + ":" + name;
     push_foreign_fun(S, foreign, fullname, params);
-    set_global(S, resolve_sym(S, S->ns_id, intern(S, name)), peek(S));
+    set_global(S, resolve_symbol(S, intern_id(S, name)), peek(S));
     pop(S);
 }
 
@@ -123,7 +123,7 @@ fn_fun(intern, "intern", "(str)") {
         ierror(S, "Argument to intern not a string.");
         return;
     }
-    push_sym(S, intern(S, convert_fn_string(vstring(peek(S)))));
+    push_symbol(S, intern_id(S, convert_fn_string(vstring(peek(S)))));
 }
 
 fn_fun(symname, "symname", "(sym)") {
@@ -135,7 +135,7 @@ fn_fun(symname, "symname", "(sym)") {
 }
 
 fn_fun(gensym, "gensym", "()") {
-    push_sym(S, gensym(S));
+    push_symbol(S, gensym_id(S));
 }
 
 fn_fun(add, "+", "(& args)") {
@@ -294,14 +294,7 @@ fn_fun(mod, "mod", "(x modulus)") {
 }
 
 fn_fun(Table, "Table", "(& args)") {
-    push_table(S);
-    for (u32 i = S->bp; i+1 < S->sp; i += 2) {
-        if (i + 2 == S->sp) {
-            ierror(S, "Table requires an even number of arguments.");
-            return;
-        }
-        table_set(S, vtable(peek(S)), S->stack[i], S->stack[i+1]);
-    }
+    push_table(S, get_frame_pointer(S));
 }
 
 fn_fun(get, "get", "(obj & keys)") {
@@ -312,7 +305,7 @@ fn_fun(get, "get", "(obj & keys)") {
             return;
         }
 
-        auto x = table_get(S, vtable(peek(S)), S->stack[i]);
+        auto x = table_get(vtable(peek(S)), S->stack[i]);
         if (!x) {
             ierror(S, "get failed: no such key.");
             return;
@@ -339,6 +332,25 @@ fn_fun(error, "error", "(msg)") {
 
 fn_fun(println, "println", "(str)") {
     print_top(S);
+}
+
+fn_fun(macroexpand_1, "macroexpand-1", "(form)") {
+    if (!vis_cons(peek(S))) {
+        return;
+    }
+    if (vis_symbol(vhead(peek(S)))) {
+        auto sym = vsymbol(vhead(peek(S)));
+        if (push_macro(S, sym)) {
+            auto v = vtail(peek(S, 1));
+            u32 n = 0;
+            while (!vis_emptyl(v)) {
+                push(S, vhead(v));
+                ++n;
+                v = vtail(v);
+            }
+            call(S, n);
+        }
+    }
 }
 
 fn_fun(def_list_meta, "def-list-meta", "(x)") {
@@ -418,6 +430,8 @@ void install_internal(istate* S) {
     // these should be replaced with proper I/O facilities
     // fn_add_builtin(S, print);
     fn_add_builtin(S, println);
+
+    fn_add_builtin(S, macroexpand_1);
 
     // set up builtin metatables
     fn_add_builtin(S, def_list_meta);

@@ -1,6 +1,7 @@
 #ifndef __FN_BUILTIN_HPP
 #define __FN_BUILTIN_HPP
 
+#include "api.hpp"
 #include "base.hpp"
 #include "istate.hpp"
 

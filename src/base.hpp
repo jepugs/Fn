@@ -80,8 +80,8 @@ struct error_info {
     string* message = nullptr;
 };
 
-void set_error(error_info& err, const string& message);
-void clear_error(error_info& err);
+void set_error_info(error_info& err, const string& message);
+void clear_error_info(error_info& err);
 
 // The virtual machine's internal methods and foreign functions throw this
 // exception. It gets handled within the VM to prevent it from travelling up the

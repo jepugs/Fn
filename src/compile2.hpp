@@ -159,6 +159,8 @@ private:
     void emit8(u8 u);
     void emit16(u16 u);
     void emit32(u32 u);
+    // update the source code location
+    void update_source(const source_loc& loc);
 
     // update a 16-bit value at the given address
     void patch16(u16 u, u32 addr);
@@ -190,6 +192,7 @@ private:
     // optimizations for them
     bool compile_apply(const ast::node* apply, bool tail);
     bool compile_dot(const ast::node* root);
+    bool compile_List(const ast::node* root);
 
     // compile a constant symbol
     bool compile_const_symbol(sst_id str_id);

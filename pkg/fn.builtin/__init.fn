@@ -30,6 +30,8 @@
 
 (def println int:println)
 
+(def macroexpand-1 int:macroexpand-1)
+
 (def not
      (fn (p)
        (if p no yes)))

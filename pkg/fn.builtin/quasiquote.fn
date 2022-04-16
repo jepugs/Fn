@@ -1,0 +1,31 @@
+(namespace fn/builtin)
+
+(defmacro quasiquote (form)
+  (letfn conc-arg (x)
+    (cond
+      (not (list? x)) ['quote [x]]
+
+      (empty? x) ['quote [x]]
+
+      (= (head x) 'unquote)
+      ['List (head (tail x))]
+
+      (= (head x) 'unquote-splicing)
+      (head (tail x))))
+  (letfn quasiquote-list (list)
+    (cons ':concat
+          (map conc-arg list)))
+  (cond
+    (not (list? form))
+    ['quote form]
+
+    (empty? form) ''()
+
+    (= (head form) 'unquote)
+    (head (tail form))
+
+    (= (head form) 'unquote-splicing)
+    (error "Unquote splicing at top level of unquote")
+
+    yes
+    (quasiquote-list form)))
