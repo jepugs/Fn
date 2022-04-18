@@ -21,24 +21,37 @@ namespace fn {
 // tags
 constexpr u64 TAG_WIDTH     = 4;
 constexpr u64 TAG_MASK      = (1 << TAG_WIDTH) - 1;
+constexpr u64 EXT_TAG_WIDTH = 8;
+constexpr u64 EXT_TAG_MASK  = (1 << EXT_TAG_WIDTH) - 1;
+
 // alignment of objects on the heap. This value actually gives us an unused bit
 // after the tag.
 constexpr u8 OBJ_ALIGN      = 32;
 
 constexpr u64 TAG_NUM       = 0x00;
+constexpr u64 TAG_INT       = 0x01;
+constexpr u64 TAG_BIGINT    = 0x02;
+constexpr u64 TAG_BIGFLOAT  = 0x03;
 
-// NOTE: I want these to line up with the GC_TYPE tags
-constexpr u64 TAG_STRING    = 0x01;
-constexpr u64 TAG_CONS      = 0x02;
-constexpr u64 TAG_TABLE     = 0x03;
-constexpr u64 TAG_FUNC      = 0x04;
+constexpr u64 TAG_STRING    = 0x04;
+constexpr u64 TAG_BITVECTOR = 0x05;
+constexpr u64 TAG_CONS      = 0x06;
+constexpr u64 TAG_VECTOR    = 0x07;
+constexpr u64 TAG_TABLE     = 0x08;
+constexpr u64 TAG_STRUCT    = 0x09;
+constexpr u64 TAG_SHAPE     = 0x0a;
+constexpr u64 TAG_FUNC      = 0x0b;
 
-constexpr u64 TAG_SYM       = 0x06;
-constexpr u64 TAG_NIL       = 0x07;
-constexpr u64 TAG_TRUE      = 0x08;
-constexpr u64 TAG_FALSE     = 0x09;
-constexpr u64 TAG_EMPTY     = 0x0a;
-constexpr u64 TAG_UNIN      = 0x0b;
+// 4-bit tag used for constant values
+constexpr u64 TAG_CONST     = 0x0f;
+
+// extended tags: these 8-bit tags represent special constants
+constexpr u64 TAG_NIL       = 0x0f;
+constexpr u64 TAG_YES       = 0x1f;
+constexpr u64 TAG_NO        = 0x2f;
+constexpr u64 TAG_EMPTY     = 0x3f;
+constexpr u64 TAG_UNIN      = 0x4f;
+constexpr u64 TAG_SYM       = 0xff;
 
 
 // this is the main structure to represent a value
@@ -55,6 +68,7 @@ union value {
 // GC Types
 constexpr u8 GC_TYPE_STRING     = 0x01;
 constexpr u8 GC_TYPE_CONS       = 0x02;
+constexpr u8 GC_TYPE_VECTOR     = 0x03;
 constexpr u8 GC_TYPE_TABLE      = 0x03;
 constexpr u8 GC_TYPE_FUNCTION   = 0x04;
 constexpr u8 GC_TYPE_UPVALUE    = 0x0a;
@@ -245,8 +259,8 @@ public:
 
 // constant values
 constexpr value V_NIL  = { .raw = TAG_NIL };
-constexpr value V_NO = { .raw = TAG_FALSE };
-constexpr value V_YES  = { .raw = TAG_TRUE };
+constexpr value V_NO = { .raw = TAG_NO };
+constexpr value V_YES  = { .raw = TAG_YES };
 constexpr value V_EMPTY = { .raw = TAG_EMPTY };
 constexpr value V_UNIN = { .raw = TAG_UNIN };
 

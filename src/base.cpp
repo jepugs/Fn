@@ -22,15 +22,23 @@ template<> u64 hash<string>(const string& s) {
     return res;
 }
 
+// this is modified FNV-1a to give faster performance for 64-bit values. Consider changing
 template<> u64 hash<u64>(const u64& u) {
     static const u64 prime = 0x100000001b3;
     u64 res = 0xcbf29ce484222325;
     auto bytes = u;
-    for (int i = 0; i < 8; ++i) {
-        res ^= (bytes & 0xff);
-        res *= prime;
-        bytes = bytes >> 8;
-    }
+
+    // ver1: slightly faster in artificial test environment
+    res ^= bytes;
+    res *= prime;
+
+    // alt version: true FNV-1a. Note this is slower, at least for small tables)
+    // for (int i = 0; i < 8; ++i) {
+    //     res ^= (bytes & 0xff);
+    //     res *= prime;
+    //     bytes = bytes >> 8;
+    // }
+
     return res;
 }
 

@@ -6,12 +6,6 @@
 ;               (cons 'fn
 ;                     (cons args body)))))
 
-(defmacro letfn (name args & body)
-  (List 'do-inline
-        (List 'let
-              name
-              (concat (List 'fn args) body))))
-
 ; (defmacro defn (name args & body)
 ;   (letfn valid-list? ()         ; validate a list name
 ;     (and (= (length name) 2)

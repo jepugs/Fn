@@ -53,7 +53,7 @@ void pop_to_list(istate* S, u32 num);
 // If you don't want to check, use ppush_cons() for a type-checked version
 void push_cons(istate* S, u8 head_index, u8 tail_index);
 bool ppush_cons(istate* S, u8 head_index, u8 tail_index);
-constexpr u8 FN_TABLE_INIT_CAP = 16;
+constexpr u8 FN_TABLE_INIT_CAP = 4;
 void push_empty_table(istate* S, u32 init_cap=FN_TABLE_INIT_CAP);
 // num_args must be even. Arguments are used as key-value pairs to populate the
 // table.

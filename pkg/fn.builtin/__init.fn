@@ -3,7 +3,7 @@
 (import fn/internal int)
 
 (def list? int:list?)
-(def empty? int:empty?)
+; (def empty? int:empty?)
 (def symbol? int:symbol?)
 
 (def = int:=)
@@ -18,9 +18,9 @@
 
 (def ceil int:ceil)
 
-(def head int:head)
-(def tail int:tail)
-(def cons int:cons)
+;(def head int:head)
+; (def tail int:tail)
+; (def cons int:cons)
 
 (def set-metatable int:set-metatable)
 (def metatable int:metatable)
@@ -36,6 +36,26 @@
      (fn (p)
        (if p no yes)))
 
+(def List
+     (set-metatable
+      {'__call (fn (self & args) args)}
+      {'head int:head
+       'tail int:tail
+       'empty? int:empty?
+       'cons (fn (self y) (int:cons y self))
+       ; 'map (fn (self))
+       ; 'filter (fn ( self))
+       ; 'divide (fn (self))
+       ; 'method (fn (self))
+       ; 'fuck (fn (self))
+       }))
+
+(int:def-list-meta List)
+(defmacro head (x) [''head x])
+(defmacro tail (x) [''tail x])
+(defmacro empty? (x) [''empty? x])
+(defmacro cons (y x) [''cons x y])
+
 ; foldl is needed early to bootstrap some other functions
 (def foldl
   (fn (f init list)
@@ -46,13 +66,6 @@
                (iter (f acc (head rem))
                      (tail rem)))))
     (iter init list)))
-
-(def List
-     (set-metatable
-      {'__call (fn (self & args) args)}
-      {}))
-
-(int:def-list-meta List)
 
 (def reverse
   (fn (list)

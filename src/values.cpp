@@ -10,19 +10,20 @@ bool value::operator==(const value& v) const {
     }
 
     auto tag = vtag(*this);
-    if (vtag(v) != tag) {
-        return false;
-    }
-    switch (vtag(*this)) {
+    switch (tag) {
     case TAG_STRING:
-        return *vstring(*this) == *vstring(v);
+        return vtag(v) == TAG_STRING && *vstring(*this) == *vstring(v);
     case TAG_CONS:
-        return vcons(*this)->head == vcons(v)->head
+        return vtag(v) == TAG_CONS
+            && vcons(*this)->head == vcons(v)->head
             && vcons(*this)->tail == vcons(v)->tail;
     case TAG_TABLE: {
+        if (vtag(v) != TAG_TABLE) {
+            return false;
+        }
         auto tab1 = vtable(*this);
         auto tab2 = vtable(v);
-        auto m = tab1->cap;
+        const auto m = tab1->cap;
         if (tab2->cap != m) {
             return false;
         }
@@ -62,11 +63,7 @@ template<> u64 hash<value>(const value& v) {
     switch (tag) {
     case TAG_NUM:
     case TAG_SYM:
-    case TAG_NIL:
-    case TAG_TRUE:
-    case TAG_FALSE:
-    case TAG_EMPTY:
-    case TAG_UNIN:
+    case TAG_CONST:
         return hash(v.raw);
     case TAG_STRING:
         return hash(string{(char*)vstring(v)->data});
@@ -130,9 +127,9 @@ string v_to_string(value v, const symbol_table* symbols, bool code_format) {
         return "<function>";
     case TAG_NIL:
         return "nil";
-    case TAG_TRUE:
+    case TAG_YES:
         return "yes";
-    case TAG_FALSE:
+    case TAG_NO:
         return "no";
     case TAG_EMPTY:
         return "[]";
@@ -192,6 +189,18 @@ value* table_get(fn_table* tab, value k) {
     }
     return nullptr;
 }
+
+value* table_get_linear(fn_table* tab, value k) {
+    auto m = 2 * tab->cap;
+    auto data = (value*)tab->data->data;
+    for (u32 i = 0; i < m; i += 2) {
+        if (data[i] == k) {
+            return &data[i];
+        }
+    }
+    return nullptr;
+}
+
 
 void table_insert(istate* S, u32 table_pos, u32 key_pos, u32 val_pos) {
     auto tab = vtable(S->stack[table_pos]);
@@ -268,8 +277,8 @@ string type_string(value v) {
         return "symbol\n";
     case TAG_NIL:
         return "nil\n";
-    case TAG_TRUE:
-    case TAG_FALSE:
+    case TAG_YES:
+    case TAG_NO:
         return "bool\n";
     case TAG_UNIN:
         return "<uninitialized>\n";

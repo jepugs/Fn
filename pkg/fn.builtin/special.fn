@@ -20,4 +20,46 @@
 (defmacro defn (name args & body)
   ['def name (cons 'fn (cons args body))])
 
+(defmacro letfn (name args & body)
+  ['do-inline
+   ['let
+    name
+    (concat (List 'fn args) body)]])
 
+; (defmacro dollar-fn (expr)
+;   (letfn $-int? (int-str)
+;     (or (= int-str "0")
+;         (and (not (= (char-at int-str 0) "0"))
+;              (every digit-char? (string->list int-str)))))
+;   (letfn $-sym? (sym)
+;     (let str (symname name))
+;     (and (= (char-at str 0) "$")
+;          (or (= (length str) 1)
+;              (is-dollar-int? (substr str 1)))))
+;   (letfn digit-val (ch)
+;     (- (char-code ch) (char-code "0")))
+;   (letfn $-int-value (int-str)
+;     (foldl (fn (acc in)
+;              (+ (* acc 10) (digit-val in)))
+;            0
+;            (string->list int-str)))
+;   (letfn find-$-vars (x)
+;     ; macroexpand where appropriate
+;     (let expr
+;          (cond
+;            (not (list? x)) x
+;            (empty? x) x
+;            (= (resolve-symbol (head x)) 'fn/builtin:dollar-fn) x
+;            yes (macroexpand x)))
+;     (cond
+;       ($-sym? expr) [expr]
+
+;       (list? expr)
+;       (do
+;         (let op (resolve-symbol (head x)))
+;         (cond
+;           (= op 'fn/builtin:quote) []
+;           (= op 'fn/builtin:dollar-fn) []
+;           yes (foldl concat (map find-$-vars expr))))
+
+;       yes [])))

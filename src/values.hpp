@@ -22,6 +22,9 @@ string v_to_string(value v,
 inline u64 vtag(value v) {
     return v.raw & TAG_MASK;
 }
+inline u64 vext_tag(value v) {
+    return v.raw & EXT_TAG_MASK;
+}
 inline u64 vis_number(value v) {
     return vtag(v) == TAG_NUM;
 }
@@ -41,7 +44,7 @@ inline u64 vis_function(value v) {
     return vtag(v) == TAG_FUNC;
 }
 inline u64 vis_symbol(value v) {
-    return vtag(v) == TAG_SYM;
+    return vext_tag(v) == TAG_SYM;
 }
 inline u64 vis_nil(value v) {
     return v.raw == V_NIL.raw;
@@ -75,7 +78,7 @@ inline value vbox_number(f64 v) {
     return res;
 }
 inline value vbox_symbol(symbol_id v) {
-    return { .raw = (((u64)v) << TAG_WIDTH | TAG_SYM)};
+    return { .raw = (((u64)v) << EXT_TAG_WIDTH | TAG_SYM)};
 }
 inline value vbox_bool(bool v) {
     if (v) {
@@ -142,7 +145,7 @@ inline fn_function* vfunction(value v) {
     return (fn_function*)v.ptr;
 }
 inline symbol_id vsymbol(value v) {
-    return v.raw >> TAG_WIDTH;
+    return v.raw >> EXT_TAG_WIDTH;
 }
 
 inline bool vtruth(value v) {
@@ -203,6 +206,7 @@ inline bool vequal(value a, value b) {
 // returns an array of two values, key followed by value, which should not be
 // freed
 value* table_get(fn_table* tab, value k);
+value* table_get_linear(fn_table* tab, value k);
 void table_insert(istate* S, u32 table_pos, u32 key_pos, u32 val_pos);
 
 value get_metatable(istate* S, value obj);

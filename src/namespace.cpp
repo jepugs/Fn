@@ -22,14 +22,15 @@ symbol_id resolve_in_ns(istate* S, symbol_id name, symbol_id ns_id) {
     auto name_str = symname(S, name);
     // check for FQN
     if (name_str.size() >= 2 && name_str[0] == '#' && name_str[1] == ':') {
-        return intern_id(S, name_str.substr(2));
+        return name;
     } else {
         auto x = (*ns)->resolve.get(name);
         if (x.has_value()) {
             return *x;
         } else {
             // unrecognized symbol => treat it as a global variable in namespace
-            auto fqn = intern_id(S, symname(S, (*ns)->id) + ":" + name_str);
+            auto fqn = intern_id(S, "#:" + symname(S, (*ns)->id) + ":"
+                    + name_str);
             // add to resolution table
             (*ns)->resolve.insert(name, fqn);
             return fqn;
@@ -90,15 +91,15 @@ fn_namespace* add_ns(istate* S, symbol_id ns_id) {
         return *x;
     }
     auto res = new fn_namespace{.id = ns_id};
-    S->G->ns_tab.insert(ns_id, res);
     copy_defs(S, res, get_ns(S, cached_sym(S, SC_FN_BUILTIN)), "");
+    S->G->ns_tab.insert(ns_id, res);
     return res;
 }
 
 fn_namespace* get_ns(istate* S, symbol_id ns_id) {
-    auto x = S->G->ns_tab.get(ns_id);
-    if (x.has_value()) {
-        return *x;
+    auto x = S->G->ns_tab.get2(ns_id);
+    if (x) {
+        return x->val;
     }
     return nullptr;
 }
@@ -107,6 +108,10 @@ bool copy_defs(istate* S, fn_namespace* dest, fn_namespace* src,
         const string& prefix, bool overwrite) {
     if (dest == nullptr || src == nullptr) {
         return true;
+    }
+    if (src == dest) {
+        ierror(S, "Attempt to copy a namespace into itself.\n");
+        return false;
     }
     for (auto e : src->resolve) {
         auto name = intern_id(S, prefix + symname(S, e->key));

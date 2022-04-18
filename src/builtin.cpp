@@ -246,6 +246,7 @@ fn_fun(cons, "cons", "(hd tl)") {
     auto tl = get(S, 1);
     if (tl != V_EMPTY && !vis_cons(tl)) {
         ierror(S, "cons tail must be a list");
+        return;
     }
     push_cons(S, S->bp, S->bp + 1);
 }
@@ -253,6 +254,7 @@ fn_fun(cons, "cons", "(hd tl)") {
 fn_fun(head, "head", "(x)") {
     if (!vis_cons(peek(S))) {
         ierror(S, "head argument must be a list");
+        return;
     }
     push(S, vcons(peek(S))->head);
 }
