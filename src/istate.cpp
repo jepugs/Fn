@@ -1,6 +1,7 @@
 #include "api.hpp"
-#include "allocator.hpp"
+#include "alloc.hpp"
 #include "compile2.hpp"
+#include "gc.hpp"
 #include "istate.hpp"
 #include "namespace.hpp"
 #include "parse.hpp"

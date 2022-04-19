@@ -2,8 +2,9 @@
 
 #include "config.h"
 
-#include "allocator.hpp"
+#include "alloc.hpp"
 #include "bytes.hpp"
+#include "gc.hpp"
 #include "namespace.hpp"
 #include "values.hpp"
 
@@ -351,7 +352,7 @@ void execute_fun(istate* S) {
             if (u->closed) {
                 u->datum.val = peek(S, 0);
                 if (vhas_header(peek(S, 0))) {
-                    write_guard(get_gc_card(&u->h), vheader(peek(S,0)));
+                    write_guard(get_gc_card_header(&u->h), vheader(peek(S,0)));
                 }
             } else {
                 S->stack[u->datum.pos] = peek(S, 0);

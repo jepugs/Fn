@@ -2,14 +2,17 @@
 #define __FN_ALLOC_HPP
 
 #include "base.hpp"
+#include "compile2.hpp"
 #include "gc.hpp"
 #include "istate.hpp"
+
+namespace fn {
 
 // gc_bytes are byte arrays used internally by some objects. These routines will
 // not trigger collection, since this could cause the object containing the
 // array to be moved.
-gc_bytes* alloc_gc_bytes(allocator* alloc, u64 nbytes, u8 level=0);
-gc_bytes* realloc_gc_bytes(allocator* alloc, gc_bytes* src, u64 new_size);
+gc_bytes* alloc_gc_bytes(istate* S, u64 nbytes, u8 level=GC_GEN_NURSERY);
+gc_bytes* realloc_gc_bytes(gc_bytes* src, istate* S, u64 new_size);
 
 // object creation routines. Each of these may trigger a collection at the
 // beginning. The "where" argument is a stack address that must be < sp;
@@ -46,5 +49,7 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
 
 // create the istate object
 istate* alloc_istate(const string& filename, const string& wd);
+
+}
 
 #endif

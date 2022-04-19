@@ -1,6 +1,7 @@
 #include "values.hpp"
 
-#include "allocator.hpp"
+#include "alloc.hpp"
+#include "gc.hpp"
 
 namespace fn {
 
@@ -209,7 +210,7 @@ void table_insert(istate* S, u32 table_pos, u32 key_pos, u32 val_pos) {
         tab->cap = 2 * tab->cap;
         tab->rehash = tab->cap * 3 / 4;
         auto old_arr = (value*)tab->data->data;
-        auto new_data = alloc_gc_bytes(S->alloc, 2*tab->cap*sizeof(value));
+        auto new_data = alloc_gc_bytes(S, 2*tab->cap*sizeof(value));
         // allocation may trigger garbage collection and move the table we were
         // just working on
         tab = vtable(S->stack[table_pos]);
@@ -238,7 +239,7 @@ void table_insert(istate* S, u32 table_pos, u32 key_pos, u32 val_pos) {
     x[0] = k;
     x[1] = v;
     // set the dirty bit
-    auto card = get_gc_card(&tab->h);
+    auto card = get_gc_card_header(&tab->h);
     if (vhas_header(k)) {
         write_guard(card, vheader(k));
     }
