@@ -62,7 +62,6 @@ template<> u64 hash<value>(const value& v) {
     auto tag = vtag(v);
     switch (tag) {
     case TAG_NUM:
-    case TAG_SYM:
     case TAG_CONST:
         return hash(v.raw);
     case TAG_STRING:

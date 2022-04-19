@@ -27,6 +27,18 @@ bool fn_string::operator==(const fn_string& s) const {
     return true;
 }
 
+code_info* instr_loc(function_stub* stub, u32 pc) {
+    for (u64 i = stub->ci_length; i > 0; --i) {
+        if (stub->ci_arr[i-1].start_addr <= pc) {
+            return &stub->ci_arr[i-1];
+        }
+    }
+    // this is safe since the first location is always added when the function
+    // is created.
+    // FIXME: or is it?
+    return &stub->ci_arr[0];
+}
+
 symbol_table::~symbol_table() {
     for (auto x : by_id) {
         delete x.name;

@@ -131,10 +131,12 @@ gc_bytes* realloc_gc_bytes(allocator* alloc, gc_bytes* src, u64 new_size);
 // beginning. The "where" argument is a stack address that must be < sp;
 // allocation routines without a where argument push their result to the top of
 // the stack.
-void alloc_string(istate* S, u32 where, u32 size);
-void alloc_string(istate* S, u32 where, const string& str);
-void alloc_cons(istate* S, u32 where, u32 hd, u32 tl);
-void alloc_table(istate* S, u32 where, u32 init_cap=FN_TABLE_INIT_CAP);
+void alloc_string(istate* S, u32 stack_pos, u32 size);
+void alloc_string(istate* S, u32 stack_pos, const string& str);
+void alloc_cons(istate* S, u32 stack_pos, u32 hd, u32 tl);
+void alloc_table(istate* S, u32 stack_pos, u32 init_cap=FN_TABLE_INIT_CAP);
+// grow a table to a new minimum capacity. This will also 
+void grow_table(istate* S, u32 stack_pos, u32 min_cap);
 
 struct bc_compiler_output;
 // create a toplevel function from bytecode compiler output
@@ -144,7 +146,7 @@ bool reify_function(istate* S, const scanner_string_table& sst,
 void alloc_fun(istate* S, u32 enclosing, constant_id fid);
 // create a foreign function
 void alloc_foreign_fun(istate* S,
-        u32 where,
+        u32 stack_pos,
         void (*foreign)(istate*),
         u32 num_args,
         bool vari,
@@ -161,41 +163,8 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
 // create the istate object
 istate* alloc_istate(const string& filename, const string& wd);
 
-// FIXME: this no longer needs gc_array. Move it.
-// get the location of an instruction based on the code_info array in the
-// function stub. This doesn't perform mutation, but it's here because it needs
-// the gc_array functions
-code_info* instr_loc(function_stub* stub, u32 pc);
-
-// functions for tables
-void table_insert(istate* S, u32 table_pos, u32 key_pos, u32 val_pos);
-
 void collect(istate* S);
 void collect_now(istate* S);
-
-// gc_arrays wrap gc_bytes objects so that they can be conveniently used as
-// dynamic arrays for objects of arbitrary size. These are the routines to
-// manipulate them.
-template<typename T>
-void init_gc_array(istate* S, gc_array<T>* arr) {
-    arr->cap = INIT_GC_ARRAY_SIZE;
-    arr->size = 0;
-    arr->data = alloc_gc_bytes(S->alloc, INIT_GC_ARRAY_SIZE*sizeof(T));
-}
-
-template<typename T>
-void push_back_gc_array(istate* S, gc_array<T>* arr, const T& value) {
-    if (arr->cap <= arr->size) {
-        arr->cap *= 2;
-        arr->data = realloc_gc_bytes(S->alloc, arr->data, arr->cap * sizeof(T));
-    }
-    ((T*)arr->data->data)[arr->size++] = value;
-}
-
-template<typename T>
-T& gc_array_get(gc_array<T>* arr, u64 i) {
-    return ((T*)arr->data->data)[i];
-}
 
 }
 

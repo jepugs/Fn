@@ -32,19 +32,20 @@ constexpr u64 TAG_NUM       = 0x00;
 constexpr u64 TAG_INT       = 0x01;
 constexpr u64 TAG_BIGINT    = 0x02;
 constexpr u64 TAG_BIGFLOAT  = 0x03;
-
 constexpr u64 TAG_STRING    = 0x04;
 constexpr u64 TAG_BITVECTOR = 0x05;
+
 constexpr u64 TAG_CONS      = 0x06;
 constexpr u64 TAG_VECTOR    = 0x07;
 constexpr u64 TAG_TABLE     = 0x08;
+constexpr u64 TAG_MAP       = 0x08;
 constexpr u64 TAG_STRUCT    = 0x09;
-constexpr u64 TAG_SHAPE     = 0x0a;
+
 constexpr u64 TAG_FUNC      = 0x0b;
 
-// 4-bit tag used for constant values
+// constants (including symbols) use 8-bit extended tags. The lower four bits
+// must be set to TAG_CONST.
 constexpr u64 TAG_CONST     = 0x0f;
-
 // extended tags: these 8-bit tags represent special constants
 constexpr u64 TAG_NIL       = 0x0f;
 constexpr u64 TAG_YES       = 0x1f;
@@ -66,17 +67,20 @@ union value {
 };
 
 // GC Types
-constexpr u8 GC_TYPE_STRING     = 0x01;
-constexpr u8 GC_TYPE_CONS       = 0x02;
-constexpr u8 GC_TYPE_VECTOR     = 0x03;
-constexpr u8 GC_TYPE_TABLE      = 0x03;
-constexpr u8 GC_TYPE_FUNCTION   = 0x04;
-constexpr u8 GC_TYPE_UPVALUE    = 0x0a;
+constexpr u8 GC_TYPE_BIGINT     = 0x00; // unused
+constexpr u8 GC_TYPE_BIGFLOAT   = 0x01; // unused
+constexpr u8 GC_TYPE_STRING     = 0x02;
+constexpr u8 GC_TYPE_CONS       = 0x03;
+constexpr u8 GC_TYPE_VECTOR     = 0x04; // unused
+constexpr u8 GC_TYPE_TABLE      = 0x05;
+constexpr u8 GC_TYPE_MAP        = 0x06; // unused
+constexpr u8 GC_TYPE_FUNCTION   = 0x07;
+constexpr u8 GC_TYPE_UPVALUE    = 0x08;
 // function stubs (hold code, etc)
-constexpr u8 GC_TYPE_FUN_STUB   = 0x06;
+constexpr u8 GC_TYPE_FUN_STUB   = 0x09;
 
-// dynamic byte arrays used internally by tables, function_stubs
-constexpr u8 GC_TYPE_GC_BYTES   = 0x0e;
+// dynamic byte arrays used internally by other types
+constexpr u8 GC_TYPE_GC_BYTES   = 0x0a;
 // for use by the copying collector
 constexpr u8 GC_TYPE_FORWARD    = 0x0f;
 
@@ -85,7 +89,6 @@ struct alignas (OBJ_ALIGN) gc_header {
     u8 type;
     u32 size;
     u8 age;
-    u8 mark;
     // used for copying objects
     gc_header* forward;
 };
@@ -207,6 +210,11 @@ struct alignas(OBJ_ALIGN) function_stub {
     u32 ci_length;
     code_info* ci_arr;
 };
+
+// get the location of an instruction based on the code_info array in the
+// function stub. This doesn't perform mutation, but it's here because it needs
+// the gc_array functions
+code_info* instr_loc(function_stub* stub, u32 pc);
 
 // represents a function value
 struct alignas (OBJ_ALIGN) fn_function {
