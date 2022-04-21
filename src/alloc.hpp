@@ -37,7 +37,6 @@ void alloc_foreign_fun(istate* S,
         void (*foreign)(istate*),
         u32 num_args,
         bool vari,
-        u32 num_upvals,
         const string& name);
 
 // allocate a function stub with a handle. Technically, we could avoid creating

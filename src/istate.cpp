@@ -117,9 +117,9 @@ bool pop_syntax(ast::node*& result, istate* S, scanner_string_table& sst) {
         result = ast::mk_list(loc, 0, nullptr);
     } else if (vis_cons(v)) {
         dyn_array<ast::node*> buf;
-        auto lst = v;
-        while(!vis_emptyl(lst)) {
-            push(S, vhead(lst));
+        auto lst_addr = S->sp - 1;
+        while(!vis_emptyl(S->stack[lst_addr])) {
+            push(S, vhead(S->stack[lst_addr]));
             ast::node* sub;
             if (!pop_syntax(sub, S, sst)) {
                 for (auto n : buf) {
@@ -128,7 +128,7 @@ bool pop_syntax(ast::node*& result, istate* S, scanner_string_table& sst) {
                 return false;
             }
             buf.push_back(sub);
-            lst = vtail(lst);
+            S->stack[lst_addr] = vtail(S->stack[lst_addr]);
         }
         result = ast::mk_list(loc, buf);
     } else {
@@ -171,7 +171,7 @@ void push_foreign_fun(istate* S,
         ast::free_graph(f);
     }
     push_nil(S);
-    alloc_foreign_fun(S, S->sp - 1, foreign, num_args, vari, 0, name);
+    alloc_foreign_fun(S, S->sp - 1, foreign, num_args, vari, name);
 }
 
 void print_top(istate* S) {

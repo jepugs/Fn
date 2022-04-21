@@ -1,6 +1,7 @@
 #include "base.hpp"
 #include "builtin.hpp"
 #include "bytes.hpp"
+#include "gc.hpp"
 #include "compile2.hpp"
 #include "table.hpp"
 #include "values.hpp"
@@ -142,6 +143,7 @@ int main(int argc, char** argv) {
         return -1;
     }
 
+    setup_gc_methods();
     auto S = init_istate();
     install_builtin(S);
     if (has_error(S)) {

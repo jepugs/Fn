@@ -2,8 +2,6 @@
 
 namespace fn {
 
-#define raw_ptr_add(ptr, offset) ((((u8*)ptr) + offset))
-
 gc_bytes* alloc_gc_bytes(istate* S, u64 nbytes, u8 gen) {
     auto sz = round_to_align(sizeof(gc_bytes) + nbytes);
     gc_bytes* res;
@@ -69,13 +67,17 @@ void alloc_cons(istate* S, u32 stack_pos, u32 hd, u32 tl) {
 
 void alloc_table(istate* S, u32 stack_pos, u32 init_cap) {
     init_cap = init_cap == 0 ? FN_TABLE_INIT_CAP : init_cap;
+    // allocate the array first
+    auto data_handle = get_handle(S->alloc,
+            alloc_gc_bytes(S, 2*init_cap*sizeof(value)));
     auto sz =  round_to_align(sizeof(fn_table));
     auto res = (fn_table*)alloc_nursery_object(S, sz);
     init_gc_header(&res->h, GC_TYPE_TABLE, sz);
     res->size = 0;
     res->cap = init_cap;
     res->rehash = 3 * init_cap / 4;
-    res->data = alloc_gc_bytes(S, 2*init_cap*sizeof(value));
+    res->data = data_handle->obj;
+    release_handle(data_handle);
     for (u32 i = 0; i < 2*init_cap; i += 2) {
         ((value*)(res->data->data))[i] = V_UNIN;
     }
@@ -138,11 +140,17 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
     // FIXME: Maybe I can use a template that depends on the array types
     o->code_length = compiled.code.size;
     o->code = (u8*)raw_ptr_add(o, sizeof(function_stub));
-    o->num_const = 0;
+    o->num_const = compiled.const_table.size;
     o->const_arr = (value*)raw_ptr_add(o, sizeof(function_stub) + code_sz);
-    o->num_sub_funs = 0;
+    for (u32 i = 0; i < compiled.const_table.size; ++i) {
+        o->const_arr[i] = V_NIL;
+    }
+    o->num_sub_funs = compiled.sub_funs.size;
     o->sub_funs = (function_stub**)raw_ptr_add(o, sizeof(function_stub)
             + code_sz + const_sz);
+    for (u32 i = 0; i < compiled.sub_funs.size; ++i) {
+        o->sub_funs[i] = nullptr;
+    }
     o->num_upvals = compiled.num_upvals;
     o->upvals = (u8*)raw_ptr_add(o, sizeof(function_stub) + code_sz + const_sz
             + sub_funs_sz);
@@ -167,14 +175,17 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
     }
     for (u32 i = 0; i < compiled.const_table.size; ++i) {
         reify_bc_const(S, sst, compiled.const_table[i]);
-        h->obj->const_arr[i] = peek(S);
+        auto v = peek(S);
+        if (vhas_header(v)) {
+            write_guard(get_gc_card_header((gc_header*)h->obj), vheader(v));
+        }
+        h->obj->const_arr[i] = v;
         pop(S);
-        ++h->obj->num_const;
     }
     for (u32 i = 0; i < compiled.sub_funs.size; ++i) {
         auto h2 = gen_function_stub(S, sst, compiled.sub_funs[i]);
         h->obj->sub_funs[i] = h2->obj;
-        ++h->obj->num_sub_funs;
+        write_guard(get_gc_card_header((gc_header*)h->obj), &h2->obj->h);
         release_handle(h2);
     }
     memcpy(h->obj->upvals, compiled.upvals.data, compiled.num_upvals * sizeof(u8));
@@ -229,41 +240,39 @@ void alloc_foreign_fun(istate* S,
         void (*foreign)(istate*),
         u32 num_params,
         bool vari,
-        u32 num_upvals,
         const string& name) {
     push_string(S, name);
-    auto sz = round_to_align(sizeof(fn_function)
-            + num_upvals * sizeof(upvalue_cell*));
-    auto res = (fn_function*)alloc_nursery_object(S, sz);
-    init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
-    res->init_vals = nullptr;
-    res->upvals = (upvalue_cell**)((u8*)res + sizeof(fn_function));
-    for (u32 i = 0; i < num_upvals; ++i) {
-        res->upvals[i] = alloc_closed_upval(S);
-        res->upvals[i]->closed = true;
-    }
     auto stub_sz = round_to_align(sizeof(function_stub) + sizeof(code_info));
-    res->stub = (function_stub*)alloc_nursery_object(S, stub_sz);
-    init_gc_header(&res->stub->h, GC_TYPE_FUN_STUB, stub_sz);
-    res->stub->num_upvals = num_upvals;
-    res->stub->name = vstring(peek(S));
+    auto stub = (function_stub*)alloc_nursery_object(S, stub_sz);
+    init_gc_header(&stub->h, GC_TYPE_FUN_STUB, stub_sz);
+    stub->num_upvals = 0;
+    stub->name = vstring(peek(S));
     pop(S);
-    res->stub->filename = S->filename;
-    res->stub->foreign = foreign;
-    res->stub->num_params = num_params;
-    res->stub->vari = vari;
+    stub->filename = S->filename;
+    stub->foreign = foreign;
+    stub->num_params = num_params;
+    stub->vari = vari;
 
-    res->stub->code_length = 0;
-    res->stub->num_const = 0;
-    res->stub->num_opt = 0;
-    res->stub->num_sub_funs = 0;
-    res->stub->ci_length = 1;
-    res->stub->ci_arr = (code_info*)raw_ptr_add(res->stub,
+    stub->code_length = 0;
+    stub->num_const = 0;
+    stub->num_opt = 0;
+    stub->num_sub_funs = 0;
+    stub->ci_length = 1;
+    stub->ci_arr = (code_info*)raw_ptr_add(stub,
             sizeof(function_stub));
-    res->stub->ci_arr[0] = code_info{
+    stub->ci_arr[0] = code_info{
         0,
         source_loc{0, 0}
     };
+    auto stub_handle = get_handle(S->alloc, stub);
+
+    auto sz = round_to_align(sizeof(fn_function));
+    auto res = (fn_function*)alloc_nursery_object(S, sz);
+    init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
+    res->stub = stub;
+    res->init_vals = nullptr;
+    res->upvals = nullptr;
+    release_handle(stub_handle);
 
     // FIXME: allocate foreign fun upvals
     S->stack[where] = vbox_function(res);
@@ -313,14 +322,25 @@ void alloc_fun(istate* S, u32 enclosing, constant_id fid) {
 
     // set up upvalues
     for (u32 i = 0; i < stub->num_upvals; ++i) {
-        if (stub->upvals_direct[i]) {
-            res->upvals[i] = open_upval(S, S->bp + stub->upvals[i]);
+        res->upvals[i] = nullptr;
+    }
+
+    auto h = get_handle(S->alloc, res);
+    for (u32 i = 0; i < h->obj->stub->num_upvals; ++i) {
+        if (h->obj->stub->upvals_direct[i]) {
+            auto u = open_upval(S, S->bp + stub->upvals[i]);
+            h->obj->upvals[i] = u;
+            write_guard(get_gc_card_header((gc_header*)h->obj),
+                    (gc_header*)h->obj->upvals[i]);
+            enc_fun = vfunction(S->stack[enclosing]);
+            stub = enc_fun->stub->sub_funs[fid];
         } else {
-            res->upvals[i] = enc_fun->upvals[stub->upvals[i]];
+            h->obj->upvals[i] = enc_fun->upvals[stub->upvals[i]];
         }
     }
 
-    push(S, vbox_function(res));
+    push(S, vbox_function(h->obj));
+    release_handle(h);
 }
 
 static void setup_symcache(istate* S) {
@@ -345,6 +365,8 @@ istate* alloc_istate(const string& filename, const string& wd) {
     res->bp = 0;
     res->sp = 0;
     res->callee = nullptr;
+    res->filename = nullptr;
+    res->wd = nullptr;
     res->filename = create_string(res, filename);
     res->wd = create_string(res, wd);
     res->err.happened = false;

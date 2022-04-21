@@ -1,46 +1,9 @@
 (namespace fn/builtin)
 
-; (defmacro letfn (name args & body)
-;   (List 'do-inline
-;         (List 'let name
-;               (cons 'fn
-;                     (cons args body)))))
-
-; (defmacro defn (name args & body)
-;   (letfn valid-list? ()         ; validate a list name
-;     (and (= (length name) 2)
-;          (symbol? (head (tail name)))
-;          (list? (head name))
-;          (= (length (head name)) 2)
-;          (= (head (head name)) 'quote)))
-;   (cond
-;     (list? name)
-;     (if (valid-list?)
-;         `(set! (. ,(head (tail name)) ,(head name))
-;                (fn ,args ,@body))
-;         (error "Invalid name in defn"))
-
-;     (symbol? name)
-;     `(def ,name
-;           (fn ,args ,@body))
-
-;     yes
-;     (error "Invalid name in defn"))
-;   )
-
 (defn nth (n list)
   (if (<= n 0)
       (head list)
       (nth (- n 1) (tail list))))
-
-; (defn ('empty? List) (self)
-;   (= self []))
-
-; (defn ('head List) (self)
-;   (int:head self))
-
-; (defn ('tail List) (self)
-;   (int:tail self))
 
 (defn any (test? list)
   (letfn iter (rem)

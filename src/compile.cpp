@@ -217,6 +217,7 @@ ast::node* bc_compiler::macroexpand(const ast::node* macro_form) {
         return nullptr;
     }
     ast::node* form;
+    // FIXME: check pop_syntax return value
     pop_syntax(form, S, *sst);
     while (true) {
         if (form->kind != ast::ak_list) {

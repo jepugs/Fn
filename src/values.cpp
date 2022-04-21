@@ -125,22 +125,28 @@ string v_to_string(value v, const symbol_table* symbols, bool code_format) {
         return res;
     case TAG_FUNC:
         return "<function>";
-    case TAG_NIL:
-        return "nil";
-    case TAG_YES:
-        return "yes";
-    case TAG_NO:
-        return "no";
-    case TAG_EMPTY:
-        return "[]";
-    case TAG_UNIN:
-        return "<uninitialized>";
-    case TAG_SYM:
-        if (code_format) {
-            return "'" + symbols->nice_name(vsymbol(v));
-        } else {
-            return symbols->nice_name(vsymbol(v));
+    case TAG_CONST:
+        switch (vext_tag(v)) {
+        case TAG_NIL:
+            return "nil";
+        case TAG_YES:
+            return "yes";
+        case TAG_NO:
+            return "no";
+        case TAG_EMPTY:
+            return "[]";
+        case TAG_UNIN:
+            return "<uninitialized>";
+        case TAG_SYM:
+            if (code_format) {
+                return "'" + symbols->nice_name(vsymbol(v));
+            } else {
+                return symbols->nice_name(vsymbol(v));
+            }
+        default:
+            break;
         }
+        // fall thru
     }
     return "<unprintable-object>";
 }
@@ -209,12 +215,13 @@ void table_insert(istate* S, u32 table_pos, u32 key_pos, u32 val_pos) {
         auto old_cap = tab->cap;
         tab->cap = 2 * tab->cap;
         tab->rehash = tab->cap * 3 / 4;
-        auto old_arr = (value*)tab->data->data;
         auto new_data = alloc_gc_bytes(S, 2*tab->cap*sizeof(value));
         // allocation may trigger garbage collection and move the table we were
         // just working on
         tab = vtable(S->stack[table_pos]);
+        auto old_arr = (value*)tab->data->data;
         tab->data = new_data;
+        write_guard(get_gc_card_header(&tab->h), &new_data->h);
         tab->size = 0;
 
         // initialize new array

@@ -14,45 +14,14 @@
 // access parts of the gc_header
 #define gc_type(h) (((h).type))
 #define handle_object(h) ((h->obj))
+#define raw_ptr_add(ptr, offset) ((((u8*)ptr) + offset))
 
 namespace fn {
-
-// GC Methods
-
-// Rather than try to figure out how inheritance works, here's how I've
-// implemented type-based polymorphism in the garbage collector. Other than
-// allocation, which happens as needed in custom functions, there are only two
-// type-dependent behaviors in the garbage collector: setting up internal
-// pointers, and scavenging external pointers. So, we make two tables. We call
-// these two types of functions reinitializers and
-
-
-// When an object is moved, first a bit-for-bit copy is made, and then the
-// reinitializer is called to set up the internal pointers on the new instance.
-using gc_reinitializer = void (*)(gc_header* obj);
-// The scavenger is responsible for two things. (1) It has to update all
-// pointers to other gc objects by either copying them or following the
-// forwarding pointer. This is why we need a pointer to the allocator object.
-// (2) It has to update the dirty bit on the gc_card on which obj lives.
-using gc_scavenger = void (*)(gc_header* obj, istate* S);
-
-// initializer/scavenger used for undefined types
-extern gc_reinitializer undef_initializer;
-extern gc_scavenger undef_scavenger;
-
-
-// this is the number of entries in the GC method tables
-constexpr u64 MAX_GC_TYPES = 16;
-// method tables used to look up the appropriate initializer/scavenger based on
-// the GC_TYPE.
-extern gc_reinitializer gc_reinitializer_table[MAX_GC_TYPES];
-extern gc_scavenger gc_scavenger_table[MAX_GC_TYPES];
 
 // rounds size upward to a multiple of align. Align must be a power of 2.
 inline constexpr u64 round_to_align(u64 size, u64 align = OBJ_ALIGN) {
     return align + ((size - 1) & ~(align - 1));
 }
-
 
 // GC Cards
 
@@ -114,15 +83,18 @@ constexpr u8 GC_GEN_SURVIVOR   = 1;
 constexpr u8 GC_GEN_TENURED    = 2;
 
 // number of collections an object must survive to be moved to the tenured
-// generation
-constexpr u8 GC_TENURE_AGE    = 16;
+// generation. Chosen pretty much at random, sorry
+constexpr u8 GC_TENURE_AGE    = 15;
 
-// number of GC cards the nursery is allowed to use before triggering an
-// evacuation
-constexpr u8 DEFAULT_NURSERY_SIZE    = 32;
-// if the survivor space exceeds this number of gc cards, then it will be
-// compacted/collected the next time the nursery is evacuated.
-constexpr u8 DEFAULT_SURVIVOR_SIZE   = 128;
+// Nursery size at which to perform a collection
+constexpr u64 DEFAULT_NURSERY_SIZE_BYTES = 1 << 22;  // 4 MiB
+// constexpr u64 DEFAULT_NURSERY_SIZE_BYTES = 1 << 15;  // 32 KiB
+constexpr u64 DEFAULT_NURSERY_SIZE = DEFAULT_NURSERY_SIZE_BYTES / GC_CARD_SIZE;
+
+// Threshold to perform major GC
+constexpr u64 DEFAULT_MAJORGC_TH_BYTES = 1 << 30; // 1 GiB
+// constexpr u64 DEFAULT_MAJORGC_TH_BYTES = 1 << 20; // 1 MiB
+constexpr u64 DEFAULT_MAJORGC_TH = DEFAULT_MAJORGC_TH_BYTES / GC_CARD_SIZE;
 
 // a deck consists of two linked lists of gc cards, all in the same generation.
 // There's a singley-linked list of normal gc cards and a doubley-linked list of
@@ -171,7 +143,50 @@ struct allocator {
     u8 max_compact_gen;
     // used during collection; the maximum generation being scavenged
     u8 max_scavenge_gen;
+
+    u64 nursery_size;
+    u64 majorgc_th;
 };
+
+// object used to hold information during scavenging. This is perhaps a little
+// bit inelegant, but it gets the job done.
+struct gc_scavenge_state {
+    u8 youngest_ref;
+    istate* S;
+};
+
+// GC Methods
+
+// Rather than try to figure out how inheritance works, here's how I've
+// implemented type-based polymorphism in the garbage collector. Other than
+// allocation, which happens as needed in custom functions, there are only two
+// type-dependent behaviors in the garbage collector: setting up internal
+// pointers, and scavenging external pointers. So, we make two tables, indexed
+// by the gc type of the object. We call these two types of functions
+// reinitializers and scavengers.
+
+// When an object is moved, first a bit-for-bit copy is made, and then the
+// reinitializer is called to set up the internal pointers on the new instance.
+using gc_reinitializer = void (*)(gc_header* obj);
+// The scavenger is responsible for two things. (1) It has to update all
+// pointers to other gc objects by either copying them or following the
+// forwarding pointer. This is why we need a pointer to the allocator object.
+// (2) It has to update the dirty bit on the gc_card on which obj lives.
+using gc_scavenger = void (*)(gc_header* obj, gc_scavenge_state* s);
+
+// these do nothing
+void default_reinitializer(gc_header* obj);
+void default_scavenger(gc_header* obj,  gc_scavenge_state* s);
+
+// this is the number of entries in the GC method tables
+constexpr u8 MAX_GC_TYPES = 16;
+// method tables used to look up the appropriate initializer/scavenger based on
+// the GC_TYPE.
+extern gc_reinitializer gc_reinitializer_table[MAX_GC_TYPES];
+extern gc_scavenger gc_scavenger_table[MAX_GC_TYPES];
+
+// must be called at runtime
+void setup_gc_methods();
 
 // initialize a new allocator. This mainly involves setting up the decks
 void init_allocator(allocator& alloc, istate* S);
@@ -188,11 +203,9 @@ gc_card_header* get_gc_card_header(gc_header* obj);
 // appropriately.
 void write_guard(gc_card_header* card, gc_header* ref);
 
-// The following two functions are intended to be called from within scavenger
-// functions for every external pointer in the scavenged objects. These
-// functions decide whether an object should be moved as part of the current
-// garbage collection phase. If so, they copy the object and update its internal
-// pointers.
+// The following two functions decide whether an object should be moved as part
+// of the current garbage collection phase. If so, they copy the object and
+// update its internal pointers.
 
 // Conditionally copy a live object and return the updated location.
 // - leaves behind a forwarding pointer in the old location
@@ -208,6 +221,12 @@ gc_header* copy_live_object(gc_header* obj, istate* S);
 // copy_live_object() on the corresponding object and returns a new value
 // pointing to it. Else simply returns v.
 value copy_live_value(value v, istate* S);
+
+// these are intended to be called from within the various scavenge methods.
+// They update external pointers in objects by either copying the old object to
+// a new location or by following the forwarding pointer.
+void scavenge_pointer(gc_header** obj, gc_scavenge_state* s);
+void scavenge_boxed_pointer(value* obj, gc_scavenge_state* s);
 
 // collection routines
 template<typename T>

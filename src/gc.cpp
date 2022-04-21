@@ -1,9 +1,160 @@
 #include "gc.hpp"
 
+// uncomment to do a GC after every allocation
+
+//#define GC_STRESS
+
 namespace fn {
 
 gc_reinitializer gc_reinitializer_table[MAX_GC_TYPES] = {};
 gc_scavenger gc_scavenger_table[MAX_GC_TYPES] = {};
+
+void default_reinitializer(gc_header* obj) {
+    (void)obj;
+}
+
+void default_scavenger(gc_header* obj, gc_scavenge_state* s) {
+    (void)obj;
+    (void)s;
+}
+
+static void set_type_methods(u8 type, gc_reinitializer reinit,
+        gc_scavenger scavenge) {
+    gc_reinitializer_table[type] = reinit;
+    gc_scavenger_table[type] = scavenge;
+}
+
+static void reinit_string(gc_header* obj) {
+    auto s = (fn_string*)obj;
+    s->data = (sizeof(fn_string) + (u8*)s);
+}
+
+static void reinit_function(gc_header* obj) {
+    auto f = (fn_function*)obj;
+    auto stub = f->stub;
+    // FIXME: this is dumb
+    // exit if stub is nullptr, indicating uninitialized function
+    if (!stub) {
+        return;
+    }
+    if (stub->h.type == GC_TYPE_FORWARD) {
+        stub = (function_stub*)stub->h.forward;
+    }
+    f->init_vals = (value*)(sizeof(fn_function) + (u8*)f);
+    f->upvals = (upvalue_cell**) (sizeof(fn_function)
+            + stub->num_opt * sizeof(value) + (u8*)f);
+}
+
+static void reinit_function_stub(gc_header* obj) {
+    // FIXME: lotsa pointers to update here...
+    auto s = (function_stub*)obj;
+    auto code_sz = round_to_align(s->code_length);
+    auto const_sz = sizeof(value) * s->num_const;
+    auto sub_funs_sz = sizeof(function_stub*) * s->num_sub_funs;
+    auto upvals_sz = sizeof(upvalue_cell*) * s->num_upvals;
+    auto upvals_direct_sz = round_to_align(sizeof(bool) * s->num_upvals);
+    s->code = (u8*)raw_ptr_add(s, sizeof(function_stub));
+    s->const_arr = (value*)raw_ptr_add(s, sizeof(function_stub) + code_sz);
+    s->sub_funs = (function_stub**)raw_ptr_add(s, sizeof(function_stub)
+            + code_sz + const_sz);
+    s->upvals = (u8*)raw_ptr_add(s, sizeof(function_stub) + code_sz + const_sz
+            + sub_funs_sz);
+    s->upvals_direct = (bool*)raw_ptr_add(s, sizeof(function_stub) + code_sz
+            + const_sz + sub_funs_sz + upvals_sz);
+    s->ci_arr = (code_info*)raw_ptr_add(s, sizeof(function_stub) + code_sz
+            + const_sz + sub_funs_sz + upvals_sz + upvals_direct_sz);
+}
+
+static void reinit_gc_bytes(gc_header* obj) {
+    auto bytes = (gc_bytes*)obj;
+    bytes->data = (sizeof(gc_bytes) + (u8*)bytes);
+}
+
+static void scavenge_cons(gc_header* obj, gc_scavenge_state* s) {
+    auto c = (fn_cons*)obj;
+    scavenge_boxed_pointer(&c->head, s);
+    scavenge_boxed_pointer(&c->tail, s);
+}
+
+static void scavenge_table(gc_header* obj, gc_scavenge_state* s) {
+    auto tab = (fn_table*)obj;
+    scavenge_boxed_pointer(&tab->metatable, s);
+    scavenge_pointer((gc_header**)&tab->data, s);
+    auto data = (value*)tab->data->data;
+    auto m = tab->cap * 2;
+    for (u32 i = 0; i < m; i += 2) {
+        if (data[i].raw != V_UNIN.raw) {
+            scavenge_boxed_pointer(&data[i], s);
+            scavenge_boxed_pointer(&data[i+1], s);
+        }
+    }
+}
+
+static void scavenge_function(gc_header* obj, gc_scavenge_state* s) {
+    auto f = (fn_function*)obj;
+    // FIXME: using nullptr for uninitialized function stub is dumb
+    if (!f->stub) {
+        return;
+    }
+    // IMPORTANT! We must detect if the stub has moved and update it before
+    // using it. Calling trace_obj_ref() first is crucial.
+    scavenge_pointer((gc_header**)&f->stub, s);
+    // update the location of the upvals and initvals arrays
+    for (local_address i = 0; i < f->stub->num_upvals; ++i) {
+        if (f->upvals[i]) {
+            scavenge_pointer((gc_header**)&f->upvals[i], s);
+        }
+    }
+    // init vals
+    for (u32 i = 0; i < f->stub->num_opt; ++i) {
+        scavenge_boxed_pointer(&f->init_vals[i], s);
+    }
+}
+
+static void scavenge_upvalue(gc_header* obj, gc_scavenge_state* s) {
+    auto u = (upvalue_cell*)obj;
+    if(u->closed) {
+        scavenge_boxed_pointer(&u->datum.val, s);
+        // open upvalues should be visible from the stack
+    }
+}
+
+static void scavenge_function_stub(gc_header* obj, gc_scavenge_state* s) {
+    auto stub = (function_stub*)obj;
+    for (u64 i = 0; i < stub->num_sub_funs; ++i) {
+        // check for nullptr to account for function stubs that are not fully
+        // initialized
+        // FIXME: this is stupid
+        if (stub->sub_funs[i]) {
+            scavenge_pointer((gc_header**)&stub->sub_funs[i], s);
+        }
+    }
+    for (u64 i = 0; i < stub->num_const; ++i) {
+        scavenge_boxed_pointer(&stub->const_arr[i], s);
+    }
+    // metadata
+    if (stub->name) {
+        scavenge_pointer((gc_header**)&stub->name, s);
+    }
+    if (stub->filename) {
+        scavenge_pointer((gc_header**)&stub->filename, s);
+    }
+}
+
+void setup_gc_methods() {
+    for (u64 i = 0; i < MAX_GC_TYPES; ++i) {
+        gc_reinitializer_table[i] = default_reinitializer;
+        gc_scavenger_table[i] = default_scavenger;
+    }
+    set_type_methods(GC_TYPE_STRING, reinit_string, default_scavenger);
+    set_type_methods(GC_TYPE_CONS, default_reinitializer, scavenge_cons);
+    set_type_methods(GC_TYPE_TABLE, default_reinitializer, scavenge_table);
+    set_type_methods(GC_TYPE_FUNCTION, reinit_function, scavenge_function);
+    set_type_methods(GC_TYPE_UPVALUE, default_reinitializer, scavenge_upvalue);
+    set_type_methods(GC_TYPE_FUN_STUB, reinit_function_stub,
+            scavenge_function_stub);
+    set_type_methods(GC_TYPE_GC_BYTES, reinit_gc_bytes, default_scavenger);
+}
 
 static gc_card_header* init_gc_card(istate* S, u8 gen) {
     auto res = (gc_card_header*)S->alloc->card_pool.new_object();
@@ -19,6 +170,7 @@ static gc_card_header* init_gc_card(istate* S, u8 gen) {
 
 static void add_card_to_deck(gc_deck& deck, istate* S) {
     auto new_card = init_gc_card(S, deck.gen);
+    ++deck.num_cards;
     deck.foot->next = new_card;
     deck.foot = new_card;
 }
@@ -37,6 +189,8 @@ void init_allocator(allocator& alloc, istate* S) {
     init_deck(alloc.nursery, S, GC_GEN_NURSERY);
     init_deck(alloc.survivor, S, GC_GEN_SURVIVOR);
     init_deck(alloc.tenured, S, GC_GEN_TENURED);
+    alloc.nursery_size = DEFAULT_NURSERY_SIZE;
+    alloc.majorgc_th = DEFAULT_MAJORGC_TH;
     alloc.handles = nullptr;
 }
 
@@ -54,8 +208,11 @@ static gc_header* try_alloc_object(gc_deck& deck, u64 size) {
 gc_header* alloc_nursery_object(istate* S, u64 size) {
     // FIXME: handle large objects
     auto res = try_alloc_object(S->alloc->nursery, size);
+#ifdef GC_STRESS
+    collect_now(S);
+#endif
     if (!res) {
-        if (S->alloc->nursery.num_cards == DEFAULT_NURSERY_SIZE) {
+        if (S->alloc->nursery.num_cards >= S->alloc->nursery_size) {
             // run a collection when the nursery is full
             collect_now(S);
         }
@@ -74,9 +231,17 @@ gc_card_header* get_gc_card_header(gc_header* obj) {
 }
 
 void write_guard(gc_card_header* card, gc_header* ref) {
-    auto card2 = get_gc_card_header(ref);
-    if (card2->gen < card->gen) {
-        card->dirty = true;
+    // old version that marks survivors
+    // auto card2 = get_gc_card_header(ref);
+    // if (card2->gen < card->gen) {
+    //     card->dirty = true;
+    // }
+        
+    if (card->gen == GC_GEN_TENURED) {
+        auto card2 = get_gc_card_header(ref);
+        if (card2->gen != GC_GEN_TENURED) {
+            card->dirty = true;
+        }
     }
 }
 
@@ -88,8 +253,9 @@ static gc_header* alloc_in_generation(gc_deck& deck, istate* S, u64 size) {
     auto res = try_alloc_object(deck, size);
     if (!res) {
         add_card_to_deck(deck, S);
+        res = try_alloc_object(deck, size);
     }
-    return try_alloc_object(deck, size);
+    return res;
 }
 
 static gc_header* alloc_survivor_object(istate* S, u64 size) {
@@ -131,6 +297,7 @@ gc_header* copy_live_object(gc_header* obj, istate* S) {
     if (obj->type == GC_TYPE_FORWARD) {
         return obj->forward;
     } else if (card->gen > S->alloc->max_compact_gen) {
+        // FIXME: pass in max_compact_gen as an argument
         // mark the card as containing live objects
         card->mark = true;
         return obj;
@@ -183,6 +350,26 @@ value copy_live_value(value v, istate* S) {
     return vbox_header(new_h);
 }
 
+void scavenge_pointer(gc_header** obj, gc_scavenge_state* s) {
+    auto gen = get_gc_card_header(*obj)->gen;
+    if (gen < s->youngest_ref) {
+        s->youngest_ref = gen;
+    }
+    *obj = copy_live_object(*obj, s->S);
+}
+
+void scavenge_boxed_pointer(value* v, gc_scavenge_state* s) {
+    if (!vhas_header(*v)) {
+        return;
+    }
+    auto h = vheader(*v);
+    auto gen = get_gc_card_header(h)->gen;
+    if (gen < s->youngest_ref) {
+        s->youngest_ref = gen;
+    }
+    *v = vbox_header(copy_live_object(h, s->S));
+}
+
 static void copy_gc_roots(istate* S) {
     if (S->callee) {
         S->callee = (fn_function*)copy_live_object((gc_header*)S->callee, S);
@@ -201,8 +388,12 @@ static void copy_gc_roots(istate* S) {
     }
     S->G->list_meta = copy_live_value(S->G->list_meta, S);
     S->G->string_meta = copy_live_value(S->G->string_meta, S);
-    S->filename = (fn_string*)copy_live_object((gc_header*)S->filename, S);
-    S->wd = (fn_string*)copy_live_object((gc_header*)S->wd, S);
+    if (S->filename) {
+        S->filename = (fn_string*)copy_live_object((gc_header*)S->filename, S);
+    }
+    if (S->wd) {
+        S->wd = (fn_string*)copy_live_object((gc_header*)S->wd, S);
+    }
     for (auto& f : S->stack_trace) {
         f.callee = (fn_function*)copy_live_object((gc_header*)f.callee, S);
     }
@@ -223,7 +414,14 @@ static void copy_gc_roots(istate* S) {
 }
 
 static void scavenge_object(gc_header* obj, istate* S) {
-    gc_scavenger_table[obj->type](obj, S);
+    gc_scavenge_state s;
+    s.youngest_ref = GC_GEN_TENURED;
+    s.S = S;
+    gc_scavenger_table[obj->type](obj, &s);
+    auto card = get_gc_card_header(obj);
+    if (s.youngest_ref < card->gen) {
+        card->dirty = true;
+    }
 }
 
 static void scavenge_card(gc_card_header* card, istate* S) {
@@ -240,17 +438,21 @@ static void scavenge_card(gc_card_header* card, istate* S) {
 static void scavenge_dirty(gc_deck& deck, istate* S) {
     auto card = deck.head;
     for (; card != nullptr; card = card->next) {
-        if (!card->dirty) {
-            continue;
-        }
-        scavenge_card(card, S);
+        // FIXME: Some tests make it seem like it's actually slightly faster to
+        // completely ignore the dirty bit. Should revisit this architecture
+        // (i.e. marking entire cards dirty). It would probably be better to
+        // have a per-generation gray list.
+        // if (card->dirty) {
+        //     card->dirty = false;
+            scavenge_card(card, S);
+        // }
     }
     card = deck.large_obj_head;
     for (; card != nullptr; card = card->next) {
-        if (!card->dirty) {
-            continue;
+        if (card->dirty) {
+            card->dirty = false;
+            scavenge_card(card, S);
         }
-        scavenge_card(card, S);
     }
 }
 
@@ -267,7 +469,7 @@ struct gc_scavenge_pointer {
 static bool points_to_end(const gc_scavenge_pointer& p,
         const gc_deck& deck) {
     return p.addr == deck.foot->pointer
-        && p.card == deck.foot;
+            && p.card == deck.foot;
 }
 
 static bool points_to_last_large(const gc_scavenge_pointer& p,
@@ -279,44 +481,49 @@ static bool points_to_last_large(const gc_scavenge_pointer& p,
 static void scavenge_next(gc_scavenge_pointer& p, istate* S) {
     if (p.addr == p.card->pointer) {
         p.card = p.card->next;
-        p.addr = 0;
+        p.addr = GC_CARD_DATA_START;
     }
     auto obj = gc_card_object(p.card, p.addr);
-    scavenge_object(obj, S);
     p.addr += obj->size;
+    scavenge_object(obj, S);
 }
 
 static void scavenge_next_large(gc_scavenge_pointer& p, istate* S,
         const gc_deck& deck) {
     if (p.large_obj == nullptr) {
         // indicates no object was scavenged previously
-        p.large_obj = deck.large_obj_foot;
+        p.large_obj = deck.large_obj_head;
     }
     p.large_obj = p.large_obj->next;
     auto obj = gc_card_object(p.large_obj, GC_CARD_DATA_START);
     scavenge_object(obj, S);
 }
 
-void evacuate_nursery(istate* S) {
+void minor_gc(istate* S) {
     // we need this static assertion here because it guarantees that evacuated
     // nursery objects never end up directly in the tenured generation.
     static_assert(GC_TENURE_AGE >= 1);
 
-    // indicate that we only want nursery objects to be moved
-    S->alloc->max_compact_gen = GC_GEN_NURSERY;
+    S->alloc->max_compact_gen = GC_GEN_SURVIVOR;
 
-    // set up the scavenge pointer to track copied objects
+    // these generations will be compacted
+    auto from_nursery = S->alloc->nursery;
+    auto from_survivor = S->alloc->survivor;
+    init_deck(S->alloc->nursery, S, GC_GEN_NURSERY);
+    init_deck(S->alloc->survivor, S, GC_GEN_SURVIVOR);
+
     gc_scavenge_pointer survivor_pointer;
     survivor_pointer.addr = S->alloc->survivor.foot->pointer;
     survivor_pointer.card = S->alloc->survivor.foot;
     survivor_pointer.large_obj = S->alloc->survivor.large_obj_foot;
+    gc_scavenge_pointer tenured_pointer;
+    tenured_pointer.addr = S->alloc->tenured.foot->pointer;
+    tenured_pointer.card = S->alloc->tenured.foot;
+    tenured_pointer.large_obj = S->alloc->tenured.large_obj_foot;
 
-    // iterate over the survivor and tenured spaces and scavenge dirty cards
-    scavenge_dirty(S->alloc->survivor, S);
+    // scavenge dirty cards
     scavenge_dirty(S->alloc->tenured, S);
-    auto from_space = S->alloc->nursery;
-    // initialize a new nursery
-    init_deck(S->alloc->nursery, S, GC_GEN_NURSERY);
+    // add roots
     copy_gc_roots(S);
 
     // scavenge all new objects in the survivors generation
@@ -327,18 +534,117 @@ void evacuate_nursery(istate* S) {
         while (!points_to_last_large(survivor_pointer, S->alloc->survivor)) {
             scavenge_next_large(survivor_pointer, S, S->alloc->survivor);
         }
-        if (points_to_end(survivor_pointer, S->alloc->survivor)) {
+        while (!points_to_end(tenured_pointer, S->alloc->tenured)) {
+            scavenge_next(tenured_pointer, S);
+        }
+        while (!points_to_last_large(tenured_pointer, S->alloc->tenured)) {
+            scavenge_next_large(tenured_pointer, S, S->alloc->tenured);
+        }
+        if (points_to_end(survivor_pointer, S->alloc->survivor)
+                && points_to_last_large(survivor_pointer, S->alloc->survivor)
+                && points_to_end(tenured_pointer, S->alloc->tenured)) {
             break;
         }
     }
 
     // delete all the cards in from space
-    for (auto card = from_space.head; card != nullptr;) {
+    for (auto card = from_nursery.head; card != nullptr;) {
         auto next = card->next;
         S->alloc->card_pool.free_object((gc_card*)card);
         card = next;
     }
-    for (auto card = from_space.large_obj_head; card != nullptr;) {
+    for (auto card = from_nursery.large_obj_head; card != nullptr;) {
+        auto next = card->next;
+        S->alloc->card_pool.free_object((gc_card*)card);
+        card = next;
+    }
+    for (auto card = from_survivor.head; card != nullptr;) {
+        auto next = card->next;
+        S->alloc->card_pool.free_object((gc_card*)card);
+        card = next;
+    }
+    for (auto card = from_survivor.large_obj_head; card != nullptr;) {
+        auto next = card->next;
+        S->alloc->card_pool.free_object((gc_card*)card);
+        card = next;
+    }
+}
+
+void major_gc(istate* S) {
+    // we need this static assertion here because it guarantees that evacuated
+    // nursery objects never end up directly in the tenured generation.
+    static_assert(GC_TENURE_AGE >= 1);
+
+    S->alloc->max_compact_gen = GC_GEN_TENURED;
+
+    // all generations will be compacted
+    auto from_nursery = S->alloc->nursery;
+    auto from_survivor = S->alloc->survivor;
+    auto from_tenured = S->alloc->survivor;
+    init_deck(S->alloc->nursery, S, GC_GEN_NURSERY);
+    init_deck(S->alloc->survivor, S, GC_GEN_SURVIVOR);
+    init_deck(S->alloc->tenured, S, GC_GEN_SURVIVOR);
+
+    gc_scavenge_pointer survivor_pointer;
+    survivor_pointer.addr = S->alloc->survivor.foot->pointer;
+    survivor_pointer.card = S->alloc->survivor.foot;
+    survivor_pointer.large_obj = S->alloc->survivor.large_obj_foot;
+    gc_scavenge_pointer tenured_pointer;
+    tenured_pointer.addr = S->alloc->tenured.foot->pointer;
+    tenured_pointer.card = S->alloc->tenured.foot;
+    tenured_pointer.large_obj = S->alloc->tenured.large_obj_foot;
+
+    // add roots
+    copy_gc_roots(S);
+
+    // scavenge all new objects in the survivors generation
+    while (true) {
+        while (!points_to_end(survivor_pointer, S->alloc->survivor)) {
+            scavenge_next(survivor_pointer, S);
+        }
+        while (!points_to_last_large(survivor_pointer, S->alloc->survivor)) {
+            scavenge_next_large(survivor_pointer, S, S->alloc->survivor);
+        }
+        while (!points_to_end(tenured_pointer, S->alloc->tenured)) {
+            scavenge_next(tenured_pointer, S);
+        }
+        while (!points_to_last_large(tenured_pointer, S->alloc->tenured)) {
+            scavenge_next_large(tenured_pointer, S, S->alloc->tenured);
+        }
+        if (points_to_end(survivor_pointer, S->alloc->survivor)
+                && points_to_last_large(survivor_pointer, S->alloc->survivor)
+                && points_to_end(tenured_pointer, S->alloc->tenured)) {
+            break;
+        }
+    }
+
+    // delete all the cards in from space
+    for (auto card = from_nursery.head; card != nullptr;) {
+        auto next = card->next;
+        S->alloc->card_pool.free_object((gc_card*)card);
+        card = next;
+    }
+    for (auto card = from_nursery.large_obj_head; card != nullptr;) {
+        auto next = card->next;
+        S->alloc->card_pool.free_object((gc_card*)card);
+        card = next;
+    }
+    for (auto card = from_survivor.head; card != nullptr;) {
+        auto next = card->next;
+        S->alloc->card_pool.free_object((gc_card*)card);
+        card = next;
+    }
+    for (auto card = from_survivor.large_obj_head; card != nullptr;) {
+        auto next = card->next;
+        S->alloc->card_pool.free_object((gc_card*)card);
+        card = next;
+    }
+    for (auto card = from_tenured.head; card != nullptr;) {
+        auto next = card->next;
+        S->alloc->card_pool.free_object((gc_card*)card);
+        card = next;
+    }
+    for (auto card = from_tenured.large_obj_head; card != nullptr;) {
         auto next = card->next;
         S->alloc->card_pool.free_object((gc_card*)card);
         card = next;
@@ -346,7 +652,16 @@ void evacuate_nursery(istate* S) {
 }
 
 void collect_now(istate* S) {
-    // TODO: implement :'(
+    // NOTE: maybe add a timer to prevent major gc from occurring too often
+    if (S->alloc->tenured.num_cards > S->alloc->majorgc_th) {
+        std::cout << "Major GC\n!";
+        major_gc(S);
+        // TODO: maybe dynamically grow the heap here if there are too many
+        // remaining live objects.
+    } else {
+        // std::cout << "num card " << S->alloc->tenured.num_cards << "\n";
+        minor_gc(S);
+    }
 }
 
 }

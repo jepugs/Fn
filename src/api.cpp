@@ -1,6 +1,7 @@
 #include "api.hpp"
 
-#include "allocator.hpp"
+#include "alloc.hpp"
+#include "gc.hpp"
 #include "istate.hpp"
 
 namespace fn { 
@@ -113,7 +114,7 @@ void push_table(istate* S, u8 num_args) {
 void push_foreign_function(istate* S, void (*foreign) (istate*), u8 num_args,
         bool vari, const string& name) {
     push_nil(S);
-    alloc_foreign_fun(S, S->sp - 1, foreign, num_args, vari, 0, name);
+    alloc_foreign_fun(S, S->sp - 1, foreign, num_args, vari, name);
 }
 
 void get_number(f64& out, const istate* S, u8 i) {
