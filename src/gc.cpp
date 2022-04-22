@@ -1,8 +1,7 @@
 #include "gc.hpp"
 
 // uncomment to do a GC after every allocation
-
-//#define GC_STRESS
+// #define GC_STRESS
 
 namespace fn {
 
@@ -32,12 +31,7 @@ static void reinit_string(gc_header* obj) {
 static void reinit_function(gc_header* obj) {
     auto f = (fn_function*)obj;
     auto stub = f->stub;
-    // FIXME: this is dumb
-    // exit if stub is nullptr, indicating uninitialized function
-    if (!stub) {
-        return;
-    }
-    if (stub->h.type == GC_TYPE_FORWARD) {
+    if (stub->h.forward) {
         stub = (function_stub*)stub->h.forward;
     }
     f->init_vals = (value*)(sizeof(fn_function) + (u8*)f);
@@ -92,18 +86,12 @@ static void scavenge_table(gc_header* obj, gc_scavenge_state* s) {
 
 static void scavenge_function(gc_header* obj, gc_scavenge_state* s) {
     auto f = (fn_function*)obj;
-    // FIXME: using nullptr for uninitialized function stub is dumb
-    if (!f->stub) {
-        return;
-    }
     // IMPORTANT! We must detect if the stub has moved and update it before
-    // using it. Calling trace_obj_ref() first is crucial.
+    // using it.
     scavenge_pointer((gc_header**)&f->stub, s);
     // update the location of the upvals and initvals arrays
     for (local_address i = 0; i < f->stub->num_upvals; ++i) {
-        if (f->upvals[i]) {
-            scavenge_pointer((gc_header**)&f->upvals[i], s);
-        }
+        scavenge_pointer((gc_header**)&f->upvals[i], s);
     }
     // init vals
     for (u32 i = 0; i < f->stub->num_opt; ++i) {
@@ -124,7 +112,7 @@ static void scavenge_function_stub(gc_header* obj, gc_scavenge_state* s) {
     for (u64 i = 0; i < stub->num_sub_funs; ++i) {
         // check for nullptr to account for function stubs that are not fully
         // initialized
-        // FIXME: this is stupid
+        // FIXME: this is stupid, to use nullptr this way
         if (stub->sub_funs[i]) {
             scavenge_pointer((gc_header**)&stub->sub_funs[i], s);
         }
@@ -162,9 +150,20 @@ static gc_card_header* init_gc_card(istate* S, u8 gen) {
     res->prev = nullptr;
     res->pointer = GC_CARD_DATA_START;
     res->gen = gen;
-    res->mark = false;
     res->dirty = false;
     res->large = false;
+    return res;
+}
+
+static gc_card_header* init_large_gc_card(u8 gen, u64 size) {
+    auto res = (gc_card_header*)std::aligned_alloc(GC_CARD_SIZE,
+            size + GC_CARD_DATA_START);
+    res->next = nullptr;
+    res->prev = nullptr;
+    res->pointer = GC_CARD_DATA_START;
+    res->gen = gen;
+    res->dirty = false;
+    res->large = true;
     return res;
 }
 
@@ -185,6 +184,19 @@ static void init_deck(gc_deck& deck, istate* S, u8 gen) {
     deck.large_obj_foot = nullptr;
 }
 
+static void clear_deck(gc_deck& deck, istate* S) {
+    for (auto card = deck.head; card != nullptr;) {
+        auto next = card->next;
+        S->alloc->card_pool.free_object((gc_card*)card);
+        card = next;
+    }
+    for (auto card = deck.large_obj_head; card != nullptr;) {
+        auto next = card->next;
+        free(card);
+        card = next;
+    }
+}
+
 void init_allocator(allocator& alloc, istate* S) {
     init_deck(alloc.nursery, S, GC_GEN_NURSERY);
     init_deck(alloc.survivor, S, GC_GEN_SURVIVOR);
@@ -193,6 +205,13 @@ void init_allocator(allocator& alloc, istate* S) {
     alloc.majorgc_th = DEFAULT_MAJORGC_TH;
     alloc.handles = nullptr;
 }
+
+void deinit_allocator(allocator& alloc, istate* S) {
+    clear_deck(alloc.nursery, S);
+    clear_deck(alloc.survivor, S);
+    clear_deck(alloc.tenured, S);
+}
+
 
 static gc_header* try_alloc_object(gc_deck& deck, u64 size) {
     auto new_end = deck.foot->pointer + size;
@@ -205,12 +224,69 @@ static gc_header* try_alloc_object(gc_deck& deck, u64 size) {
     return res;
 }
 
+static void remove_from_large_list(gc_card_header* card, gc_deck& deck) {
+    auto old_prev = card->prev;
+    auto old_next = card->next;
+    if (old_prev) {
+        old_prev->next = old_next;
+    } else {
+        // (prev == nullptr) implies this is the head of the generation
+        deck.large_obj_head = old_next;
+    }
+    if (old_next) {
+        old_next->prev = old_prev;
+    } else {
+        // (next == nullptr) implies this is the tail of the generation
+        deck.large_obj_foot = old_prev;
+    }
+}
+
+static void add_to_large_list(gc_card_header* card, gc_deck& deck) {
+    card->prev = deck.large_obj_foot;
+    card->next = nullptr;
+    if (deck.large_obj_foot) {
+        deck.large_obj_foot->next = card;
+    } else {
+        deck.large_obj_head = card;
+    }
+    deck.large_obj_foot = card;
+}
+
+
+static gc_header* alloc_large_in_deck(gc_deck& deck, istate* S, u64 size) {
+    auto new_card = init_large_gc_card(deck.gen, size);
+    add_to_large_list(new_card, deck);
+    return gc_card_object(new_card, GC_CARD_DATA_START);
+}
+
+// this never triggers a collection or fails (unless the OS gives up on giving
+// us memory lmao)
+static gc_header* alloc_in_deck(gc_deck& deck, istate* S, u64 size) {
+    // FIXME: handle large objects
+    if (size > LARGE_OBJECT_CUTOFF) {
+        return alloc_large_in_deck(deck, S, size);
+    }
+    auto res = try_alloc_object(deck, size);
+    if (!res) {
+        add_card_to_deck(deck, S);
+        res = try_alloc_object(deck, size);
+    }
+    return res;
+}
+
 gc_header* alloc_nursery_object(istate* S, u64 size) {
     // FIXME: handle large objects
-    auto res = try_alloc_object(S->alloc->nursery, size);
 #ifdef GC_STRESS
     collect_now(S);
 #endif
+    if (size > LARGE_OBJECT_CUTOFF) {
+        if (S->alloc->nursery.num_cards >= S->alloc->nursery_size) {
+            // run a collection when the nursery is full
+            collect_now(S);
+        }
+        return alloc_large_in_deck(S->alloc->nursery, S, size);
+    }
+    auto res = try_alloc_object(S->alloc->nursery, size);
     if (!res) {
         if (S->alloc->nursery.num_cards >= S->alloc->nursery_size) {
             // run a collection when the nursery is full
@@ -231,12 +307,6 @@ gc_card_header* get_gc_card_header(gc_header* obj) {
 }
 
 void write_guard(gc_card_header* card, gc_header* ref) {
-    // old version that marks survivors
-    // auto card2 = get_gc_card_header(ref);
-    // if (card2->gen < card->gen) {
-    //     card->dirty = true;
-    // }
-        
     if (card->gen == GC_GEN_TENURED) {
         auto card2 = get_gc_card_header(ref);
         if (card2->gen != GC_GEN_TENURED) {
@@ -245,77 +315,53 @@ void write_guard(gc_card_header* card, gc_header* ref) {
     }
 }
 
-
-// this never triggers a collection or fails (unless the OS gives up on giving
-// us memory lmao)
-static gc_header* alloc_in_generation(gc_deck& deck, istate* S, u64 size) {
-    // FIXME: handle large objects
-    auto res = try_alloc_object(deck, size);
-    if (!res) {
-        add_card_to_deck(deck, S);
-        res = try_alloc_object(deck, size);
-    }
-    return res;
-}
-
 static gc_header* alloc_survivor_object(istate* S, u64 size) {
-    return alloc_in_generation(S->alloc->survivor, S, size);
+    return alloc_in_deck(S->alloc->survivor, S, size);
 }
 
 static gc_header* alloc_tenured_object(istate* S, u64 size) {
-    return alloc_in_generation(S->alloc->tenured, S, size);
-}
-
-static void remove_from_large_list(gc_card_header* card, gc_deck& deck) {
-    auto old_prev = card->prev;
-    auto old_next = card->next;
-    if (old_prev) {
-        old_prev->next = old_next;
-    } else {
-        // (prev == nullptr) implies this is the head of the generation
-        deck.head = old_next;
-    }
-    if (old_next) {
-        old_next->prev = old_prev;
-    } else {
-        // (next == nullptr) implies this is the tail of the generation
-        deck.foot = old_prev;
-    }
-}
-
-static void add_to_large_list(gc_card_header* card, gc_deck& deck) {
-    card->prev = deck.large_obj_foot;
-    card->next = nullptr;
-    deck.large_obj_foot->next = card;
-    deck.large_obj_foot = card;
+    return alloc_in_deck(S->alloc->tenured, S, size);
 }
 
 gc_header* copy_live_object(gc_header* obj, istate* S) {
     auto card = get_gc_card_header(obj);
 
     // check whether we even have to make a copy
-    if (obj->type == GC_TYPE_FORWARD) {
+    if (obj->forward) {
         return obj->forward;
     } else if (card->gen > S->alloc->max_compact_gen) {
-        // FIXME: pass in max_compact_gen as an argument
-        // mark the card as containing live objects
-        card->mark = true;
         return obj;
     } else if (card->large) {
-        card->mark = true;
+        if (card->mark) {
+            // objects we've already visited this collection cycle
+            return obj;
+        }
+        // objects we should move to a new list
         if (card->gen == GC_GEN_NURSERY) {
             // move card to survivor generation
-            remove_from_large_list(card, S->alloc->nursery);
+            remove_from_large_list(card, S->alloc->nursery_from_space);
+            card->gen = GC_GEN_SURVIVOR;
             add_to_large_list(card, S->alloc->survivor);
             ++obj->age;
-        } else if (card->gen == GC_GEN_SURVIVOR
-                && obj->age >= GC_TENURE_AGE) {
-            // move card to tenured generation
-            remove_from_large_list(card, S->alloc->survivor);
-            add_to_large_list(card, S->alloc->tenured);
+        } else if (card->gen == GC_GEN_SURVIVOR) {
+            remove_from_large_list(card, S->alloc->survivor_from_space);
+            if (obj->age >= GC_TENURE_AGE) {
+                // move card to tenured generation
+                card->gen = GC_GEN_TENURED;
+                add_to_large_list(card, S->alloc->tenured);
+            } else {
+                add_to_large_list(card, S->alloc->survivor);
+                // FIXME: this next line seems unnecessary
+                card->gen = GC_GEN_SURVIVOR;
+                ++obj->age;
+            }
         } else {
-            ++obj->age;
+            remove_from_large_list(card, S->alloc->tenured_from_space);
+            // FIXME: this next line seems unnecessary
+            card->gen = GC_GEN_TENURED;
+            add_to_large_list(card, S->alloc->tenured);
         }
+        card->mark = true;
         // don't copy :)
         return obj;
     }
@@ -334,7 +380,6 @@ gc_header* copy_live_object(gc_header* obj, istate* S) {
     gc_reinitializer_table[obj->type](res);
 
     // set forwarding information
-    obj->type = GC_TYPE_FORWARD;
     obj->forward = res;
 
     return res;
@@ -425,11 +470,15 @@ static void scavenge_object(gc_header* obj, istate* S) {
 }
 
 static void scavenge_card(gc_card_header* card, istate* S) {
-    u16 pointer = GC_CARD_DATA_START;
-    while (pointer < card->pointer) {
-        auto obj = gc_card_object(card, pointer);
-        scavenge_object(obj, S);
-        pointer += obj->size;
+    if (card->large) {
+        scavenge_object(gc_card_object(card, GC_CARD_DATA_START), S);
+    } else {
+        u16 pointer = GC_CARD_DATA_START;
+        while (pointer < card->pointer) {
+            auto obj = gc_card_object(card, pointer);
+            scavenge_object(obj, S);
+            pointer += obj->size;
+        }
     }
 }
 
@@ -440,12 +489,12 @@ static void scavenge_dirty(gc_deck& deck, istate* S) {
     for (; card != nullptr; card = card->next) {
         // FIXME: Some tests make it seem like it's actually slightly faster to
         // completely ignore the dirty bit. Should revisit this architecture
-        // (i.e. marking entire cards dirty). It would probably be better to
-        // have a per-generation gray list.
-        // if (card->dirty) {
-        //     card->dirty = false;
+        // (i.e. marking entire cards dirty). It would likely be better to have
+        // a per-generation gray list.
+        if (card->dirty) {
+            card->dirty = false;
             scavenge_card(card, S);
-        // }
+        }
     }
     card = deck.large_obj_head;
     for (; card != nullptr; card = card->next) {
@@ -493,25 +542,35 @@ static void scavenge_next_large(gc_scavenge_pointer& p, istate* S,
     if (p.large_obj == nullptr) {
         // indicates no object was scavenged previously
         p.large_obj = deck.large_obj_head;
+        if (p.large_obj == nullptr) {
+            return;
+        }
+    } else {
+        p.large_obj = p.large_obj->next;
     }
-    p.large_obj = p.large_obj->next;
     auto obj = gc_card_object(p.large_obj, GC_CARD_DATA_START);
     scavenge_object(obj, S);
 }
 
-void minor_gc(istate* S) {
-    // we need this static assertion here because it guarantees that evacuated
-    // nursery objects never end up directly in the tenured generation.
-    static_assert(GC_TENURE_AGE >= 1);
+static void unset_large_marks(gc_deck& deck) {
+    for (auto card = deck.large_obj_head; card != nullptr; card = card->next) {
+        card->mark = false;
+    }
+}
 
+void minor_gc(istate* S) {
     S->alloc->max_compact_gen = GC_GEN_SURVIVOR;
 
-    // these generations will be compacted
-    auto from_nursery = S->alloc->nursery;
-    auto from_survivor = S->alloc->survivor;
+    // nursery and survivor generations will be compacted
+    unset_large_marks(S->alloc->nursery);
+    unset_large_marks(S->alloc->survivor);
+    S->alloc->nursery_from_space = S->alloc->nursery;
+    S->alloc->survivor_from_space = S->alloc->survivor;
     init_deck(S->alloc->nursery, S, GC_GEN_NURSERY);
     init_deck(S->alloc->survivor, S, GC_GEN_SURVIVOR);
 
+    // We use to-space as a queue holding unscavenged objects. These structs
+    // track our place in the survivor and tenured generations
     gc_scavenge_pointer survivor_pointer;
     survivor_pointer.addr = S->alloc->survivor.foot->pointer;
     survivor_pointer.card = S->alloc->survivor.foot;
@@ -548,42 +607,23 @@ void minor_gc(istate* S) {
     }
 
     // delete all the cards in from space
-    for (auto card = from_nursery.head; card != nullptr;) {
-        auto next = card->next;
-        S->alloc->card_pool.free_object((gc_card*)card);
-        card = next;
-    }
-    for (auto card = from_nursery.large_obj_head; card != nullptr;) {
-        auto next = card->next;
-        S->alloc->card_pool.free_object((gc_card*)card);
-        card = next;
-    }
-    for (auto card = from_survivor.head; card != nullptr;) {
-        auto next = card->next;
-        S->alloc->card_pool.free_object((gc_card*)card);
-        card = next;
-    }
-    for (auto card = from_survivor.large_obj_head; card != nullptr;) {
-        auto next = card->next;
-        S->alloc->card_pool.free_object((gc_card*)card);
-        card = next;
-    }
+    clear_deck(S->alloc->nursery_from_space, S);
+    clear_deck(S->alloc->survivor_from_space, S);
 }
 
 void major_gc(istate* S) {
-    // we need this static assertion here because it guarantees that evacuated
-    // nursery objects never end up directly in the tenured generation.
-    static_assert(GC_TENURE_AGE >= 1);
-
     S->alloc->max_compact_gen = GC_GEN_TENURED;
 
     // all generations will be compacted
-    auto from_nursery = S->alloc->nursery;
-    auto from_survivor = S->alloc->survivor;
-    auto from_tenured = S->alloc->survivor;
+    S->alloc->nursery_from_space = S->alloc->nursery;
+    S->alloc->survivor_from_space = S->alloc->survivor;
+    S->alloc->tenured_from_space = S->alloc->tenured;
+    unset_large_marks(S->alloc->nursery);
+    unset_large_marks(S->alloc->survivor);
+    unset_large_marks(S->alloc->tenured);
     init_deck(S->alloc->nursery, S, GC_GEN_NURSERY);
     init_deck(S->alloc->survivor, S, GC_GEN_SURVIVOR);
-    init_deck(S->alloc->tenured, S, GC_GEN_SURVIVOR);
+    init_deck(S->alloc->tenured, S, GC_GEN_TENURED);
 
     gc_scavenge_pointer survivor_pointer;
     survivor_pointer.addr = S->alloc->survivor.foot->pointer;
@@ -619,47 +659,18 @@ void major_gc(istate* S) {
     }
 
     // delete all the cards in from space
-    for (auto card = from_nursery.head; card != nullptr;) {
-        auto next = card->next;
-        S->alloc->card_pool.free_object((gc_card*)card);
-        card = next;
-    }
-    for (auto card = from_nursery.large_obj_head; card != nullptr;) {
-        auto next = card->next;
-        S->alloc->card_pool.free_object((gc_card*)card);
-        card = next;
-    }
-    for (auto card = from_survivor.head; card != nullptr;) {
-        auto next = card->next;
-        S->alloc->card_pool.free_object((gc_card*)card);
-        card = next;
-    }
-    for (auto card = from_survivor.large_obj_head; card != nullptr;) {
-        auto next = card->next;
-        S->alloc->card_pool.free_object((gc_card*)card);
-        card = next;
-    }
-    for (auto card = from_tenured.head; card != nullptr;) {
-        auto next = card->next;
-        S->alloc->card_pool.free_object((gc_card*)card);
-        card = next;
-    }
-    for (auto card = from_tenured.large_obj_head; card != nullptr;) {
-        auto next = card->next;
-        S->alloc->card_pool.free_object((gc_card*)card);
-        card = next;
-    }
+    clear_deck(S->alloc->nursery_from_space, S);
+    clear_deck(S->alloc->survivor_from_space, S);
+    clear_deck(S->alloc->tenured_from_space, S);
 }
 
 void collect_now(istate* S) {
     // NOTE: maybe add a timer to prevent major gc from occurring too often
     if (S->alloc->tenured.num_cards > S->alloc->majorgc_th) {
-        std::cout << "Major GC\n!";
         major_gc(S);
         // TODO: maybe dynamically grow the heap here if there are too many
         // remaining live objects.
     } else {
-        // std::cout << "num card " << S->alloc->tenured.num_cards << "\n";
         minor_gc(S);
     }
 }

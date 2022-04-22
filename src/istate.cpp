@@ -1,6 +1,6 @@
 #include "api.hpp"
 #include "alloc.hpp"
-#include "compile2.hpp"
+#include "compile.hpp"
 #include "gc.hpp"
 #include "istate.hpp"
 #include "namespace.hpp"
@@ -22,6 +22,7 @@ void free_istate(istate* S) {
         clear_error_info(S->err);
     }
     delete S->G;
+    deinit_allocator(*S->alloc, S);
     delete S->alloc;
     delete S->symtab;
     delete S->symcache;

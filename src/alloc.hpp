@@ -2,7 +2,7 @@
 #define __FN_ALLOC_HPP
 
 #include "base.hpp"
-#include "compile2.hpp"
+#include "compile.hpp"
 #include "gc.hpp"
 #include "istate.hpp"
 

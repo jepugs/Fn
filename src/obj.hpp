@@ -81,15 +81,14 @@ constexpr u8 GC_TYPE_FUN_STUB   = 0x09;
 
 // dynamic byte arrays used internally by other types
 constexpr u8 GC_TYPE_GC_BYTES   = 0x0a;
-// for use by the copying collector
-constexpr u8 GC_TYPE_FORWARD    = 0x0f;
 
 // header contained at the beginning of every object
 struct alignas (OBJ_ALIGN) gc_header {
     u8 type;
     u32 size;
     u8 age;
-    // used for copying objects
+    // used by the copying collector. A non-NULL value indicates that a copy of
+    // this object was already made at the given location
     gc_header* forward;
 };
 

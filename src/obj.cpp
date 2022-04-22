@@ -1,6 +1,6 @@
-#include "allocator.hpp"
 #include "base.hpp"
 #include "obj.hpp"
+#include "values.hpp"
 
 namespace fn {
 
@@ -11,7 +11,8 @@ void init_gc_header(gc_header* dest, u8 type, u32 size) {
     new(dest) gc_header {
         .type = type,
         .size = size,
-        .age = 0
+        .age = 0,
+        .forward = nullptr
     };
 }
 

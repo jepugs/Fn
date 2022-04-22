@@ -1,6 +1,7 @@
 #include "builtin.hpp"
 
 #include "namespace.hpp"
+#include "gc.hpp"
 #include "obj.hpp"
 #include "vm.hpp"
 #include <cmath>

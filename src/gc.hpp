@@ -45,6 +45,9 @@ constexpr u64 GC_CARD_SIZE = 1 << 12;
 // objects of size strictly greater than this are considered large and get their
 // own GC cards. Large objects are not moved during collection,
 constexpr u64 LARGE_OBJECT_CUTOFF = GC_CARD_SIZE / 2;
+// small size for testing
+// constexpr u64 LARGE_OBJECT_CUTOFF = 256;
+
 
 struct gc_card_header {
     // This is normally a singley-linked list containing all gc cards in the
@@ -93,7 +96,7 @@ constexpr u64 DEFAULT_NURSERY_SIZE = DEFAULT_NURSERY_SIZE_BYTES / GC_CARD_SIZE;
 
 // Threshold to perform major GC
 constexpr u64 DEFAULT_MAJORGC_TH_BYTES = 1 << 30; // 1 GiB
-// constexpr u64 DEFAULT_MAJORGC_TH_BYTES = 1 << 20; // 1 MiB
+//constexpr u64 DEFAULT_MAJORGC_TH_BYTES = 1 << 20; // 1 MiB
 constexpr u64 DEFAULT_MAJORGC_TH = DEFAULT_MAJORGC_TH_BYTES / GC_CARD_SIZE;
 
 // a deck consists of two linked lists of gc cards, all in the same generation.
@@ -139,10 +142,14 @@ struct allocator {
     object_pool<gc_handle<gc_header>> handle_pool;
     gc_handle<gc_header>* handles;
 
+    // from spaces used during collection. These are needed here to maintain the
+    // large objects lists.
+    gc_deck nursery_from_space;
+    gc_deck survivor_from_space;
+    gc_deck tenured_from_space;
+
     // used during collection; the maximum generation being copied
     u8 max_compact_gen;
-    // used during collection; the maximum generation being scavenged
-    u8 max_scavenge_gen;
 
     u64 nursery_size;
     u64 majorgc_th;
@@ -190,6 +197,7 @@ void setup_gc_methods();
 
 // initialize a new allocator. This mainly involves setting up the decks
 void init_allocator(allocator& alloc, istate* S);
+void deinit_allocator(allocator& alloc, istate* S);
 // allocate a new nursery object. This will trigger a garbage collection if the
 // nursery is full
 gc_header* alloc_nursery_object(istate* S, u64 size);
@@ -213,7 +221,7 @@ void write_guard(gc_card_header* card, gc_header* ref);
 // - generation to copy into is determined automatically
 // - internal pointers are updated (but not external pointers)
 // - objects in generations older than alloc.max_compact_gen
-// - large objects are not copied
+// - large objects are not copied, but are moved from one list to another
 // - when obj is not copied, the original pointer is returned
 // - dirty bits are not set
 gc_header* copy_live_object(gc_header* obj, istate* S);

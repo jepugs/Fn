@@ -1,4 +1,5 @@
 #include "alloc.hpp"
+#include "values.hpp"
 
 namespace fn {
 
@@ -72,15 +73,15 @@ void alloc_table(istate* S, u32 stack_pos, u32 init_cap) {
             alloc_gc_bytes(S, 2*init_cap*sizeof(value)));
     auto sz =  round_to_align(sizeof(fn_table));
     auto res = (fn_table*)alloc_nursery_object(S, sz);
+    for (u32 i = 0; i < 2*init_cap; i += 2) {
+        ((value*)(data_handle->obj->data))[i] = V_UNIN;
+    }
     init_gc_header(&res->h, GC_TYPE_TABLE, sz);
     res->size = 0;
     res->cap = init_cap;
     res->rehash = 3 * init_cap / 4;
     res->data = data_handle->obj;
     release_handle(data_handle);
-    for (u32 i = 0; i < 2*init_cap; i += 2) {
-        ((value*)(res->data->data))[i] = V_UNIN;
-    }
     res->metatable = V_NIL;
     S->stack[stack_pos] = vbox_table(res);
 }
@@ -159,6 +160,12 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
     o->ci_length = compiled.ci_arr.size;
     o->ci_arr = (code_info*)raw_ptr_add(o, sizeof(function_stub) + code_sz
             + const_sz + sub_funs_sz + upvals_sz + upvals_direct_sz);
+    memcpy(o->upvals, compiled.upvals.data,
+            compiled.upvals_direct.size*sizeof(u8));
+    memcpy(o->upvals_direct, compiled.upvals_direct.data,
+            compiled.upvals_direct.size*sizeof(bool));
+    memcpy(o->ci_arr, compiled.ci_arr.data,
+            compiled.ci_arr.size*sizeof(code_info));
 
     // fill out the arrays. Now we need to make a handle since we might trigger
     // garbage collection.
@@ -188,11 +195,6 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
         write_guard(get_gc_card_header((gc_header*)h->obj), &h2->obj->h);
         release_handle(h2);
     }
-    memcpy(h->obj->upvals, compiled.upvals.data, compiled.num_upvals * sizeof(u8));
-    memcpy(h->obj->upvals_direct, compiled.upvals_direct.data,
-            compiled.num_upvals * sizeof(bool));
-    memcpy(h->obj->ci_arr, compiled.ci_arr.data,
-            compiled.ci_arr.size * sizeof(code_info));
 
     // set the function name
     push_string(S, scanner_name(sst, compiled.name_id));
@@ -223,15 +225,6 @@ static upvalue_cell* alloc_open_upval(istate* S, u32 pos) {
     init_gc_header(&res->h, GC_TYPE_UPVALUE, sz);
     res->closed = false;
     res->datum.pos = pos;
-    return res;
-}
-
-static upvalue_cell* alloc_closed_upval(istate* S) {
-    auto sz = sizeof(upvalue_cell);
-    auto res = (upvalue_cell*)alloc_nursery_object(S, sz);
-    init_gc_header(&res->h, GC_TYPE_UPVALUE, sz);
-    res->closed = true;
-    res->datum.val = V_NIL;
     return res;
 }
 
@@ -269,7 +262,7 @@ void alloc_foreign_fun(istate* S,
     auto sz = round_to_align(sizeof(fn_function));
     auto res = (fn_function*)alloc_nursery_object(S, sz);
     init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
-    res->stub = stub;
+    res->stub = stub_handle->obj;
     res->init_vals = nullptr;
     res->upvals = nullptr;
     release_handle(stub_handle);
@@ -300,17 +293,27 @@ void alloc_fun(istate* S, u32 enclosing, constant_id fid) {
     // FIXME: either put the function in a handle here, or change allocation
     // order to be open upvals first, then function
 
+    // open upvalues first so that no collections will happen while we add them
+    // later
+    auto stub = vfunction(S->stack[enclosing])->stub->sub_funs[fid];
+    auto m = stub->num_upvals;
+    for (u32 i = 0; i < m; ++i) {
+        if (stub->upvals_direct[i]) {
+            open_upval(S, S->bp + stub->upvals[i]);
+            // refresh in case of garbage collection
+            stub = vfunction(S->stack[enclosing])->stub->sub_funs[fid];
+        }
+    }
+
     // size of upvals + initvals arrays
-    auto enc_fun = vfunction(S->stack[enclosing]);
-    auto stub = enc_fun->stub->sub_funs[fid];
     auto sz = round_to_align(sizeof(fn_function)
             + stub->num_opt*sizeof(value)
             + stub->num_upvals*sizeof(upvalue_cell*));
     auto res = (fn_function*)alloc_nursery_object(S, sz);
     init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
 
-    // in case the gc moved the function or stub
-    enc_fun = vfunction(S->stack[enclosing]);
+    auto enc_fun = vfunction(S->stack[enclosing]);
+    // in case the gc moved the stub
     stub = enc_fun->stub->sub_funs[fid];
 
     res->init_vals = (value*)((u8*)res + sizeof(fn_function));
@@ -321,26 +324,15 @@ void alloc_fun(istate* S, u32 enclosing, constant_id fid) {
     res->stub = stub;
 
     // set up upvalues
-    for (u32 i = 0; i < stub->num_upvals; ++i) {
-        res->upvals[i] = nullptr;
-    }
-
-    auto h = get_handle(S->alloc, res);
-    for (u32 i = 0; i < h->obj->stub->num_upvals; ++i) {
-        if (h->obj->stub->upvals_direct[i]) {
-            auto u = open_upval(S, S->bp + stub->upvals[i]);
-            h->obj->upvals[i] = u;
-            write_guard(get_gc_card_header((gc_header*)h->obj),
-                    (gc_header*)h->obj->upvals[i]);
-            enc_fun = vfunction(S->stack[enclosing]);
-            stub = enc_fun->stub->sub_funs[fid];
+    for (u32 i = 0; i < res->stub->num_upvals; ++i) {
+        if (res->stub->upvals_direct[i]) {
+            res->upvals[i] = open_upval(S, S->bp + stub->upvals[i]);
         } else {
-            h->obj->upvals[i] = enc_fun->upvals[stub->upvals[i]];
+            res->upvals[i] = enc_fun->upvals[stub->upvals[i]];
         }
     }
 
-    push(S, vbox_function(h->obj));
-    release_handle(h);
+    push(S, vbox_function(res));
 }
 
 static void setup_symcache(istate* S) {

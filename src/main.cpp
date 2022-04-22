@@ -2,7 +2,7 @@
 #include "builtin.hpp"
 #include "bytes.hpp"
 #include "gc.hpp"
-#include "compile2.hpp"
+#include "compile.hpp"
 #include "table.hpp"
 #include "values.hpp"
 #include "vm.hpp"

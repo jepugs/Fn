@@ -1,10 +1,9 @@
 add_library(fn_lib OBJECT
   api.cpp
-  # allocator.cpp
   alloc.cpp
   base.cpp
   builtin.cpp
-  compile2.cpp
+  compile.cpp
   gc.cpp
   istate.cpp
   obj.cpp
