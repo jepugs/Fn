@@ -28,6 +28,12 @@ static void reinit_string(gc_header* obj) {
     s->data = (sizeof(fn_string) + (u8*)s);
 }
 
+static void reinit_vector_node(gc_header* obj) {
+    auto n = (fn_vector_node*)obj;
+    // could just as well use data.children here
+    n->data.values = (value*)raw_ptr_add(obj, sizeof(fn_vector_node));
+}
+
 static void reinit_function(gc_header* obj) {
     auto f = (fn_function*)obj;
     auto stub = f->stub;
@@ -68,6 +74,30 @@ static void scavenge_cons(gc_header* obj, gc_scavenge_state* s) {
     auto c = (fn_cons*)obj;
     scavenge_boxed_pointer(&c->head, s);
     scavenge_boxed_pointer(&c->tail, s);
+}
+
+static void scavenge_vector(gc_header* obj, gc_scavenge_state* s) {
+    auto v = (fn_vector*) obj;
+    if (v->head) {
+        scavenge_pointer((gc_header**)&v->head, s);
+    }
+    if (v->tail) {
+        scavenge_pointer((gc_header**)&v->tail, s);
+    }
+}
+
+static void scavenge_vector_node(gc_header* obj, gc_scavenge_state* s) {
+    auto n = (fn_vector_node*) obj;
+    auto m = n->len;
+    if (n->height == 0) {
+        for (u32 i = 0; i < m; ++i) {
+            scavenge_boxed_pointer(&n->data.values[i], s);
+        }
+    } else {
+        for (u32 i = 0; i < m; ++i) {
+            scavenge_pointer((gc_header**)&n->data.children[i], s);
+        }
+    }
 }
 
 static void scavenge_table(gc_header* obj, gc_scavenge_state* s) {
@@ -136,6 +166,9 @@ void setup_gc_methods() {
     }
     set_type_methods(GC_TYPE_STRING, reinit_string, default_scavenger);
     set_type_methods(GC_TYPE_CONS, default_reinitializer, scavenge_cons);
+    set_type_methods(GC_TYPE_VECTOR, default_reinitializer, scavenge_vector);
+    set_type_methods(GC_TYPE_VECTOR_NODE, reinit_vector_node,
+            scavenge_vector_node);
     set_type_methods(GC_TYPE_TABLE, default_reinitializer, scavenge_table);
     set_type_methods(GC_TYPE_FUNCTION, reinit_function, scavenge_function);
     set_type_methods(GC_TYPE_UPVALUE, default_reinitializer, scavenge_upvalue);

@@ -87,7 +87,7 @@ constexpr u8 GC_GEN_TENURED    = 2;
 
 // number of collections an object must survive to be moved to the tenured
 // generation. Chosen pretty much at random, sorry
-constexpr u8 GC_TENURE_AGE    = 15;
+constexpr u8 GC_TENURE_AGE    = 10;
 
 // Nursery size at which to perform a collection
 constexpr u64 DEFAULT_NURSERY_SIZE_BYTES = 1 << 22;  // 4 MiB

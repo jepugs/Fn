@@ -67,20 +67,22 @@ union value {
 };
 
 // GC Types
-constexpr u8 GC_TYPE_BIGINT     = 0x00; // unused
-constexpr u8 GC_TYPE_BIGFLOAT   = 0x01; // unused
-constexpr u8 GC_TYPE_STRING     = 0x02;
-constexpr u8 GC_TYPE_CONS       = 0x03;
-constexpr u8 GC_TYPE_VECTOR     = 0x04; // unused
-constexpr u8 GC_TYPE_TABLE      = 0x05;
-constexpr u8 GC_TYPE_MAP        = 0x06; // unused
-constexpr u8 GC_TYPE_FUNCTION   = 0x07;
-constexpr u8 GC_TYPE_UPVALUE    = 0x08;
+constexpr u8 GC_TYPE_BIGINT      = 0x00; // unused
+constexpr u8 GC_TYPE_BIGFLOAT    = 0x01; // unused
+constexpr u8 GC_TYPE_STRING      = 0x02;
+constexpr u8 GC_TYPE_CONS        = 0x03;
+constexpr u8 GC_TYPE_VECTOR      = 0x04;
+constexpr u8 GC_TYPE_TABLE       = 0x05;
+constexpr u8 GC_TYPE_MAP         = 0x06; // unused
+constexpr u8 GC_TYPE_FUNCTION    = 0x07;
+// internal node of a persistent vector
+constexpr u8 GC_TYPE_VECTOR_NODE = 0x08;
+constexpr u8 GC_TYPE_UPVALUE     = 0x09;
 // function stubs (hold code, etc)
-constexpr u8 GC_TYPE_FUN_STUB   = 0x09;
+constexpr u8 GC_TYPE_FUN_STUB    = 0x0a;
 
 // dynamic byte arrays used internally by other types
-constexpr u8 GC_TYPE_GC_BYTES   = 0x0a;
+constexpr u8 GC_TYPE_GC_BYTES   = 0x0b;
 
 // header contained at the beginning of every object
 struct alignas (OBJ_ALIGN) gc_header {
@@ -126,6 +128,26 @@ struct alignas (OBJ_ALIGN) fn_cons {
     gc_header h;
     value head;
     value tail;
+};
+
+struct alignas (OBJ_ALIGN) fn_vector_node {
+    gc_header h;
+    // number of children/values
+    u8 len;
+    // height of 0 indicates that this is a leaf node
+    u8 height;
+    union {
+        fn_vector_node** children;
+        value* values;
+    } data;
+};
+
+struct alignas (OBJ_ALIGN) fn_vector {
+    gc_header h;
+    u64 size;
+    u64 tail_offset;
+    fn_vector_node* head;
+    fn_vector_node* tail;
 };
 
 // hash tables
