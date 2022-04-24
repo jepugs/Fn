@@ -24,11 +24,11 @@ gc_bytes* realloc_gc_bytes(istate* S, gc_bytes* src, u64 new_size) {
     return res;
 }
 
-fn_string* create_string(istate* S, u32 len) {
-    auto sz = round_to_align(sizeof(fn_string) + len + 1);
-    auto res = (fn_string*)alloc_nursery_object(S, sz);
-    init_gc_header(&res->h, GC_TYPE_STRING, sz);
-    res->data = (u8*) (((u8*)res) + sizeof(fn_string));
+fn_str* create_string(istate* S, u32 len) {
+    auto sz = round_to_align(sizeof(fn_str) + len + 1);
+    auto res = (fn_str*)alloc_nursery_object(S, sz);
+    init_gc_header(&res->h, GC_TYPE_STR, sz);
+    res->data = (u8*) (((u8*)res) + sizeof(fn_str));
     res->data[len] = 0;
     return res;
 }
@@ -38,7 +38,7 @@ void alloc_string(istate* S, u32 where, u32 len) {
 }
 
 // create a string without doing collection first
-fn_string* create_string(istate* S, const string& str) {
+fn_str* create_string(istate* S, const string& str) {
     auto len = str.size();
     auto res = create_string(S, len);
     memcpy(res->data, str.c_str(), len);
@@ -47,11 +47,11 @@ fn_string* create_string(istate* S, const string& str) {
 
 void alloc_string(istate* S, u32 where, const string& str) {
     auto len = str.size();
-    auto sz = round_to_align(sizeof(fn_string) + len + 1);
-    auto res = (fn_string*)alloc_nursery_object(S, sz);
+    auto sz = round_to_align(sizeof(fn_str) + len + 1);
+    auto res = (fn_str*)alloc_nursery_object(S, sz);
     res->size = len;
-    init_gc_header(&res->h, GC_TYPE_STRING, sz);
-    res->data = (u8*) (((u8*)res) + sizeof(fn_string));
+    init_gc_header(&res->h, GC_TYPE_STR, sz);
+    res->data = (u8*) (((u8*)res) + sizeof(fn_str));
     memcpy(res->data, str.c_str(), len);
     res->data[len] = 0;
     S->stack[where] = vbox_string(res);
@@ -90,13 +90,13 @@ static void reify_bc_const(istate* S, const scanner_string_table& sst,
         const bc_output_const& k) {
     switch(k.kind) {
     case bck_number:
-        push_number(S, k.d.num);
+        push_num(S, k.d.num);
         break;
     case bck_string:
-        push_string(S, scanner_name(sst, k.d.str_id));
+        push_str(S, scanner_name(sst, k.d.str_id));
         break;
     case bck_symbol:
-        push_symbol(S, intern_id(S, scanner_name(sst, k.d.str_id)));
+        push_sym(S, intern_id(S, scanner_name(sst, k.d.str_id)));
         break;
     case bck_quoted:
         push_quoted(S, sst, k.d.quoted);
@@ -197,8 +197,8 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
     }
 
     // set the function name
-    push_string(S, scanner_name(sst, compiled.name_id));
-    h->obj->name = vstring(peek(S));
+    push_str(S, scanner_name(sst, compiled.name_id));
+    h->obj->name = vstr(peek(S));
     pop(S);
 
     return h;
@@ -212,7 +212,7 @@ bool reify_function(istate* S, const scanner_string_table& sst,
 
     auto sz = sizeof(fn_function);
     auto res = (fn_function*)alloc_nursery_object(S, sz);
-    init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
+    init_gc_header(&res->h, GC_TYPE_FUN, sz);
     res->stub = stub_handle->obj;
     push(S, vbox_function(res));
     release_handle(stub_handle);
@@ -234,12 +234,12 @@ void alloc_foreign_fun(istate* S,
         u32 num_params,
         bool vari,
         const string& name) {
-    push_string(S, name);
+    push_str(S, name);
     auto stub_sz = round_to_align(sizeof(function_stub) + sizeof(code_info));
     auto stub = (function_stub*)alloc_nursery_object(S, stub_sz);
     init_gc_header(&stub->h, GC_TYPE_FUN_STUB, stub_sz);
     stub->num_upvals = 0;
-    stub->name = vstring(peek(S));
+    stub->name = vstr(peek(S));
     pop(S);
     stub->filename = S->filename;
     stub->foreign = foreign;
@@ -261,7 +261,7 @@ void alloc_foreign_fun(istate* S,
 
     auto sz = round_to_align(sizeof(fn_function));
     auto res = (fn_function*)alloc_nursery_object(S, sz);
-    init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
+    init_gc_header(&res->h, GC_TYPE_FUN, sz);
     res->stub = stub_handle->obj;
     res->init_vals = nullptr;
     res->upvals = nullptr;
@@ -310,7 +310,7 @@ void alloc_fun(istate* S, u32 enclosing, constant_id fid) {
             + stub->num_opt*sizeof(value)
             + stub->num_upvals*sizeof(upvalue_cell*));
     auto res = (fn_function*)alloc_nursery_object(S, sz);
-    init_gc_header(&res->h, GC_TYPE_FUNCTION, sz);
+    init_gc_header(&res->h, GC_TYPE_FUN, sz);
 
     auto enc_fun = vfunction(S->stack[enclosing]);
     // in case the gc moved the stub

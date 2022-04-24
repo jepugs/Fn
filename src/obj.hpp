@@ -69,14 +69,14 @@ union value {
 // GC Types
 constexpr u8 GC_TYPE_BIGINT      = 0x00; // unused
 constexpr u8 GC_TYPE_BIGFLOAT    = 0x01; // unused
-constexpr u8 GC_TYPE_STRING      = 0x02;
+constexpr u8 GC_TYPE_STR         = 0x02;
 constexpr u8 GC_TYPE_CONS        = 0x03;
-constexpr u8 GC_TYPE_VECTOR      = 0x04;
+constexpr u8 GC_TYPE_VEC         = 0x04;
 constexpr u8 GC_TYPE_TABLE       = 0x05;
 constexpr u8 GC_TYPE_MAP         = 0x06; // unused
-constexpr u8 GC_TYPE_FUNCTION    = 0x07;
+constexpr u8 GC_TYPE_FUN         = 0x07;
 // internal node of a persistent vector
-constexpr u8 GC_TYPE_VECTOR_NODE = 0x08;
+constexpr u8 GC_TYPE_VEC_NODE    = 0x08;
 constexpr u8 GC_TYPE_UPVALUE     = 0x09;
 // function stubs (hold code, etc)
 constexpr u8 GC_TYPE_FUN_STUB    = 0x0a;
@@ -112,14 +112,14 @@ void init_gc_header(gc_header* dest, u8 type, u32 size);
 void set_gc_forward(gc_header* dest, gc_header* ptr);
 
 // a string of fixed size
-struct alignas (OBJ_ALIGN) fn_string {
+struct alignas (OBJ_ALIGN) fn_str {
     gc_header h;
     u32 size;
     u8* data;
-    bool operator==(const fn_string& other) const;
+    bool operator==(const fn_str& other) const;
 };
 
-inline string convert_fn_string(fn_string* s) {
+inline string convert_fn_str(fn_str* s) {
     return string{(char*)s->data};
 }
 
@@ -130,24 +130,24 @@ struct alignas (OBJ_ALIGN) fn_cons {
     value tail;
 };
 
-struct alignas (OBJ_ALIGN) fn_vector_node {
+struct alignas (OBJ_ALIGN) fn_vec_node {
     gc_header h;
     // number of children/values
     u8 len;
     // height of 0 indicates that this is a leaf node
     u8 height;
     union {
-        fn_vector_node** children;
+        fn_vec_node** children;
         value* values;
     } data;
 };
 
-struct alignas (OBJ_ALIGN) fn_vector {
+struct alignas (OBJ_ALIGN) fn_vec {
     gc_header h;
-    u64 size;
+    u64 length;
     u64 tail_offset;
-    fn_vector_node* head;
-    fn_vector_node* tail;
+    fn_vec_node* root;
+    fn_vec_node* tail;
 };
 
 // hash tables
@@ -209,8 +209,8 @@ struct alignas(OBJ_ALIGN) function_stub {
     symbol_id ns_id;                   // namespace ID
 
     // metadata
-    fn_string* name;
-    fn_string* filename;
+    fn_str* name;
+    fn_str* filename;
 
     // arrays
     u32 code_length;

@@ -39,8 +39,8 @@ struct istate {
     u8* code;                                // function code
     dyn_array<upvalue_cell*> open_upvals;    // open upvalues on the stack
     value stack[STACK_SIZE];
-    fn_string* filename;                     // for function metadata
-    fn_string* wd;                           // working directory
+    fn_str* filename;                     // for function metadata
+    fn_str* wd;                           // working directory
 
     // package search
     dyn_array<string> include_paths;

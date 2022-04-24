@@ -273,7 +273,7 @@ ast::node* pop_syntax(istate* S, scanner_string_table& sst,
         res = ast::mk_number(loc, vnumber(v));
     } else if (vis_string(v)) {
         res = ast::mk_string(loc,
-                scanner_intern(sst, (const char*)vstring(v)->data));
+                scanner_intern(sst, (const char*)vstr(v)->data));
     } else if (vis_list(v)) {
         auto lst = v;
         dyn_array<ast::node*> buf;

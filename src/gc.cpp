@@ -23,18 +23,18 @@ static void set_type_methods(u8 type, gc_reinitializer reinit,
     gc_scavenger_table[type] = scavenge;
 }
 
-static void reinit_string(gc_header* obj) {
-    auto s = (fn_string*)obj;
-    s->data = (sizeof(fn_string) + (u8*)s);
+static void reinit_str(gc_header* obj) {
+    auto s = (fn_str*)obj;
+    s->data = (sizeof(fn_str) + (u8*)s);
 }
 
 static void reinit_vector_node(gc_header* obj) {
-    auto n = (fn_vector_node*)obj;
+    auto n = (fn_vec_node*)obj;
     // could just as well use data.children here
-    n->data.values = (value*)raw_ptr_add(obj, sizeof(fn_vector_node));
+    n->data.values = (value*)raw_ptr_add(obj, sizeof(fn_vec_node));
 }
 
-static void reinit_function(gc_header* obj) {
+static void reinit_fun(gc_header* obj) {
     auto f = (fn_function*)obj;
     auto stub = f->stub;
     if (stub->h.forward) {
@@ -45,7 +45,7 @@ static void reinit_function(gc_header* obj) {
             + stub->num_opt * sizeof(value) + (u8*)f);
 }
 
-static void reinit_function_stub(gc_header* obj) {
+static void reinit_fun_stub(gc_header* obj) {
     // FIXME: lotsa pointers to update here...
     auto s = (function_stub*)obj;
     auto code_sz = round_to_align(s->code_length);
@@ -76,18 +76,16 @@ static void scavenge_cons(gc_header* obj, gc_scavenge_state* s) {
     scavenge_boxed_pointer(&c->tail, s);
 }
 
-static void scavenge_vector(gc_header* obj, gc_scavenge_state* s) {
-    auto v = (fn_vector*) obj;
-    if (v->head) {
-        scavenge_pointer((gc_header**)&v->head, s);
+static void scavenge_vec(gc_header* obj, gc_scavenge_state* s) {
+    auto v = (fn_vec*) obj;
+    if (v->root) {
+        scavenge_pointer((gc_header**)&v->root, s);
     }
-    if (v->tail) {
-        scavenge_pointer((gc_header**)&v->tail, s);
-    }
+    scavenge_pointer((gc_header**)&v->tail, s);
 }
 
-static void scavenge_vector_node(gc_header* obj, gc_scavenge_state* s) {
-    auto n = (fn_vector_node*) obj;
+static void scavenge_vec_node(gc_header* obj, gc_scavenge_state* s) {
+    auto n = (fn_vec_node*) obj;
     auto m = n->len;
     if (n->height == 0) {
         for (u32 i = 0; i < m; ++i) {
@@ -114,7 +112,7 @@ static void scavenge_table(gc_header* obj, gc_scavenge_state* s) {
     }
 }
 
-static void scavenge_function(gc_header* obj, gc_scavenge_state* s) {
+static void scavenge_fun(gc_header* obj, gc_scavenge_state* s) {
     auto f = (fn_function*)obj;
     // IMPORTANT! We must detect if the stub has moved and update it before
     // using it.
@@ -137,7 +135,7 @@ static void scavenge_upvalue(gc_header* obj, gc_scavenge_state* s) {
     }
 }
 
-static void scavenge_function_stub(gc_header* obj, gc_scavenge_state* s) {
+static void scavenge_fun_stub(gc_header* obj, gc_scavenge_state* s) {
     auto stub = (function_stub*)obj;
     for (u64 i = 0; i < stub->num_sub_funs; ++i) {
         // check for nullptr to account for function stubs that are not fully
@@ -164,16 +162,14 @@ void setup_gc_methods() {
         gc_reinitializer_table[i] = default_reinitializer;
         gc_scavenger_table[i] = default_scavenger;
     }
-    set_type_methods(GC_TYPE_STRING, reinit_string, default_scavenger);
+    set_type_methods(GC_TYPE_STR, reinit_str, default_scavenger);
     set_type_methods(GC_TYPE_CONS, default_reinitializer, scavenge_cons);
-    set_type_methods(GC_TYPE_VECTOR, default_reinitializer, scavenge_vector);
-    set_type_methods(GC_TYPE_VECTOR_NODE, reinit_vector_node,
-            scavenge_vector_node);
+    set_type_methods(GC_TYPE_VEC, default_reinitializer, scavenge_vec);
+    set_type_methods(GC_TYPE_VEC_NODE, reinit_vector_node, scavenge_vec_node);
     set_type_methods(GC_TYPE_TABLE, default_reinitializer, scavenge_table);
-    set_type_methods(GC_TYPE_FUNCTION, reinit_function, scavenge_function);
+    set_type_methods(GC_TYPE_FUN, reinit_fun, scavenge_fun);
     set_type_methods(GC_TYPE_UPVALUE, default_reinitializer, scavenge_upvalue);
-    set_type_methods(GC_TYPE_FUN_STUB, reinit_function_stub,
-            scavenge_function_stub);
+    set_type_methods(GC_TYPE_FUN_STUB, reinit_fun_stub, scavenge_fun_stub);
     set_type_methods(GC_TYPE_GC_BYTES, reinit_gc_bytes, default_scavenger);
 }
 
@@ -246,7 +242,7 @@ void deinit_allocator(allocator& alloc, istate* S) {
 }
 
 
-static gc_header* try_alloc_object(gc_deck& deck, u64 size) {
+static gc_header* try_alloc_obj(gc_deck& deck, u64 size) {
     auto new_end = deck.foot->pointer + size;
     if (new_end > GC_CARD_SIZE) {
         return nullptr;
@@ -299,10 +295,10 @@ static gc_header* alloc_in_deck(gc_deck& deck, istate* S, u64 size) {
     if (size > LARGE_OBJECT_CUTOFF) {
         return alloc_large_in_deck(deck, S, size);
     }
-    auto res = try_alloc_object(deck, size);
+    auto res = try_alloc_obj(deck, size);
     if (!res) {
         add_card_to_deck(deck, S);
-        res = try_alloc_object(deck, size);
+        res = try_alloc_obj(deck, size);
     }
     return res;
 }
@@ -319,16 +315,49 @@ gc_header* alloc_nursery_object(istate* S, u64 size) {
         }
         return alloc_large_in_deck(S->alloc->nursery, S, size);
     }
-    auto res = try_alloc_object(S->alloc->nursery, size);
+    auto res = try_alloc_obj(S->alloc->nursery, size);
     if (!res) {
         if (S->alloc->nursery.num_cards >= S->alloc->nursery_size) {
             // run a collection when the nursery is full
             collect_now(S);
         }
         add_card_to_deck(S->alloc->nursery, S);
-        res = try_alloc_object(S->alloc->nursery, size);
+        res = try_alloc_obj(S->alloc->nursery, size);
     }
     return res;
+}
+
+void alloc_nursery_objects(gc_header** out, istate* S, u64* sizes,
+        u32 num_obj) {
+    bool retry = false;
+    for (u32 i = 0; i < num_obj; ++i) {
+        auto v = try_alloc_obj(S->alloc->nursery, sizes[i]);
+        if (v) {
+            out[i] = v;
+        } else {
+            if (S->alloc->nursery.num_cards >= S->alloc->nursery_size) {
+                collect_now(S);
+                retry = true;
+                break;
+            }
+            add_card_to_deck(S->alloc->nursery, S);
+            out[i] = try_alloc_obj(S->alloc->nursery, sizes[i]);
+        }
+    }
+    if (retry) {
+        // don't attempt collection on retry. Technically this might overflow
+        // the nursery if the user somehow asks for more objects than fit in
+        // there, but at least then it will still have usable output
+        for (u32 i = 0; i < num_obj; ++i) {
+            auto v = try_alloc_obj(S->alloc->nursery, sizes[i]);
+            if (v) {
+                out[i] = v;
+            } else {
+                add_card_to_deck(S->alloc->nursery, S);
+                out[i] = try_alloc_obj(S->alloc->nursery, sizes[i]);
+            }
+        }
+    }
 }
 
 gc_header* gc_card_object(gc_card_header* card, u16 addr) {
@@ -467,10 +496,10 @@ static void copy_gc_roots(istate* S) {
     S->G->list_meta = copy_live_value(S->G->list_meta, S);
     S->G->string_meta = copy_live_value(S->G->string_meta, S);
     if (S->filename) {
-        S->filename = (fn_string*)copy_live_object((gc_header*)S->filename, S);
+        S->filename = (fn_str*)copy_live_object((gc_header*)S->filename, S);
     }
     if (S->wd) {
-        S->wd = (fn_string*)copy_live_object((gc_header*)S->wd, S);
+        S->wd = (fn_str*)copy_live_object((gc_header*)S->wd, S);
     }
     for (auto& f : S->stack_trace) {
         f.callee = (fn_function*)copy_live_object((gc_header*)f.callee, S);

@@ -30,14 +30,14 @@ void free_istate(istate* S) {
 }
 
 void set_filename(istate* S, const string& name) {
-    push_string(S, name);
-    S->filename = vstring(peek(S));
+    push_str(S, name);
+    S->filename = vstr(peek(S));
     pop(S);
 }
 
 void set_directory(istate* S, const string& pathname) {
-    push_string(S, pathname);
-    S->wd = vstring(peek(S));
+    push_str(S, pathname);
+    S->wd = vstr(peek(S));
     pop(S);
 }
 
@@ -78,18 +78,18 @@ void push_quoted(istate* S, const scanner_string_table& sst,
         const ast::node* root) {
     switch (root->kind) {
     case ast::ak_number:
-        push_number(S, root->datum.num);
+        push_num(S, root->datum.num);
         break;
     case ast::ak_string:
-        push_string(S, scanner_name(sst, root->datum.str_id));
+        push_str(S, scanner_name(sst, root->datum.str_id));
         break;
     case ast::ak_symbol: {
         auto name = scanner_name(sst, root->datum.str_id);
         if (!name.empty() && name[0] == ':') {
             auto fqn = resolve_symbol(S, intern_id(S, name.substr(1)));
-            push_symbol(S, fqn);
+            push_sym(S, fqn);
         } else {
-            push_symbol(S, intern_id(S, name));
+            push_sym(S, intern_id(S, name));
         }
     }
         break;
@@ -110,7 +110,7 @@ bool pop_syntax(ast::node*& result, istate* S, scanner_string_table& sst) {
         result = ast::mk_number(loc, vnumber(peek(S)));
     } else if (vis_string(v)) {
         result = ast::mk_string(loc,
-                scanner_intern(sst, convert_fn_string(vstring(v))));
+                scanner_intern(sst, convert_fn_str(vstr(v))));
     } else if (vis_symbol(v)) {
         result = ast::mk_symbol(loc,
                 scanner_intern(sst, symname(S, vsymbol(v))));
@@ -185,9 +185,9 @@ void print_stack_trace(istate* S) {
     for (auto& f : S->stack_trace) {
         if (f.callee) {
             if (f.callee->stub->foreign) {
-                os //<< "  File " << convert_fn_string(f.callee->stub->filename)
+                os //<< "  File " << convert_fn_str(f.callee->stub->filename)
                    << "  In foreign function "
-                   << convert_fn_string(f.callee->stub->name) << '\n';
+                   << convert_fn_str(f.callee->stub->name) << '\n';
             } else {
                 auto c = instr_loc(f.callee->stub, f.pc);
                 os << "  File " << string{(char*)f.callee->stub->filename->data}
@@ -268,7 +268,7 @@ void interpret_stream(istate* S, std::istream* in) {
 }
 
 bool load_file(istate* S, const string& pathname) {
-    fs::path p = fs::path{convert_fn_string(S->wd)} / pathname;
+    fs::path p = fs::path{convert_fn_str(S->wd)} / pathname;
     if (!fs::exists(p)) {
         ierror(S, "load_file() failed. File doesn't exist: " + p.string());
         return false;
@@ -283,7 +283,7 @@ bool load_file(istate* S, const string& pathname) {
         ierror(S, "load_file() failed. Could not open file: " + p.string());
         return false;
     }
-    auto old_filename = convert_fn_string(S->filename);
+    auto old_filename = convert_fn_str(S->filename);
     set_filename(S, p.string());
     interpret_stream(S, &in);
     set_filename(S, old_filename);
@@ -291,14 +291,14 @@ bool load_file(istate* S, const string& pathname) {
 }
 
 bool load_file_or_package(istate* S, const string& pathname) {
-    fs::path p = fs::path{convert_fn_string(S->wd)} / pathname;
+    fs::path p = fs::path{convert_fn_str(S->wd)} / pathname;
     if (!fs::exists(p)) {
         ierror(S, "load_file_or_package() failed. File doesn't exist: " + p.string());
         return false;
     }
     if (fs::is_directory(p)) {
         fs::path init_path = p / "__init.fn";
-        auto old_wd = convert_fn_string(S->wd);
+        auto old_wd = convert_fn_str(S->wd);
         set_directory(S, p.string());
         auto res = load_file(S, init_path);
         set_directory(S, old_wd);

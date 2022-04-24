@@ -112,7 +112,7 @@ static inline bool arrange_call_stack(istate* S, u32 n) {
         std::ostringstream os;
         os << "Too few arguments in call to function";
         if (S->callee && S->callee->stub->name) {
-            os << " " << convert_fn_string(S->callee->stub->name);
+            os << " " << convert_fn_str(S->callee->stub->name);
         }
         os << ".";
         ierror(S, os.str());

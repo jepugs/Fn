@@ -92,11 +92,14 @@ inline value vbox_ptr(void* p, u64 tag) {
     res.raw = (res.raw & ~TAG_MASK) | tag;
     return res;
 }
-inline value vbox_string(fn_string* p) {
+inline value vbox_string(fn_str* p) {
     return vbox_ptr(p, TAG_STRING);
 }
 inline value vbox_cons(fn_cons* p) {
     return vbox_ptr(p, TAG_CONS);
+}
+inline value vbox_vec(fn_vec* p) {
+    return vbox_ptr(p, TAG_VECTOR);
 }
 inline value vbox_table(fn_table* p) {
     return vbox_ptr(p, TAG_TABLE);
@@ -106,13 +109,15 @@ inline value vbox_function(fn_function* p) {
 }
 inline value vbox_header(gc_header* h) {
     switch (h->type) {
-    case GC_TYPE_STRING:
-        return vbox_string((fn_string*)h);
+    case GC_TYPE_STR:
+        return vbox_string((fn_str*)h);
     case GC_TYPE_CONS:
         return vbox_cons((fn_cons*)h);
+    case GC_TYPE_VEC:
+        return vbox_vec((fn_vec*)h);
     case GC_TYPE_TABLE:
         return vbox_table((fn_table*)h);
-    case GC_TYPE_FUNCTION:
+    case GC_TYPE_FUN:
         return vbox_function((fn_function*)h);
     default:
         return V_NIL;
@@ -127,14 +132,18 @@ inline void* vpointer(value v) {
     v.raw = v.raw & ~TAG_MASK;
     return v.ptr;
 }
-inline fn_string* vstring(value v) {
+inline fn_str* vstr(value v) {
     v.raw = v.raw & ~TAG_MASK;
-    return (fn_string*)v.ptr;
-    // return (fn_string*)(v.ptr & ~TAG_MASK);
+    return (fn_str*)v.ptr;
+    // return (fn_str*)(v.ptr & ~TAG_MASK);
 }
 inline fn_cons* vcons(value v) {
     v.raw = v.raw & ~TAG_MASK;
     return (fn_cons*)v.ptr;
+}
+inline fn_vec* vvec(value v)  {
+    v.raw = v.raw & ~TAG_MASK;
+    return (fn_vec*)v.ptr;
 }
 inline fn_table* vtable(value v) {
     v.raw = v.raw & ~TAG_MASK;
@@ -153,7 +162,7 @@ inline bool vtruth(value v) {
 }
 
 inline u32 vstrlen(value v) {
-    return vstring(v)->size;
+    return vstr(v)->size;
 }
 
 // cons/list
@@ -206,6 +215,7 @@ inline bool vequal(value a, value b) {
 // returns an array of two values, key followed by value, which should not be
 // freed
 value* table_get(fn_table* tab, value k);
+// get an element by doing linear probing. This is faster for small tables
 value* table_get_linear(fn_table* tab, value k);
 void table_insert(istate* S, u32 table_pos, u32 key_pos, u32 val_pos);
 

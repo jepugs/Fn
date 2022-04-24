@@ -13,7 +13,7 @@ bool value::operator==(const value& v) const {
     auto tag = vtag(*this);
     switch (tag) {
     case TAG_STRING:
-        return vtag(v) == TAG_STRING && *vstring(*this) == *vstring(v);
+        return vtag(v) == TAG_STRING && *vstr(*this) == *vstr(v);
     case TAG_CONS:
         return vtag(v) == TAG_CONS
             && vcons(*this)->head == vcons(v)->head
@@ -66,7 +66,7 @@ template<> u64 hash<value>(const value& v) {
     case TAG_CONST:
         return hash(v.raw);
     case TAG_STRING:
-        return hash(string{(char*)vstring(v)->data});
+        return hash(string{(char*)vstr(v)->data});
     case TAG_TABLE:
     case TAG_CONS:
     case TAG_FUNC:
@@ -103,9 +103,9 @@ string v_to_string(value v, const symbol_table* symbols, bool code_format) {
     case TAG_STRING:
         if (code_format) {
             // TODO: handle escapes
-            return "\"" + string{(char*)vstring(v)->data} + "\"";
+            return "\"" + string{(char*)vstr(v)->data} + "\"";
         } else {
-            return string{(char*)vstring(v)->data};
+            return string{(char*)vstr(v)->data};
         }
     case TAG_TABLE:
         {   // TODO: recursively print objects

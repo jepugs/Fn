@@ -41,25 +41,25 @@ void pop_to_local(istate* S, u8 dest) {
     pop(S);
 }
 
-void push_number(istate* S, f64 num) {
+void push_num(istate* S, f64 num) {
     push(S, vbox_number(num));
 }
-void push_string(istate* S, u32 size) {
+void push_str(istate* S, u32 size) {
     push_nil(S);
     alloc_string(S, S->sp - 1, size);
 }
-void push_string(istate* S, const string& str)  {
+void push_str(istate* S, const string& str)  {
     push_nil(S);
     alloc_string(S, S->sp - 1, str);
 }
-void push_symbol(istate* S, symbol_id sym) {
+void push_sym(istate* S, symbol_id sym) {
     push(S, vbox_symbol(sym));
 }
 void push_intern(istate* S, const string& str) {
     push(S, vbox_symbol(intern_id(S, str)));
 }
 void push_symname(istate* S, symbol_id sym) {
-    push_string(S, symname(S, sym));
+    push_str(S, symname(S, sym));
 }
 void push_nil(istate* S) {
     push(S, V_NIL);
@@ -129,14 +129,14 @@ bool pget_number(f64& out, istate* S, u8 i) {
     return true;
 }
 void get_string(string& out, const istate* S, u8 i) {
-    out = convert_fn_string(vstring(lget(S, i)));
+    out = convert_fn_str(vstr(lget(S, i)));
 }
 bool pget_string(string& out, istate* S, u8 i) {
     if (!vis_string(S->stack[S->bp + i])) {
         type_error(S, "string");
         return false;
     }
-    out = convert_fn_string(vstring(lget(S, i)));
+    out = convert_fn_str(vstr(lget(S, i)));
     return true;
 }
 void get_symbol_id(symbol_id& out, const istate* S, u8 i) {
@@ -264,7 +264,7 @@ bool ppush_tail(istate* S, u8 i) {
 }
 
 void get_string_length(u32& out, const istate* S, u8 i) {
-    out = vstring(lget(S,i))->size;
+    out = vstr(lget(S,i))->size;
 }
 
 bool pget_string_length(u32& out, istate* S, u8 i) {
@@ -289,8 +289,8 @@ void concat_strings(istate* S, u8 n) {
     for (u32 i = 0; i < n; ++i) {
         u32 x;
         get_string_length(x, S, base + i);
-        memcpy(&vstring(peek(S))->data[ptr],
-                vstring(lget(S, base + i))->data,
+        memcpy(&vstr(peek(S))->data[ptr],
+                vstr(lget(S, base + i))->data,
                 x);
         ptr += x;
     }
@@ -311,11 +311,11 @@ bool pconcat_strings(istate* S, u8 n) {
 }
 
 void push_substring(istate* S, u8 i, u32 start, u32 stop) {
-    auto& total_size = vstring(lget(S, i))->size;
+    auto& total_size = vstr(lget(S, i))->size;
     stop = stop > total_size ? total_size : stop;
     push_nil(S);
     alloc_string(S, S->sp - 1, stop - start);
-    memcpy(vstring(peek(S))->data, vstring(lget(S, i))->data, stop - start);
+    memcpy(vstr(peek(S))->data, vstr(lget(S, i))->data, stop - start);
 }
 
 bool ppush_substring(istate* S, u8 i, u32 start, u32 stop) {

@@ -11,6 +11,7 @@ add_library(fn_lib OBJECT
   parse.cpp
   scan.cpp
   values.cpp
+  vector.cpp
   vm.cpp
   )
 

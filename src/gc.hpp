@@ -201,6 +201,9 @@ void deinit_allocator(allocator& alloc, istate* S);
 // allocate a new nursery object. This will trigger a garbage collection if the
 // nursery is full
 gc_header* alloc_nursery_object(istate* S, u64 size);
+// allocate several nursery objects. Requirement: we must ask for more values
+// than fit in the nursery.
+void alloc_nursery_objects(gc_header** out, istate* S, u64* sizes, u32 num_obj);
 // get the object at the specified address in the card. (Warning: addr is not
 // validated)
 gc_header* gc_card_object(gc_card_header* card_info, u16 addr);

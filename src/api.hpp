@@ -36,10 +36,10 @@ void pop(istate* S, u8 times=1);
 void pop_to_local(istate* S, u8 dest);
 
 // create values on top of the stack
-void push_number(istate* S, f64 num);
-void push_string(istate* S, u32 size);
-void push_string(istate* S, const string& str);
-void push_symbol(istate* S, symbol_id sym);
+void push_num(istate* S, f64 num);
+void push_str(istate* S, u32 size);
+void push_str(istate* S, const string& str);
+void push_sym(istate* S, symbol_id sym);
 // create a symbol from the given string
 void push_intern(istate* S, const string& str);
 // push the name of a symbol, given its symbol id
@@ -49,6 +49,7 @@ void push_yes(istate* S);
 void push_no(istate* S);
 void push_empty_list(istate* S);
 void pop_to_list(istate* S, u32 num);
+void pop_to_vec(istate* S, u32 num);
 // Warning: This does not check the type of the tail, but it *must* be a list.
 // If you don't want to check, use ppush_cons() for a type-checked version
 void push_cons(istate* S, u8 head_index, u8 tail_index);
@@ -69,8 +70,8 @@ void push_foreign_function(istate* S, void (*foreign) (istate*), u8 num_args,
 
 void get_number(f64& out, const istate* S, u8 i);
 bool pget_number(f64& out, istate* S, u8 i);
-void get_string(string& out, const istate* S, u8 i);
-bool pget_string(string& out, istate* S, u8 i);
+void get_str(string& out, const istate* S, u8 i);
+bool pget_str(string& out, istate* S, u8 i);
 void get_symbol_id(symbol_id& out, const istate* S, u8 i);
 bool pget_symbol_id(symbol_id& out, istate* S, u8 i);
 // Any value other than a boolean will be implicitly cast to a boolean by
@@ -81,12 +82,13 @@ void get_bool(bool& out, const istate* S, u8 i);
 // type checking
 
 bool is_number(istate* S, u8 i);
-bool is_string(istate* S, u8 i);
+bool is_str(istate* S, u8 i);
 bool is_symbol(istate* S, u8 i);
 bool is_bool(istate* S, u8 i);
 bool is_nil(istate* S, u8 i);
 bool is_cons(istate* S, u8 i);
 bool is_list(istate* S, u8 i);
+bool is_vec(istate* S, u8 i);
 bool is_empty_list(istate* S, u8 i);
 bool is_table(istate* S, u8 i);
 bool is_function(istate* S, u8 i);
@@ -111,21 +113,25 @@ bool ppush_head(istate* S, u8 i);
 void push_tail(istate* S, u8 i);
 bool ppush_tail(istate* S, u8 i);
 // TODO: provide these functions
-//void concat_lists(istate* S, u8 n);
-//void pconcat_lists(istate* S, u8 n);
+void concat_lists(istate* S, u8 n);
+bool pconcat_lists(istate* S, u8 n);
 
+// vector functions
+
+void get_vec_length(istate* S, u32 num);
+void push_from_vec(istate* S, u8 i, u64 index);
 
 // string functions
 
-void get_string_length(u32& out, const istate* S, u8 i);
-bool pget_string_length(u32& out, istate* S, u8 i);
+void get_str_length(u32& out, const istate* S, u8 i);
+bool pget_str_length(u32& out, istate* S, u8 i);
 // concatenate n strings on top of the stack. This will pop the strings and push
 // the new one in their place.
-void concat_strings(istate* S, u8 n);
-bool pconcat_strings(istate* S, u8 n);
+void concat_strs(istate* S, u8 n);
+bool pconcat_strs(istate* S, u8 n);
 // get a substring
-void push_substring(istate* S, u8 i, u32 start, u32 stop=-1);
-bool ppush_substring(istate* S, u8 i, u32 start, u32 stop=-1);
+void push_substr(istate* S, u8 i, u32 start, u32 stop=-1);
+bool ppush_substr(istate* S, u8 i, u32 start, u32 stop=-1);
 
 
 // table functions

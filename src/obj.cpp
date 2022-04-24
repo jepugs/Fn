@@ -16,7 +16,7 @@ void init_gc_header(gc_header* dest, u8 type, u32 size) {
     };
 }
 
-bool fn_string::operator==(const fn_string& s) const {
+bool fn_str::operator==(const fn_str& s) const {
     if (size != s.size) {
         return false;
     }

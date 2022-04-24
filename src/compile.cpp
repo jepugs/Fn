@@ -1037,7 +1037,7 @@ void disassemble_top(istate* S, bool recur) {
     auto stub = vfunction(peek(S))->stub;
     std::ostringstream os;
     disassemble_with_header(os, S, stub, "; function", recur);
-    push_string(S, os.str());
+    push_str(S, os.str());
 }
 
 }

@@ -33,7 +33,7 @@ fn_fun(require, "require", "(spec)") {
         ierror(S, "require spec must be a string.");
         return;
     }
-    load_file_or_package(S, convert_fn_string(vstring(peek(S))));
+    load_file_or_package(S, convert_fn_str(vstr(peek(S))));
 }
 
 fn_fun(eq, "=", "(x0 & args)") {
@@ -116,7 +116,7 @@ fn_fun(ceil, "ceil", "(x)") {
         ierror(S, "Argument to ceil not a number.");
         return;
     }
-    push_number(S, ceil(vnumber(x0)));
+    push_num(S, ceil(vnumber(x0)));
 }
 
 fn_fun(intern, "intern", "(str)") {
@@ -124,7 +124,7 @@ fn_fun(intern, "intern", "(str)") {
         ierror(S, "Argument to intern not a string.");
         return;
     }
-    push_symbol(S, intern_id(S, convert_fn_string(vstring(peek(S)))));
+    push_sym(S, intern_id(S, convert_fn_str(vstr(peek(S)))));
 }
 
 fn_fun(symname, "symname", "(sym)") {
@@ -132,11 +132,11 @@ fn_fun(symname, "symname", "(sym)") {
         ierror(S, "Argument to symname not a symbol.");
         return;
     }
-    push_string(S, symname(S, vsymbol(peek(S))));
+    push_str(S, symname(S, vsymbol(peek(S))));
 }
 
 fn_fun(gensym, "gensym", "()") {
-    push_symbol(S, gensym_id(S));
+    push_sym(S, gensym_id(S));
 }
 
 fn_fun(add, "+", "(& args)") {
@@ -149,13 +149,13 @@ fn_fun(add, "+", "(& args)") {
         }
         res += vnumber(v);
     }
-    push_number(S, res);
+    push_num(S, res);
 }
 
 fn_fun(sub, "-", "(& args)") {
     f64 res = 0;
     if (S->sp - S->bp == 0) {
-        push_number(S, 0);
+        push_num(S, 0);
         return;
     } else {
         auto v = S->stack[S->bp];
@@ -168,7 +168,7 @@ fn_fun(sub, "-", "(& args)") {
     }
     // arity 1 => perform negation
     if (S->sp - S->bp == 1) {
-        push_number(S, -res);
+        push_num(S, -res);
         return;
     }
     for (u32 i = S->bp + 1; i < S->sp; ++i) {
@@ -179,7 +179,7 @@ fn_fun(sub, "-", "(& args)") {
         }
         res -= vnumber(v);
     }
-    push_number(S, res);
+    push_num(S, res);
 }
 
 fn_fun(mul, "*", "(& args)") {
@@ -192,13 +192,13 @@ fn_fun(mul, "*", "(& args)") {
         }
         res *= vnumber(v);
     }
-    push_number(S, res);
+    push_num(S, res);
 }
 
 fn_fun(div, "/", "(& args)") {
     f64 res = 1;
     if (S->sp - S->bp == 0) {
-        push_number(S, 1);
+        push_num(S, 1);
         return;
     } else {
         auto v = S->stack[S->bp];
@@ -211,7 +211,7 @@ fn_fun(div, "/", "(& args)") {
     }
     // arity 1 => take inverse
     if (S->sp - S->bp == 1) {
-        push_number(S, 1/res);
+        push_num(S, 1/res);
         return;
     }
     for (u32 i = S->bp + 1; i < S->sp; ++i) {
@@ -222,7 +222,7 @@ fn_fun(div, "/", "(& args)") {
         }
         res /= vnumber(v);
     }
-    push_number(S, res);
+    push_num(S, res);
 }
 
 fn_fun(pow, "**", "(base expt)") {
@@ -232,7 +232,7 @@ fn_fun(pow, "**", "(base expt)") {
         ierror(S, "Arguments to ** must be numbers.");
         return;
     }
-    push_number(S, pow(vnumber(base), vnumber(expt)));
+    push_num(S, pow(vnumber(base), vnumber(expt)));
 }
 
 fn_fun(fn_not, "not", "(arg)") {
@@ -293,7 +293,7 @@ fn_fun(mod, "mod", "(x modulus)") {
         ierror(S, "Modulus for mod must be an integer.");
         return;
     }
-    push_number(S, (i % (i64)m) + f);
+    push_num(S, (i % (i64)m) + f);
 }
 
 fn_fun(Table, "Table", "(& args)") {
