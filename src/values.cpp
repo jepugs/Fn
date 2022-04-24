@@ -100,6 +100,10 @@ string v_to_string(value v, const symbol_table* symbols, bool code_format) {
             }
             return res + "]";
         }
+    case TAG_VECTOR:
+        {
+            return "<vector>";
+        }
     case TAG_STRING:
         if (code_format) {
             // TODO: handle escapes

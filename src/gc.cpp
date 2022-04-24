@@ -1,7 +1,9 @@
 #include "gc.hpp"
 
 // uncomment to do a GC after every allocation
-// #define GC_STRESS
+//#define GC_STRESS
+// uncomment to disable GC
+//#define GC_DISABLE
 
 namespace fn {
 
@@ -727,6 +729,9 @@ void major_gc(istate* S) {
 }
 
 void collect_now(istate* S) {
+#ifdef GC_DISABLE
+    return;
+#endif
     // NOTE: maybe add a timer to prevent major gc from occurring too often
     if (S->alloc->tenured.num_cards > S->alloc->majorgc_th) {
         major_gc(S);

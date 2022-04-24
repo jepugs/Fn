@@ -3,6 +3,7 @@
 #include "alloc.hpp"
 #include "gc.hpp"
 #include "istate.hpp"
+#include "vector.hpp"
 
 namespace fn { 
 
@@ -179,6 +180,9 @@ bool is_list(istate* S, u8 i) {
 bool is_empty_list(istate* S, u8 i) {
     return vis_emptyl(lget(S, i));
 }
+bool is_vec(istate* S, u8 i) {
+    return vis_vec(lget(S, i));
+}
 bool is_table(istate* S, u8 i) {
     return vis_table(lget(S, i));
 }
@@ -263,16 +267,20 @@ bool ppush_tail(istate* S, u8 i) {
     }
 }
 
-void get_string_length(u32& out, const istate* S, u8 i) {
+bool push_from_vec(istate* S, u8 i, u64 index) {
+    return push_vec_lookup(S, i + S->bp, index);
+}
+
+void get_str_length(u32& out, const istate* S, u8 i) {
     out = vstr(lget(S,i))->size;
 }
 
-bool pget_string_length(u32& out, istate* S, u8 i) {
+bool pget_str_length(u32& out, istate* S, u8 i) {
     if (!vis_string(lget(S,i))) {
         type_error(S, "string");
         return false;
     }
-    get_string_length(out, S, i);
+    get_str_length(out, S, i);
     return true;
 }
 
@@ -281,14 +289,14 @@ void concat_strings(istate* S, u8 n) {
     u32 len = 0;
     for (u32 i = 0; i < n; ++i) {
         u32 x;
-        get_string_length(x, S, base + i);
+        get_str_length(x, S, base + i);
         len += x;
     }
     alloc_string(S, S->sp - 1, len);
     u32 ptr = 0;
     for (u32 i = 0; i < n; ++i) {
         u32 x;
-        get_string_length(x, S, base + i);
+        get_str_length(x, S, base + i);
         memcpy(&vstr(peek(S))->data[ptr],
                 vstr(lget(S, base + i))->data,
                 x);

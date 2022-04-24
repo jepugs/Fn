@@ -296,6 +296,31 @@ fn_fun(mod, "mod", "(x modulus)") {
     push_num(S, (i % (i64)m) + f);
 }
 
+fn_fun(Vec, "Vec", "(& args)") {
+    pop_to_vec(S, get_frame_pointer(S));
+}
+
+fn_fun(vec_q, "vec?", "(x)") {
+    is_vec(S, 0);
+}
+
+fn_fun(vec_nth, "vec-nth", "(n x)") {
+    if (!is_vec(S, 1)) {
+        ierror(S, "vec-nth object must be a vector");
+    }
+    if (!is_number(S, 0)) {
+        ierror(S, "vec-nth index must be a number");
+    }
+    f64 n;
+    get_number(n, S, 0);
+    auto index = (u64)n;
+    if (index != n) {
+        ierror(S, "vec-nth index must be an integer");
+    }
+    // FIXME: check bounds
+    push_from_vec(S, 1, index);
+}
+
 fn_fun(Table, "Table", "(& args)") {
     push_table(S, get_frame_pointer(S));
 }
@@ -418,6 +443,10 @@ void install_internal(istate* S) {
     // fn_add_builtin(S, exp);
     // fn_add_builtin(S, log);
     fn_add_builtin(S, mod);
+
+    fn_add_builtin(S, Vec);
+    fn_add_builtin(S, vec_q);
+    fn_add_builtin(S, vec_nth);
 
     fn_add_builtin(S, Table);
     fn_add_builtin(S, get);

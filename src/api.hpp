@@ -119,7 +119,7 @@ bool pconcat_lists(istate* S, u8 n);
 // vector functions
 
 void get_vec_length(istate* S, u32 num);
-void push_from_vec(istate* S, u8 i, u64 index);
+bool push_from_vec(istate* S, u8 i, u64 index);
 
 // string functions
 
