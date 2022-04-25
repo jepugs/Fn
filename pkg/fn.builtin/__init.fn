@@ -2,6 +2,19 @@
 
 (import fn/internal int)
 
+; (#:fn/internal:import fn/internal int)
+
+; (#:fn/internal:defmacro defmacro (name args & body)
+;                         (int:cons '#:fn/internal:defmacro
+;                                   (int:cons name
+;                                             (int:cons args body))))
+
+; (defmacro def (name value)
+;   (int:mk-list '#:fn/internal:def name value))
+
+; used for debugging
+(def println int:println)
+
 (def list? int:list?)
 ; (def empty? int:empty?)
 (def symbol? int:symbol?)
@@ -27,8 +40,6 @@
 (def Table int:Table)
 
 (def require int:require)
-
-(def println int:println)
 
 (def macroexpand-1 int:macroexpand-1)
 

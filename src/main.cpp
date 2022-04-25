@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
     }
 
     set_directory(S, opt.dir);
-    set_namespace_name(S, "fn/user");
+    set_ns_name(S, "fn/user");
     if (opt.src != "") {
         if (load_file_or_package(S, opt.src)) {
             print_top(S);

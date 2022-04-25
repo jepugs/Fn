@@ -59,7 +59,7 @@ bc_compiler::bc_compiler(bc_compiler* parent, istate* S,
     output.has_vari = false;
     output.num_upvals = 0;
 
-    output.ci_arr.push_back(code_info{0, source_loc{0,0}});
+    output.ci_arr.push_back(code_info{0, source_loc{0,0,false,0}});
 }
 
 void bc_compiler::pop_vars(u8 sp) {
@@ -126,6 +126,10 @@ void bc_compiler:: emit32(u32 u) {
     output->code.push_back(0);
     output->code.push_back(0);
     *(u32*)&output->code[output->code.size - 4] = u;
+}
+
+void bc_compiler::update_source(const source_loc& loc) {
+    output->ci_arr.push_back(code_info{output->code.size, loc});
 }
 
 void bc_compiler::patch16(u16 u, u32 where) {
@@ -257,18 +261,34 @@ bool bc_compiler::compile_def(const ast::node* ast) {
         compile_error(name->loc, "def name must be a symbol.");
         return false;
     }
+    auto name_str = scanner_name(*sst, name->datum.str_id);
+    if (name_str.find(":") != string::npos) {
+        compile_error(name->loc, "def name cannot include colons.");
+        return false;
+    }
     auto val = ast->datum.list[2];
     if (!compile(val, false)) {
         return false;
     }
+    u32 gid;
+    if (!lookup_global_id(gid, name->datum.str_id)) {
+        return false;
+    }
     emit8(OP_SET_GLOBAL);
-    output->globals.push_back(bc_output_global{
-                .raw_name = name->datum.str_id,
-                .patch_addr = output->code.size
-            });
-    // placeholder for the global ID which will be patched by the interpreter.
-    emit32(0);
+    emit32(gid);
     --sp;
+    // register the global variable in the namespace
+    auto ns = get_ns(S, S->ns_id);
+    add_export(ns, S, intern_id(S, name_str));
+    return true;
+}
+
+bool bc_compiler::lookup_global_id(u32& out, sst_id str_id) {
+    symbol_id fqn;
+    if (!resolve_symbol(fqn, S, intern_id(S, scanner_name(*sst, str_id)))) {
+        return false;
+    }
+    out = get_global_id(S, fqn);
     return true;
 }
 
@@ -342,11 +362,14 @@ bool bc_compiler::compile_defmacro(const ast::node* root) {
     auto name_id = root->datum.list[1]->datum.str_id;
     // resolve the full symbol name
     auto sid = intern_id(S, scanner_name(*sst, name_id));
-    auto fqn = resolve_symbol(S, sid);
+    symbol_id fqn;
+    if (!resolve_symbol(fqn, S, sid)) {
+        return false;
+    }
     // TODO: check name legality
     if (!compile_sub_fun(root->datum.list[2],
                     (const ast::node**)&root->datum.list[3],
-                    root->list_length - 3, "#macro:" + symname(S, fqn))) {
+                    root->list_length - 3, "macro:" + symname(S, fqn))) {
         return false;
     }
 
@@ -357,6 +380,9 @@ bool bc_compiler::compile_defmacro(const ast::node* root) {
             });
     emit8(OP_SET_MACRO);
     emit16(cid);
+    // register the global variable in the namespace
+    auto ns = get_ns(S, S->ns_id);
+    add_export(ns, S, intern_id(S, scanner_name(*sst, name_id)));
 
     // defmacro returns nil
     emit8(OP_NIL);
@@ -775,28 +801,7 @@ bool bc_compiler::compile_symbol(const ast::node* root) {
     } else {
         // variable lookup
         u8 index;
-        auto name = scanner_name(*sst, root->datum.str_id);
-        if (name.size() >= 2 && name[0] == '#' && name[1] == ':') {
-            // #: symbols contain fully qualified names
-            emit8(OP_GLOBAL);
-            output->globals.push_back(bc_output_global{
-                        .raw_name = root->datum.str_id,
-                        .patch_addr = output->code.size
-                    });
-            emit32(0);
-            ++sp;
-        } else if (name.size() >= 1 && name[0] == ':') {
-            // symbols beginning with colons are resolved globally after
-            // dropping the colon
-            auto str_id = scanner_intern(*sst, name.substr(1));
-            emit8(OP_GLOBAL);
-            output->globals.push_back(bc_output_global{
-                        .raw_name = str_id,
-                        .patch_addr = output->code.size
-                    });
-            emit32(0);
-            ++sp;            
-        } else if (find_local_var(index, root->datum.str_id)) {
+        if (find_local_var(index, root->datum.str_id)) {
             emit8(OP_LOCAL);
             emit8(index);
             ++sp;
@@ -805,13 +810,14 @@ bool bc_compiler::compile_symbol(const ast::node* root) {
             emit8(index);
             ++sp;
         } else {
+            u32 gid;
+            if (!lookup_global_id(gid, root->datum.str_id)) {
+                compile_error(root->loc, "Failed to resolve global variable "
+                        + scanner_name(*sst, root->datum.str_id));
+                return false;
+            }
             emit8(OP_GLOBAL);
-            output->globals.push_back(bc_output_global{
-                        .raw_name = root->datum.str_id,
-                        .patch_addr = output->code.size
-                    });
-            // placeholder for global ID
-            emit32(0);
+            emit32(gid);
             ++sp;
         }
     }
@@ -833,6 +839,7 @@ bool bc_compiler::compile_list(const ast::node* root, bool tail) {
 
 // TODO: track stack space required by each function
 bool bc_compiler::compile(const ast::node* root, bool tail) {
+    update_source(root->loc);
     auto expanded = macroexpand(root);
     if (expanded) {
         root = expanded;

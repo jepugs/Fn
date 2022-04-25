@@ -24,7 +24,13 @@ static void def_foreign_fun(istate* S, const string& name, const string& params,
         void (*foreign)(istate*)) {
     auto fullname = symname(S, S->ns_id) + ":" + name;
     push_foreign_fun(S, foreign, fullname, params);
-    set_global(S, resolve_symbol(S, intern_id(S, name)), peek(S));
+    symbol_id fqn;
+    // FIXME: maybe check this return value? Maybe?
+    resolve_symbol(fqn, S, intern_id(S, name));
+    set_global(S, fqn, peek(S));
+    // register the global variable in the namespace
+    auto ns = get_ns(S, S->ns_id);
+    add_export(ns, S, intern_id(S, name));
     pop(S);
 }
 
@@ -390,7 +396,6 @@ fn_fun(def_string_meta, "def-string-meta", "(x)") {
 }
 
 void install_internal(istate* S) {
-    auto save_ns = S->ns_id;
     switch_ns(S, cached_sym(S, SC_FN_INTERNAL));
     fn_add_builtin(S, require);
     fn_add_builtin(S, eq);
@@ -468,15 +473,21 @@ void install_internal(istate* S) {
     // set up builtin metatables
     fn_add_builtin(S, def_list_meta);
     fn_add_builtin(S, def_string_meta);
-
-    S->ns_id = save_ns;
-    copy_defs(S, get_ns(S, save_ns),
-            get_ns(S, cached_sym(S, SC_FN_BUILTIN)), "");
 }
 
 void install_builtin(istate* S) {
+    auto save_ns_id = S->ns_id;
     install_internal(S);
     load_file_or_package(S, string{DEFAULT_PKG_ROOT} + "/fn.builtin");
+
+    switch_ns(S, save_ns_id);
+    auto builtin_ns = get_ns(S, cached_sym(S, SC_FN_BUILTIN));
+    auto cur_ns = get_ns(S, save_ns_id);
+    if (builtin_ns) {
+        for (auto s : builtin_ns->exports) {
+            enact_import_from(cur_ns, S, builtin_ns, s);
+        }
+    }
 }
 
 }

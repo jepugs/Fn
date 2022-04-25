@@ -9,7 +9,7 @@
 namespace fn {
 
 // bit shift amount used for each layer of vector addressing
-constexpr u64 VEC_INDEX_SHIFT = 1;
+constexpr u64 VEC_INDEX_SHIFT = 5;
 // trie branching factor
 constexpr u64 VEC_BREADTH = 1 << VEC_INDEX_SHIFT;
 // mask used when computing addresses

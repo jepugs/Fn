@@ -249,7 +249,7 @@ ast::node* parse_next_node(istate* S, scanner& sc, bool* resumable) {
 dyn_array<ast::node*> parse_string(istate* S, scanner_string_table& sst,
         const string& str) {
     std::istringstream is{str};
-    scanner sc{sst, is};
+    scanner sc{sst, is, S};
     bool resumable;
     dyn_array<ast::node*> res;
     while (!sc.eof_skip_ws()) {

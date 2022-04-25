@@ -214,13 +214,15 @@ token scanner::next_token() {
 
 token scanner::scan_atom(char first) {
     dyn_array<char> buf;
-    buf.push_back(first);
+    bool escaped = first == '\\';
 
-    auto num = try_scan_num(buf, first);
-    if (num.has_value()) {
-        return make_token(tk_number, *num);
+    if (!escaped) {
+        buf.push_back(first);
+        auto num = try_scan_num(buf, first);
+        if (num.has_value()) {
+            return make_token(tk_number, *num);
+        }
     }
-    bool escaped = false;
     while (!eof()) {
         if (escaped) {
             buf.push_back(get_char());
@@ -240,6 +242,13 @@ token scanner::scan_atom(char first) {
     }
     if (escaped) {
         error("Unexpected EOF after escape character.");
+    }
+    // handle colonated symbols. This only happens when there's an unescaped
+    // colon as the first character of the symbol
+    if (first == ':') {
+        string str{buf.data, buf.size};
+        auto id = expand_symbol(S, intern_id(S, str));
+        return make_token(tk_symbol, symname(S, id));
     }
     return make_token(tk_symbol, string{buf.data, buf.size});
 }

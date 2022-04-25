@@ -10,8 +10,13 @@ namespace fn {
 
 struct fn_namespace {
     symbol_id id;
-    // resolution tables map namespace-local names to FQNs
+    // table associating namespace aliases to their full IDs
+    table<string,symbol_id> imports;
+    // resolution table mapping namespace-local names to FQNs
     table<symbol_id,symbol_id> resolve;
+    // list of symbols exported by this namespace. Includes all definitions made
+    // with def and defmacro.
+    dyn_array<symbol_id> exports;
 };
 
 struct global_env {
@@ -19,6 +24,8 @@ struct global_env {
     table<symbol_id,u32> def_tab;
     // actual global definitions
     dyn_array<value> def_arr;
+    // global macros
+    dyn_array<fn_function*> macro_arr;
     // reverse lookup of def_tab
     dyn_array<symbol_id> def_ids;
     // macros indexed by FQN
@@ -36,8 +43,6 @@ struct global_env {
 // get the unique 32-bit identifier for a global variable. The variable will be
 // created and set to V_UNIN if necessary.
 u32 get_global_id(istate* S, symbol_id fqn);
-// get the FQN of a symbol based on its numerical id
-symbol_id global_name_by_id(istate* S, u32 id);
 // get a global variable by its FQN. Returns false on failed lookup
 bool get_global(value& out, istate* S, symbol_id fqn);
 // set by FQN, creating a new definition if necessary
@@ -58,6 +63,16 @@ bool copy_defs(istate* S, fn_namespace* dest, fn_namespace* src,
         const string& prefix, bool overwrite=true);
 // switch namespaces, creating a new one if necessary.
 void switch_ns(istate* S, symbol_id new_ns);
+
+// add an exported symbol
+void add_export(fn_namespace* dest, istate* S, symbol_id sym);
+// perform an import from one namespace into another
+bool enact_import(fn_namespace* dest, istate* S, fn_namespace* src,
+        string prefix);
+// perform an import-from operation, directly importing the named symbol into
+// dest
+bool enact_import_from(fn_namespace* dest, istate* S, fn_namespace* src,
+        symbol_id sym);
 
 
 // namespace id destructuring

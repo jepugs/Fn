@@ -57,14 +57,6 @@ struct bc_output_const {
     ~bc_output_const();
 };
 
-// used by the bytecode compiler to represent a global variable
-struct bc_output_global {
-    // name of the global variable, before any resolution is done
-    sst_id raw_name;
-    // address in bytecode where the global ID is
-    u32 patch_addr;
-};
-
 // data assembled by the bytecode compiler. This contains sufficient information
 // for the allocator to initialize a function. Note that bc_compiler_output
 // hangs on to references to the ast::node that originally generated the
@@ -76,12 +68,11 @@ struct bc_compiler_output {
 
     // code and constants
     dyn_array<u8> code;
-    dyn_array<bc_output_global> globals;
     dyn_array<bc_output_const> const_table;
     dyn_array<bc_compiler_output> sub_funs;
     dyn_array<code_info> ci_arr;
 
-    // stack space required
+    // stack space required. FIXME: unused
     u32 stack_required;
 
     // params info
@@ -194,6 +185,8 @@ private:
     bool compile_dot(const ast::node* root);
     bool compile_List(const ast::node* root);
 
+    // compile a global variable reference. Sets an error on failure.
+    bool lookup_global_id(u32& out, sst_id str_id);
     // compile a constant symbol
     bool compile_const_symbol(sst_id str_id);
     // compile a subordinate function. This involves creating a child

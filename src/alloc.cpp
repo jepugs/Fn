@@ -171,15 +171,6 @@ gc_handle<function_stub>* gen_function_stub(istate* S,
     // garbage collection.
     auto h = get_handle(alloc, o);
     memcpy(h->obj->code, compiled.code.data, compiled.code.size * sizeof(u8));
-    // TODO: create and patch in global IDs
-    for (u32 i = 0; i < compiled.globals.size; ++i) {
-        auto g = compiled.globals[i];
-        // FIXME: use a function for this
-        auto name = intern_id(S, scanner_name(sst, g.raw_name));
-        auto fqn = resolve_symbol(S, name);
-        // FIXME: also use a function to insert the u32
-        *(u32*)&h->obj->code[g.patch_addr] = get_global_id(S, fqn);
-    }
     for (u32 i = 0; i < compiled.const_table.size; ++i) {
         reify_bc_const(S, sst, compiled.const_table[i]);
         auto v = peek(S);

@@ -84,7 +84,7 @@ static inline bool do_import(istate* S, symbol_id name, symbol_id alias) {
         ierror(S, "do_import() failed: current namespace doesn't exist\n");
         return false;
     }
-    copy_defs(S, dest, src, symname(S, alias) + ":");
+    enact_import(dest, S, src, symname(S, alias));
     return true;
 }
 

@@ -8,8 +8,69 @@ global_env::~global_env() {
     }
 }
 
-symbol_id resolve_symbol(istate* S, symbol_id name) {
-    return resolve_in_ns(S, name, S->ns_id);
+bool resolve_symbol(symbol_id& out, istate* S, symbol_id name) {
+    return resolve_in_ns(out, S, name, S->ns_id);
+}
+
+bool resolve_in_ns(symbol_id& out, istate* S, symbol_id name, symbol_id ns_id) {
+    auto x = S->G->ns_tab.get2(ns_id);
+    if (!x) {
+        return false;
+    }
+    // try to resolve the name in the local namespace first
+    auto ns = x->val;
+    auto y = ns->resolve.get2(name);
+    if (y) {
+        out = y->val;
+        return true;
+    }
+
+    // expand based on the name string
+    auto name_str = symname(S, name);
+    if (name_str.starts_with("#:")) {
+        // already a fully qualified name
+        out = name;
+        return true;
+    }
+    auto p = name_str.find(":");
+    if (p != string::npos) {
+        // name contains a colon, need to resolve it in an external namespace
+        auto ns_alias_str = name_str.substr(0, p);
+        auto var_str = name_str.substr(p + 1);
+        if (var_str.empty()
+                || ns_alias_str.empty()
+                || var_str.find(":") != string::npos) {
+            // illegal colon syntax
+            return false;
+        }
+
+        // check if we've imported anything with this alias
+        auto z = ns->imports.get2(ns_alias_str);
+        if (!z) {
+            // unknown alias
+            return false;
+        }
+        // get the imported namespace
+        auto w = S->G->ns_tab.get2(z->val);
+        if (!w) {
+            // Aliased namespace doesn't exist. This should never happen, but
+            // we'll handle it as a failed lookup
+            return false;
+        }
+        auto other_ns = w->val;
+        // attempt to resolve in other_ns
+        auto a = other_ns->resolve.get2(intern_id(S, var_str));
+        if (!a) {
+            return false;
+        } else {
+            out = a->val;
+            return true;
+        }
+    } else {
+        // no colon, just expand the name in the current namespace
+        out = intern_id(S, "#:" + symname(S, ns->id) + ":" + name_str);
+        return true;
+    }
 }
 
 symbol_id resolve_in_ns(istate* S, symbol_id name, symbol_id ns_id) {
@@ -47,6 +108,7 @@ u32 get_global_id(istate* S, symbol_id fqn) {
         S->G->def_ids.push_back(fqn);
         S->G->def_tab.insert(fqn, id);
         S->G->def_arr.push_back(V_UNIN);
+        S->G->macro_arr.push_back(nullptr);
         return id;
     }
 }
@@ -91,7 +153,13 @@ fn_namespace* add_ns(istate* S, symbol_id ns_id) {
         return *x;
     }
     auto res = new fn_namespace{.id = ns_id};
-    copy_defs(S, res, get_ns(S, cached_sym(S, SC_FN_BUILTIN)), "");
+    // FIXME: we just assume this exists here. Maybe we shouldn't?
+    auto builtin_ns = get_ns(S, cached_sym(S, SC_FN_BUILTIN));
+    if (builtin_ns) {
+        for (auto s : builtin_ns->exports) {
+            enact_import_from(res, S, builtin_ns, s);
+        }
+    }
     S->G->ns_tab.insert(ns_id, res);
     return res;
 }
@@ -104,28 +172,49 @@ fn_namespace* get_ns(istate* S, symbol_id ns_id) {
     return nullptr;
 }
 
-bool copy_defs(istate* S, fn_namespace* dest, fn_namespace* src,
-        const string& prefix, bool overwrite) {
-    if (dest == nullptr || src == nullptr) {
-        return true;
+void switch_ns(istate* S, symbol_id new_ns) {
+    S->ns_id = add_ns(S, new_ns)->id;
+}
+
+void add_export(fn_namespace* dest, istate* S, symbol_id sym) {
+    for (auto s : dest->exports) {
+        if (s == sym) {
+            // don't export the symbol twice
+            return;
+        }
     }
-    if (src == dest) {
-        ierror(S, "Attempt to copy a namespace into itself.\n");
+    dest->exports.push_back(sym);
+    auto fqn_str = "#:" + symname(S, dest->id) + ":" + symname(S, sym);
+    dest->resolve.insert(sym, intern_id(S, fqn_str));
+}
+
+bool enact_import(fn_namespace* dest, istate* S, fn_namespace* src,
+        string prefix) {
+    if (dest->imports.get2(prefix)) {
+        ierror(S, "Failed importing namespace as " + prefix
+                + " due to name collision.");
         return false;
     }
-    for (auto e : src->resolve) {
-        auto name = intern_id(S, prefix + symname(S, e->key));
-        if (!overwrite && dest->resolve.has_key(name)) {
-            ierror(S, "Name collision while copying definitions.");
-            return false;
-        }
-        dest->resolve.insert(name, e->val);
-    }
+    dest->imports.insert(prefix, src->id);
     return true;
 }
 
-void switch_ns(istate* S, symbol_id new_ns) {
-    S->ns_id = add_ns(S, new_ns)->id;
+bool enact_import_from(fn_namespace* dest, istate* S, fn_namespace* src,
+        symbol_id sym) {
+    auto x = src->resolve.get2(sym);
+    if (!x) {
+        ierror(S, "Failed importing symbol: not found.");
+        return false;
+    }
+    auto y = dest->resolve.get2(sym);
+    if (y) {
+        ierror(S, "Failed importing symbol: name " + symname(S, sym)
+                + " is already taken.");
+        return false;
+    }
+    dest->resolve.insert(sym, x->val);
+    dest->exports.push_back(sym);
+    return true;
 }
 
 void ns_id_destruct(const string& ns_id, string* prefix, string* stem) {

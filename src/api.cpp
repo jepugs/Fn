@@ -395,16 +395,32 @@ void clear_error(istate* S) {
     clear_error_info(S->err);
 }
 
-void set_namespace_id(istate* S, symbol_id new_ns_id) {
+void set_ns_id(istate* S, symbol_id new_ns_id) {
     S->ns_id = new_ns_id;
 }
 
-void set_namespace_name(istate* S, const string& name) {
+void set_ns_name(istate* S, const string& name) {
     S->ns_id = intern_id(S, name);
 }
 
+symbol_id expand_symbol(istate* S, symbol_id sym) {
+    auto str = symname(S, sym);
+    if (str.starts_with(":") && str.size() > 1) {
+        symbol_id expanded;
+        if (resolve_symbol(expanded, S, intern_id(S, str.substr(1)))) {
+            return expanded;
+        } else {
+            return sym;
+        }
+    } else {
+        return sym;
+    }
+}
+
+// FIXME: this can fail if the name is malformed
 void pop_to_global(istate* S, symbol_id name) {
-    auto fqn = resolve_symbol(S, name);
+    symbol_id fqn;
+    resolve_symbol(fqn, S, name);
     set_global(S, fqn, peek(S));
     pop(S);
 }
@@ -414,8 +430,12 @@ void pop_to_fqn(istate* S, symbol_id fqn) {
     pop(S);
 }
 
+// FIXME: this can fail if the name is malformed
 bool push_global(istate* S, symbol_id name) {
-    auto fqn = resolve_symbol(S, name);
+    symbol_id fqn;
+    if (!resolve_symbol(fqn, S, name)) {
+        return false;
+    }
     value out;
     if (get_global(out, S, fqn)) {
         push(S, out);
@@ -425,7 +445,10 @@ bool push_global(istate* S, symbol_id name) {
 }
 
 bool push_macro(istate* S, symbol_id name) {
-    auto fqn = resolve_symbol(S, name);
+    symbol_id fqn;
+    if (!resolve_symbol(fqn, S, name)) {
+        return false;
+    }
     value out;
     if (get_macro(out, S, fqn)) {
         push(S, out);

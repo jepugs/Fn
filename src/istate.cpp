@@ -85,9 +85,15 @@ void push_quoted(istate* S, const scanner_string_table& sst,
         break;
     case ast::ak_symbol: {
         auto name = scanner_name(sst, root->datum.str_id);
+        // attempt to resolve colon symbols. If resolution fails, we just leave
+        // them as is
         if (!name.empty() && name[0] == ':') {
-            auto fqn = resolve_symbol(S, intern_id(S, name.substr(1)));
-            push_sym(S, fqn);
+            symbol_id fqn;
+            if (resolve_symbol(fqn, S, intern_id(S, name.substr(1)))) {
+                push_sym(S, fqn);
+            } else {
+                push_sym(S, intern_id(S, name));
+            }
         } else {
             push_sym(S, intern_id(S, name));
         }
@@ -207,7 +213,7 @@ void print_stack_trace(istate* S) {
 void interpret_stream(istate* S, std::istream* in) {
     // nil for empty files
     scanner_string_table sst;
-    scanner sc{sst, *in};
+    scanner sc{sst, *in, S};
     push_nil(S);
     if (!sc.eof_skip_ws()) {
         // the first expression has to be parsed manually because it may be a

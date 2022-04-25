@@ -1,6 +1,7 @@
 #ifndef __FN_SCAN_HPP
 #define __FN_SCAN_HPP
 
+#include "api.hpp"
 #include "array.hpp"
 #include "base.hpp"
 #include "table.hpp"
@@ -67,9 +68,10 @@ struct token {
 
 class scanner {
 public:
-    scanner(scanner_string_table& sst, std::istream& in, int line=1, int col=0)
+    scanner(scanner_string_table& sst, std::istream& in, istate* S, int line=1, int col=0)
         : sst{&sst}
         , input{&in}
+        , S{S}
         , line{line}
         , col{col} {
     }
@@ -91,6 +93,7 @@ public:
 private:
     scanner_string_table* sst;
     std::istream* input;
+    istate* S; // used to resolve colon symbols and to create symbol IDs
 
     // these track location in input (used for generating error messages)
     int line;
@@ -106,6 +109,7 @@ private:
     token make_token(token_kind tk) const;
     token make_token(token_kind tk, const string& str) const;
     token make_token(token_kind tk, double num) const;
+    token make_token_by_id(token_kind tk, sst_id str) const;
 
     // methods to scan variable-length tokens
 

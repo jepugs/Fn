@@ -71,6 +71,8 @@ typedef u16 namespace_id;
 struct source_loc {
     int line = 1;
     int col = 0;
+    bool from_macro = false;
+    symbol_id macro_name;
     bool operator==(const source_loc& other);
     bool operator!=(const source_loc& other);
 };

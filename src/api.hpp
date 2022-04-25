@@ -154,11 +154,6 @@ bool pconcat_tables(istate* S, u8 n);
 symbol_id intern_id(istate* S, const string& name);
 // generate an uninterned symbol
 symbol_id gensym_id(istate* S);
-// resolve a symbol to its fully qualified name using the current interpreter
-// namespace
-symbol_id resolve_symbol(istate* S, symbol_id id);
-// like resolve_symbol() but resolves in the provided namespace
-symbol_id resolve_in_ns(istate* S, symbol_id id, symbol_id ns);
 string symname(istate* S, symbol_id sym);
 
 // function functions
@@ -172,21 +167,23 @@ void set_error(istate* S, const string& message);
 // reset after an error. This will also clear the stack
 void clear_error(istate* S);
 
-// namespaces and imports
+// namespaces and global variables
 
-void set_namespace_id(istate* S, symbol_id new_ns_id);
-void set_namespace_name(istate* S, const string& name);
+// set the namespace, creating a new namespace if necessary
+void set_ns_id(istate* S, symbol_id new_ns_id);
+// like set_ns_id, but use a string for the namespace name
+void set_ns_name(istate* S, const string& name);
 
-
-// functions to create and access global variables.
-
-// resolve symbols to their fully qualified equivalents. These are symbols whose
-// names begin with #:, one of which uniquely represents each global variable.
-// (Defined in namespace.cpp)
-symbol_id resolve_symbol(istate* S, symbol_id name);
-// like resolve_symbol(), but allows the resolution namespace to be specified.
-// (Defined in namespace.cpp)
-symbol_id resolve_in_namespace(istate* S, symbol_id name, symbol_id ns_id);
+// attempt to expand a symbol beginning with a colon. Return the original symbol
+// on failure, else the fully expanded one.
+symbol_id expand_symbol(istate* S, symbol_id sym);
+// attempt to resolve a namespace name to the corresponding global name. This
+// will return false on illegal colon syntax or unrecognized external
+// references. In other cases it generates a symbol of the form #:ns-id:name.
+// Does not set an interpreter error.
+bool resolve_symbol(symbol_id& out, istate* S, symbol_id name);
+// like resolve_symbol, but allows the resolution namespace to be specified
+bool resolve_in_ns(symbol_id& out, istate* S, symbol_id name, symbol_id ns_id);
 
 // pop the top of the stack and use it to set the named global variable. The
 // variable is resolved in the current namespace
