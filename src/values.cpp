@@ -64,9 +64,13 @@ template<> u64 hash<value>(const value& v) {
     switch (tag) {
     case TAG_NUM:
     case TAG_CONST:
-        return hash(v.raw);
-    case TAG_STRING:
-        return hash(string{(char*)vstr(v)->data});
+        // guaranteed unique hash values for everything
+        return v.raw;
+        // return hash(v.raw);
+    case TAG_STRING: {
+        auto s = vstr(v);
+        return hash_bytes(s->data, s->size);
+    }
     case TAG_TABLE:
     case TAG_CONS:
     case TAG_FUNC:

@@ -11,15 +11,19 @@ bool source_loc::operator!=(const source_loc& other) {
     return !(*this == other);
 }
 
-// Hashes for std::string and integers use FNV-1a
-template<> u64 hash<string>(const string& s) {
+u64 hash_bytes(const u8* bytes, u64 len) {
     static const u64 prime = 0x100000001b3;
     u64 res = 0xcbf29ce484222325;
-    for (u32 i=0; i<s.length(); ++i) {
-        res ^= s[i];
+    for (u32 i=0; i < len; ++i) {
+        res ^= bytes[i];
         res *= prime;
     }
     return res;
+}
+
+// Hashes for std::string and integers use FNV-1a
+template<> u64 hash<string>(const string& s) {
+    return hash_bytes((u8*)s.c_str(), s.size());
 }
 
 // this is modified FNV-1a to give faster performance for 64-bit values. Consider changing
@@ -28,16 +32,16 @@ template<> u64 hash<u64>(const u64& u) {
     u64 res = 0xcbf29ce484222325;
     auto bytes = u;
 
-    // ver1: slightly faster in artificial test environment
-    res ^= bytes;
-    res *= prime;
+    // ver1: skip some of the steps of FNV-1a
+    // res ^= bytes;
+    // res *= prime;
 
-    // alt version: true FNV-1a. Note this is slower, at least for small tables)
-    // for (int i = 0; i < 8; ++i) {
-    //     res ^= (bytes & 0xff);
-    //     res *= prime;
-    //     bytes = bytes >> 8;
-    // }
+    // alt version: true FNV-1a. Note this is slower, at least for small tables
+    for (int i = 0; i < 8; ++i) {
+        res ^= (bytes & 0xff);
+        res *= prime;
+        bytes = bytes >> 8;
+    }
 
     return res;
 }

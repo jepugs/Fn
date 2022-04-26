@@ -48,6 +48,7 @@ typedef double f64;
 
 // this is implemented for std::string and unsigned integers
 template<typename T> u64 hash(const T& v);
+u64 hash_bytes(const u8* bytes, u64 len);
 
 // naming convention: you can do arithmetic on types whose names end in
 // _address, but should not on types that end in _id.
