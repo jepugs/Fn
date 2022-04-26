@@ -98,7 +98,7 @@ scanner_string_table& scanner::get_sst() {
 }
 
 source_loc scanner::get_loc() {
-    return source_loc{line, col};
+    return source_loc{line, col, false, 0};
 }
 
 // increment the scanner position, keeping track of lines and columns
@@ -112,15 +112,15 @@ void scanner::advance(char ch) {
 }
 
 token scanner::make_token(token_kind kind) const {
-    return token{source_loc{line, col}, kind};
+    return token{source_loc{line, col, false, 0}, kind};
 }
 token scanner::make_token(token_kind kind, const string& str) const {
-    token res{source_loc{line, col}, kind};
+    token res{source_loc{line, col, false, 0}, kind};
     res.d.str_id = scanner_intern(*sst, str);
     return res;
 }
 token scanner::make_token(token_kind kind, double num) const {
-    token res{source_loc{line, col}, kind};
+    token res{source_loc{line, col, false, 0}, kind};
     res.d.num = num;
     return res;
 }

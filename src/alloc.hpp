@@ -11,7 +11,7 @@ namespace fn {
 // gc_bytes are byte arrays used internally by some objects. These routines will
 // not trigger collection, since this could cause the object containing the
 // array to be moved.
-gc_bytes* alloc_gc_bytes(istate* S, u64 nbytes, u8 level=GC_GEN_NURSERY);
+gc_bytes* alloc_gc_bytes(istate* S, u64 nbytes);
 gc_bytes* realloc_gc_bytes(gc_bytes* src, istate* S, u64 new_size);
 
 // object creation routines. Each of these may trigger a collection at the

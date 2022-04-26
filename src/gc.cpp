@@ -285,6 +285,9 @@ static void add_to_large_list(gc_card_header* card, gc_deck& deck) {
 
 
 static gc_header* alloc_large_in_deck(gc_deck& deck, istate* S, u64 size) {
+    // ignore the S parameter. It's here because we will probably want to update
+    // the allocator with large object information at some point in the future
+    (void)S;
     auto new_card = init_large_gc_card(deck.gen, size);
     add_to_large_list(new_card, deck);
     return gc_card_object(new_card, GC_CARD_DATA_START);

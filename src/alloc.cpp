@@ -3,7 +3,7 @@
 
 namespace fn {
 
-gc_bytes* alloc_gc_bytes(istate* S, u64 nbytes, u8 gen) {
+gc_bytes* alloc_gc_bytes(istate* S, u64 nbytes) {
     auto sz = round_to_align(sizeof(gc_bytes) + nbytes);
     gc_bytes* res;
     // FIXME: allocate in the correct generation
@@ -15,8 +15,7 @@ gc_bytes* alloc_gc_bytes(istate* S, u64 nbytes, u8 gen) {
 
 gc_bytes* realloc_gc_bytes(istate* S, gc_bytes* src, u64 new_size) {
     auto sz = round_to_align(sizeof(gc_bytes) + new_size);
-    auto res = alloc_gc_bytes(S, new_size,
-            get_gc_card_header((gc_header*)src)->gen);
+    auto res = alloc_gc_bytes(S, new_size);
     memcpy(res, src, src->h.size);
     // the memcpy overwrites the size
     res->h.size = sz;
@@ -246,7 +245,7 @@ void alloc_foreign_fun(istate* S,
             sizeof(function_stub));
     stub->ci_arr[0] = code_info{
         0,
-        source_loc{0, 0}
+        source_loc{0, 0, false, 0}
     };
     auto stub_handle = get_handle(S->alloc, stub);
 

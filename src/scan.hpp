@@ -138,7 +138,7 @@ private:
 
     // throw an appropriate fn_exception
     inline void error(const char* msg) {
-        throw fn_exception{"scanner", msg, source_loc{line, col-1}};
+        throw fn_exception{"scanner", msg, source_loc{line, col-1, false, 0}};
     }
 };
 

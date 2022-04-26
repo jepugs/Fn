@@ -293,5 +293,6 @@ constexpr value V_YES  = { .raw = TAG_YES };
 constexpr value V_EMPTY = { .raw = TAG_EMPTY };
 constexpr value V_UNIN = { .raw = TAG_UNIN };
 
-};
+}
+
 #endif

@@ -111,7 +111,7 @@ void push_quoted(istate* S, const scanner_string_table& sst,
 bool pop_syntax(ast::node*& result, istate* S, scanner_string_table& sst) {
     auto v = peek(S);
     // FIXME: get the source loc from the person asking to pop syntax
-    source_loc loc{0, 0};
+    source_loc loc{0, 0, false, 0};
     if (vis_number(v)) {
         result = ast::mk_number(loc, vnumber(peek(S)));
     } else if (vis_string(v)) {
@@ -315,6 +315,9 @@ bool load_file_or_package(istate* S, const string& pathname) {
 }
 
 string find_package(istate* S, const string& spec) {
+    // TODO: write
+    (void)S;
+    (void)spec;
     return "";
 }
 

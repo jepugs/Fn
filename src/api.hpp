@@ -204,6 +204,6 @@ bool push_macro(istate* S, symbol_id name);
 bool push_macro_by_fqn(istate* S, symbol_id fqn);
 
 
-};
+}
 
 #endif
