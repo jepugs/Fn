@@ -331,18 +331,15 @@ Functions whose names end in a question mark should always return ~true~ or ~fal
 
 *** TODO Lists and Tables
 
-Lists and tables, on the other hand, are containers which can hold other data
-types. Lists are immutable singley-linked lists, and tables are mutable
-key-value stores.
+Lists and tables are containers which can hold other objects. Lists are
+immutable singley-linked lists, and tables are mutable key-value stores.
 
-Lists are created using square brackets or equivalently by using the function
-~List~.
+Lists are created by using the function ~List~.
 #+BEGIN_SRC fn
-[1 2 3]
-(List 1 2 3)  ; desugared version of prev line
+(List 1 2 3)
 
-[]                  ; empty list
-["string" 1 false]  ; lists can contain values of different types
+(List)               ; empty list
+(List "string" 1 no) ; lists can contain values of different types
 #+END_SRC
 
 Some common functions to operate on lists are:
@@ -352,6 +349,11 @@ Some common functions to operate on lists are:
   head
 - ~reverse~ :: you can guess this one
 - ~concat~ :: concatenate two or more lists end to end
+
+*Important note 04/26:* Tables are having their role in Fn dramatically reduced,
+and may even get the axe entirely. Turns out mutable hash tables are not the
+best for functional programming. Anyway, they were mainly there as a stand-in
+for HAMTs, which are coming soon.
 
 Tables are created using braces (or the equivalent Table function). They must be
 passed an even number of arguments. The first, 3rd, 5th, etc are keys, and the
@@ -403,7 +405,7 @@ Common functions on tables include:
 
 ** TODO Control Flow and Functions
 
-*** TODO Conditional Execution
+*** Conditional Execution
 
 The conditional control flow primitives are ~if~ and ~cond~.
 
@@ -412,26 +414,17 @@ if the test is true, and an expression to evaluate if the test is false. In Fn,
 ~nil~ and ~false~ are considered to be false values, while all others are treated as
 ~true~.
 #+BEGIN_SRC fn
-;; if and cond syntax
-
-;; cond takes pairs of expressions and consequences
-(cond
-  false 1
-  nil   2
-  'foo  3
-  true  4)
-; => returns 3, because 'foo is the first true value
-
-(defn fizzbuzz (x)
-  (cond
-    (= (mod x 15) 0) 'FizzBuzz
-    (= (mod x 5) 0)  'Buzz
-    (= (mod x 3) 0)  'Fizz
-    true             x))
-(fizzbuzz 6)  ; = Fizz
-(fizzbuzz 7)  ; = 7
-(fizzbuzz 45) ; = FizzBuzz
-(fizzbuzz 65) ; = Buzz
+;; if syntax
+(if yes 'a 'b)
+; => returns 'a
+(if no 'a 'b)
+; => returns 'b
+(if nil 'a 'b)
+; => returns 'b
+(if (even? x)
+    (/ x 2)
+    (+ (* 3 x) 1))
+; returns "not integer"
 #+END_SRC
 
 ~cond~ is an alternative conditional syntax which is analogous to "if/else if"
@@ -439,6 +432,27 @@ blocks in other programming languages. ~cond~ takes pairs of arguments and treat
 the first one as a test. If the test is true, it returns the result of the
 second argument in the pair. Otherwise it proceeds to the next pair, returning
 ~nil~ if the end is reached.
+
+#+BEGIN_SRC fn
+;; cond takes pairs of expressions and consequences
+(cond
+  no   1
+  nil  2
+  'foo 3
+  yes  4)
+; => returns 3, because 'foo is the first true value
+
+(defn fizzbuzz (x)
+  (cond
+    (= (mod x 15) 0) 'FizzBuzz
+    (= (mod x 5) 0)  'Buzz
+    (= (mod x 3) 0)  'Fizz
+    yes              x))
+(fizzbuzz 6)  ; = Fizz
+(fizzbuzz 7)  ; = 7
+(fizzbuzz 45) ; = FizzBuzz
+(fizzbuzz 65) ; = Buzz
+#+END_SRC
 
 
 *** Functions and Calls
@@ -547,7 +561,7 @@ For example,
 #+END_SRC
 
 
-*** Variable Capture
+*** Function Variable Capture
 
 Functions can refer to local variables. Sometimes, a function object might
 outlive the scope of the local variable it references. For these cases, Fn
@@ -855,6 +869,7 @@ when syntactic sugar is expanded, i.e. before the main compilation step.
 
 
 *** TODO Finding Namespace Files
+
 
 ** Quoting and Macros
 

@@ -5,8 +5,12 @@
 
 namespace fn {
 
+// The symbol cache is a fixed set of symbols that are automatically interned
+// when the istate is initialized so that they can be accessed in the future
+// without performing an intern first. It's here to avoid calling intern inside
+// any tight loops, but it's not used very much.
 
-// standard symbol cache indices
+// symbol cache indices
 enum sc_index {
     SC___CALL,
     SC_FN_BUILTIN,
