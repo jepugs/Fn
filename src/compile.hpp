@@ -30,7 +30,8 @@ namespace fn {
 
 // encodes the type of a constant
 enum bc_constant_kind {
-    bck_number,
+    bck_int,
+    bck_float,
     bck_string,
     bck_symbol,
     bck_quoted
@@ -41,7 +42,8 @@ enum bc_constant_kind {
 struct bc_output_const {
     bc_constant_kind kind;
     using datum = union {
-        f64 num;
+        i32 i;
+        f64 f;
         sst_id str_id;
         ast::node* quoted;      // danger! this is a weak reference
     };
@@ -204,7 +206,8 @@ private:
     // compile a form within a body. This accounts for let and do-inline forms.
     bool compile_within_body(const ast::node* expr, bool tail);
 
-    bool compile_number(const ast::node* root);
+    bool compile_int(const ast::node* root);
+    bool compile_float(const ast::node* root);
     bool compile_string(const ast::node* root);
     bool compile_symbol(const ast::node* root);
     bool compile_list(const ast::node* root, bool tail);

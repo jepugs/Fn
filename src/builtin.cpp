@@ -70,20 +70,154 @@ fn_fun(symbol_q, "symbol?", "(x)") {
     push(S, vis_symbol(peek(S)) ? V_YES : V_NO);
 }
 
+fn_fun(add, "+", "(& args)") {
+    if (S->sp - S->bp == 0) {
+        push_int(S, 0);
+        return;
+    }
+    u64 resi = 0;
+    bool frac = false;
+    u32 i;
+    for (i = S->bp; i < S->sp; ++i) {
+        auto v = S->stack[i];
+        if (vis_int(v)) {
+            resi += vint(v);
+        } else if (vis_float(v)) {
+            frac = true;
+            break;
+        } else {
+            ierror(S, "Argument to - not a number.");
+            return;
+        }
+    }
+    if (!frac) {
+        push(S, vbox_int(resi));
+    } else {
+        f64 resf = resi;
+        for (; i < S->sp; ++i) {
+            auto v = S->stack[i];
+            if (!vis_number(v)) {
+                ierror(S, "Argument to - not a number.");
+                return;
+            } else {
+                resf += vcast_float(v);
+            }
+        }
+        push_float(S, resf);
+    }
+}
+
+fn_fun(sub, "-", "(& args)") {
+    f64 res = 0;
+    if (S->sp - S->bp == 0) {
+        push_int(S, 0);
+        return;
+    } else {
+        auto v = S->stack[S->bp];
+        if (!vis_number(v)) {
+            ierror(S, "Argument to - not a number.");
+            return;
+        }
+        res = vcast_float(v);
+
+    }
+    // arity 1 => perform negation
+    if (S->sp - S->bp == 1) {
+        push_float(S, -res);
+        return;
+    }
+    for (u32 i = S->bp + 1; i < S->sp; ++i) {
+        auto v = S->stack[i];
+        if (!vis_number(v)) {
+            ierror(S, "Argument to - not a number.");
+            return;
+        }
+        res -= vcast_float(v);
+    }
+    push_float(S, res);
+}
+
+fn_fun(mul, "*", "(& args)") {
+    if (S->sp - S->bp == 0) {
+        push_int(S, 1);
+        return;
+    }
+    i32 resi = 1;
+    bool frac = false;
+    u32 i;
+    for (i = S->bp; i < S->sp; ++i) {
+        auto v = S->stack[i];
+        if (vis_int(v)) {
+            resi *= vint(v);
+        } else if (vis_float(v)) {
+            frac = true;
+            break;
+        } else {
+            ierror(S, "Argument to - not a number.");
+            return;
+        }
+    }
+    if (!frac) {
+        push(S, vbox_int(resi));
+    } else {
+        f64 resf = resi;
+        for (; i < S->sp; ++i) {
+            auto v = S->stack[i];
+            if (!vis_number(v)) {
+                ierror(S, "Argument to - not a number.");
+                return;
+            } else {
+                resf *= vcast_float(v);
+            }
+        }
+        push_float(S, resf);
+    }
+}
+
+fn_fun(div, "/", "(& args)") {
+    f64 res = 1;
+    if (S->sp - S->bp == 0) {
+        push_float(S, 1);
+        return;
+    } else {
+        auto v = S->stack[S->bp];
+        if (!vis_number(v)) {
+            ierror(S, "Argument to / not a number.");
+            return;
+        }
+        res = vcast_float(v);
+
+    }
+    // arity 1 => take inverse
+    if (S->sp - S->bp == 1) {
+        push_float(S, 1/res);
+        return;
+    }
+    for (u32 i = S->bp + 1; i < S->sp; ++i) {
+        auto v = S->stack[i];
+        if (!vis_number(v)) {
+            ierror(S, "Argument to / not a number.");
+            return;
+        }
+        res /= vcast_float(v);
+    }
+    push_float(S, res);
+}
+
 fn_fun(le, "<=", "(x0 & args)") {
     auto x0 = get(S, 0);
     if (!vis_number(x0)) {
         ierror(S, "Arguments to <= not a number.");
         return;
     }
-    auto n = vnumber(x0);
+    auto n = vcast_float(x0);
     for (u32 i = S->bp; i < S->sp; ++i) {
         auto x1 = S->stack[i];
         if (!vis_number(x1)) {
             ierror(S, "Arguments to <= not a number.");
             return;
         }
-        auto m = vnumber(x1);
+        auto m = vcast_float(x1);
         if (n > m) {
             push(S, V_NO);
             return;
@@ -99,14 +233,14 @@ fn_fun(ge, ">=", "(x0 & args)") {
         ierror(S, "Arguments to >= not a number.");
         return;
     }
-    auto n = vnumber(x0);
+    auto n = vcast_float(x0);
     for (u32 i = S->bp; i < S->sp; ++i) {
         auto x1 = S->stack[i];
         if (!vis_number(x1)) {
             ierror(S, "Arguments to >= not a number.");
             return;
         }
-        auto m = vnumber(x1);
+        auto m = vcast_float(x1);
         if (n < m) {
             push(S, V_NO);
             return;
@@ -122,7 +256,7 @@ fn_fun(ceil, "ceil", "(x)") {
         ierror(S, "Argument to ceil not a number.");
         return;
     }
-    push_num(S, ceil(vnumber(x0)));
+    push_float(S, ceil(vcast_float(x0)));
 }
 
 fn_fun(intern, "intern", "(str)") {
@@ -145,91 +279,6 @@ fn_fun(gensym, "gensym", "()") {
     push_sym(S, gensym_id(S));
 }
 
-fn_fun(add, "+", "(& args)") {
-    f64 res = 0;
-    for (u32 i = S->bp; i < S->sp; ++i) {
-        auto v = S->stack[i];
-        if (!vis_number(v)) {
-            ierror(S, "Argument to + not a number.");
-            return;
-        }
-        res += vnumber(v);
-    }
-    push_num(S, res);
-}
-
-fn_fun(sub, "-", "(& args)") {
-    f64 res = 0;
-    if (S->sp - S->bp == 0) {
-        push_num(S, 0);
-        return;
-    } else {
-        auto v = S->stack[S->bp];
-        if (!vis_number(v)) {
-            ierror(S, "Argument to - not a number.");
-            return;
-        }
-        res = vnumber(v);
-
-    }
-    // arity 1 => perform negation
-    if (S->sp - S->bp == 1) {
-        push_num(S, -res);
-        return;
-    }
-    for (u32 i = S->bp + 1; i < S->sp; ++i) {
-        auto v = S->stack[i];
-        if (!vis_number(v)) {
-            ierror(S, "Argument to - not a number.");
-            return;
-        }
-        res -= vnumber(v);
-    }
-    push_num(S, res);
-}
-
-fn_fun(mul, "*", "(& args)") {
-    f64 res = 1;
-    for (u32 i = S->bp; i < S->sp; ++i) {
-        auto v = S->stack[i];
-        if (!vis_number(v)) {
-            ierror(S, "Argument to * not a number.");
-            return;
-        }
-        res *= vnumber(v);
-    }
-    push_num(S, res);
-}
-
-fn_fun(div, "/", "(& args)") {
-    f64 res = 1;
-    if (S->sp - S->bp == 0) {
-        push_num(S, 1);
-        return;
-    } else {
-        auto v = S->stack[S->bp];
-        if (!vis_number(v)) {
-            ierror(S, "Argument to / not a number.");
-            return;
-        }
-        res = vnumber(v);
-
-    }
-    // arity 1 => take inverse
-    if (S->sp - S->bp == 1) {
-        push_num(S, 1/res);
-        return;
-    }
-    for (u32 i = S->bp + 1; i < S->sp; ++i) {
-        auto v = S->stack[i];
-        if (!vis_number(v)) {
-            ierror(S, "Argument to / not a number.");
-            return;
-        }
-        res /= vnumber(v);
-    }
-    push_num(S, res);
-}
 
 fn_fun(pow, "**", "(base expt)") {
     auto base = get(S,0);
@@ -238,7 +287,7 @@ fn_fun(pow, "**", "(base expt)") {
         ierror(S, "Arguments to ** must be numbers.");
         return;
     }
-    push_num(S, pow(vnumber(base), vnumber(expt)));
+    push_float(S, pow(vcast_float(base), vcast_float(expt)));
 }
 
 fn_fun(fn_not, "not", "(arg)") {
@@ -292,14 +341,14 @@ fn_fun(mod, "mod", "(x modulus)") {
         ierror(S, "Arguments to mod must be numbers.");
         return;
     }
-    auto i = (i64)floor(vnumber(x));
-    auto f = vnumber(x) - i;
-    auto m = vnumber(modulus);
+    auto i = (i64)floor(vcast_float(x));
+    auto f = vcast_float(x) - i;
+    auto m = vcast_float(modulus);
     if (m != floor(m)) {
         ierror(S, "Modulus for mod must be an integer.");
         return;
     }
-    push_num(S, (i % (i64)m) + f);
+    push_float(S, (i % (i64)m) + f);
 }
 
 fn_fun(Vec, "Vec", "(& args)") {
@@ -314,14 +363,25 @@ fn_fun(vec_nth, "vec-nth", "(n x)") {
     if (!is_vec(S, 1)) {
         ierror(S, "vec-nth object must be a vector");
     }
-    if (!is_number(S, 0)) {
+
+    u64 index;
+    if (is_int(S, 0)) {
+        i32 n;
+        get_int(n, S, 0);
+        if (n < 0) {
+            ierror(S, "vec-nth index must be positive");
+        }
+        index = n;
+    } else if (is_float(S, 0)) {
+        f64 f;
+        get_float(f, S, 0);
+        index = (u64)f;
+        if (index != f) {
+            ierror(S, "vec-nth index must be an integer");
+        }
+    } else {
         ierror(S, "vec-nth index must be a number");
-    }
-    f64 n;
-    get_number(n, S, 0);
-    auto index = (u64)n;
-    if (index != n) {
-        ierror(S, "vec-nth index must be an integer");
+        return;
     }
     // FIXME: check bounds
     push_from_vec(S, 1, index);

@@ -152,7 +152,8 @@ fn_namespace* add_ns(istate* S, symbol_id ns_id) {
     if (x.has_value()) {
         return *x;
     }
-    auto res = new fn_namespace{.id = ns_id};
+    auto res = new fn_namespace;
+    res->id = ns_id;
     // FIXME: we just assume this exists here. Maybe we shouldn't?
     auto builtin_ns = get_ns(S, cached_sym(S, SC_FN_BUILTIN));
     if (builtin_ns) {

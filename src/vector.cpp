@@ -16,6 +16,7 @@ static void init_vec_node(fn_vec_node* node, u64 nbytes, u8 len, u8 height) {
 static void init_vec_obj(fn_vec* obj, u64 length, u64 tail_offset,
         fn_vec_node* root, fn_vec_node* tail) {
     init_gc_header(&obj->h, GC_TYPE_VEC, sizeof(fn_vec));
+    obj->subvec = false;
     obj->length = length;
     obj->tail_offset = tail_offset;
     obj->root = root;
@@ -28,7 +29,7 @@ void push_empty_vec(istate* S) {
         round_to_align(sizeof(fn_vec)),
         round_to_align(sizeof(fn_vec_node))
     };
-    alloc_nursery_objects(&objs[0], S, &sizes[0], 2);
+    alloc_nursery_objects(objs, S, sizes, 2);
     auto vec = (fn_vec*)objs[0];
     auto tail = (fn_vec_node*)objs[1];
     init_vec_obj(vec, 0, 0, nullptr, tail);
@@ -49,7 +50,7 @@ static void vec_extend_tail(istate* S, u32 vec_pos, u8 new_len) {
     sizes[0] = round_to_align(sizeof(fn_vec));
     sizes[1] = round_to_align(sizeof(fn_vec_node) + new_len * sizeof(value));
     gc_header* objs[2];
-    alloc_nursery_objects(&objs[0], S, &sizes[0], 2);
+    alloc_nursery_objects(objs, S, sizes, 2);
 
     auto old_vec = vvec(S->stack[vec_pos]);
     auto new_vec = (fn_vec*)objs[0];
@@ -74,7 +75,7 @@ static void vec_insert_tail(istate* S, u32 vec_pos, u8 new_tail_len) {
         sizes[0] = round_to_align(sizeof(fn_vec));
         sizes[1] = round_to_align(sizeof(fn_vec_node)
                 + new_tail_len*sizeof(value));
-        alloc_nursery_objects(&objs[0], S, &sizes[0], 2);
+        alloc_nursery_objects(objs, S, sizes, 2);
         old_vec = vvec(S->stack[vec_pos]);
 
         auto vec = (fn_vec*)objs[0];

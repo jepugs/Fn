@@ -3,6 +3,7 @@
 #include "bytes.hpp"
 #include "gc.hpp"
 #include "compile.hpp"
+#include "platform.hpp"
 #include "table.hpp"
 #include "values.hpp"
 #include "vm.hpp"

@@ -9,9 +9,24 @@ bool value::operator==(const value& v) const {
     if (vsame(*this,v)) {
         return true;
     }
+    // vsame returns true on numeric types holding the same number in the same
+    // representation.We have to take special care of the int-to-float
+    // comparison case.
 
     auto tag = vtag(*this);
     switch (tag) {
+    case TAG_INT:
+        // need to check float-to-integer equivalence
+        if (vtag(v) == TAG_FLOAT) {
+            return vint(*this) == vfloat(v);
+        }
+        return false;
+    case TAG_FLOAT:
+        // need to check float-to-integer equivalence
+        if (vtag(v) == TAG_INT) {
+            return vint(v) == vfloat(*this);
+        }
+        return false;
     case TAG_STRING:
         return vtag(v) == TAG_STRING && *vstr(*this) == *vstr(v);
     case TAG_CONS:
@@ -62,11 +77,11 @@ bool value::operator!=(const value& v) const {
 template<> u64 hash<value>(const value& v) {
     auto tag = vtag(v);
     switch (tag) {
-    case TAG_NUM:
+    case TAG_INT:
+    case TAG_FLOAT:
     case TAG_CONST:
-        // guaranteed unique hash values for everything
+        // guaranteed unique hash values for everything of this type
         return v.raw;
-        // return hash(v.raw);
     case TAG_STRING: {
         auto s = vstr(v);
         return hash_bytes(s->data, s->size);
@@ -86,13 +101,15 @@ string v_to_string(value v, const symbol_table* symbols, bool code_format) {
     fn_table* t;
     // TODO: add escaping to strings/characters
     switch(tag) {
-    case TAG_NUM:
+    case TAG_INT:
+        return std::to_string(vint(v));
+    case TAG_FLOAT:
         {   std::ostringstream os;
-            auto n = vnumber(v);
+            auto n = vfloat(v);
             if (n == (u64)n) {
                 os << (u64)n;
             } else {
-                os << std::noshowpoint << vnumber(v);
+                os << std::noshowpoint << vfloat(v);
             }
             return os.str();
         }

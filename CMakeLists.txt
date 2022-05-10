@@ -1,10 +1,10 @@
 # no idea how to set cmake version lmao but this one works
-cmake_minimum_required(VERSION 3.23)
+cmake_minimum_required(VERSION 3.18)
 
 # Adding this LANGUAGES option ensures that CMake searches for c++, not cc. This
 # fixes a problem I discovered on a MacBook that had g++ for c++, but an old
 # version of clang for cc.
-project(Fn VERSION 0.0.0 LANGUAGES CXX)
+project(Fn VERSION 0.0.0 LANGUAGES CXX ASM-ATT)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -14,7 +14,8 @@ if (MSVC)
   add_compile_options(/W4 /WX)
 else()
   # gcc/clang options
-  add_compile_options(-std=c++20 -Wall -Wextra -Wpedantic)
+  add_compile_options(-std=c++20 -Wall -Wextra -Wpedantic -Werror)
+  set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 endif()
 
 # set(CMAKE_CXX_FLAGS_DEBUG "-fsanitize=address ${CMAKE_CXX_FLAGS_DEBUG}")

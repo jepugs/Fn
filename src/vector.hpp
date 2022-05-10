@@ -21,6 +21,7 @@ bool vec_is_empty(istate* S, u32 vec_pos);
 void vec_append(istate* S, u32 vec_pos, u32 val_pos);
 void vec_update(istate* S, u32 vec_pos, u32 val_pos, u64 index);
 void vec_pop(istate* S, u32 vec_pos);
+void subvec(istate* S, u32 vec_pos, u64 start, u64 stop);
 
 bool push_vec_lookup(istate* S, u32 vec_pos, u64 index);
 // (Destructively) add a new node to the vector node in the stack location

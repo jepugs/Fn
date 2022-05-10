@@ -61,12 +61,12 @@ x  ; = 27
   (letfn iter (acc remaining)
     ; cond is like an if..elseif block
     (cond
-      | (empty? remaining)
+      (empty? remaining) ->
         acc
-      | (= (mod (head remaining) 2))
+      (= (mod (head remaining) 2))
         ; update accumulator with a tail call
         (iter (+ acc 1) (tail remaining))
-      | yes
+      otherwise ->
         (iter acc (tail remaining))))
   (iter 0 list))
 ```

@@ -46,7 +46,8 @@ enum token_kind {
     tk_comma,
     tk_comma_at,
     // atoms
-    tk_number,
+    tk_float,
+    tk_int,
     tk_string,
     tk_symbol
 };
@@ -54,8 +55,12 @@ enum token_kind {
 struct token {
     source_loc loc;
     token_kind kind;
+    // atoms are stored as strings. They are converted to appropriate values
+    // during compilation.
+    u32 str_id;
     union {
-        f64 num;
+        f64 f;
+        i32 i;
         u32 str_id;
         void* nothing;
     } d;
@@ -108,7 +113,8 @@ private:
     // functions to make token objects with the proper location info
     token make_token(token_kind tk) const;
     token make_token(token_kind tk, const string& str) const;
-    token make_token(token_kind tk, double num) const;
+    token make_float_token(double num) const;
+    token make_int_token(i32 num) const;
     token make_token_by_id(token_kind tk, sst_id str) const;
 
     // methods to scan variable-length tokens
@@ -128,8 +134,8 @@ private:
     // machine, but written by hand. To avoid backtracking, there are pretty
     // strict restrictions on the conditions under which each method below may
     // be called. Refer to the source in src/scan.cpp for more information.
-    optional<f64> try_scan_num(dyn_array<char>& buf, char first);
-    optional<f64> try_scan_digits(dyn_array<char>& buf,
+    optional<token> try_scan_num(dyn_array<char>& buf, char first);
+    optional<token> try_scan_digits(dyn_array<char>& buf,
                                   char first,
                                   int sign,
                                   u32 base);

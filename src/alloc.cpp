@@ -88,8 +88,11 @@ void alloc_table(istate* S, u32 stack_pos, u32 init_cap) {
 static void reify_bc_const(istate* S, const scanner_string_table& sst,
         const bc_output_const& k) {
     switch(k.kind) {
-    case bck_number:
-        push_num(S, k.d.num);
+    case bck_int:
+        push_int(S, k.d.i);
+        break;
+    case bck_float:
+        push_float(S, k.d.f);
         break;
     case bck_string:
         push_str(S, scanner_name(sst, k.d.str_id));

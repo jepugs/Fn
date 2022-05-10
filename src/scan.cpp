@@ -119,9 +119,14 @@ token scanner::make_token(token_kind kind, const string& str) const {
     res.d.str_id = scanner_intern(*sst, str);
     return res;
 }
-token scanner::make_token(token_kind kind, double num) const {
-    token res{source_loc{line, col, false, 0}, kind};
-    res.d.num = num;
+token scanner::make_float_token(double num) const {
+    token res{source_loc{line, col, false, 0}, tk_float};
+    res.d.f = num;
+    return res;
+}
+token scanner::make_int_token(i32 num) const {
+    token res{source_loc{line, col, false, 0}, tk_int};
+    res.d.i = num;
     return res;
 }
 
@@ -220,7 +225,7 @@ token scanner::scan_atom(char first) {
         buf.push_back(first);
         auto num = try_scan_num(buf, first);
         if (num.has_value()) {
-            return make_token(tk_number, *num);
+            return *num;
         }
     }
     while (!eof()) {
@@ -253,7 +258,7 @@ token scanner::scan_atom(char first) {
     return make_token(tk_symbol, string{buf.data, buf.size});
 }
 
-optional<f64> scanner::try_scan_num(dyn_array<char>& buf, char first) {
+optional<token> scanner::try_scan_num(dyn_array<char>& buf, char first) {
     char ch;
     int sign = 1;
 
@@ -287,7 +292,7 @@ optional<f64> scanner::try_scan_num(dyn_array<char>& buf, char first) {
     if (first == '0') {
         // possibilities: hex, dec w/ leading 0, symbol w/ leading 0
         if (eof() || !(is_sym_char(peek_char()))) {
-            return 0;
+            return make_int_token(0);
         }
         ch = get_char();
         buf.push_back(ch);
@@ -300,7 +305,7 @@ optional<f64> scanner::try_scan_num(dyn_array<char>& buf, char first) {
             return try_scan_digits(buf, ch, sign, 16);
         } else if (ch == '.') {
             if (eof()) {
-                return 0;
+                return make_float_token(0);
             }
             return try_scan_digits(buf, ch, sign, 10);
         } else {
@@ -338,7 +343,7 @@ inline f64 apply_exp(f64 num, i32 exp, u32 base=10) {
     return num;
 }
 
-optional<f64> scanner::try_scan_digits(dyn_array<char>& buf,
+optional<token> scanner::try_scan_digits(dyn_array<char>& buf,
                                        char first,
                                        int sign,
                                        u32 base) {
@@ -347,13 +352,13 @@ optional<f64> scanner::try_scan_digits(dyn_array<char>& buf,
     if (is_digit(first, base)) {
         total = digit_val(first);
         if (eof()) {
-            return (f64)total*sign;
+            return make_int_token(total*sign);
         }
     } else if (first == '.') {
         i32 exp = 0;
         auto f = try_scan_frac(buf, &exp, base);
         if (f.has_value()) {
-            return apply_exp(sign*(*f), exp);
+            return make_float_token(apply_exp(sign*(*f), exp));
         } else {
             return std::nullopt;
         }
@@ -367,7 +372,7 @@ optional<f64> scanner::try_scan_digits(dyn_array<char>& buf,
         buf.push_back(get_char());
         total = base*total + digit_val(ch);
         if (eof()) {
-            return (f64)total*sign;
+            return make_int_token(total*sign);
         }
         ch = peek_char();
     }
@@ -375,29 +380,30 @@ optional<f64> scanner::try_scan_digits(dyn_array<char>& buf,
     if (ch == '.') {
         get_char();
         if (eof()) {
-            return (f64)total*sign;
+            return make_float_token((f64)total*sign);
         }
         i32 exp = 0;
         auto f = try_scan_frac(buf, &exp, base);
         if (f.has_value()) {
-            return apply_exp((*f + (f64)total)*sign, exp);
+            return make_float_token(apply_exp((*f + (f64)total)*sign, exp));
         } else {
             error("Dot token may not begin with an integer.");
+            return std::nullopt;
         }
     } else if (base == 10 && (ch == 'e' || ch == 'E')) {
         // scientific notation
         get_char();
         auto p = try_scan_exp(buf);
         if (p.has_value()) {
-            return apply_exp((f64)total*sign, *p);
+            return make_float_token(apply_exp(total*sign, *p));
         } else {
             return std::nullopt;
         }
     } else if (is_sym_char(ch)) {
         return std::nullopt;
+    } else {
+        return make_int_token(total*sign);
     }
-
-    return (f64)total*sign;
 }
 
 optional<f64> scanner::try_scan_frac(dyn_array <char>& buf, i32* exp, u32 base) {

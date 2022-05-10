@@ -17,8 +17,12 @@ static void parse_error(istate* S, const source_loc& loc, const string& msg) {
 
 namespace ast {
 
-node* mk_number(const source_loc& loc, f64 num) {
-    return new node{loc, ak_number, num};
+node* mk_int(const source_loc& loc, i32 num) {
+    return node::int_node(loc, num);
+}
+
+node* mk_float(const source_loc& loc, f64 num) {
+    return node::float_node(loc, num);
 }
 
 node* mk_string(const source_loc& loc, u32 str_id) {
@@ -42,11 +46,21 @@ node* mk_list(const source_loc& loc, const dyn_array<ast::node*>& lst) {
     return mk_list(loc, len, new_lst);
 }
 
-node::node(const source_loc& loc, ast_kind k, f64 num)
-    : loc{loc}
-    , kind{k} {
-    datum.num = num;
+node* node::int_node(const source_loc& loc, i32 num) {
+    auto res = new node{loc, ak_int, 0};
+    res->datum.i = num;
+    return res;
 }
+node* node::float_node(const source_loc& loc, f64 num) {
+    auto res = new node{loc, ak_float, 0};
+    res->datum.f = num;
+    return res;
+}
+
+node::node(node&& other) {
+    *this = std::move(other);
+}
+
 node::node(const source_loc& loc, ast_kind k, u32 str_id)
     : loc{loc}
     , kind{k} {
@@ -61,6 +75,14 @@ node::node(const source_loc& loc, ast_kind k, u32 list_length,
     datum.list = list;
 }
 
+node& node::operator=(node&& other) {
+    this->loc = other.loc;
+    this->kind = other.kind;
+    this->datum = other.datum;
+    other.kind = ak_float;
+    return *this;
+}
+
 node* copy_graph(const node* root) {
     node* res = nullptr;
     switch (root->kind) {
@@ -72,8 +94,11 @@ node* copy_graph(const node* root) {
         res = mk_list(root->loc, root->list_length, new_list);
     }
         break;
-    case ak_number:
-        res = mk_number(root->loc, root->datum.num);
+    case ak_int:
+        res = mk_int(root->loc, root->datum.i);
+        break;
+    case ak_float:
+        res = mk_float(root->loc, root->datum.f);
         break;
     case ak_string:
         res = mk_string(root->loc, root->datum.str_id);
@@ -120,8 +145,11 @@ ast::node* parser::parse_la(const token& t0) {
         err_resumable = true;
         return nullptr;
 
-    case tk_number:
-        res = ast::mk_number(loc, t0.d.num);
+    case tk_int:
+        res = ast::mk_int(loc, t0.d.i);
+        break;
+    case tk_float:
+        res = ast::mk_float(loc, t0.d.f);
         break;
     case tk_string:
         res = ast::mk_string(loc, t0.d.str_id);
@@ -269,8 +297,10 @@ ast::node* pop_syntax(istate* S, scanner_string_table& sst,
     ast::node* res;
     if (vis_symbol(v)) {
         res = ast::mk_symbol(loc, scanner_intern(sst, symname(S, vsymbol(v))));
-    } else if (vis_number(v)) {
-        res = ast::mk_number(loc, vnumber(v));
+    } else if (vis_int(v)) {
+        res = ast::mk_int(loc, vint(v));
+    } else if (vis_float(v)) {
+        res = ast::mk_float(loc, vint(v));
     } else if (vis_string(v)) {
         res = ast::mk_string(loc,
                 scanner_intern(sst, (const char*)vstr(v)->data));

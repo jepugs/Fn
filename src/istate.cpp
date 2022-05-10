@@ -77,8 +77,11 @@ symbol_id cached_sym(istate* S, sc_index i) {
 void push_quoted(istate* S, const scanner_string_table& sst,
         const ast::node* root) {
     switch (root->kind) {
-    case ast::ak_number:
-        push_num(S, root->datum.num);
+    case ast::ak_int:
+        push_int(S, root->datum.i);
+        break;
+    case ast::ak_float:
+        push_float(S, root->datum.f);
         break;
     case ast::ak_string:
         push_str(S, scanner_name(sst, root->datum.str_id));
@@ -112,8 +115,10 @@ bool pop_syntax(ast::node*& result, istate* S, scanner_string_table& sst) {
     auto v = peek(S);
     // FIXME: get the source loc from the person asking to pop syntax
     source_loc loc{0, 0, false, 0};
-    if (vis_number(v)) {
-        result = ast::mk_number(loc, vnumber(peek(S)));
+    if (vis_int(v)) {
+        result = ast::mk_int(loc, vint(peek(S)));
+    } else if (vis_float(v)) {
+        result = ast::mk_float(loc, vfloat(peek(S)));
     } else if (vis_string(v)) {
         result = ast::mk_string(loc,
                 scanner_intern(sst, convert_fn_str(vstr(v))));

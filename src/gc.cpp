@@ -739,7 +739,8 @@ void collect_now(istate* S) {
     if (S->alloc->tenured.num_cards > S->alloc->majorgc_th) {
         major_gc(S);
         // TODO: maybe dynamically grow the heap here if there are too many
-        // remaining live objects.
+        // remaining live objects. Otherwise we still keep using memory, but
+        // every GC becomes a major GC, which is the worst of both worlds.
     } else {
         minor_gc(S);
     }

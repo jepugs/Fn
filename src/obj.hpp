@@ -28,7 +28,7 @@ constexpr u64 EXT_TAG_MASK  = (1 << EXT_TAG_WIDTH) - 1;
 // after the tag.
 constexpr u8 OBJ_ALIGN      = 32;
 
-constexpr u64 TAG_NUM       = 0x00;
+constexpr u64 TAG_FLOAT     = 0x00;
 constexpr u64 TAG_INT       = 0x01;
 constexpr u64 TAG_BIGINT    = 0x02;
 constexpr u64 TAG_BIGFLOAT  = 0x03;
@@ -59,7 +59,7 @@ constexpr u64 TAG_SYM       = 0xff;
 union value {
     u64 raw;
     void* ptr;
-    f64 num;
+    f64 f;
 
     // implemented in values.cpp
     bool operator==(const value& v) const;
@@ -111,6 +111,15 @@ void init_gc_header(gc_header* dest, u8 type, u32 size);
 // set a header to designate that its object has been moved to ptr
 void set_gc_forward(gc_header* dest, gc_header* ptr);
 
+struct alignas (OBJ_ALIGN) fn_bignum {
+    gc_header h;
+    u32 width;
+    // FIXME: I want fixnums to be kinda fast, which we can accomplish using
+    // MMX/SSE instructions on 64-bit limbs. But for now, I want this to be
+    // portable.
+    u32* limbs;
+};
+
 // a string of fixed size
 struct alignas (OBJ_ALIGN) fn_str {
     gc_header h;
@@ -144,10 +153,24 @@ struct alignas (OBJ_ALIGN) fn_vec_node {
 
 struct alignas (OBJ_ALIGN) fn_vec {
     gc_header h;
+    // if (subvec), then this struct is the first field of an fn_subvec struct,
+    // see below. This allows subvecs and vecs to share a GC tag.
+    bool subvec;
     u64 length;
     u64 tail_offset;
     fn_vec_node* root;
     fn_vec_node* tail;
+};
+
+// A subvec is a subsequence of a vector. Rather than build a new vector, we
+// reuse the original vector and simply record the bounds of the subvector. Do
+// note that this will prevent the original trie from being garbage collected,
+// so when subvectoring very large vectors, you may wish to make a copy of the
+// subvector.
+struct alignas (OBJ_ALIGN) fn_subvec {
+    fn_vec sup;
+    u64 offset;
+    u64 length;
 };
 
 // hash tables

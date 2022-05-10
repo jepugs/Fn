@@ -36,7 +36,8 @@ void pop(istate* S, u8 times=1);
 void pop_to_local(istate* S, u8 dest);
 
 // create values on top of the stack
-void push_num(istate* S, f64 num);
+void push_float(istate* S, f64 num);
+void push_int(istate* S, i32 num);
 void push_str(istate* S, u32 size);
 void push_str(istate* S, const string& str);
 void push_sym(istate* S, symbol_id sym);
@@ -68,8 +69,10 @@ void push_foreign_function(istate* S, void (*foreign) (istate*), u8 num_args,
 
 // unboxing functions. The protected versions return false on type errors.
 
-void get_number(f64& out, const istate* S, u8 i);
-bool pget_number(f64& out, istate* S, u8 i);
+void get_float(f64& out, const istate* S, u8 i);
+bool pget_float(f64& out, istate* S, u8 i);
+void get_int(i32& out, const istate* S, u8 i);
+bool pget_int(i32& out, istate* S, u8 i);
 void get_str(string& out, const istate* S, u8 i);
 bool pget_str(string& out, istate* S, u8 i);
 void get_symbol_id(symbol_id& out, const istate* S, u8 i);
@@ -79,8 +82,19 @@ bool pget_symbol_id(symbol_id& out, istate* S, u8 i);
 // notwithstanding) and a protected version is not needed
 void get_bool(bool& out, const istate* S, u8 i);
 
+// these work on ints and floats and automatically cast ints to floats
+void get_cast_float(f64& out, const istate* S, u8 i);
+bool pget_cast_float(f64& out, const istate* S, u8 i);
+// these work on ints and floats and automatically cast floats to ints
+void get_cast_int(i32& out, const istate* S, u8 i);
+bool pget_cast_int(i32& out, const istate* S, u8 i);
+// this works on ints and floats which have integral values.
+bool pget_logical_int(i32& out, const istate* S, u8 i);
+
 // type checking
 
+bool is_int(istate* S, u8 i);
+bool is_float(istate* S, u8 i);
 bool is_number(istate* S, u8 i);
 bool is_str(istate* S, u8 i);
 bool is_symbol(istate* S, u8 i);
@@ -92,6 +106,17 @@ bool is_vec(istate* S, u8 i);
 bool is_empty_list(istate* S, u8 i);
 bool is_table(istate* S, u8 i);
 bool is_function(istate* S, u8 i);
+
+// arithmetic functions. These return false and set an error on type error. They
+// automatically handle mixed integer/float operations and will automatically
+// handle integer to bigint promotion (once implemented)
+bool padd(istate* S, u32 left, u32 right, u32 res);
+bool psub(istate* S, u32 left, u32 right, u32 res);
+bool pmul(istate* S, u32 left, u32 right, u32 res);
+bool pdiv(istate* S, u32 left, u32 right, u32 res);
+bool pmod(istate* S, u32 left, u32 right, u32 res);
+
+// Note: In the future, may add unsafe addition functions. The problem is that 
 
 // functions on general objects
 
@@ -132,7 +157,6 @@ bool pconcat_strs(istate* S, u8 n);
 // get a substring
 void push_substr(istate* S, u8 i, u32 start, u32 stop=-1);
 bool ppush_substr(istate* S, u8 i, u32 start, u32 stop=-1);
-
 
 // table functions
 

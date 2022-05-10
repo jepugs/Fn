@@ -329,31 +329,70 @@ Functions whose names end in a question mark should always return ~true~ or ~fal
 - ~and~, ~or~ :: conditional operators
 
 
-*** TODO Lists and Tables
+*** TODO Lists and Vecs
 
-Lists and tables are containers which can hold other objects. Lists are
-immutable singley-linked lists, and tables are mutable key-value stores.
+Lists and vecs (short for vectors) are sequence types which can hold other
+objects. Lists are immutable singley-linked lists. In other words, these are the
+usual persistent lists from functional programming. Unlike some dialects of
+Lisp, immutability is strictly enforced.
 
-Lists are created by using the function ~List~.
+Vecs are also immutable. (I've taken Rich Hickey's persistent vector structure
+from Clojure). The key difference between lists and vecs is in their performance
+characteristics. Vecs provide faster random access and are fast to extend at the
+end. Lists have fast prepend and first-element removal, making them an excellent
+choice for stack-like data structures. Both structures are fast to traverse in a
+linear fashion. When in doubt, vectors are usually a better choice due to their
+fast lookup and constant time.
+
+Lists are created by using the function ~List~, and vecs with the function ~Vec~.
+
 #+BEGIN_SRC fn
-(List 1 2 3)
-
+; make some lists
 (List)               ; empty list
+(List 1 2 3 4 5)     ; list of numbers
 (List "string" 1 no) ; lists can contain values of different types
+
+; Vec syntax is same as List syntax
+(Vec)                ; empty vec
+(Vec "gnirts" 0 yes)
 #+END_SRC
 
-Some common functions to operate on lists are:
+Some common functions to operate on lists and vectors are:
 - ~length~ :: get the length of a list
-- ~head~ :: get the first element of a list
-- ~tail~ :: get the tail of the list, i.e. a list containing everything except the
-  head
+- ~head~ :: get the first element of a list or vector
+- ~tail~ :: get the tail of the list or vector, i.e. a list containing everything
+  except the head
 - ~reverse~ :: you can guess this one
-- ~concat~ :: concatenate two or more lists end to end
+- ~concat~ :: concatenate two or more sequences (of the same type) end to end
+- ~1st, 2nd, 3rd, etc~ :: get the first, second, third, etc element of a
+  sequence (up to ~10th~)
+- ~->list~ :: convert a sequence or string to a list
+- ~->vector~ :: convert a sequence or string to a vector
+- ~slice~ :: get a subsequence of a list or vector. (Note: it can be very slow
+  taking large subsequences of a list)
+
+
+** Maps
+
+*Important note 04/26:* Maps are not yet implemented. Sorry! I'll get to it.
+
+*Note:* Maps the data structure are not to be confused with ~map~ the builtin
+function (note the lowercase ~m~), which applies a function to the elements of a
+sequence.
+
+Maps are key-value stores. Like lists and vecs, maps are immutable and
+persistent. (The underlying data structure is a HAMT).
+
+
+** Tables
 
 *Important note 04/26:* Tables are having their role in Fn dramatically reduced,
 and may even get the axe entirely. Turns out mutable hash tables are not the
 best for functional programming. Anyway, they were mainly there as a stand-in
 for HAMTs, which are coming soon.
+
+Tables are mutable key-value stores, implemented as hash tables with linear
+probing and value-based equality testing.
 
 Tables are created using braces (or the equivalent Table function). They must be
 passed an even number of arguments. The first, 3rd, 5th, etc are keys, and the
@@ -639,6 +678,20 @@ sparingly, and only after weighing alternative solutions.
 
 *** TODO apply
 
+~apply~ is a built-in function that allows the arguments to a function to be
+provided as a list. For example:
+#+begin_src fn
+(apply + (List 2 4 8)) ; => 14
+#+end_src
+
+We can include additional, non-list arguments by putting them between the
+function and the list (which is always the final argument).
+
+#+begin_src fn
+(apply + 2 (List 4 8)) ; => 14
+; above is equivalent to (+ 2 4 8)
+#+end_src
+
 
 *** TODO dollar-fn
 
@@ -725,6 +778,35 @@ However, by assigning global variables to mutable datatypes or by exploiting
 variable capture (discussed in a later section), mutable state can still be
 associated to a global variable. This is intended behavior, however, it is not
 recommended that you abuse it.
+
+
+** Loading and Organizing Code (Packages and Namespaces)
+
+To execute code from external sources (i.e. outside the main file), use the
+builtin function ~require~.
+
+~require~ takes a single string as an argument. If this string begins with ~./~ or
+~/~, it is treated as a filesystem path to either the directory. Otherwise it is
+treated as a package name.
+
+Packages are Fn's mechanism for organizing code into loadable modules. ~require~
+can locate packages automatically, provided they are somewhere in the search
+path, which can be configured via command line options or environment variables.
+
+#+begin_src
+(require "./foo.fn")     ; load a file by its relative path
+(require "/etc/foo.fn")  ; load a file by its absolute path
+#+end_src
+
+
+*** TODO Packages
+
+A package is simply a directory containing a file named ~__init.fn~. When a
+package is loaded using ~require~, the working directory is changed to the package
+directory, and ~__init.fn~ is executed.
+
+
+*** TODO Namespaces
 
 
 ** Namespaces and Import

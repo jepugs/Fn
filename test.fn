@@ -24,103 +24,105 @@
 (defn list->lazy (list)
   (if (empty? list)
       (Lazy-List (fn () nil))
-      (Lazy-List (fn () [(head list)
-                         (list->lazy (tail list))]))))
+      (Lazy-List (fn () (List (head list)
+                              (list->lazy (tail list)))))))
 
-(defn reverse (list)
-  (letfn iter (acc l)
-    (if (empty? l)
-        acc
-        (iter (cons (head l) acc) (tail l))))
-  (iter [] list))
+(defn lhead (lazy)
+  (head ((. lazy 'force))))
+
+(defn ltail (lazy)
+  (head (tail ((. lazy 'force)))))
+
+(defn lempty? (lazy)
+  (= ((. lazy 'force)) nil))
 
 (defn lazy->list (lazy)
   (letfn iter (acc rem)
-    (if (empty? rem)
+    (if (lempty? rem)
         (reverse acc)
-        (iter (cons (head rem) acc)
-              (tail rem))))
-  (iter [] lazy))
+        (iter (cons (lhead rem) acc)
+              (ltail rem))))
+  (iter (List) lazy))
 
 (defn lcons (hd lazy)
   (Lazy-List (fn ()
-               [hd lazy])))
+               (List hd lazy))))
 
 (defn lconcat (l1 l2)
-  (if (empty? l1)
+  (if (lempty? l1)
       l2
       (Lazy-List
-       (fn () [(head l1)
-               (lconcat (tail l1) l2)]))))
+       (fn () (List (lhead l1)
+                    (lconcat (ltail l1) l2))))))
 
 (defn ltake (n lazy)
   (letfn iter (acc m rem)
-    (if (or (empty? rem) (<= m 0))
+    (if (or (lempty? rem) (<= m 0))
         (reverse acc)
-        (iter (cons (head rem) acc)
+        (iter (cons (lhead rem) acc)
               (- m 1)
-              (tail rem))))
-  (iter [] n lazy))
+              (ltail rem))))
+  (iter (List) n lazy))
 
 
 (defn lmap (fun lazy)
-  (if (empty? lazy)
-      (list->lazy [])
+  (if (lempty? lazy)
+      (list->lazy (List))
     (Lazy-List
-     $[(fun (head lazy))
-       (lmap fun (tail lazy))])))
+     $(List (fun (lhead lazy))
+            (lmap fun (ltail lazy))))))
 
 (defn unbox-lazy (lazy)
-  [(head lazy) (tail lazy)])
+  (List (lhead lazy) (ltail lazy)))
 
 (defn lfilter (pred lazy)
   (letfn next (rem)
          (cond
-           (empty? rem) rem
-           (pred (head rem))
-           (lcons (head rem)
-                  (Lazy-List (fn () (unbox-lazy (next (tail rem))))))
-           yes (next (tail rem))))
+           (lempty? rem) rem
+           (pred (lhead rem))
+           (lcons (lhead rem)
+                  (Lazy-List (fn () (unbox-lazy (next (ltail rem))))))
+           otherwise (next (ltail rem))))
   (next lazy))
 
 (def N>=0
   (do 
     (let next-int
          (fn (x) (Lazy-List
-                  (fn () [x (next-int (+ x 1))]))))
+                  (fn () (List x (next-int (+ x 1)))))))
     (next-int 0)))
 
-; (list->lazy [1 2 3 4])
+; (list->lazy (List 1 2 3 4))
 
 (do
-  (let init-primes (list->lazy [2 3 5 7])
+  (let init-primes (list->lazy (List 2 3 5 7))
        next-pair
        (fn (x)
          (Lazy-List
-          (fn () [(- (* 6 x) 1)
-                  (lcons (+ (* 6 x) 1)
-                         (next-pair (+ x 1)))])))
+          (fn () (List (- (* 6 x) 1)
+                       (lcons (+ (* 6 x) 1)
+                              (next-pair (+ x 1)))))))
        candidates (next-pair 2))
   (letfn prime-test? (x)
     (let max (ceil (** x 0.5)))
     (letfn iter (rem)
-      (let n (head rem))
+      (let n (lhead rem))
       (cond
-        (= (mod x n) 0) no
-        (>= n max) yes
-        yes (iter (tail rem))))
+        (= (mod x n) 0)  no
+        (>= n max)       yes
+        otherwise        (iter (ltail rem))))
     (iter primes))
   (def primes
     (lconcat init-primes
              (Lazy-List (fn ()
                           (let next (lfilter prime-test? candidates))
-                          [(head next) (tail next)])))))
+                          (List (lhead next) (ltail next)))))))
 
 (defn lnth (n l)
   (if (<= n 0)
-      (head l)
-      (lnth (- n 1) (tail l))))
+      (lhead l)
+      (lnth (- n 1) (ltail l))))
 
-; (lnth 9 primes)
+; (ltake 13 primes)
 (lnth 99999 primes)
-; (lnth 5 N>=0)
+; (lnth 999 N>=0)

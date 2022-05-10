@@ -42,8 +42,11 @@ void pop_to_local(istate* S, u8 dest) {
     pop(S);
 }
 
-void push_num(istate* S, f64 num) {
-    push(S, vbox_number(num));
+void push_int(istate* S, i32 num) {
+    push(S, vbox_int(num));
+}
+void push_float(istate* S, f64 num) {
+    push(S, vbox_float(num));
 }
 void push_str(istate* S, u32 size) {
     push_nil(S);
@@ -118,15 +121,26 @@ void push_foreign_function(istate* S, void (*foreign) (istate*), u8 num_args,
     alloc_foreign_fun(S, S->sp - 1, foreign, num_args, vari, name);
 }
 
-void get_number(f64& out, const istate* S, u8 i) {
-    out = vnumber(lget(S, i));
+void get_int(i32& out, const istate* S, u8 i) {
+    out = vint(lget(S, i));
 }
-bool pget_number(f64& out, istate* S, u8 i) {
-    if (!vis_number(lget(S, i))) {
+bool pget_int(i32& out, istate* S, u8 i) {
+    if (!vis_int(lget(S, i))) {
         type_error(S, "number");
         return false;
     }
-    out = vnumber(lget(S, i));
+    out = vint(lget(S, i));
+    return true;
+}
+void get_float(f64& out, const istate* S, u8 i) {
+    out = vfloat(lget(S, i));
+}
+bool pget_float(f64& out, istate* S, u8 i) {
+    if (!vis_float(lget(S, i))) {
+        type_error(S, "number");
+        return false;
+    }
+    out = vfloat(lget(S, i));
     return true;
 }
 void get_string(string& out, const istate* S, u8 i) {
@@ -155,6 +169,12 @@ void get_bool(bool& out, const istate* S, u8 i) {
     out = vtruth(lget(S, i));
 }
 
+bool is_int(istate* S, u8 i) {
+    return vis_int(lget(S, i));
+}
+bool is_float(istate* S, u8 i) {
+    return vis_float(lget(S, i));
+}
 bool is_number(istate* S, u8 i) {
     return vis_number(lget(S, i));
 }

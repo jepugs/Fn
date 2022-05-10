@@ -12,7 +12,8 @@ namespace ast {
 using namespace fn;
 
 enum ast_kind {
-    ak_number,
+    ak_int,
+    ak_float,
     ak_string,
     ak_symbol,
     ak_list
@@ -24,26 +25,31 @@ struct node {
     ast_kind kind;
     u32 list_length; // only used for list nodes
     union {
-        f64 num;
+        f64 f;
+        i32 i;
         // this is w/r/t to an associated scanner_string_table
         symbol_id str_id;
         // node structure does not take
         node** list;
     } datum;
 
-    explicit node(const source_loc& loc, ast_kind k, f64 num);
+    static node* int_node(const source_loc& loc, i32 num);
+    static node* float_node(const source_loc& loc, f64 num);
     explicit node(const source_loc& loc, ast_kind k, u32 str_id);
     // this takes ownership of list. It will be freed using delete[]
     explicit node(const source_loc& loc, ast_kind k, u32 list_length,
             node** list);
+    node(node&& other);
 
+    node& operator=(node&& other);
     node& operator=(const node& other) = delete;
     node(const node& other) = delete;
 };
 
 // functions to create ast nodes. These do allocation with new and must be
 // freed later
-node* mk_number(const source_loc& loc, f64 num);
+node* mk_int(const source_loc& loc, i32 num);
+node* mk_float(const source_loc& loc, f64 num);
 node* mk_string(const source_loc& loc, u32 str_id);
 node* mk_symbol(const source_loc& loc, u32 str_id);
 // This will take ownership of the argument lst (i.e. it will be freed when

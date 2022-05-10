@@ -16,7 +16,7 @@
 (def println int:println)
 
 (def list? int:list?)
-; (def empty? int:empty?)
+(def empty? int:empty?)
 (def symbol? int:symbol?)
 
 (def = int:=)
@@ -31,10 +31,6 @@
 
 (def ceil int:ceil)
 
-;(def head int:head)
-; (def tail int:tail)
-; (def cons int:cons)
-
 (def set-metatable int:set-metatable)
 (def metatable int:metatable)
 (def Table int:Table)
@@ -46,6 +42,22 @@
 (def not
      (fn (p)
        (if p no yes)))
+
+(defmacro and (& args)
+  (if (empty? args)
+      'yes
+      (List 'if (head args)
+            (cons 'and (tail args))
+            'no)))
+
+(defmacro or (& args)
+  (if (empty? args)
+      'no
+      (List 'if (head args)
+            'yes
+            (cons 'and (tail args)))))
+
+(def otherwise yes)
 
 
 (def List
@@ -64,10 +76,14 @@
 
 (int:def-list-meta List)
 
-(defmacro head (x) [''head x])
-(defmacro tail (x) [''tail x])
-(defmacro empty? (x) [''empty? x])
-(defmacro cons (y x) [''cons x y])
+(def head int:head)
+(def tail int:tail)
+(def empty? int:empty?)
+(def cons int:cons)
+; (defmacro head (x) [''head x])
+; (defmacro tail (x) [''tail x])
+; (defmacro empty? (x) [''empty? x])
+; (defmacro cons (y x) [''cons x y])
 
 ; foldl is needed early to bootstrap some other functions
 (def foldl

@@ -25,40 +25,47 @@ inline u64 vtag(value v) {
 inline u64 vext_tag(value v) {
     return v.raw & EXT_TAG_MASK;
 }
-inline u64 vis_number(value v) {
-    return vtag(v) == TAG_NUM;
+inline bool vis_int(value v) {
+    return vtag(v) == TAG_INT;
 }
-inline u64 vis_string(value v) {
+inline bool vis_float(value v) {
+    return vtag(v) == TAG_FLOAT;
+}
+inline bool vis_number(value v) {
+    return vtag(v) == TAG_FLOAT
+        || vtag(v) == TAG_INT;
+}
+inline bool vis_string(value v) {
     return vtag(v) == TAG_STRING;
 }
-inline u64 vis_cons(value v) {
+inline bool vis_cons(value v) {
     return vtag(v) == TAG_CONS;
 }
-inline u64 vis_list(value v) {
+inline bool vis_list(value v) {
     return v == V_EMPTY || vtag(v) == TAG_CONS;
 }
-inline u64 vis_vec(value v) {
+inline bool vis_vec(value v) {
     return vtag(v) == TAG_VECTOR;
 }
-inline u64 vis_table(value v) {
+inline bool vis_table(value v) {
     return vtag(v) == TAG_TABLE;
 }
-inline u64 vis_function(value v) {
+inline bool vis_function(value v) {
     return vtag(v) == TAG_FUNC;
 }
-inline u64 vis_symbol(value v) {
+inline bool vis_symbol(value v) {
     return vext_tag(v) == TAG_SYM;
 }
-inline u64 vis_nil(value v) {
+inline bool vis_nil(value v) {
     return v.raw == V_NIL.raw;
 }
-inline u64 vis_bool(value v) {
+inline bool vis_bool(value v) {
     return v.raw == V_YES.raw || v.raw == V_NO.raw;
 }
-inline u64 vis_emptyl(value v) {
+inline bool vis_emptyl(value v) {
     return v.raw == V_EMPTY.raw;
 }
-inline u64 vis_unin(value v) {
+inline bool vis_unin(value v) {
     return v.raw == V_UNIN.raw;
 }
 
@@ -75,9 +82,19 @@ inline gc_header* vheader(value v) {
 }
 
 // creating values
-inline value vbox_number(f64 v) {
-    value res = { .num = v };
-    res.raw = (res.raw & ~TAG_MASK) | TAG_NUM;
+inline value vbox_int(i32 v) {
+    union {
+        u64 raw;
+        i32 i;
+    } u;
+    u.i = v;
+    value res = { .raw = u.raw << 5 };
+    res.raw = (res.raw & ~TAG_MASK) | TAG_INT;
+    return res;
+}
+inline value vbox_float(f64 v) {
+    value res = { .f = v };
+    res.raw = (res.raw & ~TAG_MASK) | TAG_FLOAT;
     return res;
 }
 inline value vbox_symbol(symbol_id v) {
@@ -128,8 +145,23 @@ inline value vbox_header(gc_header* h) {
 }
 
 // accessing objects from a value
-inline f64 vnumber(value v) {
-    return v.num;
+inline i32 vint(value v) {
+    union {
+        i32 i;
+        u64 raw;
+    } u;
+    u.raw = v.raw >> 5;
+    return u.i;
+}
+inline f64 vfloat(value v) {
+    return value{.raw = (v.raw ^ TAG_FLOAT)}.f;
+}
+inline f64 vcast_float(value v) {
+    if (vis_int(v)) {
+        return vint(v);
+    } else {
+        return vfloat(v);
+    }
 }
 inline void* vpointer(value v) {
     v.raw = v.raw & ~TAG_MASK;

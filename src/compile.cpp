@@ -20,7 +20,7 @@ bc_output_const::bc_output_const(bc_output_const&& other) noexcept
     : kind{other.kind}
     , d{other.d} {
     // this ensures no deallocation is done
-    other.kind = bck_number;
+    other.kind = bck_float;
 }
 
 bc_output_const::~bc_output_const() {
@@ -761,12 +761,25 @@ bool bc_compiler::compile_within_body(const ast::node* expr, bool tail) {
     return true;
 }
 
-bool bc_compiler::compile_number(const ast::node* root) {
+bool bc_compiler::compile_int(const ast::node* root) {
     // FIXME: technically we should check for constant ID overflow here
     auto cid = output->const_table.size;
     output->const_table.push_back(bc_output_const{
-                bck_number,
-                {.num = root->datum.num}
+                bck_int,
+                {.i = root->datum.i}
+            });
+    emit8(OP_CONST);
+    emit16(cid);
+    ++sp;
+    return true;
+}
+
+bool bc_compiler::compile_float(const ast::node* root) {
+    // FIXME: technically we should check for constant ID overflow here
+    auto cid = output->const_table.size;
+    output->const_table.push_back(bc_output_const{
+                bck_float,
+                {.f = root->datum.f}
             });
     emit8(OP_CONST);
     emit16(cid);
@@ -846,8 +859,11 @@ bool bc_compiler::compile(const ast::node* root, bool tail) {
     }
     bool res;
     switch (root->kind) {
-    case ast::ak_number:
-        res = compile_number(root);
+    case ast::ak_int:
+        res = compile_int(root);
+        break;
+    case ast::ak_float:
+        res = compile_float(root);
         break;
     case ast::ak_string:
         res = compile_string(root);
