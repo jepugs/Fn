@@ -1,0 +1,428 @@
+#+TITLE: Fn Special Forms Documentation
+#+OPTIONS: num:2
+
+* Design Philosophy
+
+- Minimize the number of language primitives
+- Make it easy to write complex logic with 
+
+* Functions and Methods
+
+Functions and methods are callable chunks of code which may be parameterized
+over a set of arguments. Function and method bodies are *blocks*, which are
+sequences of expressions that are evaluated in order. See [[Control Flow]] for more
+on blocks.
+
+In the
+
+
+* Control Flow
+
+* Variables
+
+* Types
+
+* Pattern Matching
+
+* Namespaces
+
+* Special Forms
+
+** defer
+*** Syntax
+
+(*defer* _body_)
+
+*** Arguments and Values
+
+- _body_ :: A sequence of expressions to defer.
+
+*** Description
+
+The defer special form schedules the given body of code to be executed when the
+current block exits. This is useful for ensuring that certain cleanup tasks are
+performed, such as closing files or releasing resources.
+
+*** Examples
+
+#+begin_src fn
+(let file (io.open "example.txt" "r"))
+(defer (file :close))
+(println (file :read))
+#+end_src
+
+** do
+*** Syntax
+
+(*do* _body_)
+(*do* *:name* _name_ _body_)
+
+*** Arguments and Values
+
+- _name_ :: An optional name for the block.
+- _body_ :: A sequence of expressions to execute.
+
+*** Description
+
+The do special form executes the given body of code for its side effects and
+returns the value of the last expression. Optionally, a name can be provided for
+the block, which can be used with the return special form to break out of the
+block early.
+
+*** Examples
+
+#+begin_src fn
+(do (println "Calculating...") (+ x y))
+#+end_src
+
+** do-inline
+*** Syntax
+
+(*do-inline* _body_)
+
+*** Arguments and Values
+
+- _body_ :: A sequence of expressions to execute.
+
+*** Description
+
+The do-inline special form behaves like the do form, but instead of creating a
+new block, it causes the expressions to be executed as if they were placed
+directly in the surrounding block. This is intended for use by macro authors to
+avoid introducing unnecessary blocks.
+
+*** Examples
+
+#+begin_src fn
+(do-inline (let x 5) (let y 3) (+ x y))
+#+end_src
+
+** fn
+*** Syntax
+
+(*fn* _name_ ( _args_ ) [ _return-type_ ] _body_)
+(*fn* ( _args_ ) [ _return-type_ ] _body_)
+
+*** Arguments and Values
+
+- _name_ :: Optional name for the function.
+- _args_ :: List of arguments to the function, including type annotations for each
+  one.
+- _return-type_ :: Type expression indicating the return type.
+- _body_ :: The body of the function.
+
+*** Description
+
+The fn special form defines a function with an optional name, a list of
+parameters with type annotations, an optional return type, and a body. If the
+name is provided, the function is assigned to a variable with that name. If no
+return type is provided, it will be inferred from the body.
+
+*** Examples
+
+#+begin_src fn
+(fn add (x [Int] y [Int]) [Int] (+ x y))
+(fn (x [Int] y [Int]) [Int] (+ x y))
+#+end_src
+
+** if
+*** Syntax
+
+(*if* _test_ _then_)
+(*if* _test_ _then_ _else_)
+
+*** Arguments and Values
+
+- _test_ :: The test expression.
+- _then_ :: The expression to evaluate if the test is true.
+- _else_ :: The expression to evaluate if the test is false. Optional.
+
+*** Description
+
+The if special form provides conditional branching based on the test expression.
+If the test is true, the then expression is evaluated, otherwise the else
+expression is evaluated if provided. If no else expression is provided and the
+test is false, Nil is returned.
+
+*** Examples
+
+#+begin_src fn
+(if (> x y) "x is greater" "x is not greater")
+#+end_src
+
+** let
+*** Syntax
+
+(*let* _pattern_ _value_)
+(*let* _pattern_ _value_ [ _type_ ])
+(*let* _let-specs_...)
+
+*** Arguments and Values
+- _pattern_ :: A pattern or variable name.
+- _value_ :: The value to assign to the pattern.
+- _type_ :: An optional type expression indicating the type of the value. If this
+  is not provided, the type will be inferred.
+- _let-specs_ :: A sequence of pattern/value pairs, any of which may or may not
+  also have a type annotation.
+
+*** Description
+
+The let special form binds one or more variables to values in the current block.
+Optional type annotations may follow the value forms. The binding is visible in
+the remainder of the current block.
+
+*** Examples
+
+#+begin_src fn
+(let x 5 [Int])
+(let x 5 y 6)
+#+end_src
+
+** macro
+*** Syntax
+
+(*macro* _name_ ( _args_ ) _body_)
+
+*** Arguments and Values
+- _name_ :: The name of the macro.
+- _args_ :: List of arguments to the macro.
+- _body_ :: The body of the macro.
+
+*** Description
+
+The macro special form defines a macro with a name, a list of arguments, and a
+body. Macros are expanded at compile time, allowing for powerful code generation
+and abstraction capabilities.
+
+*** Examples
+
+#+begin_src fn
+; todo
+#+end_src
+
+** method
+*** Syntax
+
+(*method* _name_ ( _args_ ) [ _return-type_ ] _body_)
+
+*** Arguments and Values
+
+- _name_ :: The name of the method.
+- _args_ :: List of arguments to the method, including a self argument and type
+  annotations for each argument.
+- _return-type_ :: Type expression indicating the return type.
+- _body_ :: The body of the method.
+
+*** Description
+
+The method special form defines a method with a name, a list of arguments
+(including a self argument representing the object on which the method is
+called), an optional return type, and a body. The method is bound to the struct
+specified by the self argument type.
+
+*** Examples
+
+#+begin_src fn
+(struct Point ()
+  x [Int]
+  y [Int])
+
+(method distance (self [Point] other [Point]) [Float]
+  (let dx (- (other :x) (self :x))
+       dy (- (other :y) (self :y)))
+  (sqrt (+ (* dx dx) (* dy dy))))
+#+end_src
+
+** return
+*** Syntax
+
+(*return*)
+(*return* _value_)
+(*return* _value_ _name_)
+
+*** Arguments and Values
+
+- _value_ :: Optional return value. If none is provided, returns ~Nil~.
+- _name_ :: Name of the block to return from. If none is provided, return from the
+  current function.
+
+*** Description
+
+The return special form is used to return a value from a function or a named
+block early. If a value is provided, it will be returned; otherwise, Nil is
+returned. If a name is provided, the return will be from the named block;
+otherwise, it returns from the innermost function.
+
+*** Examples
+
+#+begin_src fn
+(return)
+(return 42)
+(return 42 my-block)
+#+end_src
+
+** struct
+*** Syntax
+
+(*struct* _name_ () _fields-and-types_)
+(*struct* _name_ (_type-parameters_) _fields-and-types_)
+
+*** Arguments and Values
+
+- _name_ :: The name of the struct.
+- _type-parameters_ :: Optional list of type parameters.
+- _fields-and-types_ :: List of field names and their types.
+
+*** Description
+
+The struct special form defines a new struct type with a specified name,
+optional type parameters, and a list of fields and their types. Structs are used
+to create custom data structures that can be used throughout the program.
+
+*** Examples
+
+#+begin_src fn
+(struct Point ()
+  x [Int]
+  y [Int])
+(struct Pair (A B)
+  first [A]
+  second [B])
+#+end_src
+
+** switch
+*** Syntax
+
+(*switch* _value_ _clauses_)
+
+*** Arguments and Values
+
+- _value_ :: The value to be matched against.
+- _clauses_ :: A sequence of clauses, each starting with a :case keyword followed
+  by a pattern and one or more expressions to evaluate.
+
+*** Description
+
+The switch special form provides a pattern matching mechanism for branching
+based on the value provided. Each clause starts with the :case keyword, followed
+by a pattern and an expression to evaluate if the pattern matches the value. The
+first matching clause's expression will be evaluated and returned.
+
+*** Examples
+
+#+begin_src fn
+(variant Color () Red Green Blue)
+
+(fn describe-color (color [Color]) [String]
+  (switch color
+    :case Red "This is the color red."
+    :case Green "This is the color green."
+    :case Blue "This is the color blue."))
+
+(describe-color Red) ; Output: "This is the color red."
+(describe-color Green) ; Output: "This is the color green."
+(describe-color Blue) ; Output: "This is the color blue."
+#+end_src
+
+** tagged-union
+*** Syntax
+
+(*tagged-union* _name_ () _types_)
+(*tagged-union* _name_ (_type-parameters_) _types_)
+
+*** Arguments and Values
+
+- _name_ :: The name of the tagged union.
+- _type-parameters_ :: Optional sequence of type parameters.
+- _types_ :: Sequence of types that make up the union.
+
+*** Description
+
+The tagged-union special form defines a new tagged union type with a specified
+name, optional type parameters, and a list of types that make up the union.
+Tagged unions are used to represent values that can be one of several different
+types.
+
+*** Examples
+
+#+begin_src fn
+(tagged-union Value () Int Float String)
+#+end_src
+
+** variant
+*** Syntax
+
+(*variant* _name_ () _constructors_)
+(*variant* _name_ (_type-parameters_) _constructors_)
+
+*** Arguments and Values
+
+- _name_ :: The name of the variant.
+- _type-parameters_ :: Optional list of type parameters.
+- _constructors_ :: Sequence of constructor names and their argument types.
+
+*** Description
+
+The variant special form defines a new variant type with a specified name,
+optional type parameters, and a list of constructor names and their argument
+types. Variants are used to create custom sum types that represent a choice
+between several different constructors.
+
+*** Examples
+
+#+begin_src fn
+(variant Color () Red Green Blue)
+(variant Option (A)
+  (Some [A])
+  None)
+#+end_src
+
+** when
+*** Syntax
+
+(*when* _condition_ _body-and-other-clauses_)
+
+*** Arguments and Values
+
+- _condition_ :: The test expression.
+- _body-and-other-clauses_ :: A sequence of expressions and additional clauses.
+
+*** Description
+
+The when special form provides conditional branching based on the test
+expression. If the test is true, the body of code is executed. Additional
+clauses may be introduced within the when expression using the keywords ~:elif~,
+~:else~, and ~:elif-match~ to begin new clauses.
+
+*** Examples
+
+#+begin_src fn
+(when (> x y)
+  (println "x is greater")
+  :else
+  (println "y is greater"))
+#+end_src
+
+
+* Built-in Functions and Macros
+
+** ->$
+
+** ->as
+
+** foldl
+
+** foldr
+
+** list
+
+** vec
+
+
+* The Result Type
+
+
+* The Optional Type
+
+
+* Built-in Container Types
