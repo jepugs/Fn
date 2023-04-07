@@ -3,8 +3,163 @@
 
 * Design Philosophy
 
-- Minimize the number of language primitives
-- Make it easy to write complex logic with 
+Fn values consistency, extensibility, zero-cost abstraction, and
+expressiveness.
+
+Consistency means that the syntax and API should adhere to a shared set of
+patterns wherever possible. Consistency brings many benefits, making the
+language easier to parse and process for both humans and tools, while also
+lending to its aesthetic appeal.
+
+Extensible languages make it easy for programmers to customize and enhance
+their tools as well as the language itself. In Fn, this is achieved with the
+type system and metaprogramming facilities.
+
+Zero-cost abstraction is the capability to write code which more closely models
+the problem domain without incurring any runtime performance costs (compared to
+less abstract code). In contrast to most dialects of Lisp, Fn provides a static
+algebraic type system which allows programmers to write polymorphic code
+without incurring the overheads of runtime type checking and virtual method
+dispatch. Additionally, macros enable sophisticated compile-time processing in
+order to generate efficient code.
+
+Expressiveness refers to the friendliness of the language toward creating good
+models of a problem domain. Fn attempts to combine expressiveness with
+zero-cost abstraction by carefully selecting a set of primitives which balance
+efficiency with expressive power.
+
+Fn strives to provide a programming experience which provides more control and
+performance than high-level languages like Clojure and Python, without
+sacrificing any expressive power. Even more importantly, Fn is a unique and
+opinionated language which I hope will be a joy to use.
+
+* The Toplevel
+
+Fn code is organized into source files. The outermost scope of a file is called
+the *toplevel*. When a file is evaluated, all toplevel expressions are executed.
+Toplevel expressions within a file are automatically collected and reordered by
+the interpreter to enable out-of-order definition and mutual recursion.
+
+The following special forms are legal at the toplevel:
+#+begin_src
+import require
+fn macro method
+let
+do when
+do-inline
+struct tagged-union variant
+#+end_src
+Macros are also legal at the toplevel, provided they ultimately expand into one
+of the above expressions.
+
+As mentioned above, toplevel expressions may be reordered by the interpreter. It
+is however guaranteed that ~do~ and ~when~ blocks will be executed in the order
+in which they occur in the file.
+
+* Namespaces
+
+Fn code is organized into namespaces. Namespaces consist of an identifier and a
+collection of global variables, i.e. a map from names to values.
+
+The current namespace can be set using a toplevel ~namespace~ declaration. The
+~namespace~ declaration has syntax
+#+begin_src
+(namespace full.namespace.name)
+#+end_src
+and sets the namespace for all code below that declaration (until the next
+namespace declaration).
+
+Once the code for a namespace has been loaded, the variables in that namespace
+can be accessed using the full namespace name by prepending a dot:
+#+begin_src fn
+.full.namespace.name.var-name
+; e.g.
+(namespace my.ns)
+(let my-var 42)
+; now can acces my-var from any namespace as
+.my.ns.my-var
+#+end_src
+
+This syntax can be shortened substantially by importing the other namespace into
+the current one using ~import~:
+#+begin_src fn
+(import full.namespace.name)
+(import full.namespace.name :as short-name)
+
+; continuation of above example
+
+; by default the short name is the token after the last dot
+(import my.ns)
+ns.my-var
+
+; short name can be set manually
+(import my.ns :as foo)
+foo.my-var
+#+end_src
+
+~import~ may only be used at the toplevel.
+
+In addition, the special form ~import-from~ may be used to import variables
+directly from an external namespace into the current one, without needing a
+prefix.
+#+begin_src fn
+(import-from full.namespace.name vars...)
+
+; e.g.
+(import my.ns my-var)
+my-var
+#+end_src
+
+* Variables and Blocks
+
+Fn employs the usual lexical scope for its variables. At this time dynamic
+variables are not supported, although this may change in the future.
+
+Variables in Fn are generally introduced with the ~let~ or ~fn~ special forms. At
+the toplevel, these create global variables. Global variables are accessible
+from anywhere in the program.
+
+A *block* in Fn is a sequence of expressions wrapped in its own lexical
+environment. Blocks occur in the bodies of functions and ~do~ forms, as well as in
+the clauses of a ~when~ expression.
+
+When ~let~ appears in a block, it binds one or more local variables for the rest
+of the block. These bindings are not recursive by default, which is to say that
+the value of the variable cannot refer to itself by name for e.g. defining
+recursive functions. Including the ~:rec~ modifier keyword with a variable
+definition will make its name available within its own value form and all other
+value forms being bound within the same let expression. See [[let]] for more
+information.
+
+Bindings made with ~fn~ are recursive by default, which is to say that the
+function can call itself recursively by name.
+
+Local variables usually only live until the end of the block in which they are
+introduced, but their lifetime may be extended by capturing them with a
+function.
+
+* Types
+
+Fn supports a variety of built-in types. We distinguish between primitive types,
+array types, virtual types, and user-defined types.
+
+** Primitive Types
+
+A primitive type is one of the following:
+#+begin_src fn
+I8 I16 I32 I64
+U8 U16 U32 U64
+F32 F64
+Bool
+Int
+String
+#+end_src
+Primitive types are built-in and indivisible. Integer types are automatically
+promoted to larger integer types when necessary. Casting to a smaller bit width
+requires an explicit command.
+
+Virtual types represent values that conform to a specific interface, but whose
+exact concrete type may not be known until runtime.
 
 * Functions and Methods
 
@@ -13,61 +168,53 @@ over a set of arguments. Function and method bodies are *blocks*, which are
 sequences of expressions that are evaluated in order. See [[Control Flow]] for more
 on blocks.
 
-In the
-
-
-* Control Flow
-
-* Variables
-
-* Types
+Functions are created with the ~fn~ special form (see [[fn]] for usage). Functions may
+capture variables from their lexical environment.
 
 * Pattern Matching
 
-* Namespaces
-
 * Special Forms
-
 ** defer
 *** Syntax
 
-(*defer* _body_)
+(*defer* _block_)
 
 *** Arguments and Values
 
-- _body_ :: A sequence of expressions to defer.
+- _block_ :: A sequence of expressions to defer.
 
 *** Description
 
-The defer special form schedules the given body of code to be executed when the
-current block exits. This is useful for ensuring that certain cleanup tasks are
+The ~defer~ special form schedules expressions to be executed when the current
+block exits. This is useful for ensuring that certain cleanup tasks are
 performed, such as closing files or releasing resources.
 
 *** Examples
 
 #+begin_src fn
-(let file (io.open "example.txt" "r"))
-(defer (file :close))
-(println (file :read))
+(do
+  (let file (io.open "example.txt" "r"))
+  (defer (file :close))
+  (println (file :read)))
 #+end_src
 
 ** do
 *** Syntax
 
-(*do* _body_)
-(*do* *:name* _name_ _body_)
+(*do* _block_)
+(*do* *:name* _name_ _block_)
 
 *** Arguments and Values
 
 - _name_ :: An optional name for the block.
-- _body_ :: A sequence of expressions to execute.
+- _block_ :: A sequence of expressions to execute.
 
 *** Description
 
-The do special form executes the given body of code for its side effects and
-returns the value of the last expression. Optionally, a name can be provided for
-the block, which can be used with the return special form to break out of the
-block early.
+The ~do~ special form introduces a new block. The expressions in the block are
+evaluated in order, and the value of the last expression is returned.
+Optionally, a name can be provided for the block, which can be used with the
+~return~ special form to return early with the provided value.
 
 *** Examples
 
@@ -86,10 +233,10 @@ block early.
 
 *** Description
 
-The do-inline special form behaves like the do form, but instead of creating a
+The ~do-inline~ special form behaves like the ~do~ form, but instead of creating a
 new block, it causes the expressions to be executed as if they were placed
 directly in the surrounding block. This is intended for use by macro authors to
-avoid introducing unnecessary blocks.
+allow macros to introduce local variables.
 
 *** Examples
 
@@ -100,8 +247,8 @@ avoid introducing unnecessary blocks.
 ** fn
 *** Syntax
 
-(*fn* _name_ ( _args_ ) [ _return-type_ ] _body_)
-(*fn* ( _args_ ) [ _return-type_ ] _body_)
+(*fn* _name_ ( _args_ ) [ _return-type_ ] _block_)
+(*fn* ( _args_ ) [ _return-type_ ] _block_)
 
 *** Arguments and Values
 
@@ -109,14 +256,15 @@ avoid introducing unnecessary blocks.
 - _args_ :: List of arguments to the function, including type annotations for each
   one.
 - _return-type_ :: Type expression indicating the return type.
-- _body_ :: The body of the function.
+- _block_ :: The body of the function.
 
 *** Description
 
-The fn special form defines a function with an optional name, a list of
+The ~fn~ special form defines a function with an optional name, a list of
 parameters with type annotations, an optional return type, and a body. If the
-name is provided, the function is assigned to a variable with that name. If no
-return type is provided, it will be inferred from the body.
+name is provided and the ~fn~ form appears within a block, the function is
+assigned to a variable with that name. If no return type is provided, it will be
+inferred from the body.
 
 *** Examples
 
@@ -153,17 +301,20 @@ test is false, Nil is returned.
 ** let
 *** Syntax
 
-(*let* _pattern_ _value_)
-(*let* _pattern_ _value_ [ _type_ ])
+(*let* _pattern_ _value_ _modifiers_)
+(*let* _pattern_ _value_ [ _type_ ] _modifiers_)
 (*let* _let-specs_...)
 
 *** Arguments and Values
 - _pattern_ :: A pattern or variable name.
 - _value_ :: The value to assign to the pattern.
+- _modifiers_ :: Zero or more keywords used to change the semantics of the
+  variable. Options include ~:mut~ to indicate that the variable is mutable and
+  ~:rec~ for support for mutually recursive bindings.
 - _type_ :: An optional type expression indicating the type of the value. If this
   is not provided, the type will be inferred.
-- _let-specs_ :: A sequence of pattern/value pairs, any of which may or may not
-  also have a type annotation.
+- _let-specs_ :: One or more pattern/value pairs (optionally with type and/or
+  modifiers).
 
 *** Description
 
@@ -403,26 +554,78 @@ clauses may be introduced within the when expression using the keywords ~:elif~,
   (println "y is greater"))
 #+end_src
 
+* Namespace ~fn.builtin~
 
-* Built-in Functions and Macros
+** function: list
 
-** ->$
+** function: map
 
-** ->as
+** macro: partial
 
-** foldl
+*** Declaration
 
-** foldr
+*** Arguments
 
-** list
+*** Result
 
-** vec
+** function: print
 
+** function: println
 
-* The Result Type
+** function: readln
 
+*** Declaration
 
-* The Optional Type
+#+begin_src fn
+(fn readln ((from .fn.io.stdin) [.fn.io.File]) [! String IOError])
+#+end_src
 
+*** Arguments
 
-* Built-in Container Types
+- from :: A file handle
+
+*** Result
+
+The String that was read, or an IOError.
+
+** macro: apply
+
+#+begin_src fn
+(macro apply (fun & args-and-arg-seq))
+#+end_src
+
+** macro: compose
+
+#+begin_src fn
+(macro compose (f1 & fs))
+#+end_src
+
+** function: compose2
+
+#+begin_src fn
+(fn compose2 (f1 [Fn (b) a] f2 [Fn (c) b]) [Fn (c) a])
+#+end_src
+
+** macro: fmt
+
+#+begin_src fn
+(macro fmt (fmt-str))
+#+end_src
+
+** function: list
+
+** macro: printf
+
+** function: vec
+
+** function: filter
+
+** function: maybe
+
+** function: 
+
+* Built-in Persistent Containers
+
+Fn comes with out of the box support for persistent vectors, lazy immutable
+lists, and persistent hash maps (HAMTs). Mutable arrays and hash tables are also
+provided.
