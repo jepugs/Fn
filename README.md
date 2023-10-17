@@ -1,3 +1,25 @@
+# This Project Has Been Abandoned
+
+In 2023, I abandoned all work on Fn. The last version of the README is preserved
+for posterity below. I have written a [postmortem](POSTMORTEM.md) detailing the
+development history and the challenges that ultimately led to me scrapping the
+project.
+
+If Fn seems like a language you might like, you should check out
+[Fennel](https://fennel-lang.org/)[^1], which has a similar (but superior)
+design, and is actually useful, as it compiles to Lua.
+
+If you're looking at my GitHub because you're thinking about hiring me, then I
+apologize for the code in this repository. That said, the garbage collector for
+this implementation is fairly sophisticated (it is generational and compacting),
+and I think it demonstrates some level of skill. Check out the files
+[gc.cpp](src/gc.cpp) and [alloc.cpp](src/alloc.cpp) and their associated header
+files to see that.
+
+[^1]: Neither Fn nor I, the author of Fn, have any affiliation with Fennel. The
+    similarity in names is purely a coincidence.
+
+
 # Fn, a programming language
 
 **Fn** is a programming language which I am currently making for myself.
